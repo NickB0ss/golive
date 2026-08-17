@@ -91,7 +91,7 @@ transmitir clica em **Compartilhar tela**, escolhe monitor ou janela, e pronto.
 
 Duplo clique em qualquer vídeo expande pra tela cheia.
 
-## Gerar o .exe pros amigos
+## Gerar o instalador pros amigos
 
 Pra ninguém precisar instalar Node:
 
@@ -99,8 +99,11 @@ Pra ninguém precisar instalar Node:
 npm run dist
 ```
 
-Sai um executável portátil em `dist/`. Só o servidor de sinalização continua
-precisando de Node numa máquina.
+Sai um instalador em `dist/GoLive LAN Setup <versão>.exe`. Ele cria atalho
+na Área de Trabalho e no Menu Iniciar, e desinstala normalmente pelo painel
+do Windows. Quem só quer transmitir/assistir não precisa mais de Node — o
+servidor de sinalização agora sobe embutido no próprio app quando alguém
+clica em **Criar sala** (ver "Como usar" abaixo).
 
 ---
 
