@@ -24,6 +24,10 @@ tudo:
 | 3 | ~36 Mbps |
 | 5 | ~60 Mbps |
 
+Isso é por transmissor: com duas pessoas transmitindo ao mesmo tempo, o
+**download de cada espectador** também dobra (uma cópia de cada
+transmissão chegando).
+
 Boa parte dos planos de fibra no Brasil entrega upload bem menor que o
 download. Confira o seu antes de convidar meia dúzia de gente.
 
@@ -64,32 +68,31 @@ npm install
 
 ## Como usar
 
-**1. Uma pessoa sobe o servidor de sinalização.** Qualquer um da turma serve —
-ele só apresenta os peers uns aos outros, não passa vídeo nenhum, então gasta
-quase nada:
-
-```bash
-npm run server
-```
-
-Ele imprime os endereços disponíveis e marca qual é o da VPN:
+**1. Alguém da turma clica em "Criar sala"** na tela inicial do GoLive.
+O app sobe o servidor de sinalização embutido, libera a porta no firewall
+(pode pedir uma confirmação do Windows na primeira vez) e mostra um
+endereço pronto pra copiar:
 
 ```
-  Passe um destes endereços pros seus amigos:
-    ws://192.168.0.14:9000
-    ws://26.13.45.201:9000  <-- Radmin VPN
+Sala ativa
+26.13.45.201:9000              [Copiar]
 ```
 
-**2. Todo mundo abre o app** (inclusive quem subiu o servidor):
+Sem terminal, sem instalar Node à parte, sem digitar porta.
 
-```bash
-npm start
-```
+**2. Todo mundo mais abre o GoLive** e clica em "Entrar em sala", cola o
+endereço (`26.x.x.x` — a porta é opcional, assume `:9000`), escolhe um
+nome e clica em Conectar.
 
-Cola o endereço `ws://26.x.x.x:9000`, escolhe um nome e uma sala. Quem quiser
-transmitir clica em **Compartilhar tela**, escolhe monitor ou janela, e pronto.
+Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
+janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
+mesma sala.
 
 Duplo clique em qualquer vídeo expande pra tela cheia.
+
+**Se você fechar o GoLive no PC que criou a sala, a sala cai pra todo
+mundo** — não há como transferir a sala pra outra máquina no meio da
+sessão.
 
 ## Gerar o instalador pros amigos
 
