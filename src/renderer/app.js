@@ -15,7 +15,7 @@
 let ws = null;
 let myId = null;
 
-/** peerId -> { id, name, pc, stream } */
+/** peerId -> { id, name, live, outConn, inConn } */
 const peers = new Map();
 
 /** MediaStream da minha tela, quando estou transmitindo. */
@@ -154,7 +154,10 @@ el.connect.addEventListener('click', () => {
     setConnState('bad', 'desconectado');
     el.connect.disabled = false;
     el.connect.textContent = 'Conectar';
-    for (const peer of peers.values()) peer.pc?.close();
+    for (const peer of peers.values()) {
+      peer.outConn?.close();
+      peer.inConn?.close();
+    }
     peers.clear();
     renderPeers();
   });
@@ -180,7 +183,8 @@ async function handleSignal(msg) {
     case 'peer-left': {
       const peer = peers.get(msg.id);
       if (peer) {
-        peer.pc?.close();
+        peer.outConn?.close();
+        peer.inConn?.close();
         peers.delete(msg.id);
         removeTile(msg.id);
         renderPeers();
@@ -189,17 +193,7 @@ async function handleSignal(msg) {
     }
 
     case 'offer': {
-      // Uma offer aqui sempre significa "comecei a transmitir agora", nunca
-      // uma renegociacao: quem transmite cria uma PeerConnection nova por
-      // sessao. Se sobrou uma conexao antiga, ela tem credenciais ICE velhas
-      // e reaproveitar so causaria falha silenciosa. Derruba e refaz.
-      const existing = peers.get(msg.from);
-      if (existing?.pc) {
-        existing.pc.close();
-        existing.pc = null;
-        removeTile(msg.from);
-      }
-      const pc = ensureConnection(msg.from);
+      const pc = ensureInConn(msg.from);
       await pc.setRemoteDescription(msg.sdp);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -209,8 +203,8 @@ async function handleSignal(msg) {
 
     case 'answer': {
       const peer = peers.get(msg.from);
-      if (!peer?.pc) return;
-      await peer.pc.setRemoteDescription(msg.sdp);
+      if (!peer?.outConn) return;
+      await peer.outConn.setRemoteDescription(msg.sdp);
       // So da pra fixar bitrate depois que a negociacao fechou.
       applyEncoding();
       break;
@@ -218,9 +212,12 @@ async function handleSignal(msg) {
 
     case 'ice': {
       const peer = peers.get(msg.from);
-      if (!peer?.pc || !msg.candidate) return;
+      if (!peer || !msg.candidate) return;
+      // Candidato da outConn do remetente chega na minha inConn, e vice-versa.
+      const target = msg.dir === 'out' ? peer.inConn : peer.outConn;
+      if (!target) return;
       try {
-        await peer.pc.addIceCandidate(msg.candidate);
+        await target.addIceCandidate(msg.candidate);
       } catch {
         /* candidato tardio, ignorar */
       }
@@ -233,9 +230,9 @@ async function handleSignal(msg) {
         peer.live = msg.live;
         // Quem parou de transmitir fechou a conexao do lado dele. Fecha aqui
         // tambem, senao a proxima offer cai numa PeerConnection zumbi.
-        if (!msg.live && peer.pc) {
-          peer.pc.close();
-          peer.pc = null;
+        if (!msg.live && peer.inConn) {
+          peer.inConn.close();
+          peer.inConn = null;
         }
       }
       if (!msg.live) removeTile(msg.id);
@@ -248,41 +245,65 @@ async function handleSignal(msg) {
 // --- Peers e conexoes --------------------------------------------------
 
 function addPeer(id, name) {
-  if (!peers.has(id)) peers.set(id, { id, name, pc: null, live: false });
+  if (!peers.has(id)) peers.set(id, { id, name, live: false, outConn: null, inConn: null });
 }
 
-/** Cria (ou reaproveita) a RTCPeerConnection com um peer. */
-function ensureConnection(peerId) {
-  let peer = peers.get(peerId);
-  if (!peer) {
-    addPeer(peerId, `#${peerId}`);
-    peer = peers.get(peerId);
-  }
-  if (peer.pc) return peer.pc;
-
+/** Cria uma RTCPeerConnection nova pro papel dado ('out' = eu envio, 'in' = eu recebo). */
+function makeConnection(peerId, dir) {
   const pc = new RTCPeerConnection(RTC_CONFIG);
-  peer.pc = pc;
 
   pc.addEventListener('icecandidate', (event) => {
-    if (event.candidate) signal({ type: 'ice', to: peerId, candidate: event.candidate });
+    if (event.candidate) signal({ type: 'ice', to: peerId, dir, candidate: event.candidate });
   });
 
-  pc.addEventListener('track', (event) => {
-    // O mesmo stream traz video e audio; o tile lida com os dois.
-    showTile(peerId, peer.name, event.streams[0]);
-  });
+  if (dir === 'in') {
+    pc.addEventListener('track', (event) => {
+      // O mesmo stream traz video e audio; o tile lida com os dois.
+      const peer = peers.get(peerId);
+      showTile(peerId, peer ? peer.name : peerId, event.streams[0]);
+    });
+  }
 
   pc.addEventListener('connectionstatechange', () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) removeTile(peerId);
+    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && dir === 'in') {
+      removeTile(peerId);
+    }
     renderPeers();
   });
 
   return pc;
 }
 
+/** Conexao pela qual EU envio minha tela pra este peer. */
+function ensureOutConn(peerId) {
+  let peer = peers.get(peerId);
+  if (!peer) {
+    addPeer(peerId, `#${peerId}`);
+    peer = peers.get(peerId);
+  }
+  if (!peer.outConn) peer.outConn = makeConnection(peerId, 'out');
+  return peer.outConn;
+}
+
+/** Conexao pela qual EU recebo a tela deste peer. Sempre recriada numa
+ * offer nova, porque cada sessao de transmissao usa credenciais ICE novas. */
+function ensureInConn(peerId) {
+  let peer = peers.get(peerId);
+  if (!peer) {
+    addPeer(peerId, `#${peerId}`);
+    peer = peers.get(peerId);
+  }
+  if (peer.inConn) {
+    peer.inConn.close();
+    removeTile(peerId);
+  }
+  peer.inConn = makeConnection(peerId, 'in');
+  return peer.inConn;
+}
+
 /** Envia minha tela pra um peer especifico. */
 async function offerTo(peerId) {
-  const pc = ensureConnection(peerId);
+  const pc = ensureOutConn(peerId);
   const q = quality();
 
   for (const track of localStream.getTracks()) {
@@ -329,8 +350,8 @@ function preferCodec(transceiver, mimeType) {
 function applyEncoding() {
   const q = quality();
   for (const peer of peers.values()) {
-    if (!peer.pc) continue;
-    for (const sender of peer.pc.getSenders()) {
+    if (!peer.outConn) continue;
+    for (const sender of peer.outConn.getSenders()) {
       if (!sender.track || sender.track.kind !== 'video') continue;
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
@@ -418,9 +439,9 @@ function stopShare() {
   localStream = null;
 
   for (const peer of peers.values()) {
-    if (!peer.pc) continue;
-    peer.pc.close();
-    peer.pc = null;
+    if (!peer.outConn) continue;
+    peer.outConn.close();
+    peer.outConn = null;
   }
 
   removeTile('me');
@@ -469,7 +490,7 @@ function renderPeers() {
   }
   for (const peer of peers.values()) {
     const li = document.createElement('li');
-    const state = peer.pc?.connectionState;
+    const state = peer.inConn?.connectionState || peer.outConn?.connectionState;
     li.innerHTML = `
       <span class="dot ${state === 'connected' ? 'ok' : state ? 'warn' : ''}"></span>
       ${escapeHtml(peer.name)}
@@ -506,9 +527,9 @@ async function updateStats() {
   let connections = 0;
 
   for (const peer of peers.values()) {
-    if (!peer.pc || peer.pc.connectionState !== 'connected') continue;
+    if (!peer.outConn || peer.outConn.connectionState !== 'connected') continue;
     connections++;
-    const report = await peer.pc.getStats();
+    const report = await peer.outConn.getStats();
     report.forEach((stat) => {
       if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
         fps = Math.max(fps, stat.framesPerSecond || 0);
