@@ -173,6 +173,8 @@ function connectTo(url, name) {
     }
     peers.clear();
     renderPeers();
+    hostInfo = null;
+    renderHostPanel();
   });
 }
 
@@ -208,6 +210,7 @@ el.btnHost.addEventListener('click', async () => {
   }
 
   hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+  renderHostPanel();
   el.hostStatus.textContent = result.firewall.ok ? '' : 'Liberando firewall...';
   connectTo(`ws://127.0.0.1:${result.port}`, name);
 });
@@ -546,6 +549,48 @@ function renderPeers() {
       ${peer.live ? '<em>ao vivo</em>' : ''}`;
     el.peerList.appendChild(li);
   }
+}
+
+function renderHostPanel() {
+  const panel = document.getElementById('host-panel');
+  if (!hostInfo) {
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.classList.remove('hidden');
+  const addressLine = hostInfo.address
+    ? `<div class="host-address">${hostInfo.address} <button id="btn-copy-address" class="ghost small">Copiar</button></div>`
+    : '';
+
+  const warnings = [];
+  if (hostInfo.addressWarning) {
+    warnings.push(
+      `<div class="warn-box">${escapeHtml(hostInfo.addressWarning)} — endereço abaixo só funciona na mesma rede local.</div>`
+    );
+  }
+  if (!hostInfo.firewall.ok) {
+    warnings.push(`
+      <div class="warn-box">
+        Não consegui liberar a porta no firewall automaticamente.
+        <code>${escapeHtml(hostInfo.firewall.manualCommand)}</code>
+        <button id="btn-copy-firewall" class="ghost small">Copiar comando</button>
+      </div>`);
+  }
+
+  panel.innerHTML = `
+    <h2>Sala ativa</h2>
+    ${addressLine}
+    <p class="hint">Se você fechar o GoLive, a sala cai pra todo mundo.</p>
+    ${warnings.join('')}`;
+
+  document.getElementById('btn-copy-address')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(hostInfo.address);
+  });
+  document.getElementById('btn-copy-firewall')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(hostInfo.firewall.manualCommand);
+  });
 }
 
 // --- Estatisticas ------------------------------------------------------

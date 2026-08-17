@@ -303,3 +303,42 @@ button:disabled { opacity: 0.5; cursor: default; }
   font-size: 0.85em;
   min-height: 1.2em;
 }
+
+.host-panel {
+  margin: 12px 0 20px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg-inset, #161a22);
+}
+
+.host-panel.hidden {
+  display: none;
+}
+
+.host-address {
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.warn-box {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(234, 179, 8, 0.15);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  font-size: 0.85em;
+}
+
+.warn-box code {
+  display: block;
+  margin: 6px 0;
+  word-break: break-all;
+}
+
+.ghost.small {
+  padding: 2px 8px;
+  font-size: 0.85em;
+}
