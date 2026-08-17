@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "server": "node server/signaling.js",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win portable",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "^32.0.0",
