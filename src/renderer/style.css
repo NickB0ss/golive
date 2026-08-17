@@ -1,0 +1,268 @@
+/* GoLive LAN - tema escuro, denso, pensado pra ficar aberto por horas. */
+
+:root {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel-2: #1c2430;
+  --line: #262d38;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #4c8dff;
+  --good: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- Tela de entrada ---------- */
+
+.setup {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 0%, #1b2434 0%, var(--bg) 60%);
+}
+
+.setup-card {
+  width: 440px;
+  padding: 36px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.setup-card h1 { font-size: 30px; letter-spacing: -0.5px; }
+.setup-card h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 6px 0 26px; }
+
+label { display: block; margin-bottom: 16px; font-weight: 600; font-size: 13px; }
+label small { display: block; font-weight: 400; color: var(--muted); margin-top: 5px; }
+label code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+
+input[type="text"], select {
+  width: 100%;
+  margin-top: 7px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+input[type="text"]:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 18px;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+button:hover:not(:disabled) { filter: brightness(1.15); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+.primary { width: 100%; background: var(--accent); color: #fff; }
+.danger { width: 100%; background: var(--bad); color: #fff; }
+.ghost { background: var(--panel-2); color: var(--text); }
+
+.error { color: var(--bad); margin-top: 12px; font-size: 13px; line-height: 1.5; }
+
+/* ---------- Layout principal ---------- */
+
+.main { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.brand { font-size: 19px; font-weight: 700; margin-bottom: 14px; }
+.brand span { color: var(--accent); }
+
+.sidebar h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--muted);
+  margin: 24px 0 10px;
+}
+
+.status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.dot.ok { background: var(--good); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+
+.peer-list { list-style: none; }
+.peer-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.peer-list li em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--bad);
+  font-weight: 700;
+}
+.peer-list .muted { color: var(--muted); border: none; }
+
+.field { margin-bottom: 14px; }
+.field b { color: var(--accent); }
+.field input[type="range"] { width: 100%; margin-top: 8px; accent-color: var(--accent); }
+
+.check {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 400;
+  margin: 16px 0;
+}
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+.actions { margin-top: 20px; }
+
+/* ---------- Estatisticas ---------- */
+
+.stats { margin-top: 20px; font-size: 12px; }
+.stat {
+  display: flex; justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.stat span { color: var(--muted); }
+.stat b.good { color: var(--good); }
+.stat b.warn-text { color: var(--warn); }
+.stat-warn {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(210, 153, 34, 0.12);
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+}
+
+/* ---------- Grade de video ---------- */
+
+.stage { padding: 16px; overflow: auto; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 14px;
+  height: 100%;
+  align-content: start;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+}
+
+.tile {
+  position: relative;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.tile video { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+.tile-label {
+  position: absolute;
+  left: 10px; bottom: 10px;
+  padding: 3px 9px;
+  background: rgba(0, 0, 0, 0.65);
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+/* Duplo clique expande o tile pra tela toda. */
+.tile.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  border-radius: 0;
+  aspect-ratio: auto;
+}
+
+/* ---------- Seletor de fonte ---------- */
+
+.picker {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+}
+
+.picker-box {
+  width: min(880px, 90vw);
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: 26px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.picker-box h2 { font-size: 17px; margin-bottom: 18px; }
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.source-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text);
+}
+.source-card:hover { border-color: var(--accent); }
+.source-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: #000; }
+.source-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-meta { font-size: 11px; color: var(--muted); font-weight: 400; }

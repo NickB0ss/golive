@@ -1,0 +1,30 @@
+{
+  "name": "golive-lan",
+  "version": "0.1.0",
+  "description": "Compartilhamento de tela 1080p60 na LAN virtual (Radmin VPN / Tailscale)",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "server": "node server/signaling.js",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  },
+  "build": {
+    "appId": "com.golive.lan",
+    "productName": "GoLive LAN",
+    "files": [
+      "src/**/*",
+      "server/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'" />
+<title>GoLive LAN</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ============ TELA DE ENTRADA ============ -->
+<section id="setup" class="setup">
+  <div class="setup-card">
+    <h1>GoLive <span>LAN</span></h1>
+    <p class="sub">Compartilhamento de tela 1080p60 direto entre os PCs, pela VPN.</p>
+
+    <label>
+      Servidor de sinalizacao
+      <input id="in-server" type="text" placeholder="ws://26.0.0.1:9000" spellcheck="false" />
+      <small>IP Radmin de quem esta rodando <code>npm run server</code></small>
+    </label>
+
+    <div class="row">
+      <label>
+        Sala
+        <input id="in-room" type="text" value="geral" spellcheck="false" />
+      </label>
+      <label>
+        Seu nome
+        <input id="in-name" type="text" placeholder="seu apelido" spellcheck="false" />
+      </label>
+    </div>
+
+    <button id="btn-connect" class="primary">Conectar</button>
+    <p id="setup-error" class="error"></p>
+  </div>
+</section>
+
+<!-- ============ TELA PRINCIPAL ============ -->
+<section id="main" class="main hidden">
+  <aside class="sidebar">
+    <div class="brand">GoLive <span>LAN</span></div>
+
+    <div class="status">
+      <span id="conn-dot" class="dot"></span>
+      <span id="conn-text">desconectado</span>
+    </div>
+
+    <h2>Na sala</h2>
+    <ul id="peer-list" class="peer-list"></ul>
+
+    <h2>Qualidade</h2>
+    <label class="field">
+      Resolucao
+      <select id="sel-res">
+        <option value="1920x1080" selected>1920x1080 (Full HD)</option>
+        <option value="2560x1440">2560x1440 (QHD)</option>
+        <option value="1280x720">1280x720 (HD)</option>
+      </select>
+    </label>
+
+    <label class="field">
+      Framerate
+      <select id="sel-fps">
+        <option value="60" selected>60 fps</option>
+        <option value="30">30 fps</option>
+      </select>
+    </label>
+
+    <label class="field">
+      Bitrate: <b id="lbl-bitrate">12 Mbps</b>
+      <input id="in-bitrate" type="range" min="2" max="40" step="1" value="12" />
+      <small>1080p60 fluido pede 10-20 Mbps <em>por espectador</em>.</small>
+    </label>
+
+    <label class="field">
+      Codec
+      <select id="sel-codec">
+        <option value="video/H264" selected>H.264 (hardware, menor latencia)</option>
+        <option value="video/VP9">VP9 (melhor imagem, mais CPU)</option>
+        <option value="video/AV1">AV1 (menor banda, exige GPU nova)</option>
+      </select>
+    </label>
+
+    <label class="check">
+      <input id="chk-audio" type="checkbox" checked />
+      Incluir audio do sistema
+    </label>
+
+    <div class="actions">
+      <button id="btn-share" class="primary">Compartilhar tela</button>
+      <button id="btn-stop" class="danger hidden">Parar transmissao</button>
+    </div>
+
+    <div id="stats" class="stats"></div>
+  </aside>
+
+  <main class="stage">
+    <div id="grid" class="grid">
+      <div class="empty">Ninguem transmitindo ainda.</div>
+    </div>
+  </main>
+</section>
+
+<!-- ============ SELETOR DE FONTE ============ -->
+<div id="picker" class="picker hidden">
+  <div class="picker-box">
+    <h2>O que voce quer compartilhar?</h2>
+    <div id="picker-grid" class="picker-grid"></div>
+    <button id="picker-cancel" class="ghost">Cancelar</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
