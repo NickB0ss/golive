@@ -31,8 +31,15 @@ const $ = (id) => document.getElementById(id);
 const el = {
   setup: $('setup'),
   main: $('main'),
+  tabHost: $('tab-host'),
+  tabJoin: $('tab-join'),
+  paneHost: $('pane-host'),
+  paneJoin: $('pane-join'),
+  hostName: $('host-name'),
+  btnHost: $('btn-host'),
+  hostStatus: $('host-status'),
+  hostError: $('host-error'),
   server: $('in-server'),
-  room: $('in-room'),
   name: $('in-name'),
   connect: $('btn-connect'),
   setupError: $('setup-error'),
@@ -54,16 +61,27 @@ const el = {
   pickerCancel: $('picker-cancel'),
 };
 
+function selectTab(tab) {
+  const isHost = tab === 'host';
+  el.tabHost.classList.toggle('active', isHost);
+  el.tabJoin.classList.toggle('active', !isHost);
+  el.paneHost.classList.toggle('hidden', !isHost);
+  el.paneJoin.classList.toggle('hidden', isHost);
+}
+
+el.tabHost.addEventListener('click', () => selectTab('host'));
+el.tabJoin.addEventListener('click', () => selectTab('join'));
+
 // Lembra as configuracoes entre sessoes.
 const saved = JSON.parse(localStorage.getItem('golive') || '{}');
 el.server.value = saved.server || '';
 el.name.value = saved.name || '';
-el.room.value = saved.room || 'geral';
+el.hostName.value = saved.hostName || saved.name || '';
 
 function persist() {
   localStorage.setItem(
     'golive',
-    JSON.stringify({ server: el.server.value, name: el.name.value, room: el.room.value })
+    JSON.stringify({ server: el.server.value, name: el.name.value, hostName: el.hostName.value })
   );
 }
 
@@ -114,28 +132,21 @@ function setConnState(state, text) {
   el.connText.textContent = text;
 }
 
-el.connect.addEventListener('click', () => {
-  let url = el.server.value.trim();
-  if (!url) return (el.setupError.textContent = 'Informe o endereco do servidor.');
-  if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
-  if (!/:\d+$/.test(url)) url += ':9000';
+/** peerId 'me' usa a mesma conexao de sinalizacao pros dois fluxos. */
+let hostInfo = null; // { port, address, firewall, addressWarning } | null, ver Task 7
 
+function connectTo(url, name) {
   el.setupError.textContent = '';
-  el.connect.disabled = true;
-  el.connect.textContent = 'Conectando...';
-
   try {
     ws = new WebSocket(url);
   } catch {
     el.setupError.textContent = 'Endereco invalido.';
-    el.connect.disabled = false;
-    el.connect.textContent = 'Conectar';
     return;
   }
 
   ws.addEventListener('open', () => {
     persist();
-    signal({ type: 'join', room: el.room.value.trim() || 'geral', name: el.name.value.trim() || 'anonimo' });
+    signal({ type: 'join', room: 'geral', name: name || 'anonimo' });
     el.setup.classList.add('hidden');
     el.main.classList.remove('hidden');
     setConnState('ok', 'conectado');
@@ -145,9 +156,11 @@ el.connect.addEventListener('click', () => {
 
   ws.addEventListener('error', () => {
     el.setupError.textContent =
-      'Nao consegui conectar. Confira o IP, se o servidor esta rodando e se a porta 9000 esta liberada no firewall.';
+      'Nao consegui conectar. Confira o IP, se o servidor esta rodando e se a porta esta liberada no firewall.';
     el.connect.disabled = false;
     el.connect.textContent = 'Conectar';
+    el.btnHost.disabled = false;
+    el.btnHost.textContent = 'Criar sala';
   });
 
   ws.addEventListener('close', () => {
@@ -161,6 +174,42 @@ el.connect.addEventListener('click', () => {
     peers.clear();
     renderPeers();
   });
+}
+
+el.connect.addEventListener('click', () => {
+  let url = el.server.value.trim();
+  if (!url) return (el.setupError.textContent = 'Informe o endereco do servidor.');
+  if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
+  if (!/:\d+$/.test(url)) url += ':9000';
+
+  el.connect.disabled = true;
+  el.connect.textContent = 'Conectando...';
+  connectTo(url, el.name.value.trim());
+});
+
+el.btnHost.addEventListener('click', async () => {
+  el.hostError.textContent = '';
+  el.btnHost.disabled = true;
+  el.btnHost.textContent = 'Preparando sala...';
+  el.hostStatus.textContent = 'Preparando sala...';
+
+  const name = el.hostName.value.trim() || 'anonimo';
+  const result = await window.golive.hostRoom({ name });
+
+  if (!result.ok) {
+    el.hostError.textContent =
+      result.error === 'PORTS_EXHAUSTED'
+        ? 'Todas as portas 9000-9010 estao ocupadas. Feche outras instancias do GoLive e tente de novo.'
+        : `Nao consegui subir a sala: ${result.error}`;
+    el.btnHost.disabled = false;
+    el.btnHost.textContent = 'Criar sala';
+    el.hostStatus.textContent = '';
+    return;
+  }
+
+  hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+  el.hostStatus.textContent = result.firewall.ok ? '' : 'Liberando firewall...';
+  connectTo(`ws://127.0.0.1:${result.port}`, name);
 });
 
 async function handleSignal(msg) {
