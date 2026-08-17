@@ -60,7 +60,9 @@ que vocês digitam (Tailscale usa a faixa `100.x.x.x`).
 
 ## Instalação
 
-Precisa do [Node.js 18+](https://nodejs.org) em todas as máquinas.
+**Usuários finais:** já está pronto na aba "Gerar o instalador pros amigos". Se você baixou o arquivo `.exe`, é só clicar para instalar — sem terminal, sem Node.
+
+**Desenvolvedores / CLI de sinalização:** para buildar do código ou rodar o servidor de sinalização em standalone (em `server/signaling.js`), precisa do [Node.js 18+](https://nodejs.org):
 
 ```bash
 npm install
