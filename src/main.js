@@ -27,6 +27,32 @@ let includeSystemAudio = true;
 
 let win = null;
 
+const { createSignalingServer } = require('../server/signaling-core');
+const { pickAddress } = require('./main/network');
+const { ensureFirewallRule } = require('./main/firewall');
+
+/** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
+let embeddedServer = null;
+
+async function findFreeServer(startPort = 9000, endPort = 9010) {
+  for (let port = startPort; port <= endPort; port++) {
+    try {
+      return await createSignalingServer({ port });
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE') throw err;
+    }
+  }
+  const err = new Error('PORTS_EXHAUSTED');
+  err.code = 'PORTS_EXHAUSTED';
+  throw err;
+}
+
+async function closeEmbeddedServer() {
+  if (!embeddedServer) return;
+  await embeddedServer.close();
+  embeddedServer = null;
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -73,6 +99,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  closeEmbeddedServer();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -107,4 +134,24 @@ ipcMain.handle('sources:select', (_event, { id, systemAudio }) => {
   selectedSourceId = id;
   includeSystemAudio = Boolean(systemAudio);
   return true;
+});
+
+ipcMain.handle('room:host', async (_event, { name }) => {
+  try {
+    if (embeddedServer) await closeEmbeddedServer();
+    embeddedServer = await findFreeServer();
+
+    const firewall = await ensureFirewallRule(embeddedServer.port);
+    const picked = pickAddress();
+
+    return {
+      ok: true,
+      port: embeddedServer.port,
+      address: picked ? `${picked.address}:${embeddedServer.port}` : null,
+      firewall,
+      addressWarning: picked ? undefined : 'Radmin/Tailscale não detectado',
+    };
+  } catch (err) {
+    return { ok: false, error: err.code === 'PORTS_EXHAUSTED' ? 'PORTS_EXHAUSTED' : err.message };
+  }
 });

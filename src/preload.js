@@ -12,4 +12,7 @@ contextBridge.exposeInMainWorld('golive', {
   /** Define qual fonte o getDisplayMedia vai devolver. */
   selectSource: (id, systemAudio) =>
     ipcRenderer.invoke('sources:select', { id, systemAudio }),
+
+  /** Sobe o servidor de sinalizacao embutido e devolve o endereco pronto. */
+  hostRoom: (payload) => ipcRenderer.invoke('room:host', payload),
 });
