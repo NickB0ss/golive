@@ -266,3 +266,79 @@ button:disabled { opacity: 0.5; cursor: default; }
 .source-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: #000; }
 .source-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .source-meta { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* ---------- Abas Criar sala / Entrar em sala ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.tab.active {
+  background: var(--accent);
+  opacity: 1;
+}
+
+.pane.hidden {
+  display: none;
+}
+
+.hint {
+  opacity: 0.7;
+  font-size: 0.85em;
+  min-height: 1.2em;
+}
+
+.host-panel {
+  margin: 12px 0 20px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg-inset, #161a22);
+}
+
+.host-panel.hidden {
+  display: none;
+}
+
+.host-address {
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.warn-box {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(234, 179, 8, 0.15);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  font-size: 0.85em;
+}
+
+.warn-box code {
+  display: block;
+  margin: 6px 0;
+  word-break: break-all;
+}
+
+.ghost.small {
+  padding: 2px 8px;
+  font-size: 0.85em;
+}

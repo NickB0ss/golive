@@ -15,7 +15,7 @@
 let ws = null;
 let myId = null;
 
-/** peerId -> { id, name, pc, stream } */
+/** peerId -> { id, name, live, outConn, inConn } */
 const peers = new Map();
 
 /** MediaStream da minha tela, quando estou transmitindo. */
@@ -31,8 +31,15 @@ const $ = (id) => document.getElementById(id);
 const el = {
   setup: $('setup'),
   main: $('main'),
+  tabHost: $('tab-host'),
+  tabJoin: $('tab-join'),
+  paneHost: $('pane-host'),
+  paneJoin: $('pane-join'),
+  hostName: $('host-name'),
+  btnHost: $('btn-host'),
+  hostStatus: $('host-status'),
+  hostError: $('host-error'),
   server: $('in-server'),
-  room: $('in-room'),
   name: $('in-name'),
   connect: $('btn-connect'),
   setupError: $('setup-error'),
@@ -54,16 +61,27 @@ const el = {
   pickerCancel: $('picker-cancel'),
 };
 
+function selectTab(tab) {
+  const isHost = tab === 'host';
+  el.tabHost.classList.toggle('active', isHost);
+  el.tabJoin.classList.toggle('active', !isHost);
+  el.paneHost.classList.toggle('hidden', !isHost);
+  el.paneJoin.classList.toggle('hidden', isHost);
+}
+
+el.tabHost.addEventListener('click', () => selectTab('host'));
+el.tabJoin.addEventListener('click', () => selectTab('join'));
+
 // Lembra as configuracoes entre sessoes.
 const saved = JSON.parse(localStorage.getItem('golive') || '{}');
 el.server.value = saved.server || '';
 el.name.value = saved.name || '';
-el.room.value = saved.room || 'geral';
+el.hostName.value = saved.hostName || saved.name || '';
 
 function persist() {
   localStorage.setItem(
     'golive',
-    JSON.stringify({ server: el.server.value, name: el.name.value, room: el.room.value })
+    JSON.stringify({ server: el.server.value, name: el.name.value, hostName: el.hostName.value })
   );
 }
 
@@ -114,28 +132,21 @@ function setConnState(state, text) {
   el.connText.textContent = text;
 }
 
-el.connect.addEventListener('click', () => {
-  let url = el.server.value.trim();
-  if (!url) return (el.setupError.textContent = 'Informe o endereco do servidor.');
-  if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
-  if (!/:\d+$/.test(url)) url += ':9000';
+/** peerId 'me' usa a mesma conexao de sinalizacao pros dois fluxos. */
+let hostInfo = null; // { port, address, firewall, addressWarning } | null, ver Task 7
 
+function connectTo(url, name) {
   el.setupError.textContent = '';
-  el.connect.disabled = true;
-  el.connect.textContent = 'Conectando...';
-
   try {
     ws = new WebSocket(url);
   } catch {
     el.setupError.textContent = 'Endereco invalido.';
-    el.connect.disabled = false;
-    el.connect.textContent = 'Conectar';
     return;
   }
 
   ws.addEventListener('open', () => {
     persist();
-    signal({ type: 'join', room: el.room.value.trim() || 'geral', name: el.name.value.trim() || 'anonimo' });
+    signal({ type: 'join', room: 'geral', name: name || 'anonimo' });
     el.setup.classList.add('hidden');
     el.main.classList.remove('hidden');
     setConnState('ok', 'conectado');
@@ -145,19 +156,73 @@ el.connect.addEventListener('click', () => {
 
   ws.addEventListener('error', () => {
     el.setupError.textContent =
-      'Nao consegui conectar. Confira o IP, se o servidor esta rodando e se a porta 9000 esta liberada no firewall.';
+      'Nao consegui conectar. Confira o IP, se o servidor esta rodando e se a porta esta liberada no firewall.';
     el.connect.disabled = false;
     el.connect.textContent = 'Conectar';
+    el.btnHost.disabled = false;
+    el.btnHost.textContent = 'Criar sala';
   });
 
   ws.addEventListener('close', () => {
     setConnState('bad', 'desconectado');
     el.connect.disabled = false;
     el.connect.textContent = 'Conectar';
-    for (const peer of peers.values()) peer.pc?.close();
+    for (const peer of peers.values()) {
+      peer.outConn?.close();
+      peer.inConn?.close();
+    }
     peers.clear();
     renderPeers();
+    hostInfo = null;
+    renderHostPanel();
   });
+}
+
+el.connect.addEventListener('click', () => {
+  let url = el.server.value.trim();
+  if (!url) return (el.setupError.textContent = 'Informe o endereco do servidor.');
+  if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
+  if (!/:\d+$/.test(url)) url += ':9000';
+
+  el.connect.disabled = true;
+  el.connect.textContent = 'Conectando...';
+  connectTo(url, el.name.value.trim());
+});
+
+el.btnHost.addEventListener('click', async () => {
+  el.hostError.textContent = '';
+  el.btnHost.disabled = true;
+  el.btnHost.textContent = 'Preparando sala...';
+  el.hostStatus.textContent = 'Preparando sala...';
+
+  const name = el.hostName.value.trim() || 'anonimo';
+
+  let result;
+  try {
+    result = await window.golive.hostRoom({ name });
+  } catch {
+    el.hostError.textContent = 'Nao consegui subir a sala: erro inesperado. Tente de novo.';
+    el.btnHost.disabled = false;
+    el.btnHost.textContent = 'Criar sala';
+    el.hostStatus.textContent = '';
+    return;
+  }
+
+  if (!result.ok) {
+    el.hostError.textContent =
+      result.error === 'PORTS_EXHAUSTED'
+        ? 'Todas as portas 9000-9010 estao ocupadas. Feche outras instancias do GoLive e tente de novo.'
+        : `Nao consegui subir a sala: ${result.error}`;
+    el.btnHost.disabled = false;
+    el.btnHost.textContent = 'Criar sala';
+    el.hostStatus.textContent = '';
+    return;
+  }
+
+  hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+  renderHostPanel();
+  el.hostStatus.textContent = result.firewall.ok ? '' : 'Firewall não liberado — veja o aviso ao lado.';
+  connectTo(`ws://127.0.0.1:${result.port}`, name);
 });
 
 async function handleSignal(msg) {
@@ -180,7 +245,8 @@ async function handleSignal(msg) {
     case 'peer-left': {
       const peer = peers.get(msg.id);
       if (peer) {
-        peer.pc?.close();
+        peer.outConn?.close();
+        peer.inConn?.close();
         peers.delete(msg.id);
         removeTile(msg.id);
         renderPeers();
@@ -189,17 +255,7 @@ async function handleSignal(msg) {
     }
 
     case 'offer': {
-      // Uma offer aqui sempre significa "comecei a transmitir agora", nunca
-      // uma renegociacao: quem transmite cria uma PeerConnection nova por
-      // sessao. Se sobrou uma conexao antiga, ela tem credenciais ICE velhas
-      // e reaproveitar so causaria falha silenciosa. Derruba e refaz.
-      const existing = peers.get(msg.from);
-      if (existing?.pc) {
-        existing.pc.close();
-        existing.pc = null;
-        removeTile(msg.from);
-      }
-      const pc = ensureConnection(msg.from);
+      const pc = ensureInConn(msg.from);
       await pc.setRemoteDescription(msg.sdp);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -209,8 +265,8 @@ async function handleSignal(msg) {
 
     case 'answer': {
       const peer = peers.get(msg.from);
-      if (!peer?.pc) return;
-      await peer.pc.setRemoteDescription(msg.sdp);
+      if (!peer?.outConn) return;
+      await peer.outConn.setRemoteDescription(msg.sdp);
       // So da pra fixar bitrate depois que a negociacao fechou.
       applyEncoding();
       break;
@@ -218,9 +274,12 @@ async function handleSignal(msg) {
 
     case 'ice': {
       const peer = peers.get(msg.from);
-      if (!peer?.pc || !msg.candidate) return;
+      if (!peer || !msg.candidate) return;
+      // Candidato da outConn do remetente chega na minha inConn, e vice-versa.
+      const target = msg.dir === 'out' ? peer.inConn : peer.outConn;
+      if (!target) return;
       try {
-        await peer.pc.addIceCandidate(msg.candidate);
+        await target.addIceCandidate(msg.candidate);
       } catch {
         /* candidato tardio, ignorar */
       }
@@ -233,9 +292,9 @@ async function handleSignal(msg) {
         peer.live = msg.live;
         // Quem parou de transmitir fechou a conexao do lado dele. Fecha aqui
         // tambem, senao a proxima offer cai numa PeerConnection zumbi.
-        if (!msg.live && peer.pc) {
-          peer.pc.close();
-          peer.pc = null;
+        if (!msg.live && peer.inConn) {
+          peer.inConn.close();
+          peer.inConn = null;
         }
       }
       if (!msg.live) removeTile(msg.id);
@@ -248,41 +307,65 @@ async function handleSignal(msg) {
 // --- Peers e conexoes --------------------------------------------------
 
 function addPeer(id, name) {
-  if (!peers.has(id)) peers.set(id, { id, name, pc: null, live: false });
+  if (!peers.has(id)) peers.set(id, { id, name, live: false, outConn: null, inConn: null });
 }
 
-/** Cria (ou reaproveita) a RTCPeerConnection com um peer. */
-function ensureConnection(peerId) {
-  let peer = peers.get(peerId);
-  if (!peer) {
-    addPeer(peerId, `#${peerId}`);
-    peer = peers.get(peerId);
-  }
-  if (peer.pc) return peer.pc;
-
+/** Cria uma RTCPeerConnection nova pro papel dado ('out' = eu envio, 'in' = eu recebo). */
+function makeConnection(peerId, dir) {
   const pc = new RTCPeerConnection(RTC_CONFIG);
-  peer.pc = pc;
 
   pc.addEventListener('icecandidate', (event) => {
-    if (event.candidate) signal({ type: 'ice', to: peerId, candidate: event.candidate });
+    if (event.candidate) signal({ type: 'ice', to: peerId, dir, candidate: event.candidate });
   });
 
-  pc.addEventListener('track', (event) => {
-    // O mesmo stream traz video e audio; o tile lida com os dois.
-    showTile(peerId, peer.name, event.streams[0]);
-  });
+  if (dir === 'in') {
+    pc.addEventListener('track', (event) => {
+      // O mesmo stream traz video e audio; o tile lida com os dois.
+      const peer = peers.get(peerId);
+      showTile(peerId, peer ? peer.name : peerId, event.streams[0]);
+    });
+  }
 
   pc.addEventListener('connectionstatechange', () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) removeTile(peerId);
+    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && dir === 'in') {
+      removeTile(peerId);
+    }
     renderPeers();
   });
 
   return pc;
 }
 
+/** Conexao pela qual EU envio minha tela pra este peer. */
+function ensureOutConn(peerId) {
+  let peer = peers.get(peerId);
+  if (!peer) {
+    addPeer(peerId, `#${peerId}`);
+    peer = peers.get(peerId);
+  }
+  if (!peer.outConn) peer.outConn = makeConnection(peerId, 'out');
+  return peer.outConn;
+}
+
+/** Conexao pela qual EU recebo a tela deste peer. Sempre recriada numa
+ * offer nova, porque cada sessao de transmissao usa credenciais ICE novas. */
+function ensureInConn(peerId) {
+  let peer = peers.get(peerId);
+  if (!peer) {
+    addPeer(peerId, `#${peerId}`);
+    peer = peers.get(peerId);
+  }
+  if (peer.inConn) {
+    peer.inConn.close();
+    removeTile(peerId);
+  }
+  peer.inConn = makeConnection(peerId, 'in');
+  return peer.inConn;
+}
+
 /** Envia minha tela pra um peer especifico. */
 async function offerTo(peerId) {
-  const pc = ensureConnection(peerId);
+  const pc = ensureOutConn(peerId);
   const q = quality();
 
   for (const track of localStream.getTracks()) {
@@ -329,8 +412,8 @@ function preferCodec(transceiver, mimeType) {
 function applyEncoding() {
   const q = quality();
   for (const peer of peers.values()) {
-    if (!peer.pc) continue;
-    for (const sender of peer.pc.getSenders()) {
+    if (!peer.outConn) continue;
+    for (const sender of peer.outConn.getSenders()) {
       if (!sender.track || sender.track.kind !== 'video') continue;
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
@@ -418,9 +501,9 @@ function stopShare() {
   localStream = null;
 
   for (const peer of peers.values()) {
-    if (!peer.pc) continue;
-    peer.pc.close();
-    peer.pc = null;
+    if (!peer.outConn) continue;
+    peer.outConn.close();
+    peer.outConn = null;
   }
 
   removeTile('me');
@@ -469,13 +552,55 @@ function renderPeers() {
   }
   for (const peer of peers.values()) {
     const li = document.createElement('li');
-    const state = peer.pc?.connectionState;
+    const state = peer.inConn?.connectionState || peer.outConn?.connectionState;
     li.innerHTML = `
       <span class="dot ${state === 'connected' ? 'ok' : state ? 'warn' : ''}"></span>
       ${escapeHtml(peer.name)}
       ${peer.live ? '<em>ao vivo</em>' : ''}`;
     el.peerList.appendChild(li);
   }
+}
+
+function renderHostPanel() {
+  const panel = document.getElementById('host-panel');
+  if (!hostInfo) {
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.classList.remove('hidden');
+  const addressLine = hostInfo.address
+    ? `<div class="host-address">${hostInfo.address} <button id="btn-copy-address" class="ghost small">Copiar</button></div>`
+    : '';
+
+  const warnings = [];
+  if (hostInfo.addressWarning) {
+    warnings.push(
+      `<div class="warn-box">${escapeHtml(hostInfo.addressWarning)} — endereço abaixo só funciona na mesma rede local.</div>`
+    );
+  }
+  if (!hostInfo.firewall.ok) {
+    warnings.push(`
+      <div class="warn-box">
+        Não consegui liberar a porta no firewall automaticamente.
+        <code>${escapeHtml(hostInfo.firewall.manualCommand)}</code>
+        <button id="btn-copy-firewall" class="ghost small">Copiar comando</button>
+      </div>`);
+  }
+
+  panel.innerHTML = `
+    <h2>Sala ativa</h2>
+    ${addressLine}
+    <p class="hint">Se você fechar o GoLive, a sala cai pra todo mundo.</p>
+    ${warnings.join('')}`;
+
+  document.getElementById('btn-copy-address')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(hostInfo.address);
+  });
+  document.getElementById('btn-copy-firewall')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(hostInfo.firewall.manualCommand);
+  });
 }
 
 // --- Estatisticas ------------------------------------------------------
@@ -506,9 +631,9 @@ async function updateStats() {
   let connections = 0;
 
   for (const peer of peers.values()) {
-    if (!peer.pc || peer.pc.connectionState !== 'connected') continue;
+    if (!peer.outConn || peer.outConn.connectionState !== 'connected') continue;
     connections++;
-    const report = await peer.pc.getStats();
+    const report = await peer.outConn.getStats();
     report.forEach((stat) => {
       if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
         fps = Math.max(fps, stat.framesPerSecond || 0);

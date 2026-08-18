@@ -15,25 +15,33 @@
     <h1>GoLive <span>LAN</span></h1>
     <p class="sub">Compartilhamento de tela 1080p60 direto entre os PCs, pela VPN.</p>
 
-    <label>
-      Servidor de sinalizacao
-      <input id="in-server" type="text" placeholder="ws://26.0.0.1:9000" spellcheck="false" />
-      <small>IP Radmin de quem esta rodando <code>npm run server</code></small>
-    </label>
+    <div class="tabs">
+      <button id="tab-host" class="tab active" type="button">Criar sala</button>
+      <button id="tab-join" class="tab" type="button">Entrar em sala</button>
+    </div>
 
-    <div class="row">
+    <div id="pane-host" class="pane">
       <label>
-        Sala
-        <input id="in-room" type="text" value="geral" spellcheck="false" />
+        Seu nome
+        <input id="host-name" type="text" placeholder="seu apelido" spellcheck="false" />
+      </label>
+      <button id="btn-host" class="primary">Criar sala</button>
+      <p id="host-status" class="hint"></p>
+      <p id="host-error" class="error"></p>
+    </div>
+
+    <div id="pane-join" class="pane hidden">
+      <label>
+        Endereço da sala
+        <input id="in-server" type="text" placeholder="26.0.0.1 ou ws://26.0.0.1:9000" spellcheck="false" />
       </label>
       <label>
         Seu nome
         <input id="in-name" type="text" placeholder="seu apelido" spellcheck="false" />
       </label>
+      <button id="btn-connect" class="primary">Conectar</button>
+      <p id="setup-error" class="error"></p>
     </div>
-
-    <button id="btn-connect" class="primary">Conectar</button>
-    <p id="setup-error" class="error"></p>
   </div>
 </section>
 
@@ -41,6 +49,8 @@
 <section id="main" class="main hidden">
   <aside class="sidebar">
     <div class="brand">GoLive <span>LAN</span></div>
+
+    <div id="host-panel" class="host-panel hidden"></div>
 
     <div class="status">
       <span id="conn-dot" class="dot"></span>

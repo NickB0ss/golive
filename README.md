@@ -24,6 +24,10 @@ tudo:
 | 3 | ~36 Mbps |
 | 5 | ~60 Mbps |
 
+Isso é por transmissor: com duas pessoas transmitindo ao mesmo tempo, o
+**download de cada espectador** também dobra (uma cópia de cada
+transmissão chegando).
+
 Boa parte dos planos de fibra no Brasil entrega upload bem menor que o
 download. Confira o seu antes de convidar meia dúzia de gente.
 
@@ -56,7 +60,9 @@ que vocês digitam (Tailscale usa a faixa `100.x.x.x`).
 
 ## Instalação
 
-Precisa do [Node.js 18+](https://nodejs.org) em todas as máquinas.
+**Usuários finais:** já está pronto na aba "Gerar o instalador pros amigos". Se você baixou o arquivo `.exe`, é só clicar para instalar — sem terminal, sem Node.
+
+**Desenvolvedores / CLI de sinalização:** para buildar do código ou rodar o servidor de sinalização em standalone (em `server/signaling.js`), precisa do [Node.js 18+](https://nodejs.org):
 
 ```bash
 npm install
@@ -64,34 +70,33 @@ npm install
 
 ## Como usar
 
-**1. Uma pessoa sobe o servidor de sinalização.** Qualquer um da turma serve —
-ele só apresenta os peers uns aos outros, não passa vídeo nenhum, então gasta
-quase nada:
-
-```bash
-npm run server
-```
-
-Ele imprime os endereços disponíveis e marca qual é o da VPN:
+**1. Alguém da turma clica em "Criar sala"** na tela inicial do GoLive.
+O app sobe o servidor de sinalização embutido, libera a porta no firewall
+(pode pedir uma confirmação do Windows na primeira vez) e mostra um
+endereço pronto pra copiar:
 
 ```
-  Passe um destes endereços pros seus amigos:
-    ws://192.168.0.14:9000
-    ws://26.13.45.201:9000  <-- Radmin VPN
+Sala ativa
+26.13.45.201:9000              [Copiar]
 ```
 
-**2. Todo mundo abre o app** (inclusive quem subiu o servidor):
+Sem terminal, sem instalar Node à parte, sem digitar porta.
 
-```bash
-npm start
-```
+**2. Todo mundo mais abre o GoLive** e clica em "Entrar em sala", cola o
+endereço (`26.x.x.x` — a porta é opcional, assume `:9000`), escolhe um
+nome e clica em Conectar.
 
-Cola o endereço `ws://26.x.x.x:9000`, escolhe um nome e uma sala. Quem quiser
-transmitir clica em **Compartilhar tela**, escolhe monitor ou janela, e pronto.
+Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
+janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
+mesma sala.
 
 Duplo clique em qualquer vídeo expande pra tela cheia.
 
-## Gerar o .exe pros amigos
+**Se você fechar o GoLive no PC que criou a sala, a sala cai pra todo
+mundo** — não há como transferir a sala pra outra máquina no meio da
+sessão.
+
+## Gerar o instalador pros amigos
 
 Pra ninguém precisar instalar Node:
 
@@ -99,8 +104,11 @@ Pra ninguém precisar instalar Node:
 npm run dist
 ```
 
-Sai um executável portátil em `dist/`. Só o servidor de sinalização continua
-precisando de Node numa máquina.
+Sai um instalador em `dist/GoLive LAN Setup <versão>.exe`. Ele cria atalho
+na Área de Trabalho e no Menu Iniciar, e desinstala normalmente pelo painel
+do Windows. Quem só quer transmitir/assistir não precisa mais de Node — o
+servidor de sinalização agora sobe embutido no próprio app quando alguém
+clica em **Criar sala** (ver "Como usar" acima).
 
 ---
 
@@ -141,12 +149,13 @@ Compartilhamento de tela em WebRTC entrega 30 fps por padrão, mesmo pedindo
 
 ## Se der problema
 
-**"Não consegui conectar"** — o servidor está rodando? A porta 9000 está
-liberada? Rode como administrador na máquina do servidor:
-
-```powershell
-netsh advfirewall firewall add rule name="GoLive" dir=in action=allow protocol=TCP localport=9000
-```
+**"Não consegui conectar"** — quem criou a sala precisa estar com o GoLive
+aberto: ao clicar em "Criar sala" o app sobe o servidor embutido e tenta
+liberar a porta no firewall sozinho (a porta pode cair em qualquer valor
+entre 9000 e 9010, mostrado no painel "Sala ativa"). Se a liberação
+automática falhar, o painel mostra um aviso com um botão **"Copiar
+comando"** — copie e rode esse comando como administrador na máquina que
+criou a sala.
 
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O
 Radmin às vezes bloqueia UDP entre peers; teste um `ping 26.x.x.x` primeiro.

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "server": "node server/signaling.js",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "^32.0.0",
@@ -20,11 +21,19 @@
     "productName": "GoLive LAN",
     "files": [
       "src/**/*",
+      "!src/**/*.test.js",
       "server/**/*",
+      "!server/**/*.test.js",
       "package.json"
     ],
     "win": {
-      "target": "portable"
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "GoLive LAN"
     }
   }
 }
