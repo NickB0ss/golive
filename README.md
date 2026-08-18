@@ -108,7 +108,7 @@ Sai um instalador em `dist/GoLive LAN Setup <versão>.exe`. Ele cria atalho
 na Área de Trabalho e no Menu Iniciar, e desinstala normalmente pelo painel
 do Windows. Quem só quer transmitir/assistir não precisa mais de Node — o
 servidor de sinalização agora sobe embutido no próprio app quando alguém
-clica em **Criar sala** (ver "Como usar" abaixo).
+clica em **Criar sala** (ver "Como usar" acima).
 
 ---
 
@@ -149,12 +149,13 @@ Compartilhamento de tela em WebRTC entrega 30 fps por padrão, mesmo pedindo
 
 ## Se der problema
 
-**"Não consegui conectar"** — o servidor está rodando? A porta 9000 está
-liberada? Rode como administrador na máquina do servidor:
-
-```powershell
-netsh advfirewall firewall add rule name="GoLive" dir=in action=allow protocol=TCP localport=9000
-```
+**"Não consegui conectar"** — quem criou a sala precisa estar com o GoLive
+aberto: ao clicar em "Criar sala" o app sobe o servidor embutido e tenta
+liberar a porta no firewall sozinho (a porta pode cair em qualquer valor
+entre 9000 e 9010, mostrado no painel "Sala ativa"). Se a liberação
+automática falhar, o painel mostra um aviso com um botão **"Copiar
+comando"** — copie e rode esse comando como administrador na máquina que
+criou a sala.
 
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O
 Radmin às vezes bloqueia UDP entre peers; teste um `ping 26.x.x.x` primeiro.

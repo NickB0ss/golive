@@ -196,7 +196,17 @@ el.btnHost.addEventListener('click', async () => {
   el.hostStatus.textContent = 'Preparando sala...';
 
   const name = el.hostName.value.trim() || 'anonimo';
-  const result = await window.golive.hostRoom({ name });
+
+  let result;
+  try {
+    result = await window.golive.hostRoom({ name });
+  } catch {
+    el.hostError.textContent = 'Nao consegui subir a sala: erro inesperado. Tente de novo.';
+    el.btnHost.disabled = false;
+    el.btnHost.textContent = 'Criar sala';
+    el.hostStatus.textContent = '';
+    return;
+  }
 
   if (!result.ok) {
     el.hostError.textContent =
@@ -211,7 +221,7 @@ el.btnHost.addEventListener('click', async () => {
 
   hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
   renderHostPanel();
-  el.hostStatus.textContent = result.firewall.ok ? '' : 'Liberando firewall...';
+  el.hostStatus.textContent = result.firewall.ok ? '' : 'Firewall não liberado — veja o aviso ao lado.';
   connectTo(`ws://127.0.0.1:${result.port}`, name);
 });
 
