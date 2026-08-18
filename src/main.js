@@ -30,22 +30,10 @@ let win = null;
 const { createSignalingServer } = require('../server/signaling-core');
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
+const { findFreeServer } = require('./main/ports');
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
-
-async function findFreeServer(startPort = 9000, endPort = 9010) {
-  for (let port = startPort; port <= endPort; port++) {
-    try {
-      return await createSignalingServer({ port });
-    } catch (err) {
-      if (err.code !== 'EADDRINUSE') throw err;
-    }
-  }
-  const err = new Error('PORTS_EXHAUSTED');
-  err.code = 'PORTS_EXHAUSTED';
-  throw err;
-}
 
 async function closeEmbeddedServer() {
   if (!embeddedServer) return;
@@ -99,7 +87,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  closeEmbeddedServer();
+  closeEmbeddedServer().catch(() => {});
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -139,7 +127,7 @@ ipcMain.handle('sources:select', (_event, { id, systemAudio }) => {
 ipcMain.handle('room:host', async (_event, { name }) => {
   try {
     if (embeddedServer) await closeEmbeddedServer();
-    embeddedServer = await findFreeServer();
+    embeddedServer = await findFreeServer((port) => createSignalingServer({ port }));
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
     const picked = pickAddress();
