@@ -55,4 +55,6 @@ test('devolve comando manual quando a elevacao falha', async () => {
   const result = await ensureFirewallRule(9000, { exec });
   assert.equal(result.ok, false);
   assert.match(result.manualCommand, /netsh advfirewall firewall add rule name="GoLive".*localport=9000/);
+  assert.match(result.manualCommand, /profile=private,domain/);
+  assert.match(result.manualCommand, /program="/);
 });

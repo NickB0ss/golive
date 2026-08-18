@@ -9,15 +9,19 @@ const { promisify } = require('util');
 const defaultExec = promisify(execCb);
 const RULE_NAME = 'GoLive';
 
-function manualCommandFor(port) {
-  return `netsh advfirewall firewall add rule name="${RULE_NAME}" dir=in action=allow protocol=TCP localport=${port}`;
+// profile=private,domain exclui redes publicas (cafe, aeroporto) -- app de
+// compartilhamento em LAN nunca precisou de acesso publico. program= restringe
+// a regra a este executavel, senao vira uma porta liberada pra qualquer processo.
+function manualCommandFor(port, execPath) {
+  return `netsh advfirewall firewall add rule name="${RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=private,domain program="${execPath}"`;
 }
 
 async function ruleCoversPort(port, exec) {
   let stdout = '';
   try {
     ({ stdout } = await exec(`netsh advfirewall firewall show rule name="${RULE_NAME}"`));
-  } catch {
+  } catch (err) {
+    console.warn('[firewall] falha ao consultar regra existente:', err.message);
     return false;
   }
   if (/No rules match/i.test(stdout)) return false;
@@ -28,16 +32,17 @@ async function ruleCoversPort(port, exec) {
 }
 
 /** @returns {Promise<{ ok: boolean, manualCommand?: string }>} */
-async function ensureFirewallRule(port, { exec = defaultExec } = {}) {
-  const manualCommand = manualCommandFor(port);
+async function ensureFirewallRule(port, { exec = defaultExec, execPath = process.execPath } = {}) {
+  const manualCommand = manualCommandFor(port, execPath);
 
   if (await ruleCoversPort(port, exec)) return { ok: true };
 
-  const netshArgs = `advfirewall firewall add rule name="${RULE_NAME}" dir=in action=allow protocol=TCP localport=${port}`;
+  const netshArgs = `advfirewall firewall add rule name="${RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=private,domain program="${execPath}"`;
   const psCommand = `Start-Process netsh -ArgumentList '${netshArgs}' -Verb RunAs -WindowStyle Hidden -Wait`;
   try {
     await exec(`powershell -Command "${psCommand}"`);
-  } catch {
+  } catch (err) {
+    console.warn('[firewall] elevacao falhou ou foi cancelada:', err.message);
     return { ok: false, manualCommand };
   }
 
