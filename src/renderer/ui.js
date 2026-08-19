@@ -249,6 +249,70 @@
     if (body) body.innerHTML = html;
   }
 
+  // ---------- Dialogo de compartilhar ----------
+
+  const pickerEl = $('picker');
+  const pickerGridEl = $('picker-grid');
+  const audioDeviceEl = $('audio-device');
+  const btnGoLiveEl = $('btn-go-live');
+  let selectedSourceId = null;
+
+  function currentAudioMode() {
+    return document.querySelector('input[name="audio-mode"]:checked').value;
+  }
+
+  document.querySelectorAll('input[name="audio-mode"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      audioDeviceEl.classList.toggle('hidden', currentAudioMode() !== 'device');
+    });
+  });
+
+  $('picker-cancel').addEventListener('click', () => pickerEl.classList.add('hidden'));
+
+  async function openPicker({ onGoLive }) {
+    selectedSourceId = null;
+    btnGoLiveEl.disabled = true;
+    pickerGridEl.innerHTML = '';
+    audioDeviceEl.innerHTML = '';
+
+    const sources = await window.golive.listSources();
+    for (const source of sources) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'source-card';
+      card.innerHTML = `
+        <img src="${source.thumbnail}" alt="" />
+        <span class="source-name">${escapeHtml(source.name)}</span>
+        <span class="source-meta">${source.isScreen ? 'Tela' : 'Janela'}${
+          source.resolution ? ` &middot; ${source.resolution}` : ''
+        }</span>`;
+      card.addEventListener('click', () => {
+        selectedSourceId = source.id;
+        btnGoLiveEl.disabled = false;
+        pickerGridEl.querySelectorAll('.source-card').forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+      });
+      pickerGridEl.appendChild(card);
+    }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      for (const d of devices.filter((d) => d.kind === 'audioinput')) {
+        audioDeviceEl.add(new Option(d.label || 'Entrada de áudio', d.deviceId));
+      }
+    } catch {
+      /* sem permissao ainda */
+    }
+
+    btnGoLiveEl.onclick = () => {
+      const mode = currentAudioMode();
+      pickerEl.classList.add('hidden');
+      onGoLive(selectedSourceId, mode, mode === 'device' ? audioDeviceEl.value : null);
+    };
+
+    pickerEl.classList.remove('hidden');
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
@@ -257,5 +321,6 @@
     rooms: { render: renderRooms },
     stageHeader: { set: setStageHeader, clear: clearStageHeader },
     settings: { open: openSettings, close: closeSettings, setStatsHtml },
+    picker: { open: openPicker },
   };
 })(window);

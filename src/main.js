@@ -22,8 +22,9 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 /** Fonte de captura escolhida no seletor do renderer. */
 let selectedSourceId = null;
-/** Se o usuario pediu pra incluir o audio do sistema. */
-let includeSystemAudio = true;
+/** Modo de audio: 'none' | 'system' | 'device'. 'device' e capturado no
+ * renderer via getUserMedia, entao aqui so importa distinguir 'system'. */
+let audioMode = 'system';
 
 let win = null;
 
@@ -70,12 +71,13 @@ app.whenReady().then(() => {
         .then((sources) => {
           const chosen = sources.find((s) => s.id === selectedSourceId) || sources[0];
           if (!chosen) return callback({});
-          // 'loopback' captura o som que sai da placa de audio (Windows).
-          callback({ video: chosen, audio: includeSystemAudio ? 'loopback' : undefined });
+          // 'loopback' so no modo 'system'; nos modos 'none' e 'device' o
+          // getDisplayMedia nao carrega audio (o modo 'device' e adicionado
+          // pelo renderer via getUserMedia, fora deste handler).
+          callback({ video: chosen, audio: audioMode === 'system' ? 'loopback' : undefined });
         })
         .catch(() => callback({}));
     },
-    // useSystemPicker: false -> usamos o nosso proprio seletor.
     { useSystemPicker: false }
   );
 
@@ -118,9 +120,9 @@ ipcMain.handle('sources:list', async () => {
   });
 });
 
-ipcMain.handle('sources:select', (_event, { id, systemAudio }) => {
+ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
   selectedSourceId = id;
-  includeSystemAudio = Boolean(systemAudio);
+  audioMode = mode === 'system' || mode === 'device' ? mode : 'none';
   return true;
 });
 
