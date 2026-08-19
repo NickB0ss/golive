@@ -3,125 +3,105 @@
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'" />
+      content="default-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:" />
 <title>GoLive LAN</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<!-- ============ TELA DE ENTRADA ============ -->
-<section id="setup" class="setup">
-  <div class="setup-card">
-    <h1>GoLive <span>LAN</span></h1>
-    <p class="sub">Compartilhamento de tela 1080p60 direto entre os PCs, pela VPN.</p>
+<div id="app" class="app">
+  <!-- ============ TRILHO ============ -->
+  <nav class="rail">
+    <div class="rail-brand" title="GoLive LAN">GL</div>
+    <button id="btn-create-room" class="rail-action" title="Criar sala" type="button">+</button>
+  </nav>
 
-    <div class="tabs">
-      <button id="tab-host" class="tab active" type="button">Criar sala</button>
-      <button id="tab-join" class="tab" type="button">Entrar em sala</button>
-    </div>
+  <!-- ============ COLUNA DE SALAS ============ -->
+  <aside class="rooms-col">
+    <h2 class="rooms-title">Salas na rede</h2>
+    <ul id="room-list" class="room-list"></ul>
 
-    <div id="pane-host" class="pane">
-      <label>
-        Seu nome
-        <input id="host-name" type="text" placeholder="seu apelido" spellcheck="false" />
-      </label>
-      <button id="btn-host" class="primary">Criar sala</button>
-      <p id="host-status" class="hint"></p>
-      <p id="host-error" class="error"></p>
-    </div>
-
-    <div id="pane-join" class="pane hidden">
-      <label>
-        Endereço da sala
-        <input id="in-server" type="text" placeholder="26.0.0.1 ou ws://26.0.0.1:9000" spellcheck="false" />
-      </label>
-      <label>
-        Seu nome
-        <input id="in-name" type="text" placeholder="seu apelido" spellcheck="false" />
-      </label>
-      <button id="btn-connect" class="primary">Conectar</button>
+    <button id="btn-join-address" class="ghost small room-join-btn" type="button">Entrar por endereço</button>
+    <div id="join-address-form" class="join-address-form hidden">
+      <input id="in-server" type="text" placeholder="26.0.0.1 ou ws://26.0.0.1:9000" spellcheck="false" />
+      <button id="btn-connect" class="primary small" type="button">Conectar</button>
       <p id="setup-error" class="error"></p>
     </div>
-  </div>
-</section>
 
-<!-- ============ TELA PRINCIPAL ============ -->
-<section id="main" class="main hidden">
-  <aside class="sidebar">
-    <div class="brand">GoLive <span>LAN</span></div>
-
-    <div id="host-panel" class="host-panel hidden"></div>
-
-    <div class="status">
-      <span id="conn-dot" class="dot"></span>
-      <span id="conn-text">desconectado</span>
+    <div class="user-panel">
+      <input id="user-panel-name" class="user-panel-name" type="text" placeholder="seu apelido" spellcheck="false" title="Clique para editar seu apelido" />
+      <div class="user-panel-actions">
+        <button id="btn-toggle-camera" class="icon-btn" title="Câmera" type="button">CAM</button>
+        <button id="btn-toggle-share" class="icon-btn" title="Compartilhar tela" type="button">TELA</button>
+        <button id="btn-open-settings" class="icon-btn" title="Configurações" type="button">CFG</button>
+      </div>
     </div>
-
-    <h2>Na sala</h2>
-    <ul id="peer-list" class="peer-list"></ul>
-
-    <h2>Qualidade</h2>
-    <label class="field">
-      Resolucao
-      <select id="sel-res">
-        <option value="1920x1080" selected>1920x1080 (Full HD)</option>
-        <option value="2560x1440">2560x1440 (QHD)</option>
-        <option value="1280x720">1280x720 (HD)</option>
-      </select>
-    </label>
-
-    <label class="field">
-      Framerate
-      <select id="sel-fps">
-        <option value="60" selected>60 fps</option>
-        <option value="30">30 fps</option>
-      </select>
-    </label>
-
-    <label class="field">
-      Bitrate: <b id="lbl-bitrate">12 Mbps</b>
-      <input id="in-bitrate" type="range" min="2" max="40" step="1" value="12" />
-      <small>1080p60 fluido pede 10-20 Mbps <em>por espectador</em>.</small>
-    </label>
-
-    <label class="field">
-      Codec
-      <select id="sel-codec">
-        <option value="video/H264" selected>H.264 (hardware, menor latencia)</option>
-        <option value="video/VP9">VP9 (melhor imagem, mais CPU)</option>
-        <option value="video/AV1">AV1 (menor banda, exige GPU nova)</option>
-      </select>
-    </label>
-
-    <label class="check">
-      <input id="chk-audio" type="checkbox" checked />
-      Incluir audio do sistema
-    </label>
-
-    <div class="actions">
-      <button id="btn-share" class="primary">Compartilhar tela</button>
-      <button id="btn-stop" class="danger hidden">Parar transmissao</button>
-    </div>
-
-    <div id="stats" class="stats"></div>
   </aside>
 
+  <!-- ============ PALCO ============ -->
   <main class="stage">
+    <header id="stage-header" class="stage-header hidden">
+      <span id="stage-room-name" class="stage-room-name"></span>
+      <span id="stage-room-address" class="stage-room-address"></span>
+      <button id="btn-copy-address" class="ghost small">Copiar</button>
+    </header>
+    <div id="stage-warning" class="warn-box hidden"></div>
     <div id="grid" class="grid">
-      <div class="empty">Ninguem transmitindo ainda.</div>
+      <div class="empty">Entre ou crie uma sala pra começar.</div>
     </div>
   </main>
-</section>
 
-<!-- ============ SELETOR DE FONTE ============ -->
-<div id="picker" class="picker hidden">
-  <div class="picker-box">
-    <h2>O que voce quer compartilhar?</h2>
-    <div id="picker-grid" class="picker-grid"></div>
-    <button id="picker-cancel" class="ghost">Cancelar</button>
+  <!-- ============ MEMBROS ============ -->
+  <aside class="members-col">
+    <h2 class="members-title">Na sala</h2>
+    <ul id="peer-list" class="peer-list"></ul>
+  </aside>
+</div>
+
+<!-- ============ MODAL DE CONFIGURACOES ============ -->
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-box settings-box">
+    <nav class="settings-nav">
+      <button class="settings-cat active" data-cat="voice">Voz e Vídeo</button>
+      <button class="settings-cat" data-cat="broadcast">Transmissão</button>
+      <button class="settings-cat" data-cat="network">Rede</button>
+      <button class="settings-cat" data-cat="stats">Estatísticas</button>
+    </nav>
+    <div class="settings-content">
+      <section id="settings-voice" class="settings-pane"></section>
+      <section id="settings-broadcast" class="settings-pane hidden"></section>
+      <section id="settings-network" class="settings-pane hidden"></section>
+      <section id="settings-stats" class="settings-pane hidden"></section>
+    </div>
+    <button id="btn-close-settings" class="modal-close" title="Fechar" type="button">×</button>
   </div>
 </div>
 
+<!-- ============ SELETOR DE FONTE + AUDIO ============ -->
+<div id="picker" class="modal hidden">
+  <div class="modal-box picker-box">
+    <h2>O que você quer compartilhar?</h2>
+    <div id="picker-grid" class="picker-grid"></div>
+
+    <h3>Áudio</h3>
+    <div id="audio-mode" class="audio-mode">
+      <label><input type="radio" name="audio-mode" value="none" /> Sem áudio</label>
+      <label><input type="radio" name="audio-mode" value="system" checked /> Áudio do sistema (inclui a voz do Discord)</label>
+      <label><input type="radio" name="audio-mode" value="device" /> Um dispositivo específico</label>
+    </div>
+    <select id="audio-device" class="hidden"></select>
+
+    <div class="picker-actions">
+      <button id="picker-cancel" class="ghost" type="button">Cancelar</button>
+      <button id="btn-go-live" class="primary" type="button" disabled>Ir ao vivo</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="signaling.js"></script>
+<script src="mesh.js"></script>
+<script src="ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
