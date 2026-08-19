@@ -93,6 +93,162 @@
     stageHeaderEl.classList.add('hidden');
   }
 
+  // ---------- Modal de Configuracoes ----------
+
+  const settingsModalEl = $('settings-modal');
+  const settingsCatButtons = Array.from(document.querySelectorAll('.settings-cat'));
+  const settingsPanes = {
+    voice: $('settings-voice'),
+    broadcast: $('settings-broadcast'),
+    network: $('settings-network'),
+    stats: $('settings-stats'),
+  };
+
+  settingsCatButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      settingsCatButtons.forEach((b) => b.classList.toggle('active', b === btn));
+      Object.entries(settingsPanes).forEach(([cat, pane]) =>
+        pane.classList.toggle('hidden', cat !== btn.dataset.cat)
+      );
+    });
+  });
+
+  $('btn-close-settings').addEventListener('click', closeSettings);
+  settingsModalEl.addEventListener('click', (event) => {
+    if (event.target === settingsModalEl) closeSettings();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !settingsModalEl.classList.contains('hidden')) closeSettings();
+  });
+
+  function closeSettings() {
+    settingsModalEl.classList.add('hidden');
+  }
+
+  function bandwidthLine(config) {
+    const screenMbps = config.quality.bitrate / 1_000_000;
+    const cameraMbps = config.camera.bitrate / 1_000_000;
+    return `${screenMbps.toFixed(1)} Mbps (tela) + ${cameraMbps.toFixed(1)} Mbps (câmera) × número de espectadores`;
+  }
+
+  async function openSettings(config, deps) {
+    settingsPanes.voice.innerHTML = `
+      <h3>Câmera</h3>
+      <div class="settings-field">
+        <label for="settings-camera-device">Dispositivo</label>
+        <select id="settings-camera-device"></select>
+      </div>
+      <div class="settings-field">
+        <video id="settings-camera-preview" autoplay playsinline muted></video>
+      </div>
+      <h3>Áudio</h3>
+      <div class="settings-field">
+        <label for="settings-audio-device">Dispositivo padrão pra compartilhamento</label>
+        <select id="settings-audio-device"></select>
+      </div>`;
+
+    settingsPanes.broadcast.innerHTML = `
+      <h3>Tela</h3>
+      <div class="settings-field">
+        <label>Resolução</label>
+        <select id="settings-res">
+          <option value="1920x1080">1920x1080 (Full HD)</option>
+          <option value="2560x1440">2560x1440 (QHD)</option>
+          <option value="1280x720">1280x720 (HD)</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <label>Framerate</label>
+        <select id="settings-fps">
+          <option value="60">60 fps</option>
+          <option value="30">30 fps</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <label>Bitrate: <b id="settings-bitrate-label"></b></label>
+        <input id="settings-bitrate" type="range" min="2" max="40" step="1" />
+      </div>
+      <div class="settings-field">
+        <label>Codec</label>
+        <select id="settings-codec">
+          <option value="video/H264">H.264 (hardware, menor latência)</option>
+          <option value="video/VP9">VP9 (melhor imagem, mais CPU)</option>
+          <option value="video/AV1">AV1 (menor banda, exige GPU nova)</option>
+        </select>
+      </div>
+      <h3>Câmera</h3>
+      <div class="settings-field">
+        <label>Bitrate da câmera: <b id="settings-camera-bitrate-label"></b></label>
+        <input id="settings-camera-bitrate" type="range" min="1" max="8" step="1" />
+        <small>${escapeHtml(bandwidthLine(config))}</small>
+      </div>`;
+
+    settingsPanes.network.innerHTML = `
+      <div class="settings-field">
+        <label class="check-inline"><input id="settings-advertise" type="checkbox" /> Anunciar minha sala na rede</label>
+        <small>Desligado, a sala funciona normalmente e só entra quem receber o endereço.</small>
+      </div>`;
+
+    settingsPanes.stats.innerHTML = '<div id="settings-stats-body" class="stats"></div>';
+
+    $('settings-res').value = `${config.quality.width}x${config.quality.height}`;
+    $('settings-fps').value = String(config.quality.fps);
+    $('settings-bitrate').value = String(config.quality.bitrate / 1_000_000);
+    $('settings-bitrate-label').textContent = `${config.quality.bitrate / 1_000_000} Mbps`;
+    $('settings-codec').value = config.quality.codec;
+    $('settings-camera-bitrate').value = String(config.camera.bitrate / 1_000_000);
+    $('settings-camera-bitrate-label').textContent = `${config.camera.bitrate / 1_000_000} Mbps`;
+    $('settings-advertise').checked = config.network.advertise;
+
+    function emitQuality() {
+      const [width, height] = $('settings-res').value.split('x').map(Number);
+      deps.onQualityChange({
+        width,
+        height,
+        fps: Number($('settings-fps').value),
+        bitrate: Number($('settings-bitrate').value) * 1_000_000,
+        codec: $('settings-codec').value,
+      });
+    }
+
+    $('settings-res').addEventListener('change', emitQuality);
+    $('settings-fps').addEventListener('change', emitQuality);
+    $('settings-codec').addEventListener('change', emitQuality);
+    $('settings-bitrate').addEventListener('input', () => {
+      $('settings-bitrate-label').textContent = `${$('settings-bitrate').value} Mbps`;
+      emitQuality();
+    });
+    $('settings-camera-bitrate').addEventListener('input', () => {
+      $('settings-camera-bitrate-label').textContent = `${$('settings-camera-bitrate').value} Mbps`;
+      deps.onCameraQualityChange({ ...config.camera, bitrate: Number($('settings-camera-bitrate').value) * 1_000_000 });
+    });
+    $('settings-advertise').addEventListener('change', () => {
+      deps.onNetworkChange({ ...config.network, advertise: $('settings-advertise').checked });
+    });
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameraSelect = $('settings-camera-device');
+      const audioSelect = $('settings-audio-device');
+      for (const d of devices.filter((d) => d.kind === 'videoinput')) {
+        cameraSelect.add(new Option(d.label || 'Câmera', d.deviceId));
+      }
+      for (const d of devices.filter((d) => d.kind === 'audioinput')) {
+        audioSelect.add(new Option(d.label || 'Entrada de áudio', d.deviceId));
+      }
+      cameraSelect.addEventListener('change', () => deps.onCameraDeviceChange(cameraSelect.value));
+    } catch {
+      /* sem permissao de midia ainda, dropdowns ficam vazios */
+    }
+
+    settingsModalEl.classList.remove('hidden');
+  }
+
+  function setStatsHtml(html) {
+    const body = $('settings-stats-body');
+    if (body) body.innerHTML = html;
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
@@ -100,5 +256,6 @@
     members: { render: renderMembers },
     rooms: { render: renderRooms },
     stageHeader: { set: setStageHeader, clear: clearStageHeader },
+    settings: { open: openSettings, close: closeSettings, setStatsHtml },
   };
 })(window);
