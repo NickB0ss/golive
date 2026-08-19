@@ -124,7 +124,14 @@ transmissão.
   bitrate mas come CPU. AV1 economiza banda de verdade, e só vale se as GPUs
   dos dois lados forem novas (RTX 40+, RX 7000+, Arc).
 - **Áudio do sistema** — captura o som que sai da placa, não o microfone.
-  Funciona no Windows via loopback.
+  Funciona no Windows via loopback. Importante: o Windows não oferece captura de
+  áudio por aplicativo (por exemplo, "só do jogo"), então a opção "áudio do
+  sistema" grava tudo que sai do dispositivo de saída padrão — o Discord, o
+  navegador, tudo. Se você quer isolar só o áudio do jogo e manter o Discord
+  privado, use a opção "um dispositivo específico" e configure via mixer de
+  volume do Windows (ou um cabo de áudio virtual) pra mandar o Discord pra uma
+  saída diferente — aí o GoLive só vai capturar a saída onde o jogo está
+  tocando.
 
 O painel de estatísticas mostra fps real, resolução, banda e latência a cada
 segundo. O campo **Limitado por** é o mais útil pra diagnóstico: ele diz se
