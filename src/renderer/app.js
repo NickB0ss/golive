@@ -1,686 +1,299 @@
-/*
- * GoLive LAN - renderer.
- *
- * Topologia: malha (mesh). Nao existe servidor de midia. Quem transmite abre
- * uma RTCPeerConnection separada pra cada espectador e envia o video direto
- * pela LAN virtual. Isso mantem a latencia baixa, mas o upload de quem
- * transmite e multiplicado pelo numero de espectadores -- e o limite real
- * deste desenho. Veja o README antes de chamar 8 pessoas pra sala.
- */
-
+// src/renderer/app.js
 'use strict';
 
-// --- Estado global -----------------------------------------------------
+(function () {
+  const { config, signaling, mesh: meshModule, ui } = window.GoLive;
 
-let ws = null;
-let myId = null;
+  let cfg = config.load(localStorage.getItem('golive'));
+  let sig = null;
+  let mesh = null;
+  let myId = null;
+  let localStream = null;
+  let hostInfo = null;
+  let statsTimer = null;
+  let lastBytes = 0;
+  let lastAt = 0;
 
-/** peerId -> { id, name, live, outConn, inConn } */
-const peers = new Map();
+  const $ = (id) => document.getElementById(id);
 
-/** MediaStream da minha tela, quando estou transmitindo. */
-let localStream = null;
+  function persist() {
+    localStorage.setItem('golive', config.serialize(cfg));
+  }
 
-/** Sem STUN/TURN: dentro da VPN os candidatos "host" ja se enxergam. */
-const RTC_CONFIG = { iceServers: [], iceTransportPolicy: 'all' };
+  function emptyMessage() {
+    return sig ? 'Ninguém transmitindo ainda.' : 'Entre ou crie uma sala pra começar.';
+  }
 
-// --- Atalhos de DOM ----------------------------------------------------
+  // ---------- Painel do usuario ----------
 
-const $ = (id) => document.getElementById(id);
+  function renderUserPanel() {
+    $('user-panel-name').textContent = cfg.name || 'anônimo';
+  }
+  renderUserPanel();
 
-const el = {
-  setup: $('setup'),
-  main: $('main'),
-  tabHost: $('tab-host'),
-  tabJoin: $('tab-join'),
-  paneHost: $('pane-host'),
-  paneJoin: $('pane-join'),
-  hostName: $('host-name'),
-  btnHost: $('btn-host'),
-  hostStatus: $('host-status'),
-  hostError: $('host-error'),
-  server: $('in-server'),
-  name: $('in-name'),
-  connect: $('btn-connect'),
-  setupError: $('setup-error'),
-  connDot: $('conn-dot'),
-  connText: $('conn-text'),
-  peerList: $('peer-list'),
-  res: $('sel-res'),
-  fps: $('sel-fps'),
-  bitrate: $('in-bitrate'),
-  bitrateLabel: $('lbl-bitrate'),
-  codec: $('sel-codec'),
-  audio: $('chk-audio'),
-  share: $('btn-share'),
-  stop: $('btn-stop'),
-  stats: $('stats'),
-  grid: $('grid'),
-  picker: $('picker'),
-  pickerGrid: $('picker-grid'),
-  pickerCancel: $('picker-cancel'),
-};
+  $('btn-open-settings').addEventListener('click', () => {
+    ui.settings.open(cfg, {
+      onQualityChange: (quality) => {
+        cfg = { ...cfg, quality };
+        persist();
+        if (localStream) applyLiveQuality();
+      },
+      onCameraQualityChange: (camera) => {
+        cfg = { ...cfg, camera };
+        persist();
+      },
+      onCameraDeviceChange: () => {
+        // Selecao de dispositivo de camera: consumida na Fase 2, quando a
+        // webcam ganha captura propria. Por ora so persiste a escolha.
+      },
+      onNetworkChange: (network) => {
+        cfg = { ...cfg, network };
+        persist();
+      },
+    });
+  });
 
-function selectTab(tab) {
-  const isHost = tab === 'host';
-  el.tabHost.classList.toggle('active', isHost);
-  el.tabJoin.classList.toggle('active', !isHost);
-  el.paneHost.classList.toggle('hidden', !isHost);
-  el.paneJoin.classList.toggle('hidden', isHost);
-}
-
-el.tabHost.addEventListener('click', () => selectTab('host'));
-el.tabJoin.addEventListener('click', () => selectTab('join'));
-
-// Lembra as configuracoes entre sessoes.
-const saved = JSON.parse(localStorage.getItem('golive') || '{}');
-el.server.value = saved.server || '';
-el.name.value = saved.name || '';
-el.hostName.value = saved.hostName || saved.name || '';
-
-function persist() {
-  localStorage.setItem(
-    'golive',
-    JSON.stringify({ server: el.server.value, name: el.name.value, hostName: el.hostName.value })
-  );
-}
-
-// --- Configuracao de qualidade -----------------------------------------
-
-function quality() {
-  const [width, height] = el.res.value.split('x').map(Number);
-  return {
-    width,
-    height,
-    fps: Number(el.fps.value),
-    bitrate: Number(el.bitrate.value) * 1_000_000,
-    codec: el.codec.value,
-  };
-}
-
-el.bitrate.addEventListener('input', () => {
-  el.bitrateLabel.textContent = `${el.bitrate.value} Mbps`;
-  // Aplica ao vivo, sem renegociar.
-  if (localStream) applyEncoding();
-});
-
-// Trocar resolucao/fps ao vivo tambem funciona via applyConstraints.
-[el.res, el.fps].forEach((input) =>
-  input.addEventListener('change', async () => {
-    if (!localStream) return;
-    const q = quality();
+  async function applyLiveQuality() {
     const track = localStream.getVideoTracks()[0];
     if (track) {
-      await track.applyConstraints({
-        width: { ideal: q.width, max: q.width },
-        height: { ideal: q.height, max: q.height },
-        frameRate: { ideal: q.fps, max: q.fps },
+      await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
+    }
+    mesh.applyEncoding(cfg.quality);
+  }
+
+  // ---------- Lista de salas ----------
+
+  function renderRoomList() {
+    ui.rooms.render(cfg.recentRooms, { onSelect: (room) => joinRoom(room.address, cfg.name) });
+  }
+  renderRoomList();
+
+  $('btn-join-address').addEventListener('click', () => {
+    $('join-address-form').classList.toggle('hidden');
+  });
+
+  $('btn-connect').addEventListener('click', () => {
+    let url = $('in-server').value.trim();
+    if (!url) return ($('setup-error').textContent = 'Informe o endereço do servidor.');
+    if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
+    if (!/:\d+$/.test(url)) url += ':9000';
+    joinRoom(url, cfg.name);
+  });
+
+  $('btn-create-room').addEventListener('click', async () => {
+    let result;
+    try {
+      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo' });
+    } catch {
+      $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
+      return;
+    }
+    if (!result.ok) {
+      $('setup-error').textContent =
+        result.error === 'PORTS_EXHAUSTED'
+          ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
+          : `Não consegui subir a sala: ${result.error}`;
+      return;
+    }
+    hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address);
+  });
+
+  // ---------- Conexao de sinalizacao ----------
+
+  function joinRoom(url, name, publicAddress) {
+    sig = signaling.connect(url, {
+      onOpen: () => {
+        cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
+        persist();
+        renderRoomList();
+        sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
+        ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
+      },
+      onMessage: handleSignal,
+      onError: () => {
+        $('setup-error').textContent =
+          'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
+      },
+      onClose: () => {
+        ui.stageHeader.clear();
+        mesh = null;
+        ui.members.render(new Map());
+      },
+    });
+
+    mesh = meshModule.createMesh({
+      send: (payload) => sig.send(payload),
+      onTrack: (peerId, name, stream) => ui.grid.showTile(peerId, name, stream),
+      onPeerState: (peerId, { removedTile }) => {
+        if (removedTile) ui.grid.removeTile(peerId, emptyMessage());
+        ui.members.render(mesh.peers);
+      },
+    });
+  }
+
+  $('btn-copy-address').addEventListener('click', () => {
+    if (hostInfo?.address) navigator.clipboard.writeText(hostInfo.address);
+  });
+
+  async function handleSignal(msg) {
+    switch (msg.type) {
+      case 'welcome': {
+        myId = msg.id;
+        for (const p of msg.peers) mesh.addPeer(p.id, p.name);
+        ui.members.render(mesh.peers);
+        break;
+      }
+      case 'peer-joined': {
+        mesh.addPeer(msg.id, msg.name);
+        ui.members.render(mesh.peers);
+        if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality);
+        break;
+      }
+      case 'peer-left': {
+        mesh.removePeer(msg.id);
+        ui.grid.removeTile(msg.id, emptyMessage());
+        ui.members.render(mesh.peers);
+        break;
+      }
+      case 'offer': {
+        const answerSdp = await mesh.handleOffer(msg.from, msg.sdp);
+        sig.send({ type: 'answer', to: msg.from, sdp: answerSdp });
+        break;
+      }
+      case 'answer': {
+        await mesh.handleAnswer(msg.from, msg.sdp);
+        mesh.applyEncoding(cfg.quality);
+        break;
+      }
+      case 'ice': {
+        await mesh.handleIce(msg.from, msg.dir, msg.candidate);
+        break;
+      }
+      case 'broadcast-state': {
+        const peer = mesh.peers.get(msg.id);
+        if (peer) peer.live = msg.live;
+        if (!msg.live) ui.grid.removeTile(msg.id, emptyMessage());
+        ui.members.render(mesh.peers);
+        break;
+      }
+    }
+  }
+
+  // ---------- Compartilhar tela ----------
+
+  $('btn-toggle-share').addEventListener('click', () => {
+    if (localStream) return stopShare();
+    ui.picker.open({ onGoLive: startShare });
+  });
+
+  async function startShare(sourceId, audioMode, audioDeviceId) {
+    if (!sig) return;
+    await window.golive.selectSource(sourceId, audioMode);
+
+    try {
+      localStream = await navigator.mediaDevices.getDisplayMedia({
+        video: config.videoConstraints(cfg.quality),
+        audio: audioMode === 'system',
+      });
+    } catch (err) {
+      alert(`Não consegui capturar a tela: ${err.message}`);
+      return;
+    }
+
+    if (audioMode === 'device' && audioDeviceId) {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: audioDeviceId } } });
+        const [track] = micStream.getAudioTracks();
+        if (track) localStream.addTrack(track);
+      } catch {
+        /* usuario recusou o dispositivo, segue so com video */
+      }
+    }
+
+    const track = localStream.getVideoTracks()[0];
+    if (track) {
+      track.contentHint = 'motion';
+      track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
+      track.addEventListener('ended', stopShare);
+    }
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) audioTrack.contentHint = 'music';
+
+    ui.grid.showTile('me', 'Você (prévia)', localStream, true);
+
+    for (const peerId of mesh.peers.keys()) await mesh.offerTo(peerId, localStream, cfg.quality);
+
+    sig.send({ type: 'broadcast-state', live: true });
+    $('btn-toggle-share').classList.add('active');
+    startStatsLoop();
+  }
+
+  function stopShare() {
+    if (!localStream) return;
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+    mesh.closeAllOut();
+    ui.grid.removeTile('me', emptyMessage());
+    sig.send({ type: 'broadcast-state', live: false });
+    $('btn-toggle-share').classList.remove('active');
+    stopStatsLoop();
+  }
+
+  // ---------- Estatisticas ----------
+
+  function startStatsLoop() {
+    stopStatsLoop();
+    statsTimer = setInterval(updateStats, 1000);
+  }
+
+  function stopStatsLoop() {
+    clearInterval(statsTimer);
+    statsTimer = null;
+    ui.settings.setStatsHtml('');
+  }
+
+  async function updateStats() {
+    let fps = 0, bytes = 0, rtt = 0, width = 0, height = 0, codec = '', limitation = '', connections = 0;
+
+    for (const peerId of mesh.peers.keys()) {
+      const report = await mesh.statsFor(peerId);
+      if (!report) continue;
+      connections++;
+      report.forEach((stat) => {
+        if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
+          fps = Math.max(fps, stat.framesPerSecond || 0);
+          bytes += stat.bytesSent || 0;
+          width = stat.frameWidth || width;
+          height = stat.frameHeight || height;
+          if (stat.qualityLimitationReason && stat.qualityLimitationReason !== 'none') {
+            limitation = stat.qualityLimitationReason;
+          }
+        }
+        if (stat.type === 'codec' && stat.mimeType?.startsWith('video/')) {
+          codec = stat.mimeType.split('/')[1];
+        }
+        if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
+          rtt = Math.max(rtt, stat.currentRoundTripTime * 1000);
+        }
       });
     }
-    applyEncoding();
-  })
-);
 
-// --- Sinalizacao -------------------------------------------------------
+    const now = performance.now();
+    let mbps = 0;
+    if (lastAt) mbps = ((bytes - lastBytes) * 8) / ((now - lastAt) / 1000) / 1_000_000;
+    lastBytes = bytes;
+    lastAt = now;
 
-function signal(payload) {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-}
+    const motivo = { bandwidth: 'banda da rede insuficiente', cpu: 'CPU no limite', other: 'limite do encoder' }[limitation];
 
-function setConnState(state, text) {
-  el.connDot.className = `dot ${state}`;
-  el.connText.textContent = text;
-}
-
-/** peerId 'me' usa a mesma conexao de sinalizacao pros dois fluxos. */
-let hostInfo = null; // { port, address, firewall, addressWarning } | null, ver Task 7
-
-function connectTo(url, name) {
-  el.setupError.textContent = '';
-  try {
-    ws = new WebSocket(url);
-  } catch {
-    el.setupError.textContent = 'Endereco invalido.';
-    return;
+    ui.settings.setStatsHtml(`
+      <div class="stat"><span>enviando pra</span><b>${connections} peer(s)</b></div>
+      <div class="stat"><span>resolução</span><b>${width}x${height}</b></div>
+      <div class="stat"><span>fps real</span><b class="${fps >= 50 ? 'good' : 'warn-text'}">${Math.round(fps)}</b></div>
+      <div class="stat"><span>saída total</span><b>${mbps.toFixed(1)} Mbps</b></div>
+      <div class="stat"><span>latência</span><b>${rtt ? Math.round(rtt) + ' ms' : '-'}</b></div>
+      <div class="stat"><span>codec</span><b>${codec || '-'}</b></div>
+      ${motivo ? `<div class="stat-warn">Limitado por: ${motivo}</div>` : ''}`);
   }
-
-  ws.addEventListener('open', () => {
-    persist();
-    signal({ type: 'join', room: 'geral', name: name || 'anonimo' });
-    el.setup.classList.add('hidden');
-    el.main.classList.remove('hidden');
-    setConnState('ok', 'conectado');
-  });
-
-  ws.addEventListener('message', (event) => handleSignal(JSON.parse(event.data)));
-
-  ws.addEventListener('error', () => {
-    el.setupError.textContent =
-      'Nao consegui conectar. Confira o IP, se o servidor esta rodando e se a porta esta liberada no firewall.';
-    el.connect.disabled = false;
-    el.connect.textContent = 'Conectar';
-    el.btnHost.disabled = false;
-    el.btnHost.textContent = 'Criar sala';
-  });
-
-  ws.addEventListener('close', () => {
-    setConnState('bad', 'desconectado');
-    el.connect.disabled = false;
-    el.connect.textContent = 'Conectar';
-    for (const peer of peers.values()) {
-      peer.outConn?.close();
-      peer.inConn?.close();
-    }
-    peers.clear();
-    renderPeers();
-    hostInfo = null;
-    renderHostPanel();
-  });
-}
-
-el.connect.addEventListener('click', () => {
-  let url = el.server.value.trim();
-  if (!url) return (el.setupError.textContent = 'Informe o endereco do servidor.');
-  if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
-  if (!/:\d+$/.test(url)) url += ':9000';
-
-  el.connect.disabled = true;
-  el.connect.textContent = 'Conectando...';
-  connectTo(url, el.name.value.trim());
-});
-
-el.btnHost.addEventListener('click', async () => {
-  el.hostError.textContent = '';
-  el.btnHost.disabled = true;
-  el.btnHost.textContent = 'Preparando sala...';
-  el.hostStatus.textContent = 'Preparando sala...';
-
-  const name = el.hostName.value.trim() || 'anonimo';
-
-  let result;
-  try {
-    result = await window.golive.hostRoom({ name });
-  } catch {
-    el.hostError.textContent = 'Nao consegui subir a sala: erro inesperado. Tente de novo.';
-    el.btnHost.disabled = false;
-    el.btnHost.textContent = 'Criar sala';
-    el.hostStatus.textContent = '';
-    return;
-  }
-
-  if (!result.ok) {
-    el.hostError.textContent =
-      result.error === 'PORTS_EXHAUSTED'
-        ? 'Todas as portas 9000-9010 estao ocupadas. Feche outras instancias do GoLive e tente de novo.'
-        : `Nao consegui subir a sala: ${result.error}`;
-    el.btnHost.disabled = false;
-    el.btnHost.textContent = 'Criar sala';
-    el.hostStatus.textContent = '';
-    return;
-  }
-
-  hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
-  renderHostPanel();
-  el.hostStatus.textContent = result.firewall.ok ? '' : 'Firewall não liberado — veja o aviso ao lado.';
-  connectTo(`ws://127.0.0.1:${result.port}`, name);
-});
-
-async function handleSignal(msg) {
-  switch (msg.type) {
-    case 'welcome': {
-      myId = msg.id;
-      for (const p of msg.peers) addPeer(p.id, p.name);
-      renderPeers();
-      break;
-    }
-
-    case 'peer-joined': {
-      addPeer(msg.id, msg.name);
-      renderPeers();
-      // Se ja estou transmitindo, mando meu video pro recem-chegado.
-      if (localStream) await offerTo(msg.id);
-      break;
-    }
-
-    case 'peer-left': {
-      const peer = peers.get(msg.id);
-      if (peer) {
-        peer.outConn?.close();
-        peer.inConn?.close();
-        peers.delete(msg.id);
-        removeTile(msg.id);
-        renderPeers();
-      }
-      break;
-    }
-
-    case 'offer': {
-      const pc = ensureInConn(msg.from);
-      await pc.setRemoteDescription(msg.sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      signal({ type: 'answer', to: msg.from, sdp: pc.localDescription });
-      break;
-    }
-
-    case 'answer': {
-      const peer = peers.get(msg.from);
-      if (!peer?.outConn) return;
-      await peer.outConn.setRemoteDescription(msg.sdp);
-      // So da pra fixar bitrate depois que a negociacao fechou.
-      applyEncoding();
-      break;
-    }
-
-    case 'ice': {
-      const peer = peers.get(msg.from);
-      if (!peer || !msg.candidate) return;
-      // Candidato da outConn do remetente chega na minha inConn, e vice-versa.
-      const target = msg.dir === 'out' ? peer.inConn : peer.outConn;
-      if (!target) return;
-      try {
-        await target.addIceCandidate(msg.candidate);
-      } catch {
-        /* candidato tardio, ignorar */
-      }
-      break;
-    }
-
-    case 'broadcast-state': {
-      const peer = peers.get(msg.id);
-      if (peer) {
-        peer.live = msg.live;
-        // Quem parou de transmitir fechou a conexao do lado dele. Fecha aqui
-        // tambem, senao a proxima offer cai numa PeerConnection zumbi.
-        if (!msg.live && peer.inConn) {
-          peer.inConn.close();
-          peer.inConn = null;
-        }
-      }
-      if (!msg.live) removeTile(msg.id);
-      renderPeers();
-      break;
-    }
-  }
-}
-
-// --- Peers e conexoes --------------------------------------------------
-
-function addPeer(id, name) {
-  if (!peers.has(id)) peers.set(id, { id, name, live: false, outConn: null, inConn: null });
-}
-
-/** Cria uma RTCPeerConnection nova pro papel dado ('out' = eu envio, 'in' = eu recebo). */
-function makeConnection(peerId, dir) {
-  const pc = new RTCPeerConnection(RTC_CONFIG);
-
-  pc.addEventListener('icecandidate', (event) => {
-    if (event.candidate) signal({ type: 'ice', to: peerId, dir, candidate: event.candidate });
-  });
-
-  if (dir === 'in') {
-    pc.addEventListener('track', (event) => {
-      // O mesmo stream traz video e audio; o tile lida com os dois.
-      const peer = peers.get(peerId);
-      showTile(peerId, peer ? peer.name : peerId, event.streams[0]);
-    });
-  }
-
-  pc.addEventListener('connectionstatechange', () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && dir === 'in') {
-      removeTile(peerId);
-    }
-    renderPeers();
-  });
-
-  return pc;
-}
-
-/** Conexao pela qual EU envio minha tela pra este peer. */
-function ensureOutConn(peerId) {
-  let peer = peers.get(peerId);
-  if (!peer) {
-    addPeer(peerId, `#${peerId}`);
-    peer = peers.get(peerId);
-  }
-  if (!peer.outConn) peer.outConn = makeConnection(peerId, 'out');
-  return peer.outConn;
-}
-
-/** Conexao pela qual EU recebo a tela deste peer. Sempre recriada numa
- * offer nova, porque cada sessao de transmissao usa credenciais ICE novas. */
-function ensureInConn(peerId) {
-  let peer = peers.get(peerId);
-  if (!peer) {
-    addPeer(peerId, `#${peerId}`);
-    peer = peers.get(peerId);
-  }
-  if (peer.inConn) {
-    peer.inConn.close();
-    removeTile(peerId);
-  }
-  peer.inConn = makeConnection(peerId, 'in');
-  return peer.inConn;
-}
-
-/** Envia minha tela pra um peer especifico. */
-async function offerTo(peerId) {
-  const pc = ensureOutConn(peerId);
-  const q = quality();
-
-  for (const track of localStream.getTracks()) {
-    const transceiver = pc.addTransceiver(track, {
-      direction: 'sendonly',
-      streams: [localStream],
-      sendEncodings: track.kind === 'video'
-        ? [{ maxBitrate: q.bitrate, maxFramerate: q.fps }]
-        : undefined,
-    });
-    if (track.kind === 'video') preferCodec(transceiver, q.codec);
-  }
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  signal({ type: 'offer', to: peerId, sdp: pc.localDescription });
-}
-
-/**
- * Coloca o codec desejado no topo da lista de preferencias. Se a maquina nao
- * suportar, a lista continua valida e o WebRTC escolhe outro.
- */
-function preferCodec(transceiver, mimeType) {
-  if (!transceiver.setCodecPreferences) return;
-  const caps = RTCRtpSender.getCapabilities('video');
-  if (!caps) return;
-  const wanted = caps.codecs.filter((c) => c.mimeType.toLowerCase() === mimeType.toLowerCase());
-  if (!wanted.length) return;
-  const rest = caps.codecs.filter((c) => c.mimeType.toLowerCase() !== mimeType.toLowerCase());
-  try {
-    transceiver.setCodecPreferences([...wanted, ...rest]);
-  } catch {
-    /* combinacao nao suportada, segue com o padrao */
-  }
-}
-
-/**
- * Aplica bitrate, framerate e — o mais importante — degradationPreference.
- *
- * 'maintain-framerate' e o que faz o compartilhamento parecer suave: quando a
- * banda aperta, o encoder derruba a resolucao e segura os 60 fps, em vez do
- * padrao que congela a imagem pra manter os pixels.
- */
-function applyEncoding() {
-  const q = quality();
-  for (const peer of peers.values()) {
-    if (!peer.outConn) continue;
-    for (const sender of peer.outConn.getSenders()) {
-      if (!sender.track || sender.track.kind !== 'video') continue;
-      const params = sender.getParameters();
-      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
-      params.encodings[0].maxBitrate = q.bitrate;
-      params.encodings[0].maxFramerate = q.fps;
-      params.degradationPreference = 'maintain-framerate';
-      sender.setParameters(params).catch(() => {});
-    }
-  }
-}
-
-// --- Captura de tela ---------------------------------------------------
-
-el.share.addEventListener('click', openPicker);
-
-async function openPicker() {
-  const sources = await window.golive.listSources();
-  el.pickerGrid.innerHTML = '';
-
-  for (const source of sources) {
-    const card = document.createElement('button');
-    card.className = 'source-card';
-    card.innerHTML = `
-      <img src="${source.thumbnail}" alt="" />
-      <span class="source-name">${escapeHtml(source.name)}</span>
-      <span class="source-meta">${source.isScreen ? 'Tela' : 'Janela'}${
-        source.resolution ? ` &middot; ${source.resolution}` : ''
-      }</span>`;
-    card.addEventListener('click', () => startShare(source.id));
-    el.pickerGrid.appendChild(card);
-  }
-
-  el.picker.classList.remove('hidden');
-}
-
-el.pickerCancel.addEventListener('click', () => el.picker.classList.add('hidden'));
-
-async function startShare(sourceId) {
-  el.picker.classList.add('hidden');
-  const q = quality();
-
-  await window.golive.selectSource(sourceId, el.audio.checked);
-
-  try {
-    localStream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        width: { ideal: q.width, max: q.width },
-        height: { ideal: q.height, max: q.height },
-        frameRate: { ideal: q.fps, max: q.fps },
-      },
-      audio: el.audio.checked,
-    });
-  } catch (err) {
-    alert(`Nao consegui capturar a tela: ${err.message}`);
-    return;
-  }
-
-  const track = localStream.getVideoTracks()[0];
-  if (track) {
-    // Diz ao encoder que isto e video em movimento (jogo/video), nao um
-    // slide parado. Sem isto o Chromium prioriza nitidez e derruba o fps.
-    track.contentHint = 'motion';
-    // Reforca o pedido: alguns caminhos de captura ignoram as constraints
-    // iniciais e entregam 30 fps caladamente.
-    track.applyConstraints({ frameRate: { ideal: q.fps, max: q.fps } }).catch(() => {});
-    // Se o usuario parar pela notificacao do sistema, encerramos junto.
-    track.addEventListener('ended', stopShare);
-  }
-  const audioTrack = localStream.getAudioTracks()[0];
-  if (audioTrack) audioTrack.contentHint = 'music';
-
-  showTile('me', 'Voce (previa)', localStream, true);
-
-  for (const peerId of peers.keys()) await offerTo(peerId);
-
-  signal({ type: 'broadcast-state', live: true });
-  el.share.classList.add('hidden');
-  el.stop.classList.remove('hidden');
-  startStatsLoop();
-}
-
-function stopShare() {
-  if (!localStream) return;
-  localStream.getTracks().forEach((t) => t.stop());
-  localStream = null;
-
-  for (const peer of peers.values()) {
-    if (!peer.outConn) continue;
-    peer.outConn.close();
-    peer.outConn = null;
-  }
-
-  removeTile('me');
-  signal({ type: 'broadcast-state', live: false });
-  el.share.classList.remove('hidden');
-  el.stop.classList.add('hidden');
-  stopStatsLoop();
-}
-
-el.stop.addEventListener('click', stopShare);
-
-// --- Grade de video ----------------------------------------------------
-
-function showTile(id, label, stream, muted = false) {
-  el.grid.querySelector('.empty')?.remove();
-
-  let tile = document.getElementById(`tile-${id}`);
-  if (!tile) {
-    tile = document.createElement('div');
-    tile.className = 'tile';
-    tile.id = `tile-${id}`;
-    tile.innerHTML = `<video autoplay playsinline></video><span class="tile-label"></span>`;
-    tile.addEventListener('dblclick', () => tile.classList.toggle('fullscreen'));
-    el.grid.appendChild(tile);
-  }
-
-  const video = tile.querySelector('video');
-  // Evita reatribuir o mesmo stream (causa piscada na imagem).
-  if (video.srcObject !== stream) video.srcObject = stream;
-  video.muted = muted;
-  tile.querySelector('.tile-label').textContent = label;
-}
-
-function removeTile(id) {
-  document.getElementById(`tile-${id}`)?.remove();
-  if (!el.grid.children.length) {
-    el.grid.innerHTML = '<div class="empty">Ninguem transmitindo ainda.</div>';
-  }
-}
-
-function renderPeers() {
-  el.peerList.innerHTML = '';
-  if (!peers.size) {
-    el.peerList.innerHTML = '<li class="muted">so voce por aqui</li>';
-    return;
-  }
-  for (const peer of peers.values()) {
-    const li = document.createElement('li');
-    const state = peer.inConn?.connectionState || peer.outConn?.connectionState;
-    li.innerHTML = `
-      <span class="dot ${state === 'connected' ? 'ok' : state ? 'warn' : ''}"></span>
-      ${escapeHtml(peer.name)}
-      ${peer.live ? '<em>ao vivo</em>' : ''}`;
-    el.peerList.appendChild(li);
-  }
-}
-
-function renderHostPanel() {
-  const panel = document.getElementById('host-panel');
-  if (!hostInfo) {
-    panel.classList.add('hidden');
-    panel.innerHTML = '';
-    return;
-  }
-
-  panel.classList.remove('hidden');
-  const addressLine = hostInfo.address
-    ? `<div class="host-address">${hostInfo.address} <button id="btn-copy-address" class="ghost small">Copiar</button></div>`
-    : '';
-
-  const warnings = [];
-  if (hostInfo.addressWarning) {
-    warnings.push(
-      `<div class="warn-box">${escapeHtml(hostInfo.addressWarning)} — endereço abaixo só funciona na mesma rede local.</div>`
-    );
-  }
-  if (!hostInfo.firewall.ok) {
-    warnings.push(`
-      <div class="warn-box">
-        Não consegui liberar a porta no firewall automaticamente.
-        <code>${escapeHtml(hostInfo.firewall.manualCommand)}</code>
-        <button id="btn-copy-firewall" class="ghost small">Copiar comando</button>
-      </div>`);
-  }
-
-  panel.innerHTML = `
-    <h2>Sala ativa</h2>
-    ${addressLine}
-    <p class="hint">Se você fechar o GoLive, a sala cai pra todo mundo.</p>
-    ${warnings.join('')}`;
-
-  document.getElementById('btn-copy-address')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(hostInfo.address);
-  });
-  document.getElementById('btn-copy-firewall')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(hostInfo.firewall.manualCommand);
-  });
-}
-
-// --- Estatisticas ------------------------------------------------------
-
-let statsTimer = null;
-let lastBytes = 0;
-let lastAt = 0;
-
-function startStatsLoop() {
-  stopStatsLoop();
-  statsTimer = setInterval(updateStats, 1000);
-}
-
-function stopStatsLoop() {
-  clearInterval(statsTimer);
-  statsTimer = null;
-  el.stats.innerHTML = '';
-}
-
-async function updateStats() {
-  let fps = 0;
-  let bytes = 0;
-  let rtt = 0;
-  let width = 0;
-  let height = 0;
-  let codec = '';
-  let limitation = '';
-  let connections = 0;
-
-  for (const peer of peers.values()) {
-    if (!peer.outConn || peer.outConn.connectionState !== 'connected') continue;
-    connections++;
-    const report = await peer.outConn.getStats();
-    report.forEach((stat) => {
-      if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
-        fps = Math.max(fps, stat.framesPerSecond || 0);
-        bytes += stat.bytesSent || 0;
-        width = stat.frameWidth || width;
-        height = stat.frameHeight || height;
-        if (stat.qualityLimitationReason && stat.qualityLimitationReason !== 'none') {
-          limitation = stat.qualityLimitationReason;
-        }
-      }
-      if (stat.type === 'codec' && stat.mimeType?.startsWith('video/')) {
-        codec = stat.mimeType.split('/')[1];
-      }
-      if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
-        rtt = Math.max(rtt, stat.currentRoundTripTime * 1000);
-      }
-    });
-  }
-
-  const now = performance.now();
-  let mbps = 0;
-  if (lastAt) mbps = ((bytes - lastBytes) * 8) / ((now - lastAt) / 1000) / 1_000_000;
-  lastBytes = bytes;
-  lastAt = now;
-
-  // qualityLimitationReason e o diagnostico mais util aqui: diz se quem esta
-  // te segurando e a CPU, a banda da rede ou o proprio encoder.
-  const motivo = {
-    bandwidth: 'banda da rede insuficiente',
-    cpu: 'CPU no limite',
-    other: 'limite do encoder',
-  }[limitation];
-
-  el.stats.innerHTML = `
-    <div class="stat"><span>enviando pra</span><b>${connections} peer(s)</b></div>
-    <div class="stat"><span>resolucao</span><b>${width}x${height}</b></div>
-    <div class="stat"><span>fps real</span><b class="${fps >= 50 ? 'good' : 'warn-text'}">${Math.round(fps)}</b></div>
-    <div class="stat"><span>saida total</span><b>${mbps.toFixed(1)} Mbps</b></div>
-    <div class="stat"><span>latencia</span><b>${rtt ? Math.round(rtt) + ' ms' : '-'}</b></div>
-    <div class="stat"><span>codec</span><b>${codec || '-'}</b></div>
-    ${motivo ? `<div class="stat-warn">Limitado por: ${motivo}</div>` : ''}`;
-}
-
-// --- Utilidades --------------------------------------------------------
-
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
-}
+})();
