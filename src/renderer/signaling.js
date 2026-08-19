@@ -7,7 +7,14 @@
 
     ws.addEventListener('open', () => onOpen && onOpen());
     ws.addEventListener('message', (event) => {
-      if (onMessage) onMessage(JSON.parse(event.data));
+      if (!onMessage) return;
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        return; // frame malformado, ignora
+      }
+      onMessage(data);
     });
     ws.addEventListener('error', () => onError && onError());
     ws.addEventListener('close', () => onClose && onClose());

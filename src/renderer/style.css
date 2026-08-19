@@ -136,6 +136,17 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   justify-content: space-between;
 }
 .user-panel-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#user-panel-name {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+#user-panel-name:hover { background: var(--bg-panel); }
+#user-panel-name:focus { outline: none; border-color: var(--accent); background: var(--bg-panel); }
 .user-panel-actions { display: flex; gap: 4px; }
 .icon-btn {
   width: 32px; height: 32px;

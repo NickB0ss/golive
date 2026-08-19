@@ -70,21 +70,17 @@ npm install
 
 ## Como usar
 
-**1. Alguém da turma clica em "Criar sala"** na tela inicial do GoLive.
-O app sobe o servidor de sinalização embutido, libera a porta no firewall
-(pode pedir uma confirmação do Windows na primeira vez) e mostra um
-endereço pronto pra copiar:
-
-```
-Sala ativa
-26.13.45.201:9000              [Copiar]
-```
+**1. Alguém da turma clica no `+` do trilho ("Criar sala")** na tela inicial
+do GoLive. O app sobe o servidor de sinalização embutido, libera a porta no
+firewall (pode pedir uma confirmação do Windows na primeira vez) e mostra o
+endereço no cabeçalho do palco, com um botão **Copiar** ao lado.
 
 Sem terminal, sem instalar Node à parte, sem digitar porta.
 
-**2. Todo mundo mais abre o GoLive** e clica em "Entrar em sala", cola o
-endereço (`26.x.x.x` — a porta é opcional, assume `:9000`), escolhe um
-nome e clica em Conectar.
+**2. Todo mundo mais abre o GoLive** e clica em "Entrar por endereço", cola o
+endereço (`26.x.x.x` — a porta é opcional, assume `:9000`) e clica em
+Conectar. O nome exibido pros outros é o apelido definido no painel do
+usuário (canto inferior esquerdo, clique pra editar).
 
 Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
 janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
@@ -114,8 +110,9 @@ clica em **Criar sala** (ver "Como usar" acima).
 
 ## Configurações de qualidade
 
-Tudo no painel da esquerda, e tudo aplica ao vivo — não precisa reiniciar a
-transmissão.
+Ficam no modal de Configurações (ícone de engrenagem no painel do usuário,
+canto inferior esquerdo), na aba "Transmissão". Tudo aplica ao vivo — não
+precisa reiniciar a transmissão.
 
 - **Bitrate** — o botão mais importante. Suba até a imagem ficar boa, desça
   assim que o indicador acusar `Limitado por: banda da rede insuficiente`.
@@ -159,10 +156,11 @@ Compartilhamento de tela em WebRTC entrega 30 fps por padrão, mesmo pedindo
 **"Não consegui conectar"** — quem criou a sala precisa estar com o GoLive
 aberto: ao clicar em "Criar sala" o app sobe o servidor embutido e tenta
 liberar a porta no firewall sozinho (a porta pode cair em qualquer valor
-entre 9000 e 9010, mostrado no painel "Sala ativa"). Se a liberação
-automática falhar, o painel mostra um aviso com um botão **"Copiar
-comando"** — copie e rode esse comando como administrador na máquina que
-criou a sala.
+entre 9000 e 9010, mostrado no cabeçalho do palco). Se a liberação
+automática falhar, aparece um aviso acima da grade de vídeo com o comando
+manual pra liberar a porta — copie o texto e rode esse comando como
+administrador na máquina que criou a sala (ainda não tem botão de copiar
+pra esse comando específico, é copiar o texto mesmo).
 
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O
 Radmin às vezes bloqueia UDP entre peers; teste um `ping 26.x.x.x` primeiro.

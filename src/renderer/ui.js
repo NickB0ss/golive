@@ -72,7 +72,7 @@
       button.type = 'button';
       button.innerHTML = `
         <span class="room-name"># ${escapeHtml(room.name || room.hostName || 'sala')}</span>
-        <span class="room-meta">${room.peers != null ? `${room.peers} pessoa(s)` : escapeHtml(room.address)}</span>`;
+        <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>`;
       button.addEventListener('click', () => onSelect(room));
       li.appendChild(button);
       roomListEl.appendChild(li);

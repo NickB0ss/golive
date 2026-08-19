@@ -5,10 +5,16 @@
   const { config, signaling, mesh: meshModule, ui } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
-  let sig = null;
-  let mesh = null;
+  // `currentSession` is the single source of truth for "the session that is
+  // live right now". Every async callback (WS messages, WebRTC events,
+  // capture promises) captures the specific `session` object it belongs to
+  // and checks `currentSession !== session` before touching anything — that
+  // way a late event from a torn-down or superseded session is a no-op
+  // instead of throwing on stale/null state.
+  let currentSession = null; // { sig, mesh } | null
   let myId = null;
   let localStream = null;
+  let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let hostInfo = null;
   let statsTimer = null;
   let lastBytes = 0;
@@ -21,15 +27,34 @@
   }
 
   function emptyMessage() {
-    return sig ? 'Ninguém transmitindo ainda.' : 'Entre ou crie uma sala pra começar.';
+    return currentSession ? 'Ninguém transmitindo ainda.' : 'Entre ou crie uma sala pra começar.';
   }
 
   // ---------- Painel do usuario ----------
 
+  const nameInput = $('user-panel-name');
+
   function renderUserPanel() {
-    $('user-panel-name').textContent = cfg.name || 'anônimo';
+    nameInput.value = cfg.name || '';
   }
   renderUserPanel();
+
+  function commitName() {
+    const value = nameInput.value.trim();
+    cfg = { ...cfg, name: value };
+    persist();
+    renderUserPanel();
+  }
+  nameInput.addEventListener('blur', commitName);
+  nameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      nameInput.blur(); // dispara commitName via blur
+    } else if (event.key === 'Escape') {
+      renderUserPanel();
+      nameInput.blur();
+    }
+  });
 
   $('btn-open-settings').addEventListener('click', () => {
     ui.settings.open(cfg, {
@@ -58,7 +83,7 @@
     if (track) {
       await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
     }
-    mesh.applyEncoding(cfg.quality);
+    currentSession?.mesh?.applyEncoding(cfg.quality);
   }
 
   // ---------- Lista de salas ----------
@@ -162,19 +187,21 @@
 
   // ---------- Encerramento de sessao (desconexao ou troca de sala) ----------
 
-  function teardownSession() {
+  // Limpa o estado de UI/mesh associado a uma sessao especifica. Chamada so
+  // depois que `currentSession` ja deixou de apontar pra ela, entao qualquer
+  // callback tardio dessa sessao ja vai ter parado de agir sozinho.
+  function teardownSession(session) {
     stopStatsLoop();
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
       ui.grid.removeTile('me', emptyMessage());
     }
-    if (mesh) {
-      for (const peerId of Array.from(mesh.peers.keys())) {
-        mesh.removePeer(peerId);
+    if (session?.mesh) {
+      for (const peerId of Array.from(session.mesh.peers.keys())) {
+        session.mesh.removePeer(peerId);
         ui.grid.removeTile(peerId, emptyMessage());
       }
-      mesh = null;
     }
     $('btn-toggle-share').classList.remove('active');
     ui.members.render(new Map());
@@ -185,54 +212,79 @@
   function joinRoom(url, name, publicAddress, onSettled) {
     $('setup-error').textContent = '';
 
-    if (sig) {
-      const oldSig = sig;
-      sig = null;
-      oldSig.close();
+    if (currentSession) {
+      const oldSession = currentSession;
+      currentSession = null; // invalida a sessao antiga imediatamente
+      oldSession.sig?.close();
       ui.stageHeader.clear();
-      teardownSession();
+      teardownSession(oldSession);
     }
 
-    let connHandle;
-    connHandle = signaling.connect(url, {
-      onOpen: () => {
-        cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
-        persist();
-        renderRoomList();
-        sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
-        ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
-        onSettled?.();
-      },
-      onMessage: handleSignal,
-      onError: () => {
-        $('setup-error').textContent =
-          'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
-        onSettled?.();
-      },
-      onClose: () => {
-        if (sig !== connHandle) return; // conexao antiga, ja substituida
-        sig = null;
-        ui.stageHeader.clear();
-        teardownSession();
-      },
-    });
-    sig = connHandle;
+    const session = { sig: null, mesh: null };
 
-    mesh = meshModule.createMesh({
-      send: (payload) => sig.send(payload),
-      onTrack: (peerId, name, stream) => ui.grid.showTile(peerId, name, stream),
+    let connHandle;
+    try {
+      connHandle = signaling.connect(url, {
+        onOpen: () => {
+          if (currentSession !== session) return;
+          cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
+          persist();
+          renderRoomList();
+          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
+          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
+          onSettled?.();
+        },
+        onMessage: (msg) => handleSignal(session, msg),
+        onError: () => {
+          if (currentSession === session) {
+            $('setup-error').textContent =
+              'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
+          }
+          onSettled?.();
+        },
+        onClose: () => {
+          if (currentSession !== session) return; // conexao antiga, ja substituida
+          currentSession = null;
+          ui.stageHeader.clear();
+          teardownSession(session);
+        },
+      });
+    } catch {
+      // Endereco malformado (ex: porta nao numerica) faz `new WebSocket`
+      // estourar de forma sincrona. Sem isso o botao que chamou joinRoom
+      // ficava travado em "Conectando…" pra sempre.
+      $('setup-error').textContent = 'Não consegui conectar: endereço inválido.';
+      onSettled?.();
+      return;
+    }
+    session.sig = connHandle;
+
+    session.mesh = meshModule.createMesh({
+      send: (payload) => {
+        if (currentSession === session) session.sig.send(payload);
+      },
+      onTrack: (peerId, peerName, stream) => {
+        if (currentSession !== session) return;
+        ui.grid.showTile(peerId, peerName, stream);
+      },
       onPeerState: (peerId, { removedTile }) => {
+        if (currentSession !== session) return;
         if (removedTile) ui.grid.removeTile(peerId, emptyMessage());
-        ui.members.render(mesh.peers);
+        ui.members.render(session.mesh.peers);
       },
     });
+
+    currentSession = session;
   }
 
   $('btn-copy-address').addEventListener('click', () => {
     if (hostInfo?.address) navigator.clipboard.writeText(hostInfo.address);
   });
 
-  async function handleSignal(msg) {
+  async function handleSignal(session, msg) {
+    if (currentSession !== session) return;
+    const mesh = session.mesh;
+    const sig = session.sig;
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
@@ -254,11 +306,13 @@
       }
       case 'offer': {
         const answerSdp = await mesh.handleOffer(msg.from, msg.sdp);
+        if (currentSession !== session) return; // sessao caiu enquanto negociava
         sig.send({ type: 'answer', to: msg.from, sdp: answerSdp });
         break;
       }
       case 'answer': {
         await mesh.handleAnswer(msg.from, msg.sdp);
+        if (currentSession !== session) return;
         mesh.applyEncoding(cfg.quality);
         break;
       }
@@ -280,59 +334,82 @@
 
   $('btn-toggle-share').addEventListener('click', () => {
     if (localStream) return stopShare();
-    if (!sig || !sig.isOpen() || !mesh) return;
+    if (sharing) return; // ja tem um startShare() em andamento, ignora o duplo clique
+    if (!currentSession || !currentSession.sig.isOpen()) return;
     ui.picker.open({ onGoLive: startShare });
   });
 
   async function startShare(sourceId, audioMode, audioDeviceId) {
-    if (!sig || !sig.isOpen() || !mesh) return;
-    await window.golive.selectSource(sourceId, audioMode);
+    if (sharing || localStream) return;
+    const session = currentSession;
+    if (!session || !session.sig.isOpen()) return;
 
+    sharing = true;
     try {
-      localStream = await navigator.mediaDevices.getDisplayMedia({
-        video: config.videoConstraints(cfg.quality),
-        audio: audioMode === 'system',
-      });
-    } catch (err) {
-      alert(`Não consegui capturar a tela: ${err.message}`);
-      return;
-    }
+      await window.golive.selectSource(sourceId, audioMode);
+      if (currentSession !== session) return; // sessao caiu antes de capturar qualquer coisa
 
-    if (audioMode === 'device' && audioDeviceId) {
+      let stream;
       try {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: audioDeviceId } } });
-        const [track] = micStream.getAudioTracks();
-        if (track) localStream.addTrack(track);
-      } catch {
-        /* usuario recusou o dispositivo, segue so com video */
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: config.videoConstraints(cfg.quality),
+          audio: audioMode === 'system',
+        });
+      } catch (err) {
+        alert(`Não consegui capturar a tela: ${err.message}`);
+        return;
       }
+
+      if (currentSession !== session) {
+        stream.getTracks().forEach((t) => t.stop()); // sessao caiu durante o picker do SO, nao deixa a captura orfa rodando
+        return;
+      }
+
+      if (audioMode === 'device' && audioDeviceId) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: audioDeviceId } } });
+          if (currentSession !== session) {
+            stream.getTracks().forEach((t) => t.stop());
+            micStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          const [track] = micStream.getAudioTracks();
+          if (track) stream.addTrack(track);
+        } catch {
+          /* usuario recusou o dispositivo, segue so com video */
+        }
+      }
+
+      localStream = stream;
+      const track = localStream.getVideoTracks()[0];
+      if (track) {
+        track.contentHint = 'motion';
+        track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
+        track.addEventListener('ended', stopShare);
+      }
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) audioTrack.contentHint = 'music';
+
+      ui.grid.showTile('me', 'Você (prévia)', localStream, true);
+
+      for (const peerId of session.mesh.peers.keys()) await session.mesh.offerTo(peerId, localStream, cfg.quality);
+      if (currentSession !== session) return;
+
+      session.sig.send({ type: 'broadcast-state', live: true });
+      $('btn-toggle-share').classList.add('active');
+      startStatsLoop();
+    } finally {
+      sharing = false;
     }
-
-    const track = localStream.getVideoTracks()[0];
-    if (track) {
-      track.contentHint = 'motion';
-      track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
-      track.addEventListener('ended', stopShare);
-    }
-    const audioTrack = localStream.getAudioTracks()[0];
-    if (audioTrack) audioTrack.contentHint = 'music';
-
-    ui.grid.showTile('me', 'Você (prévia)', localStream, true);
-
-    for (const peerId of mesh.peers.keys()) await mesh.offerTo(peerId, localStream, cfg.quality);
-
-    sig.send({ type: 'broadcast-state', live: true });
-    $('btn-toggle-share').classList.add('active');
-    startStatsLoop();
   }
 
   function stopShare() {
     if (!localStream) return;
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
-    mesh?.closeAllOut();
+    currentSession?.mesh?.closeAllOut();
     ui.grid.removeTile('me', emptyMessage());
-    if (sig?.isOpen()) sig.send({ type: 'broadcast-state', live: false });
+    if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
     stopStatsLoop();
   }
@@ -341,6 +418,8 @@
 
   function startStatsLoop() {
     stopStatsLoop();
+    lastBytes = 0;
+    lastAt = 0;
     statsTimer = setInterval(updateStats, 1000);
   }
 
@@ -351,13 +430,14 @@
   }
 
   async function updateStats() {
-    const activeMesh = mesh;
-    if (!activeMesh) return;
+    const session = currentSession;
+    if (!session?.mesh) return;
+    const activeMesh = session.mesh;
 
     let fps = 0, bytes = 0, rtt = 0, width = 0, height = 0, codec = '', limitation = '', connections = 0;
 
     for (const peerId of activeMesh.peers.keys()) {
-      if (mesh !== activeMesh) return; // sessao encerrou enquanto aguardavamos as stats
+      if (currentSession !== session) return; // sessao encerrou enquanto aguardavamos as stats
       const report = await activeMesh.statsFor(peerId);
       if (!report) continue;
       connections++;
@@ -380,7 +460,7 @@
       });
     }
 
-    if (mesh !== activeMesh) return; // sessao caiu enquanto aguardavamos as stats
+    if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
 
     const now = performance.now();
     let mbps = 0;
