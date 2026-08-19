@@ -320,3 +320,5 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   font-size: 0.85em;
 }
 .warn-box code { display: block; margin: 6px 0; word-break: break-all; }
+
+#stage-warning { margin: 8px 20px 0; }

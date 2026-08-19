@@ -64,7 +64,13 @@
   // ---------- Lista de salas ----------
 
   function renderRoomList() {
-    ui.rooms.render(cfg.recentRooms, { onSelect: (room) => joinRoom(room.address, cfg.name) });
+    ui.rooms.render(cfg.recentRooms, {
+      onSelect: (room) => {
+        hostInfo = null;
+        renderHostWarning();
+        joinRoom(room.address, cfg.name);
+      },
+    });
   }
   renderRoomList();
 
@@ -73,54 +79,144 @@
   });
 
   $('btn-connect').addEventListener('click', () => {
+    $('setup-error').textContent = '';
     let url = $('in-server').value.trim();
     if (!url) return ($('setup-error').textContent = 'Informe o endereço do servidor.');
     if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
     if (!/:\d+$/.test(url)) url += ':9000';
-    joinRoom(url, cfg.name);
+
+    hostInfo = null;
+    renderHostWarning();
+
+    const btn = $('btn-connect');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Conectando…';
+    const restoreBtn = () => {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    };
+
+    joinRoom(url, cfg.name, undefined, restoreBtn);
   });
 
   $('btn-create-room').addEventListener('click', async () => {
-    let result;
+    $('setup-error').textContent = '';
+    const btn = $('btn-create-room');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '…';
+
     try {
-      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo' });
-    } catch {
-      $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
-      return;
+      let result;
+      try {
+        result = await window.golive.hostRoom({ name: cfg.name || 'anônimo' });
+      } catch {
+        $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
+        return;
+      }
+      if (!result.ok) {
+        $('setup-error').textContent =
+          result.error === 'PORTS_EXHAUSTED'
+            ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
+            : `Não consegui subir a sala: ${result.error}`;
+        return;
+      }
+      hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+      renderHostWarning();
+      joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
     }
-    if (!result.ok) {
-      $('setup-error').textContent =
-        result.error === 'PORTS_EXHAUSTED'
-          ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
-          : `Não consegui subir a sala: ${result.error}`;
-      return;
-    }
-    hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
-    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address);
   });
+
+  // ---------- Aviso de firewall/endereco do host ----------
+
+  function renderHostWarning() {
+    const el = $('stage-warning');
+    if (!el) return;
+    if (!hostInfo) {
+      el.classList.add('hidden');
+      el.textContent = '';
+      return;
+    }
+    const parts = [];
+    if (hostInfo.addressWarning) {
+      parts.push(`${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`);
+    }
+    if (hostInfo.firewall && !hostInfo.firewall.ok) {
+      parts.push(
+        `Não consegui liberar a porta no firewall automaticamente. Comando manual: ${hostInfo.firewall.manualCommand}`
+      );
+    }
+    if (!parts.length) {
+      el.classList.add('hidden');
+      el.textContent = '';
+      return;
+    }
+    el.textContent = parts.join(' ');
+    el.classList.remove('hidden');
+  }
+  renderHostWarning();
+
+  // ---------- Encerramento de sessao (desconexao ou troca de sala) ----------
+
+  function teardownSession() {
+    stopStatsLoop();
+    if (localStream) {
+      localStream.getTracks().forEach((t) => t.stop());
+      localStream = null;
+      ui.grid.removeTile('me', emptyMessage());
+    }
+    if (mesh) {
+      for (const peerId of Array.from(mesh.peers.keys())) {
+        mesh.removePeer(peerId);
+        ui.grid.removeTile(peerId, emptyMessage());
+      }
+      mesh = null;
+    }
+    $('btn-toggle-share').classList.remove('active');
+    ui.members.render(new Map());
+  }
 
   // ---------- Conexao de sinalizacao ----------
 
-  function joinRoom(url, name, publicAddress) {
-    sig = signaling.connect(url, {
+  function joinRoom(url, name, publicAddress, onSettled) {
+    $('setup-error').textContent = '';
+
+    if (sig) {
+      const oldSig = sig;
+      sig = null;
+      oldSig.close();
+      ui.stageHeader.clear();
+      teardownSession();
+    }
+
+    let connHandle;
+    connHandle = signaling.connect(url, {
       onOpen: () => {
         cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
         persist();
         renderRoomList();
         sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
         ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
+        onSettled?.();
       },
       onMessage: handleSignal,
       onError: () => {
         $('setup-error').textContent =
           'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
+        onSettled?.();
       },
       onClose: () => {
+        if (sig !== connHandle) return; // conexao antiga, ja substituida
+        sig = null;
         ui.stageHeader.clear();
-        mesh = null;
-        ui.members.render(new Map());
+        teardownSession();
       },
     });
+    sig = connHandle;
 
     mesh = meshModule.createMesh({
       send: (payload) => sig.send(payload),
@@ -184,11 +280,12 @@
 
   $('btn-toggle-share').addEventListener('click', () => {
     if (localStream) return stopShare();
+    if (!sig || !sig.isOpen() || !mesh) return;
     ui.picker.open({ onGoLive: startShare });
   });
 
   async function startShare(sourceId, audioMode, audioDeviceId) {
-    if (!sig) return;
+    if (!sig || !sig.isOpen() || !mesh) return;
     await window.golive.selectSource(sourceId, audioMode);
 
     try {
@@ -233,9 +330,9 @@
     if (!localStream) return;
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
-    mesh.closeAllOut();
+    mesh?.closeAllOut();
     ui.grid.removeTile('me', emptyMessage());
-    sig.send({ type: 'broadcast-state', live: false });
+    if (sig?.isOpen()) sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
     stopStatsLoop();
   }
@@ -254,10 +351,14 @@
   }
 
   async function updateStats() {
+    const activeMesh = mesh;
+    if (!activeMesh) return;
+
     let fps = 0, bytes = 0, rtt = 0, width = 0, height = 0, codec = '', limitation = '', connections = 0;
 
-    for (const peerId of mesh.peers.keys()) {
-      const report = await mesh.statsFor(peerId);
+    for (const peerId of activeMesh.peers.keys()) {
+      if (mesh !== activeMesh) return; // sessao encerrou enquanto aguardavamos as stats
+      const report = await activeMesh.statsFor(peerId);
       if (!report) continue;
       connections++;
       report.forEach((stat) => {
@@ -278,6 +379,8 @@
         }
       });
     }
+
+    if (mesh !== activeMesh) return; // sessao caiu enquanto aguardavamos as stats
 
     const now = performance.now();
     let mbps = 0;
