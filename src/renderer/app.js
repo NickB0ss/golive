@@ -377,8 +377,8 @@
     ui.stageHeader.clear();
     renderHostWarning();
     teardownSession(session);
-    renderRoomList();
     markCooldown(leavingAddress);
+    renderRoomList();
   }
   $('btn-disconnect').addEventListener('click', () => {
     if (cooldownRemaining(activeRoomAddress) > 0) return;
