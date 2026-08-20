@@ -20,8 +20,17 @@
       tile = document.createElement('div');
       tile.className = 'tile';
       tile.id = `tile-${id}`;
-      tile.innerHTML = `<video autoplay playsinline></video><span class="tile-label"></span>`;
+      tile.innerHTML = `
+        <video autoplay playsinline></video>
+        <span class="tile-label"></span>
+        <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>`;
       tile.addEventListener('dblclick', () => tile.classList.toggle('fullscreen'));
+      tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
+        event.stopPropagation();
+        tile.classList.toggle('fullscreen');
+      });
       gridEl.appendChild(tile);
     }
 
