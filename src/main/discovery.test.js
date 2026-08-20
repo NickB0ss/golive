@@ -122,3 +122,42 @@ test('toRoomList converte o Map interno pra lista simples e ordenada', () => {
     { name: 'B', address: 'b:9000', port: 9000 },
   ]);
 });
+
+test('formatBeacon inclui peers quando informado como inteiro valido', () => {
+  const raw = formatBeacon({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', peers: 3 });
+  assert.equal(JSON.parse(raw).peers, 3);
+});
+
+test('formatBeacon omite peers quando ausente ou invalido', () => {
+  assert.equal(JSON.parse(formatBeacon({ name: 'Sala', port: 9000, address: '1.2.3.4:9000' })).peers, undefined);
+  assert.equal(JSON.parse(formatBeacon({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', peers: -1 })).peers, undefined);
+  assert.equal(JSON.parse(formatBeacon({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', peers: 1.5 })).peers, undefined);
+});
+
+test('parseBeacon repassa peers quando presente e valido', () => {
+  const raw = formatBeacon({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', peers: 5 });
+  assert.equal(parseBeacon(raw).peers, 5);
+});
+
+test('parseBeacon compat: beacon sem peers continua valido e sem o campo', () => {
+  const raw = JSON.stringify({ type: 'golive-room', port: 9000, address: '1.2.3.4:9000' });
+  assert.equal(parseBeacon(raw).peers, undefined);
+});
+
+test('parseBeacon ignora peers invalido (negativo, float, string) sem invalidar o beacon', () => {
+  assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000, address: 'a', peers: -1 })).peers, undefined);
+  assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000, address: 'a', peers: 1.5 })).peers, undefined);
+  assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000, address: 'a', peers: 'x' })).peers, undefined);
+});
+
+test('toRoomList repassa peers quando presente', () => {
+  const rooms = new Map([
+    ['a:9000', { name: 'A', address: 'a:9000', port: 9000, peers: 2, lastSeen: 1 }],
+    ['b:9000', { name: 'B', address: 'b:9000', port: 9000, lastSeen: 1 }],
+  ]);
+  const list = toRoomList(rooms);
+  assert.deepEqual(list, [
+    { name: 'A', address: 'a:9000', port: 9000, peers: 2 },
+    { name: 'B', address: 'b:9000', port: 9000 },
+  ]);
+});

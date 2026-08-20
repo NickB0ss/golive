@@ -56,13 +56,15 @@ function listBroadcastTargets(interfaces = os.networkInterfaces()) {
 }
 
 /** Serializa o beacon que anuncia uma sala. */
-function formatBeacon({ name, port, address }) {
-  return JSON.stringify({
+function formatBeacon({ name, port, address, peers }) {
+  const payload = {
     type: BEACON_TYPE,
     name: typeof name === 'string' && name.trim() ? name.trim() : 'anônimo',
     port,
     address,
-  });
+  };
+  if (typeof peers === 'number' && Number.isInteger(peers) && peers >= 0) payload.peers = peers;
+  return JSON.stringify(payload);
 }
 
 /** Parseia e valida um beacon recebido. Devolve null se malformado. */
@@ -78,11 +80,15 @@ function parseBeacon(raw) {
   if (typeof data.port !== 'number' || !Number.isInteger(data.port) || data.port <= 0) return null;
   if (typeof data.address !== 'string' || !data.address.trim()) return null;
 
-  return {
+  const result = {
     name: typeof data.name === 'string' && data.name.trim() ? data.name.trim() : 'anônimo',
     port: data.port,
     address: data.address.trim(),
   };
+  if (typeof data.peers === 'number' && Number.isInteger(data.peers) && data.peers >= 0) {
+    result.peers = data.peers;
+  }
+  return result;
 }
 
 /** Uma sala expirou se nao chegou beacon novo dentro do TTL. */
@@ -105,7 +111,9 @@ function pruneExpiredRooms(roomsMap, now, ttl = ROOM_TTL_MS) {
 /** Formata o Map interno (chave = address) pra lista simples pro renderer. */
 function toRoomList(roomsMap) {
   return Array.from(roomsMap.values())
-    .map(({ name, address, port }) => ({ name, address, port }))
+    .map(({ name, address, port, peers }) =>
+      peers != null ? { name, address, port, peers } : { name, address, port }
+    )
     .sort((a, b) => a.address.localeCompare(b.address));
 }
 
@@ -122,33 +130,36 @@ function createDiscovery({
   deps = {},
 } = {}) {
   const dgram = deps.dgram || require('dgram');
-  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
   const rooms = new Map();
   let onRoomsChange = null;
   let advertiseTimer = null;
   let pruneTimer = null;
   let started = false;
+  let advertising = false;
+  let socket = null;
 
   function notify() {
     if (onRoomsChange) onRoomsChange(toRoomList(rooms));
   }
 
-  socket.on('message', (msg, rinfo) => {
-    const beacon = parseBeacon(msg);
-    if (!beacon) return;
-    void rinfo;
-    rooms.set(beacon.address, { ...beacon, lastSeen: Date.now() });
-    notify();
-  });
-
-  socket.on('error', () => {
-    /* socket UDP de descoberta e best-effort -- nunca deve derrubar o app */
-  });
+  function bindSocket(sock) {
+    sock.on('message', (msg) => {
+      const beacon = parseBeacon(msg);
+      if (!beacon) return;
+      rooms.set(beacon.address, { ...beacon, lastSeen: Date.now() });
+      notify();
+    });
+    sock.on('error', () => {
+      /* socket UDP de descoberta e best-effort -- nunca deve derrubar o app */
+    });
+  }
 
   function start() {
     if (started) return Promise.resolve();
     started = true;
+    socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    bindSocket(socket);
     return new Promise((resolve) => {
       socket.bind(port, () => {
         try {
@@ -164,10 +175,13 @@ function createDiscovery({
     });
   }
 
-  function startAdvertising({ name, port: roomPort, address }) {
+  function startAdvertising({ name, port: roomPort, address, getPeerCount }) {
     stopAdvertising();
-    const payload = Buffer.from(formatBeacon({ name, port: roomPort, address }));
+    advertising = true;
     const send = () => {
+      if (!socket) return;
+      const peers = typeof getPeerCount === 'function' ? getPeerCount() : undefined;
+      const payload = Buffer.from(formatBeacon({ name, port: roomPort, address, peers }));
       for (const target of listBroadcastTargets()) {
         socket.send(payload, port, target, () => {});
       }
@@ -179,6 +193,7 @@ function createDiscovery({
   function stopAdvertising() {
     if (advertiseTimer) clearInterval(advertiseTimer);
     advertiseTimer = null;
+    advertising = false;
   }
 
   function stop() {
@@ -187,10 +202,13 @@ function createDiscovery({
     pruneTimer = null;
     rooms.clear();
     started = false;
-    try {
-      socket.close();
-    } catch {
-      /* ja fechado */
+    if (socket) {
+      try {
+        socket.close();
+      } catch {
+        /* ja fechado */
+      }
+      socket = null;
     }
   }
 
@@ -202,7 +220,11 @@ function createDiscovery({
     return toRoomList(rooms);
   }
 
-  return { start, stop, startAdvertising, stopAdvertising, setOnRoomsChange, getRooms };
+  function isAdvertising() {
+    return advertising;
+  }
+
+  return { start, stop, startAdvertising, stopAdvertising, setOnRoomsChange, getRooms, isAdvertising };
 }
 
 module.exports = {
