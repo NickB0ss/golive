@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('golive', {
    * criado a sala). Sem efeito se nao houver sala local hospedada. */
   setAdvertise: (enabled) => ipcRenderer.invoke('discovery:setAdvertise', enabled),
 
+  /** Força um novo ciclo de descoberta: fecha e reabre o socket UDP,
+   * limpando salas conhecidas, e reanuncia a sala hospedada se havia uma
+   * sendo anunciada. */
+  refreshDiscovery: () => ipcRenderer.invoke('discovery:refresh'),
+
   /** Assina a lista de salas descobertas na rede via broadcast UDP. Chamado
    * sempre que a lista muda (nova sala anunciada, sala expirou). */
   onRoomsDiscovered: (callback) =>

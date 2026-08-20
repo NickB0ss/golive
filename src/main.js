@@ -123,6 +123,25 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+function advertiseHostedRoom() {
+  if (!embeddedServer) {
+    discovery.stopAdvertising();
+    return;
+  }
+  const picked = pickAddress();
+  const address = picked ? `${picked.address}:${embeddedServer.port}` : null;
+  if (!address) {
+    discovery.stopAdvertising();
+    return;
+  }
+  discovery.startAdvertising({
+    name: hostedRoomName,
+    port: embeddedServer.port,
+    address,
+    getPeerCount: () => embeddedServer.getPeerCount(),
+  });
+}
+
 // --- IPC ---------------------------------------------------------------
 
 ipcMain.handle('sources:list', async () => {
@@ -168,7 +187,7 @@ ipcMain.handle('room:host', async (_event, { name, advertise } = {}) => {
     hostedRoomName = name || 'anônimo';
     await ensureDiscoveryStarted();
     if (advertise && address) {
-      discovery.startAdvertising({ name: hostedRoomName, port: embeddedServer.port, address });
+      advertiseHostedRoom();
     } else {
       discovery.stopAdvertising();
     }
@@ -191,12 +210,15 @@ ipcMain.handle('discovery:setAdvertise', async (_event, enabled) => {
     discovery.stopAdvertising();
     return true;
   }
-  const picked = pickAddress();
-  const address = picked ? `${picked.address}:${embeddedServer.port}` : null;
-  if (!address) {
-    discovery.stopAdvertising();
-    return true;
-  }
-  discovery.startAdvertising({ name: hostedRoomName, port: embeddedServer.port, address });
+  advertiseHostedRoom();
+  return true;
+});
+
+ipcMain.handle('discovery:refresh', async () => {
+  const wasAdvertising = discovery.isAdvertising();
+  discovery.stop();
+  discoveryStarted = false;
+  await ensureDiscoveryStarted();
+  if (wasAdvertising) advertiseHostedRoom();
   return true;
 });
