@@ -192,7 +192,10 @@
         joinRoom(room.address, cfg.name);
       },
       onDelete: (room) => {
-        if (room.address === activeRoomAddress) leaveRoom();
+        if (room.address === activeRoomAddress) {
+          if (cooldownRemaining(activeRoomAddress) > 0) return; // delete de sala ativa espera o cooldown, evita estado desincronizado
+          leaveRoom();
+        }
         cfg = config.removeRecentRoom(cfg, room.address);
         persist();
         renderRoomList();

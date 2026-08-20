@@ -201,6 +201,7 @@ function createDiscovery({
     if (pruneTimer) clearInterval(pruneTimer);
     pruneTimer = null;
     rooms.clear();
+    notify();
     started = false;
     if (socket) {
       try {

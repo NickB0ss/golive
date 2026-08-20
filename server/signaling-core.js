@@ -67,7 +67,7 @@ function createSignalingServer({ port }) {
               if (joined) return;
               const room = String(msg.room || 'geral').slice(0, 40);
               const name = String(msg.name || 'anonimo').slice(0, 40);
-              const avatar = typeof msg.avatar === 'string' ? msg.avatar : null;
+              const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;
               peers.set(id, { ws, name, room, avatar });
               joined = true;
               log(`+ ${name} (#${id}) entrou na sala "${room}"`);
