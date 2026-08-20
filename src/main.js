@@ -82,6 +82,8 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  win.on('enter-full-screen', () => win?.webContents.send('window:fullscreen-changed', true));
+  win.on('leave-full-screen', () => win?.webContents.send('window:fullscreen-changed', false));
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -220,5 +222,10 @@ ipcMain.handle('discovery:refresh', async () => {
   discoveryStarted = false;
   await ensureDiscoveryStarted();
   if (wasAdvertising) advertiseHostedRoom();
+  return true;
+});
+
+ipcMain.handle('window:setFullScreen', (_event, enabled) => {
+  win?.setFullScreen(!!enabled);
   return true;
 });

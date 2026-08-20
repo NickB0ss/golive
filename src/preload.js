@@ -33,4 +33,13 @@ contextBridge.exposeInMainWorld('golive', {
    * sempre que a lista muda (nova sala anunciada, sala expirou). */
   onRoomsDiscovered: (callback) =>
     ipcRenderer.on('rooms:discovered', (_event, rooms) => callback(rooms)),
+
+  /** Liga/desliga o fullscreen real da janela do app (nao so o tile dentro
+   * dela). */
+  setFullScreen: (enabled) => ipcRenderer.invoke('window:setFullScreen', enabled),
+
+  /** Avisa quando o fullscreen da janela muda por qualquer via -- inclusive
+   * Esc ou controles nativos do SO, que nao passam pelo nosso botao. */
+  onFullScreenChange: (callback) =>
+    ipcRenderer.on('window:fullscreen-changed', (_event, enabled) => callback(enabled)),
 });
