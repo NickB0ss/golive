@@ -6,8 +6,12 @@
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
 
-    function addPeer(id, name) {
-      if (!peers.has(id)) peers.set(id, { id, name, live: false, outConn: null, inConn: null });
+    function addPeer(id, name, avatar) {
+      if (!peers.has(id)) {
+        peers.set(id, { id, name, avatar: avatar || null, live: false, outConn: null, inConn: null });
+      } else if (avatar) {
+        peers.get(id).avatar = avatar;
+      }
       return peers.get(id);
     }
 

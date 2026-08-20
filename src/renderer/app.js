@@ -366,7 +366,7 @@
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
           renderRoomList();
-          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
+          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
           sound.playJoinSound();
           onSettled?.();
@@ -450,12 +450,12 @@
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
-        for (const p of msg.peers) mesh.addPeer(p.id, p.name);
+        for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
         ui.members.render(mesh.peers);
         break;
       }
       case 'peer-joined': {
-        mesh.addPeer(msg.id, msg.name);
+        mesh.addPeer(msg.id, msg.name, msg.avatar);
         ui.members.render(mesh.peers);
         sound.playJoinSound();
         if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality);
