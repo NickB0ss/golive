@@ -849,8 +849,8 @@ Modificar `leaveRoom` (linha 329-340) pra checar cooldown no botão, tocar o som
     ui.stageHeader.clear();
     renderHostWarning();
     teardownSession(session);
-    renderRoomList();
     markCooldown(leavingAddress);
+    renderRoomList();
   }
 ```
 
