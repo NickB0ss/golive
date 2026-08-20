@@ -1519,6 +1519,111 @@ git commit -m "feat: menu de silenciar e volume 0-200% no botao direito dos tile
 
 ---
 
+## Task 12: Fullscreen real da janela ao expandir um tile
+
+**Files:**
+- Modify: [src/main.js](../../../src/main.js)
+- Modify: [src/preload.js](../../../src/preload.js)
+- Modify: [src/renderer/ui.js](../../../src/renderer/ui.js)
+
+**Interfaces:**
+- Consumes: `win` (BrowserWindow do processo principal, já existente em `src/main.js`), a classe `.fullscreen` e os handlers de clique/duplo-clique do tile (Task 10).
+- Produces: IPC `window:setFullScreen` e evento `window:fullscreen-changed`. `window.golive.setFullScreen(enabled): Promise<boolean>`, `window.golive.onFullScreenChange(callback)`.
+
+Pedido do usuário nesta sessão, corrigindo o comportamento da Task 10: o botão (e o duplo-clique) de tela cheia do tile hoje só expande o elemento dentro da janela via CSS (`position: fixed; inset: 0`) — a janela do Electron continua no tamanho normal, com barra de título e sem ocupar a tela toda do monitor. O pedido é que ele deixe o **aplicativo** em tela cheia de verdade (a janela do SO), não só o tile dentro da janela.
+
+- [ ] **Step 1: IPC de fullscreen no processo principal**
+
+Em `src/main.js`, adicionar dentro de `createWindow()` (depois de `win.setMenuBarVisibility(false);`, linha 84), dois listeners que avisam o renderer quando o estado de fullscreen muda por qualquer via (inclusive Esc/controles nativos do SO, não só pelo nosso IPC):
+
+```javascript
+  win.on('enter-full-screen', () => win?.webContents.send('window:fullscreen-changed', true));
+  win.on('leave-full-screen', () => win?.webContents.send('window:fullscreen-changed', false));
+```
+
+E, na seção de IPC (depois do handler `discovery:refresh`, próximo ao final do arquivo):
+
+```javascript
+ipcMain.handle('window:setFullScreen', (_event, enabled) => {
+  win?.setFullScreen(!!enabled);
+  return true;
+});
+```
+
+- [ ] **Step 2: Expor no preload**
+
+Em `src/preload.js`, adicionar dentro do objeto `contextBridge.exposeInMainWorld('golive', { ... })`, depois de `refreshDiscovery`:
+
+```javascript
+  /** Liga/desliga o fullscreen real da janela do app (nao so o tile dentro
+   * dela). */
+  setFullScreen: (enabled) => ipcRenderer.invoke('window:setFullScreen', enabled),
+
+  /** Avisa quando o fullscreen da janela muda por qualquer via -- inclusive
+   * Esc ou controles nativos do SO, que nao passam pelo nosso botao. */
+  onFullScreenChange: (callback) =>
+    ipcRenderer.on('window:fullscreen-changed', (_event, enabled) => callback(enabled)),
+```
+
+- [ ] **Step 3: Ligar o toggle do tile ao fullscreen real da janela**
+
+Em `src/renderer/ui.js`, substituir o trecho de `showTile` que hoje só alterna a classe (a versão atual, pós-Task 10 e Task 11):
+
+```javascript
+      tile.addEventListener('dblclick', () => tile.classList.toggle('fullscreen'));
+      tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
+        event.stopPropagation();
+        tile.classList.toggle('fullscreen');
+      });
+```
+
+por:
+
+```javascript
+      tile.addEventListener('dblclick', () => toggleTileFullscreen(tile));
+      tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleTileFullscreen(tile);
+      });
+```
+
+E adicionar, antes da função `showTile` (ou perto das outras funções auxiliares de tile no topo do arquivo):
+
+```javascript
+  function toggleTileFullscreen(tile) {
+    const entering = !tile.classList.contains('fullscreen');
+    tile.classList.toggle('fullscreen', entering);
+    window.golive.setFullScreen(entering);
+  }
+```
+
+E, uma única vez no carregamento do módulo (fora de `showTile`, junto de onde `gridEl`/`peerListEl` são resolvidos no topo do arquivo), assinar o evento de mudança de fullscreen pra manter a classe do tile sincronizada quando o usuário sai do fullscreen por Esc ou pelos controles nativos do SO (sem passar pelo nosso botão):
+
+```javascript
+  window.golive.onFullScreenChange((enabled) => {
+    if (enabled) return;
+    document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen'));
+  });
+```
+
+- [ ] **Step 4: Verificação manual**
+
+Run: `npm start`, entrar numa sala com alguém transmitindo (ou compartilhar a própria tela).
+
+1. Clicar no botão de tela cheia (ou dar duplo-clique) num tile — a JANELA do app deve ir para tela cheia de verdade (ocupando o monitor todo, sem barra de título/moldura do SO), e o tile deve preencher essa tela cheia.
+2. Apertar Esc (ou usar o controle nativo do SO pra sair do fullscreen) — a janela deve voltar ao tamanho normal, E o tile deve voltar a aparecer no grid normal (não deve ficar "preso" visualmente em `.fullscreen` com a janela não-fullscreen por baixo).
+3. Clicar no botão de novo (ou duplo-clique) pra sair — mesmo efeito do passo 2, mas disparado pelo nosso botão.
+4. Repetir entrar/sair algumas vezes seguidas — não deve haver dessincronia entre o estado da janela e a classe `.fullscreen` do tile.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main.js src/preload.js src/renderer/ui.js
+git commit -m "feat: botao de tela cheia do tile agora coloca a janela do app em fullscreen real"
+```
+
+---
+
 ## Cobertura da spec (auto-revisão)
 
 1. Contagem de pessoas → Task 1 (`getPeerCount`), Task 2 (beacon `peers`), Task 3 (wiring). `ui.js` já lia `room.peers` antes deste plano — confirmado no código atual, nenhuma mudança necessária aí.
@@ -1528,4 +1633,4 @@ git commit -m "feat: menu de silenciar e volume 0-200% no botao direito dos tile
 Testes → Task 1 e Task 2 cobrem os módulos com `node:test`; tasks de renderer têm passo de verificação manual explícito, conforme a spec já apontava (sem framework de teste de renderer no projeto).
 Fora de escopo (avatar em tiles de vídeo, cache de avatar remoto entre sessões, volume configurável) → nenhuma task implementa isso, intencionalmente.
 
-Adicionado nesta sessão, fora da spec original: botão de tela cheia por tile (Task 10) e menu de silenciar/volume 0-200% no botão direito de tiles remotos (Task 11).
+Adicionado nesta sessão, fora da spec original: botão de tela cheia por tile (Task 10), menu de silenciar/volume 0-200% no botão direito de tiles remotos (Task 11), e fullscreen real da janela do app ao expandir um tile (Task 12, correção de comportamento pedida pelo usuário depois de ver a Task 10 implementada).
