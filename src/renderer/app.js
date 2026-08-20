@@ -64,9 +64,22 @@
   // ---------- Painel do usuario ----------
 
   const nameInput = $('user-panel-name');
+  const avatarBtn = $('user-panel-avatar');
+  const avatarInput = $('user-panel-avatar-input');
+  const avatarImg = $('user-panel-avatar-img');
+  const avatarFallback = $('user-panel-avatar-fallback');
 
   function renderUserPanel() {
     nameInput.value = cfg.name || '';
+    if (cfg.avatar) {
+      avatarImg.src = cfg.avatar;
+      avatarImg.classList.remove('hidden');
+      avatarFallback.textContent = '';
+    } else {
+      avatarImg.classList.add('hidden');
+      avatarImg.src = '';
+      avatarFallback.textContent = (cfg.name || '?').trim().charAt(0).toUpperCase() || '?';
+    }
   }
   renderUserPanel();
 
@@ -84,6 +97,51 @@
     } else if (event.key === 'Escape') {
       renderUserPanel();
       nameInput.blur();
+    }
+  });
+
+  avatarBtn.addEventListener('click', () => avatarInput.click());
+
+  function resizeImageToAvatar(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const size = 128;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('load failed'));
+      };
+      img.src = url;
+    });
+  }
+
+  avatarInput.addEventListener('change', async () => {
+    const file = avatarInput.files[0];
+    avatarInput.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Imagem muito grande (máx. 10MB).');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToAvatar(file);
+      cfg = { ...cfg, avatar: dataUrl };
+      persist();
+      renderUserPanel();
+    } catch {
+      alert('Não consegui processar essa imagem.');
     }
   });
 

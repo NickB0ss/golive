@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:" />
+      content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:" />
 <title>GoLive LAN</title>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -45,6 +45,11 @@
     </div>
 
     <div class="user-panel">
+      <button id="user-panel-avatar" class="user-avatar" type="button" title="Alterar foto de perfil">
+        <img id="user-panel-avatar-img" class="hidden" alt="" />
+        <span id="user-panel-avatar-fallback"></span>
+      </button>
+      <input id="user-panel-avatar-input" type="file" accept="image/*" class="hidden" />
       <input id="user-panel-name" class="user-panel-name" type="text" placeholder="seu apelido" spellcheck="false" title="Clique para editar seu apelido" />
       <div class="user-panel-actions">
         <button id="btn-toggle-camera" class="icon-btn" title="Câmera" type="button">
