@@ -1398,19 +1398,7 @@ Em `showTile`, dentro do bloco `if (!tile) { ... }` (a versão já modificada pe
       }
 ```
 
-E, depois de `if (video.srcObject !== stream) video.srcObject = stream;`, mudar pra também acionar o grafo de áudio quando o stream muda:
-
-```javascript
-    const video = tile.querySelector('video');
-    if (video.srcObject !== stream) {
-      video.srcObject = stream;
-      ensureTileAudio(id, video, stream);
-    }
-    video.muted = muted;
-    tile.querySelector('.tile-label').textContent = label;
-```
-
-> Nota: `video.muted = muted` roda depois — pra tiles remotos, `ensureTileAudio` já forçou `video.muted = true` antes dessa linha, e como `muted` continua `false` (valor default passado pra tiles remotos), a linha reatribui `false`. Por isso a ordem certa é: mover `video.muted = muted;` pra ANTES da chamada de `ensureTileAudio`, assim a força de `ensureTileAudio` é a que vale por último:
+Substituir o trecho final de `showTile` — a ordem importa: `video.muted = muted;` roda ANTES de `ensureTileAudio`, porque em tiles remotos `ensureTileAudio` precisa ser a última a mexer em `video.muted` (força `true` pra silenciar o elemento e deixar o áudio real sair só pelo `GainNode`; se `video.muted = muted` rodasse depois, o valor default `false` passado pros tiles remotos desfaria essa força):
 
 ```javascript
     const video = tile.querySelector('video');
