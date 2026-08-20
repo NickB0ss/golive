@@ -12,6 +12,49 @@
 
   const gridEl = $('grid');
 
+  // Volume/mute por tile remoto, roteado via Web Audio pra poder passar de
+  // 100% (o <video> nativo so vai ate 1.0) -- ver Step 3 do Task 11 do plano
+  // de implementacao pra contexto completo.
+  let playbackAudioCtx = null;
+  function getPlaybackAudioContext() {
+    if (!playbackAudioCtx) playbackAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return playbackAudioCtx;
+  }
+
+  const tileAudio = new Map(); // id -> { volume, muted, source, gain }
+
+  function getOrCreateAudioState(id) {
+    let state = tileAudio.get(id);
+    if (!state) {
+      state = { volume: 1, muted: false, source: null, gain: null };
+      tileAudio.set(id, state);
+    }
+    return state;
+  }
+
+  function ensureTileAudio(id, video, stream) {
+    if (id === 'me' || id === 'cam-me') return;
+    video.muted = true;
+    const state = getOrCreateAudioState(id);
+    const ctx = getPlaybackAudioContext();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    if (state.source) {
+      try { state.source.disconnect(); } catch { /* ja desconectado */ }
+    }
+    state.source = ctx.createMediaStreamSource(stream);
+    if (!state.gain) state.gain = ctx.createGain();
+    state.gain.gain.value = state.muted ? 0 : state.volume;
+    state.source.connect(state.gain).connect(ctx.destination);
+  }
+
+  function releaseTileAudio(id) {
+    const state = tileAudio.get(id);
+    if (!state) return;
+    try { state.source?.disconnect(); } catch { /* ja desconectado */ }
+    try { state.gain?.disconnect(); } catch { /* ja desconectado */ }
+    tileAudio.delete(id);
+  }
+
   function showTile(id, label, stream, muted = false) {
     gridEl.querySelector('.empty')?.remove();
 
@@ -31,20 +74,78 @@
         event.stopPropagation();
         tile.classList.toggle('fullscreen');
       });
+      if (id !== 'me' && id !== 'cam-me') {
+        tile.addEventListener('contextmenu', (event) => {
+          event.preventDefault();
+          openTileMenu(id, event.clientX, event.clientY);
+        });
+      }
       gridEl.appendChild(tile);
     }
 
     const video = tile.querySelector('video');
-    if (video.srcObject !== stream) video.srcObject = stream;
     video.muted = muted;
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+      ensureTileAudio(id, video, stream);
+    }
     tile.querySelector('.tile-label').textContent = label;
   }
 
   function removeTile(id, emptyMessage) {
     document.getElementById(`tile-${id}`)?.remove();
+    releaseTileAudio(id);
     if (!gridEl.children.length) {
       gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
     }
+  }
+
+  let openMenuEl = null;
+
+  function closeTileMenu() {
+    openMenuEl?.remove();
+    openMenuEl = null;
+    document.removeEventListener('click', closeTileMenu, true);
+  }
+
+  function openTileMenu(id, x, y) {
+    closeTileMenu();
+    const state = getOrCreateAudioState(id);
+
+    const menu = document.createElement('div');
+    menu.className = 'tile-menu';
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.innerHTML = `
+      <button class="tile-menu-mute" type="button">${state.muted ? 'Reativar som' : 'Silenciar'}</button>
+      <label class="tile-menu-volume">
+        <span>Volume: <b class="tile-menu-volume-label">${Math.round(state.volume * 100)}%</b></span>
+        <input type="range" min="0" max="200" step="1" value="${Math.round(state.volume * 100)}" />
+      </label>`;
+    menu.addEventListener('click', (event) => event.stopPropagation());
+    document.body.appendChild(menu);
+    openMenuEl = menu;
+
+    function applyGain() {
+      if (state.gain) state.gain.gain.value = state.muted ? 0 : state.volume;
+    }
+
+    const muteBtn = menu.querySelector('.tile-menu-mute');
+    muteBtn.addEventListener('click', () => {
+      state.muted = !state.muted;
+      muteBtn.textContent = state.muted ? 'Reativar som' : 'Silenciar';
+      applyGain();
+    });
+
+    const range = menu.querySelector('input[type=range]');
+    const volumeLabel = menu.querySelector('.tile-menu-volume-label');
+    range.addEventListener('input', () => {
+      state.volume = Number(range.value) / 100;
+      volumeLabel.textContent = `${range.value}%`;
+      applyGain();
+    });
+
+    setTimeout(() => document.addEventListener('click', closeTileMenu, true), 0);
   }
 
   const peerListEl = $('peer-list');
