@@ -10,18 +10,29 @@
 <body>
 
 <div id="app" class="app">
-  <!-- ============ TRILHO ============ -->
-  <nav class="rail">
-    <div class="rail-brand" title="GoLive LAN">GL</div>
-    <button id="btn-create-room" class="rail-action" title="Criar sala" type="button">+</button>
-  </nav>
-
   <!-- ============ COLUNA DE SALAS ============ -->
   <aside class="rooms-col">
+    <div class="app-brand">
+      <span class="app-brand-badge">GL</span>
+      <span class="app-brand-name">GoLive LAN</span>
+    </div>
+
     <h2 class="rooms-title">Salas na rede</h2>
+    <h3 id="rooms-live-title" class="rooms-subtitle hidden">Ao vivo agora</h3>
+    <ul id="room-list-live" class="room-list"></ul>
+    <h3 id="rooms-recent-title" class="rooms-subtitle">Recentes</h3>
     <ul id="room-list" class="room-list"></ul>
 
-    <button id="btn-join-address" class="ghost small room-join-btn" type="button">Entrar por endereço</button>
+    <div class="rooms-actions">
+      <button id="btn-create-room" class="ghost small room-action-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Criar sala
+      </button>
+      <button id="btn-join-address" class="ghost small room-action-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Entrar por endereço
+      </button>
+    </div>
     <div id="join-address-form" class="join-address-form hidden">
       <input id="in-server" type="text" placeholder="26.0.0.1 ou ws://26.0.0.1:9000" spellcheck="false" />
       <button id="btn-connect" class="primary small" type="button">Conectar</button>
@@ -31,9 +42,15 @@
     <div class="user-panel">
       <input id="user-panel-name" class="user-panel-name" type="text" placeholder="seu apelido" spellcheck="false" title="Clique para editar seu apelido" />
       <div class="user-panel-actions">
-        <button id="btn-toggle-camera" class="icon-btn" title="Câmera" type="button">CAM</button>
-        <button id="btn-toggle-share" class="icon-btn" title="Compartilhar tela" type="button">TELA</button>
-        <button id="btn-open-settings" class="icon-btn" title="Configurações" type="button">CFG</button>
+        <button id="btn-toggle-camera" class="icon-btn" title="Câmera" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        </button>
+        <button id="btn-toggle-share" class="icon-btn" title="Compartilhar tela" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </button>
+        <button id="btn-open-settings" class="icon-btn" title="Configurações" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
       </div>
     </div>
   </aside>
@@ -41,9 +58,14 @@
   <!-- ============ PALCO ============ -->
   <main class="stage">
     <header id="stage-header" class="stage-header hidden">
+      <span id="stage-status-dot" class="stage-status-dot"></span>
       <span id="stage-room-name" class="stage-room-name"></span>
       <span id="stage-room-address" class="stage-room-address"></span>
       <button id="btn-copy-address" class="ghost small">Copiar</button>
+      <button id="btn-disconnect" class="danger small" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        Desconectar
+      </button>
     </header>
     <div id="stage-warning" class="warn-box hidden"></div>
     <div id="grid" class="grid">

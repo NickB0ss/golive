@@ -14,6 +14,18 @@ contextBridge.exposeInMainWorld('golive', {
   selectSource: (id, audioMode) =>
     ipcRenderer.invoke('sources:select', { id, audioMode }),
 
-  /** Sobe o servidor de sinalizacao embutido e devolve o endereco pronto. */
+  /** Sobe o servidor de sinalizacao embutido e devolve o endereco pronto.
+   * Aceita { name, advertise }: advertise liga o anuncio via broadcast UDP
+   * assim que a sala sobe. */
   hostRoom: (payload) => ipcRenderer.invoke('room:host', payload),
+
+  /** Liga/desliga o anuncio da sala ativa via broadcast UDP em tempo real
+   * (ex: usuario mexeu no toggle de Configuracoes > Rede depois de ja ter
+   * criado a sala). Sem efeito se nao houver sala local hospedada. */
+  setAdvertise: (enabled) => ipcRenderer.invoke('discovery:setAdvertise', enabled),
+
+  /** Assina a lista de salas descobertas na rede via broadcast UDP. Chamado
+   * sempre que a lista muda (nova sala anunciada, sala expirou). */
+  onRoomsDiscovered: (callback) =>
+    ipcRenderer.on('rooms:discovered', (_event, rooms) => callback(rooms)),
 });

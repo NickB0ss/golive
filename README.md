@@ -70,17 +70,20 @@ npm install
 
 ## Como usar
 
-**1. Alguém da turma clica no `+` do trilho ("Criar sala")** na tela inicial
-do GoLive. O app sobe o servidor de sinalização embutido, libera a porta no
-firewall (pode pedir uma confirmação do Windows na primeira vez) e mostra o
-endereço no cabeçalho do palco, com um botão **Copiar** ao lado.
+**1. Alguém da turma clica em "Criar sala"**, na coluna "Salas na rede" da
+tela inicial do GoLive. O app sobe o servidor de sinalização embutido, libera
+a porta no firewall (pode pedir uma confirmação do Windows na primeira vez) e
+mostra o endereço no cabeçalho do palco, com um botão **Copiar** ao lado.
 
 Sem terminal, sem instalar Node à parte, sem digitar porta.
 
-**2. Todo mundo mais abre o GoLive** e clica em "Entrar por endereço", cola o
-endereço (`26.x.x.x` — a porta é opcional, assume `:9000`) e clica em
-Conectar. O nome exibido pros outros é o apelido definido no painel do
-usuário (canto inferior esquerdo, clique pra editar).
+**2. Todo mundo mais abre o GoLive.** Se a sala foi criada com "Anunciar
+minha sala na rede" ligado (Configurações > Rede, ligado por padrão), ela
+aparece sozinha em "Ao vivo agora" — é só clicar em Conectar do lado dela.
+Se não, cola o endereço em "Entrar por endereço" (`26.x.x.x` — a porta é
+opcional, assume `:9000`) e clica em Conectar. O nome exibido pros outros é
+o apelido definido no painel do usuário (canto inferior esquerdo, clique pra
+editar).
 
 Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
 janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na

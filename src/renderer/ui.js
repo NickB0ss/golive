@@ -58,25 +58,71 @@
   }
 
   const roomListEl = $('room-list');
+  const roomListLiveEl = $('room-list-live');
+  const roomsLiveTitleEl = $('rooms-live-title');
+  const TRASH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+  const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
+  const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-  function renderRooms(rooms, { onSelect }) {
-    roomListEl.innerHTML = '';
+  function fillRoomList(listEl, rooms, { onSelect, onDelete, activeAddress, emptyMessage }) {
+    listEl.innerHTML = '';
     if (!rooms.length) {
-      roomListEl.innerHTML = '<li class="muted" style="padding:8px 10px;">nenhuma sala por aqui ainda</li>';
+      if (emptyMessage) listEl.innerHTML = `<li class="muted" style="padding:8px 10px;">${escapeHtml(emptyMessage)}</li>`;
       return;
     }
     for (const room of rooms) {
+      const isActive = activeAddress && room.address === activeAddress;
       const li = document.createElement('li');
-      const button = document.createElement('button');
-      button.className = 'room-item';
-      button.type = 'button';
-      button.innerHTML = `
-        <span class="room-name"># ${escapeHtml(room.name || room.hostName || 'sala')}</span>
-        <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>`;
-      button.addEventListener('click', () => onSelect(room));
-      li.appendChild(button);
-      roomListEl.appendChild(li);
+      li.className = 'room-row';
+      if (isActive) li.classList.add('active');
+
+      const info = document.createElement('div');
+      info.className = 'room-info';
+      info.innerHTML = `
+        <span class="dot ${isActive ? 'ok' : ''}"></span>
+        <span class="room-item-text">
+          <span class="room-name">${escapeHtml(room.name || room.hostName || 'sala')}</span>
+          <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>
+        </span>`;
+      li.appendChild(info);
+
+      const connectBtn = document.createElement('button');
+      connectBtn.className = 'room-connect';
+      connectBtn.type = 'button';
+      connectBtn.title = isActive ? 'Já conectado nessa sala' : 'Conectar nessa sala';
+      connectBtn.disabled = !!isActive;
+      connectBtn.innerHTML = isActive ? CONNECTED_ICON : CONNECT_ICON;
+      connectBtn.addEventListener('click', () => onSelect(room));
+      li.appendChild(connectBtn);
+
+      if (onDelete) {
+        const del = document.createElement('button');
+        del.className = 'room-delete';
+        del.type = 'button';
+        del.title = 'Remover sala da lista';
+        del.innerHTML = TRASH_ICON;
+        del.addEventListener('click', () => onDelete(room));
+        li.appendChild(del);
+      }
+
+      listEl.appendChild(li);
     }
+  }
+
+  // `rooms` = historico local (cfg.recentRooms): enderecos ja usados antes,
+  // podem estar offline agora — tem botao de excluir. `liveRooms` = salas
+  // descobertas agora mesmo via broadcast UDP na LAN (src/main/discovery.js)
+  // — "isso esta aberto agora", sem botao de excluir (nao e uma entrada
+  // salva, so aparece enquanto o beacon continuar chegando).
+  function renderRooms(rooms, { onSelect, onDelete, activeAddress, liveRooms = [] }) {
+    roomsLiveTitleEl.classList.toggle('hidden', !liveRooms.length);
+    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress });
+    fillRoomList(roomListEl, rooms, {
+      onSelect,
+      onDelete,
+      activeAddress,
+      emptyMessage: 'nenhuma sala salva ainda — crie uma ou entre por endereço',
+    });
   }
 
   const stageHeaderEl = $('stage-header');
@@ -121,8 +167,44 @@
     if (event.key === 'Escape' && !settingsModalEl.classList.contains('hidden')) closeSettings();
   });
 
+  // Preview de camera do modal de Configuracoes. E independente da "camera
+  // ao vivo" gerida em app.js (botao da barra lateral) — abre sua propria
+  // captura so pra mostrar aqui, e precisa ser parada ao fechar o modal,
+  // senao a luz da webcam fica acesa com o modal fechado.
+  let settingsCameraPreviewStream = null;
+
+  function stopSettingsCameraPreview() {
+    if (!settingsCameraPreviewStream) return;
+    settingsCameraPreviewStream.getTracks().forEach((t) => t.stop());
+    settingsCameraPreviewStream = null;
+    const video = $('settings-camera-preview');
+    if (video) video.srcObject = null;
+  }
+
+  async function startSettingsCameraPreview(deviceId) {
+    stopSettingsCameraPreview();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false,
+      });
+      // o modal pode ter fechado (ou o dispositivo pode ter mudado de novo)
+      // enquanto aguardavamos a permissao/captura
+      if (settingsModalEl.classList.contains('hidden')) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      settingsCameraPreviewStream = stream;
+      const video = $('settings-camera-preview');
+      if (video) video.srcObject = stream;
+    } catch {
+      /* permissao negada ou sem camera disponivel, preview fica preto */
+    }
+  }
+
   function closeSettings() {
     settingsModalEl.classList.add('hidden');
+    stopSettingsCameraPreview();
   }
 
   function bandwidthLine(config) {
@@ -236,12 +318,17 @@
       for (const d of devices.filter((d) => d.kind === 'audioinput')) {
         audioSelect.add(new Option(d.label || 'Entrada de áudio', d.deviceId));
       }
-      cameraSelect.addEventListener('change', () => deps.onCameraDeviceChange(cameraSelect.value));
+      if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
+      cameraSelect.addEventListener('change', () => {
+        deps.onCameraDeviceChange(cameraSelect.value);
+        startSettingsCameraPreview(cameraSelect.value);
+      });
     } catch {
       /* sem permissao de midia ainda, dropdowns ficam vazios */
     }
 
     settingsModalEl.classList.remove('hidden');
+    startSettingsCameraPreview($('settings-camera-device').value);
   }
 
   function setStatsHtml(html) {

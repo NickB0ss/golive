@@ -16,6 +16,7 @@
       height: 720,
       fps: 30,
       bitrate: 2_000_000,
+      deviceId: null,
     },
     network: {
       advertise: true,
@@ -79,7 +80,11 @@
     return { ...config, recentRooms };
   }
 
-  const api = { DEFAULTS, load, serialize, videoConstraints, cameraConstraints, addRecentRoom };
+  function removeRecentRoom(config, address) {
+    return { ...config, recentRooms: config.recentRooms.filter((r) => r.address !== address) };
+  }
+
+  const api = { DEFAULTS, load, serialize, videoConstraints, cameraConstraints, addRecentRoom, removeRecentRoom };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.config = api;
