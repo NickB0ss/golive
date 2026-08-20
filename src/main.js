@@ -51,7 +51,7 @@ async function ensureDiscoveryStarted() {
   if (discoveryStarted) return;
   discoveryStarted = true;
   discovery.setOnRoomsChange((rooms) => {
-    win?.webContents.send('rooms:discovered', rooms);
+    if (win && !win.isDestroyed()) win.webContents.send('rooms:discovered', rooms);
   });
   try {
     await discovery.start();
