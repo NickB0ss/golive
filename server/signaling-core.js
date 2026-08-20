@@ -23,14 +23,14 @@ function createSignalingServer({ port }) {
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port });
 
-    /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string}>} */
+    /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null}>} */
     const peers = new Map();
     let nextId = 1;
 
     function roomPeers(room, exceptId) {
       const out = [];
       for (const [id, peer] of peers) {
-        if (peer.room === room && id !== exceptId) out.push({ id, name: peer.name });
+        if (peer.room === room && id !== exceptId) out.push({ id, name: peer.name, avatar: peer.avatar });
       }
       return out;
     }
@@ -67,11 +67,12 @@ function createSignalingServer({ port }) {
               if (joined) return;
               const room = String(msg.room || 'geral').slice(0, 40);
               const name = String(msg.name || 'anonimo').slice(0, 40);
-              peers.set(id, { ws, name, room });
+              const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;
+              peers.set(id, { ws, name, room, avatar });
               joined = true;
               log(`+ ${name} (#${id}) entrou na sala "${room}"`);
               send(ws, { type: 'welcome', id, peers: roomPeers(room, id) });
-              broadcastToRoom(room, id, { type: 'peer-joined', id, name });
+              broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar });
               break;
             }
 
@@ -116,6 +117,7 @@ function createSignalingServer({ port }) {
         wss,
         port: wss.address().port,
         close: () => new Promise((res) => wss.close(() => res())),
+        getPeerCount: () => peers.size,
       });
     });
   });

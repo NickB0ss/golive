@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -15,10 +15,41 @@
   let myId = null;
   let localStream = null;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
+  let cameraStream = null;
+  let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
   let hostInfo = null;
+  let activeRoomAddress = null;
   let statsTimer = null;
   let lastBytes = 0;
   let lastAt = 0;
+  // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
+  // src/main/discovery.js). Distinto de cfg.recentRooms (historico local).
+  let discoveredRooms = [];
+
+  // Cooldown de 2s pra entrar/sair da mesma sala repetidamente: endereco ->
+  // timestamp da ultima transicao (entrada ou saida).
+  const roomCooldowns = new Map();
+
+  function cooldownRemaining(address) {
+    if (!address) return 0;
+    const last = roomCooldowns.get(address);
+    if (last == null) return 0;
+    return Math.max(0, 2000 - (Date.now() - last));
+  }
+
+  function markCooldown(address) {
+    if (!address) return;
+    roomCooldowns.set(address, Date.now());
+    setTimeout(() => {
+      renderRoomList();
+      updateDisconnectButtonState();
+    }, 2000);
+  }
+
+  function updateDisconnectButtonState() {
+    const btn = $('btn-disconnect');
+    btn.disabled = !!activeRoomAddress && cooldownRemaining(activeRoomAddress) > 0;
+  }
 
   const $ = (id) => document.getElementById(id);
 
@@ -33,9 +64,22 @@
   // ---------- Painel do usuario ----------
 
   const nameInput = $('user-panel-name');
+  const avatarBtn = $('user-panel-avatar');
+  const avatarInput = $('user-panel-avatar-input');
+  const avatarImg = $('user-panel-avatar-img');
+  const avatarFallback = $('user-panel-avatar-fallback');
 
   function renderUserPanel() {
     nameInput.value = cfg.name || '';
+    if (cfg.avatar) {
+      avatarImg.src = cfg.avatar;
+      avatarImg.classList.remove('hidden');
+      avatarFallback.textContent = '';
+    } else {
+      avatarImg.classList.add('hidden');
+      avatarImg.src = '';
+      avatarFallback.textContent = (cfg.name || '?').trim().charAt(0).toUpperCase() || '?';
+    }
   }
   renderUserPanel();
 
@@ -56,6 +100,51 @@
     }
   });
 
+  avatarBtn.addEventListener('click', () => avatarInput.click());
+
+  function resizeImageToAvatar(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const size = 128;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('load failed'));
+      };
+      img.src = url;
+    });
+  }
+
+  avatarInput.addEventListener('change', async () => {
+    const file = avatarInput.files[0];
+    avatarInput.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Imagem muito grande (máx. 10MB).');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToAvatar(file);
+      cfg = { ...cfg, avatar: dataUrl };
+      persist();
+      renderUserPanel();
+    } catch {
+      alert('Não consegui processar essa imagem.');
+    }
+  });
+
   $('btn-open-settings').addEventListener('click', () => {
     ui.settings.open(cfg, {
       onQualityChange: (quality) => {
@@ -67,13 +156,15 @@
         cfg = { ...cfg, camera };
         persist();
       },
-      onCameraDeviceChange: () => {
-        // Selecao de dispositivo de camera: consumida na Fase 2, quando a
-        // webcam ganha captura propria. Por ora so persiste a escolha.
+      onCameraDeviceChange: (deviceId) => {
+        cfg = { ...cfg, camera: { ...cfg.camera, deviceId } };
+        persist();
+        if (cameraStream) restartCamera();
       },
       onNetworkChange: (network) => {
         cfg = { ...cfg, network };
         persist();
+        window.golive.setAdvertise(network.advertise);
       },
     });
   });
@@ -90,14 +181,43 @@
 
   function renderRoomList() {
     ui.rooms.render(cfg.recentRooms, {
+      activeAddress: activeRoomAddress,
+      liveRooms: discoveredRooms,
+      isOnCooldown: (address) => cooldownRemaining(address) > 0,
       onSelect: (room) => {
+        if (room.address === activeRoomAddress) return; // já conectado nessa sala
+        if (cooldownRemaining(room.address) > 0) return;
         hostInfo = null;
         renderHostWarning();
         joinRoom(room.address, cfg.name);
       },
+      onDelete: (room) => {
+        if (room.address === activeRoomAddress) {
+          if (cooldownRemaining(activeRoomAddress) > 0) return; // delete de sala ativa espera o cooldown, evita estado desincronizado
+          leaveRoom();
+        }
+        cfg = config.removeRecentRoom(cfg, room.address);
+        persist();
+        renderRoomList();
+      },
     });
   }
   renderRoomList();
+
+  // Assina a lista de salas descobertas ao vivo na LAN (main process manda
+  // sempre que a lista muda: sala nova anunciada ou sala expirou).
+  window.golive.onRoomsDiscovered((rooms) => {
+    discoveredRooms = Array.isArray(rooms) ? rooms : [];
+    renderRoomList();
+  });
+
+  $('btn-refresh-discovery').addEventListener('click', () => {
+    const btn = $('btn-refresh-discovery');
+    btn.classList.remove('spin');
+    void btn.offsetWidth; // força reflow pra reiniciar a animacao mesmo se clicado de novo dentro dos 600ms
+    btn.classList.add('spin');
+    window.golive.refreshDiscovery();
+  });
 
   $('btn-join-address').addEventListener('click', () => {
     $('join-address-form').classList.toggle('hidden');
@@ -105,10 +225,8 @@
 
   $('btn-connect').addEventListener('click', () => {
     $('setup-error').textContent = '';
-    let url = $('in-server').value.trim();
+    const url = $('in-server').value.trim();
     if (!url) return ($('setup-error').textContent = 'Informe o endereço do servidor.');
-    if (!/^wss?:\/\//.test(url)) url = `ws://${url}`;
-    if (!/:\d+$/.test(url)) url += ':9000';
 
     hostInfo = null;
     renderHostWarning();
@@ -135,7 +253,7 @@
     try {
       let result;
       try {
-        result = await window.golive.hostRoom({ name: cfg.name || 'anônimo' });
+        result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise });
       } catch {
         $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
         return;
@@ -197,6 +315,12 @@
       localStream = null;
       ui.grid.removeTile('me', emptyMessage());
     }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      cameraStream = null;
+      ui.grid.removeTile('cam-me', emptyMessage());
+      $('btn-toggle-camera').classList.remove('active');
+    }
     if (session?.mesh) {
       for (const peerId of Array.from(session.mesh.peers.keys())) {
         session.mesh.removePeer(peerId);
@@ -209,12 +333,24 @@
 
   // ---------- Conexao de sinalizacao ----------
 
-  function joinRoom(url, name, publicAddress, onSettled) {
+  // Aceita endereco cru ("192.168.1.5:9000", como vem da lista de salas ou
+  // do historico) alem de URL ja completa (ws://... vindo de "Criar sala").
+  // Sem isso, `new WebSocket()` estoura sincronamente com endereco sem esquema.
+  function normalizeRoomUrl(url) {
+    let out = url;
+    if (!/^wss?:\/\//.test(out)) out = `ws://${out}`;
+    if (!/:\d+$/.test(out)) out += ':9000';
+    return out;
+  }
+
+  function joinRoom(rawUrl, name, publicAddress, onSettled) {
     $('setup-error').textContent = '';
+    const url = normalizeRoomUrl(rawUrl);
 
     if (currentSession) {
       const oldSession = currentSession;
       currentSession = null; // invalida a sessao antiga imediatamente
+      activeRoomAddress = null;
       oldSession.sig?.close();
       ui.stageHeader.clear();
       teardownSession(oldSession);
@@ -227,11 +363,15 @@
       connHandle = signaling.connect(url, {
         onOpen: () => {
           if (currentSession !== session) return;
+          activeRoomAddress = publicAddress || url;
           cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
           persist();
+          markCooldown(activeRoomAddress);
+          updateDisconnectButtonState();
           renderRoomList();
-          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
+          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
+          sound.playJoinSound();
           onSettled?.();
         },
         onMessage: (msg) => handleSignal(session, msg),
@@ -245,8 +385,10 @@
         onClose: () => {
           if (currentSession !== session) return; // conexao antiga, ja substituida
           currentSession = null;
+          activeRoomAddress = null;
           ui.stageHeader.clear();
           teardownSession(session);
+          renderRoomList();
         },
       });
     } catch {
@@ -281,6 +423,29 @@
     if (hostInfo?.address) navigator.clipboard.writeText(hostInfo.address);
   });
 
+  // ---------- Desconectar ----------
+
+  function leaveRoom() {
+    if (!currentSession) return;
+    if (cooldownRemaining(activeRoomAddress) > 0) return;
+    sound.playLeaveSound();
+    const session = currentSession;
+    const leavingAddress = activeRoomAddress;
+    currentSession = null;
+    activeRoomAddress = null;
+    hostInfo = null;
+    session.sig?.close();
+    ui.stageHeader.clear();
+    renderHostWarning();
+    teardownSession(session);
+    markCooldown(leavingAddress);
+    renderRoomList();
+  }
+  $('btn-disconnect').addEventListener('click', () => {
+    if (cooldownRemaining(activeRoomAddress) > 0) return;
+    leaveRoom();
+  });
+
   async function handleSignal(session, msg) {
     if (currentSession !== session) return;
     const mesh = session.mesh;
@@ -288,13 +453,14 @@
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
-        for (const p of msg.peers) mesh.addPeer(p.id, p.name);
+        for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
         ui.members.render(mesh.peers);
         break;
       }
       case 'peer-joined': {
-        mesh.addPeer(msg.id, msg.name);
+        mesh.addPeer(msg.id, msg.name, msg.avatar);
         ui.members.render(mesh.peers);
+        sound.playJoinSound();
         if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality);
         break;
       }
@@ -302,6 +468,7 @@
         mesh.removePeer(msg.id);
         ui.grid.removeTile(msg.id, emptyMessage());
         ui.members.render(mesh.peers);
+        sound.playLeaveSound();
         break;
       }
       case 'offer': {
@@ -412,6 +579,75 @@
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
     stopStatsLoop();
+  }
+
+  // ---------- Câmera ----------
+
+  $('btn-toggle-camera').addEventListener('click', () => {
+    if (cameraStream) return stopCamera();
+    if (cameraStarting) return; // ja tem um startCamera() em andamento, ignora o duplo clique
+    startCamera();
+  });
+
+  async function startCamera() {
+    if (cameraStream || cameraStarting) return;
+    cameraStarting = true;
+    try {
+      const constraints = config.cameraConstraints(cfg.camera);
+      if (cfg.camera.deviceId) constraints.deviceId = { exact: cfg.camera.deviceId };
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+      } catch (err) {
+        alert(`Não consegui acessar a câmera: ${err.message}`);
+        return;
+      }
+
+      cameraStream = stream;
+      const track = cameraStream.getVideoTracks()[0];
+      if (track) track.addEventListener('ended', stopCamera);
+
+      ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, true);
+      $('btn-toggle-camera').classList.add('active');
+
+      if (currentSession) {
+        const quality = { ...cfg.camera, codec: 'video/VP8' };
+        for (const peerId of currentSession.mesh.peers.keys()) {
+          await currentSession.mesh.offerTo(peerId, cameraStream, quality);
+        }
+      }
+    } finally {
+      cameraStarting = false;
+    }
+  }
+
+  // Para a captura local e renegocia com cada peer pra remover a track de
+  // camera da outConn (sem derrubar outras tracks ativas na mesma conexao,
+  // como o compartilhamento de tela). Sem isso, o peer remoto continuava
+  // vendo o ultimo frame da camera congelado indefinidamente mesmo depois
+  // de desligada aqui — a conexao WebRTC seguia "viva" com aquela track.
+  async function stopCamera() {
+    if (!cameraStream) return;
+    const track = cameraStream.getVideoTracks()[0];
+    cameraStream.getTracks().forEach((t) => t.stop());
+    cameraStream = null;
+    ui.grid.removeTile('cam-me', emptyMessage());
+    $('btn-toggle-camera').classList.remove('active');
+
+    if (currentSession && track) {
+      const session = currentSession;
+      await Promise.all(
+        Array.from(session.mesh.peers.keys()).map((peerId) =>
+          session.mesh.removeTrack(peerId, track).catch(() => {})
+        )
+      );
+    }
+  }
+
+  async function restartCamera() {
+    await stopCamera();
+    await startCamera();
   }
 
   // ---------- Estatisticas ----------

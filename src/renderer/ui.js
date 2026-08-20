@@ -12,6 +12,97 @@
 
   const gridEl = $('grid');
 
+  // Mantem a classe `.fullscreen` do tile sincronizada quando o usuario sai
+  // do fullscreen por Esc ou pelos controles nativos do SO, sem passar pelo
+  // nosso botao/duplo-clique (toggleTileFullscreen, mais abaixo).
+  window.golive.onFullScreenChange((enabled) => {
+    if (enabled) return;
+    document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen'));
+  });
+
+  // Volume/mute por tile remoto, roteado via Web Audio pra poder passar de
+  // 100% (o <video> nativo so vai ate 1.0) -- ver Step 3 do Task 11 do plano
+  // de implementacao pra contexto completo.
+  let playbackAudioCtx = null;
+  function getPlaybackAudioContext() {
+    if (!playbackAudioCtx) playbackAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return playbackAudioCtx;
+  }
+
+  const tileAudio = new Map(); // id -> { volume, muted, source, gain, builtForStream, builtAudioTrackCount }
+
+  function getOrCreateAudioState(id) {
+    let state = tileAudio.get(id);
+    if (!state) {
+      state = {
+        volume: 1,
+        muted: false,
+        source: null,
+        gain: null,
+        builtForStream: null,
+        builtAudioTrackCount: 0,
+      };
+      tileAudio.set(id, state);
+    }
+    return state;
+  }
+
+  // Chamada em TODA renderizacao do tile (nao so quando o srcObject muda),
+  // porque mesh.js dispara um evento 'track' por track (video, depois audio,
+  // separadamente) e cada um vira uma chamada a showTile com o MESMO objeto
+  // de stream -- entao na 1a chamada (so video) pode nao existir audio track
+  // ainda, e a 2a chamada (audio chegou) e a que realmente precisa construir
+  // o grafo. Tambem cobre tiles camera-only, que nunca ganham audio track:
+  // nesse caso so retornamos sem tentar nada, sem lancar excecao.
+  function ensureTileAudio(id, video, stream) {
+    if (id === 'me' || id === 'cam-me') return;
+    const state = getOrCreateAudioState(id);
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks.length) return; // sem audio track (ainda, ou nunca) -- nada a conectar
+    if (state.source && state.builtForStream === stream && state.builtAudioTrackCount === audioTracks.length) {
+      return; // grafo ja construido pra essa combinacao exata de stream+tracks
+    }
+
+    const ctx = getPlaybackAudioContext();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    if (state.source) {
+      try { state.source.disconnect(); } catch { /* ja desconectado */ }
+    }
+    try {
+      // MediaStreamAudioSourceNode so enxerga as tracks que existem no
+      // momento da criacao -- por isso recriamos sempre que a contagem de
+      // audio tracks muda, em vez de confiar que uma track adicionada depois
+      // vai "aparecer" nesse node.
+      state.source = ctx.createMediaStreamSource(stream);
+    } catch {
+      // Chromium pode lancar InvalidStateError numa corrida (ex: track
+      // removida entre o check acima e a criacao). Nao derruba showTile --
+      // so deixa sem grafo ativo pra esse tile, e tenta de novo na proxima
+      // chamada.
+      state.source = null;
+      return;
+    }
+    if (!state.gain) state.gain = ctx.createGain();
+    state.gain.gain.value = state.muted ? 0 : state.volume;
+    state.source.connect(state.gain).connect(ctx.destination);
+    state.builtForStream = stream;
+    state.builtAudioTrackCount = audioTracks.length;
+  }
+
+  function releaseTileAudio(id) {
+    const state = tileAudio.get(id);
+    if (!state) return;
+    try { state.source?.disconnect(); } catch { /* ja desconectado */ }
+    try { state.gain?.disconnect(); } catch { /* ja desconectado */ }
+    tileAudio.delete(id);
+  }
+
+  function toggleTileFullscreen(tile) {
+    const entering = !tile.classList.contains('fullscreen');
+    tile.classList.toggle('fullscreen', entering);
+    window.golive.setFullScreen(entering);
+  }
+
   function showTile(id, label, stream, muted = false) {
     gridEl.querySelector('.empty')?.remove();
 
@@ -20,25 +111,111 @@
       tile = document.createElement('div');
       tile.className = 'tile';
       tile.id = `tile-${id}`;
-      tile.innerHTML = `<video autoplay playsinline></video><span class="tile-label"></span>`;
-      tile.addEventListener('dblclick', () => tile.classList.toggle('fullscreen'));
+      tile.innerHTML = `
+        <video autoplay playsinline></video>
+        <span class="tile-label"></span>
+        <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>`;
+      tile.addEventListener('dblclick', () => toggleTileFullscreen(tile));
+      tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleTileFullscreen(tile);
+      });
+      if (id !== 'me' && id !== 'cam-me') {
+        tile.addEventListener('contextmenu', (event) => {
+          event.preventDefault();
+          openTileMenu(id, event.clientX, event.clientY);
+        });
+      }
       gridEl.appendChild(tile);
     }
 
     const video = tile.querySelector('video');
-    if (video.srcObject !== stream) video.srcObject = stream;
-    video.muted = muted;
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+    ensureTileAudio(id, video, stream);
+    // Ultima coisa a mexer em video.muted -- tem que rodar em TODA chamada
+    // (nao so quando o srcObject muda), porque a 2a chamada de showTile pro
+    // mesmo peer (audio track chegando separado, ver ensureTileAudio acima)
+    // reusa o mesmo objeto de stream e passaria pelo `if` de cima sem entrar
+    // nele, deixando o video desmutado se essa linha so rodasse ali dentro.
+    video.muted = (id === 'me' || id === 'cam-me') ? muted : true;
     tile.querySelector('.tile-label').textContent = label;
   }
 
   function removeTile(id, emptyMessage) {
     document.getElementById(`tile-${id}`)?.remove();
+    releaseTileAudio(id);
     if (!gridEl.children.length) {
       gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
     }
   }
 
+  let openMenuEl = null;
+
+  function closeTileMenu() {
+    openMenuEl?.remove();
+    openMenuEl = null;
+    document.removeEventListener('click', closeTileMenu);
+  }
+
+  function openTileMenu(id, x, y) {
+    closeTileMenu();
+    const state = getOrCreateAudioState(id);
+
+    const menu = document.createElement('div');
+    menu.className = 'tile-menu';
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.innerHTML = `
+      <button class="tile-menu-mute" type="button">${state.muted ? 'Reativar som' : 'Silenciar'}</button>
+      <label class="tile-menu-volume">
+        <span>Volume: <b class="tile-menu-volume-label">${Math.round(state.volume * 100)}%</b></span>
+        <input type="range" min="0" max="200" step="1" value="${Math.round(state.volume * 100)}" />
+      </label>`;
+    menu.addEventListener('click', (event) => event.stopPropagation());
+    document.body.appendChild(menu);
+    openMenuEl = menu;
+
+    function applyGain() {
+      if (state.gain) state.gain.gain.value = state.muted ? 0 : state.volume;
+    }
+
+    const muteBtn = menu.querySelector('.tile-menu-mute');
+    muteBtn.addEventListener('click', () => {
+      state.muted = !state.muted;
+      muteBtn.textContent = state.muted ? 'Reativar som' : 'Silenciar';
+      applyGain();
+    });
+
+    const range = menu.querySelector('input[type=range]');
+    const volumeLabel = menu.querySelector('.tile-menu-volume-label');
+    range.addEventListener('input', () => {
+      state.volume = Number(range.value) / 100;
+      volumeLabel.textContent = `${range.value}%`;
+      applyGain();
+    });
+
+    // Bubble phase (nao capture): o listener de `click` do proprio menu, que
+    // chama stopPropagation, roda ANTES desse e impede que ele chegue aqui
+    // quando o clique foi dentro do menu (botao de mute, slider). Em fase de
+    // captura isso nao funcionaria -- stopPropagation na fase de bolha nao
+    // afeta um listener de captura no document, que ja teria rodado antes.
+    setTimeout(() => document.addEventListener('click', closeTileMenu), 0);
+  }
+
   const peerListEl = $('peer-list');
+
+  const AVATAR_PALETTE = ['#f23f42', '#f0b232', '#23a55a', '#5865f2', '#eb459e', '#00a8fc'];
+
+  function avatarColorFor(id) {
+    const str = String(id);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+  }
 
   function renderMembers(peers) {
     peerListEl.innerHTML = '';
@@ -49,8 +226,13 @@
     for (const peer of peers.values()) {
       const li = document.createElement('li');
       const state = peer.inConn?.connectionState || peer.outConn?.connectionState;
+      const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
+      const initial = escapeHtml((peer.name || '?').trim().charAt(0).toUpperCase() || '?');
+      const avatarInner = peer.avatar
+        ? `<img src="${escapeHtml(peer.avatar)}" alt="" />`
+        : `<span class="peer-avatar-fallback" style="background:${avatarColorFor(peer.id)}">${initial}</span>`;
       li.innerHTML = `
-        <span class="dot ${state === 'connected' ? 'ok' : state ? 'warn' : ''}"></span>
+        <span class="peer-avatar ${borderClass}">${avatarInner}</span>
         ${escapeHtml(peer.name)}
         ${peer.live ? '<em>AO VIVO</em>' : ''}`;
       peerListEl.appendChild(li);
@@ -58,25 +240,74 @@
   }
 
   const roomListEl = $('room-list');
+  const roomListLiveEl = $('room-list-live');
+  const roomsLiveTitleEl = $('rooms-live-title');
+  const TRASH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+  const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
+  const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-  function renderRooms(rooms, { onSelect }) {
-    roomListEl.innerHTML = '';
+  function fillRoomList(listEl, rooms, { onSelect, onDelete, activeAddress, emptyMessage, isOnCooldown }) {
+    listEl.innerHTML = '';
     if (!rooms.length) {
-      roomListEl.innerHTML = '<li class="muted" style="padding:8px 10px;">nenhuma sala por aqui ainda</li>';
+      if (emptyMessage) listEl.innerHTML = `<li class="muted" style="padding:8px 10px;">${escapeHtml(emptyMessage)}</li>`;
       return;
     }
     for (const room of rooms) {
+      const isActive = activeAddress && room.address === activeAddress;
+      const onCooldown = !isActive && !!isOnCooldown && isOnCooldown(room.address);
       const li = document.createElement('li');
-      const button = document.createElement('button');
-      button.className = 'room-item';
-      button.type = 'button';
-      button.innerHTML = `
-        <span class="room-name"># ${escapeHtml(room.name || room.hostName || 'sala')}</span>
-        <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>`;
-      button.addEventListener('click', () => onSelect(room));
-      li.appendChild(button);
-      roomListEl.appendChild(li);
+      li.className = 'room-row';
+      if (isActive) li.classList.add('active');
+
+      const info = document.createElement('div');
+      info.className = 'room-info';
+      info.innerHTML = `
+        <span class="dot ${isActive ? 'ok' : ''}"></span>
+        <span class="room-item-text">
+          <span class="room-name">${escapeHtml(room.name || room.hostName || 'sala')}</span>
+          <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>
+        </span>`;
+      li.appendChild(info);
+
+      const connectBtn = document.createElement('button');
+      connectBtn.className = 'room-connect';
+      connectBtn.type = 'button';
+      connectBtn.title = isActive ? 'Já conectado nessa sala' : 'Conectar nessa sala';
+      connectBtn.disabled = isActive || onCooldown;
+      if (onCooldown) connectBtn.classList.add('cooldown');
+      connectBtn.innerHTML = isActive ? CONNECTED_ICON : CONNECT_ICON;
+      connectBtn.addEventListener('click', () => onSelect(room));
+      li.appendChild(connectBtn);
+
+      if (onDelete) {
+        const del = document.createElement('button');
+        del.className = 'room-delete';
+        del.type = 'button';
+        del.title = 'Remover sala da lista';
+        del.innerHTML = TRASH_ICON;
+        del.addEventListener('click', () => onDelete(room));
+        li.appendChild(del);
+      }
+
+      listEl.appendChild(li);
     }
+  }
+
+  // `rooms` = historico local (cfg.recentRooms): enderecos ja usados antes,
+  // podem estar offline agora — tem botao de excluir. `liveRooms` = salas
+  // descobertas agora mesmo via broadcast UDP na LAN (src/main/discovery.js)
+  // — "isso esta aberto agora", sem botao de excluir (nao e uma entrada
+  // salva, so aparece enquanto o beacon continuar chegando).
+  function renderRooms(rooms, { onSelect, onDelete, activeAddress, liveRooms = [], isOnCooldown }) {
+    roomsLiveTitleEl.classList.toggle('hidden', !liveRooms.length);
+    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown });
+    fillRoomList(roomListEl, rooms, {
+      onSelect,
+      onDelete,
+      activeAddress,
+      isOnCooldown,
+      emptyMessage: 'nenhuma sala salva ainda — crie uma ou entre por endereço',
+    });
   }
 
   const stageHeaderEl = $('stage-header');
@@ -121,8 +352,44 @@
     if (event.key === 'Escape' && !settingsModalEl.classList.contains('hidden')) closeSettings();
   });
 
+  // Preview de camera do modal de Configuracoes. E independente da "camera
+  // ao vivo" gerida em app.js (botao da barra lateral) — abre sua propria
+  // captura so pra mostrar aqui, e precisa ser parada ao fechar o modal,
+  // senao a luz da webcam fica acesa com o modal fechado.
+  let settingsCameraPreviewStream = null;
+
+  function stopSettingsCameraPreview() {
+    if (!settingsCameraPreviewStream) return;
+    settingsCameraPreviewStream.getTracks().forEach((t) => t.stop());
+    settingsCameraPreviewStream = null;
+    const video = $('settings-camera-preview');
+    if (video) video.srcObject = null;
+  }
+
+  async function startSettingsCameraPreview(deviceId) {
+    stopSettingsCameraPreview();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false,
+      });
+      // o modal pode ter fechado (ou o dispositivo pode ter mudado de novo)
+      // enquanto aguardavamos a permissao/captura
+      if (settingsModalEl.classList.contains('hidden')) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      settingsCameraPreviewStream = stream;
+      const video = $('settings-camera-preview');
+      if (video) video.srcObject = stream;
+    } catch {
+      /* permissao negada ou sem camera disponivel, preview fica preto */
+    }
+  }
+
   function closeSettings() {
     settingsModalEl.classList.add('hidden');
+    stopSettingsCameraPreview();
   }
 
   function bandwidthLine(config) {
@@ -236,12 +503,17 @@
       for (const d of devices.filter((d) => d.kind === 'audioinput')) {
         audioSelect.add(new Option(d.label || 'Entrada de áudio', d.deviceId));
       }
-      cameraSelect.addEventListener('change', () => deps.onCameraDeviceChange(cameraSelect.value));
+      if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
+      cameraSelect.addEventListener('change', () => {
+        deps.onCameraDeviceChange(cameraSelect.value);
+        startSettingsCameraPreview(cameraSelect.value);
+      });
     } catch {
       /* sem permissao de midia ainda, dropdowns ficam vazios */
     }
 
     settingsModalEl.classList.remove('hidden');
+    startSettingsCameraPreview($('settings-camera-device').value);
   }
 
   function setStatsHtml(html) {

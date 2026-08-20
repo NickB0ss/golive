@@ -32,9 +32,33 @@ const { createSignalingServer } = require('../server/signaling-core');
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
+const { createDiscovery } = require('./main/discovery');
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
+/** Nome do host da sala ativa, pra reusar no beacon quando o toggle de
+ * anunciar e ligado depois (Configuracoes > Rede), sem precisar do renderer
+ * reenviar o nome. */
+let hostedRoomName = 'anônimo';
+
+/** Descoberta de salas via broadcast UDP. Sempre escuta (independente de
+ * estar anunciando ou nao); so publica beacons enquanto houver sala local
+ * ativa com "anunciar" ligado. */
+const discovery = createDiscovery();
+let discoveryStarted = false;
+
+async function ensureDiscoveryStarted() {
+  if (discoveryStarted) return;
+  discoveryStarted = true;
+  discovery.setOnRoomsChange((rooms) => {
+    if (win && !win.isDestroyed()) win.webContents.send('rooms:discovered', rooms);
+  });
+  try {
+    await discovery.start();
+  } catch {
+    discoveryStarted = false; // best-effort: sem descoberta o resto do app segue funcionando
+  }
+}
 
 async function closeEmbeddedServer() {
   if (!embeddedServer) return;
@@ -58,6 +82,8 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  win.on('enter-full-screen', () => win?.webContents.send('window:fullscreen-changed', true));
+  win.on('leave-full-screen', () => win?.webContents.send('window:fullscreen-changed', false));
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -82,6 +108,10 @@ app.whenReady().then(() => {
   );
 
   createWindow();
+  // Escuta descoberta de salas sempre, mesmo sem hospedar nenhuma -- senao
+  // quem so quer entrar em salas dos outros nunca ve a lista da rede (o
+  // socket UDP de escuta so era aberto ao criar/anunciar uma sala local).
+  ensureDiscoveryStarted();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -90,8 +120,29 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   closeEmbeddedServer().catch(() => {});
+  discovery.stop();
+  discoveryStarted = false;
   if (process.platform !== 'darwin') app.quit();
 });
+
+function advertiseHostedRoom() {
+  if (!embeddedServer) {
+    discovery.stopAdvertising();
+    return;
+  }
+  const picked = pickAddress();
+  const address = picked ? `${picked.address}:${embeddedServer.port}` : null;
+  if (!address) {
+    discovery.stopAdvertising();
+    return;
+  }
+  discovery.startAdvertising({
+    name: hostedRoomName,
+    port: embeddedServer.port,
+    address,
+    getPeerCount: () => embeddedServer.getPeerCount(),
+  });
+}
 
 // --- IPC ---------------------------------------------------------------
 
@@ -126,22 +177,55 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
   return true;
 });
 
-ipcMain.handle('room:host', async (_event, { name }) => {
+ipcMain.handle('room:host', async (_event, { name, advertise } = {}) => {
   try {
     if (embeddedServer) await closeEmbeddedServer();
     embeddedServer = await findFreeServer((port) => createSignalingServer({ port }));
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
     const picked = pickAddress();
+    const address = picked ? `${picked.address}:${embeddedServer.port}` : null;
+
+    hostedRoomName = name || 'anônimo';
+    await ensureDiscoveryStarted();
+    if (advertise && address) {
+      advertiseHostedRoom();
+    } else {
+      discovery.stopAdvertising();
+    }
 
     return {
       ok: true,
       port: embeddedServer.port,
-      address: picked ? `${picked.address}:${embeddedServer.port}` : null,
+      address,
       firewall,
       addressWarning: picked ? undefined : 'Radmin/Tailscale não detectado',
     };
   } catch (err) {
     return { ok: false, error: err.code === 'PORTS_EXHAUSTED' ? 'PORTS_EXHAUSTED' : err.message };
   }
+});
+
+ipcMain.handle('discovery:setAdvertise', async (_event, enabled) => {
+  await ensureDiscoveryStarted();
+  if (!enabled || !embeddedServer) {
+    discovery.stopAdvertising();
+    return true;
+  }
+  advertiseHostedRoom();
+  return true;
+});
+
+ipcMain.handle('discovery:refresh', async () => {
+  const wasAdvertising = discovery.isAdvertising();
+  discovery.stop();
+  discoveryStarted = false;
+  await ensureDiscoveryStarted();
+  if (wasAdvertising) advertiseHostedRoom();
+  return true;
+});
+
+ipcMain.handle('window:setFullScreen', (_event, enabled) => {
+  win?.setFullScreen(!!enabled);
+  return true;
 });

@@ -4,6 +4,7 @@
   const DEFAULTS = {
     v: 1,
     name: '',
+    avatar: null,
     quality: {
       width: 1920,
       height: 1080,
@@ -16,6 +17,7 @@
       height: 720,
       fps: 30,
       bitrate: 2_000_000,
+      deviceId: null,
     },
     network: {
       advertise: true,
@@ -46,6 +48,7 @@
     return {
       v: 1,
       name: typeof parsed.name === 'string' ? parsed.name : DEFAULTS.name,
+      avatar: typeof parsed.avatar === 'string' ? parsed.avatar : DEFAULTS.avatar,
       quality: mergeSection(DEFAULTS.quality, parsed.quality),
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
       network: mergeSection(DEFAULTS.network, parsed.network),
@@ -79,7 +82,11 @@
     return { ...config, recentRooms };
   }
 
-  const api = { DEFAULTS, load, serialize, videoConstraints, cameraConstraints, addRecentRoom };
+  function removeRecentRoom(config, address) {
+    return { ...config, recentRooms: config.recentRooms.filter((r) => r.address !== address) };
+  }
+
+  const api = { DEFAULTS, load, serialize, videoConstraints, cameraConstraints, addRecentRoom, removeRecentRoom };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.config = api;
