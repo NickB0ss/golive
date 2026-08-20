@@ -21,30 +21,64 @@
     return playbackAudioCtx;
   }
 
-  const tileAudio = new Map(); // id -> { volume, muted, source, gain }
+  const tileAudio = new Map(); // id -> { volume, muted, source, gain, builtForStream, builtAudioTrackCount }
 
   function getOrCreateAudioState(id) {
     let state = tileAudio.get(id);
     if (!state) {
-      state = { volume: 1, muted: false, source: null, gain: null };
+      state = {
+        volume: 1,
+        muted: false,
+        source: null,
+        gain: null,
+        builtForStream: null,
+        builtAudioTrackCount: 0,
+      };
       tileAudio.set(id, state);
     }
     return state;
   }
 
+  // Chamada em TODA renderizacao do tile (nao so quando o srcObject muda),
+  // porque mesh.js dispara um evento 'track' por track (video, depois audio,
+  // separadamente) e cada um vira uma chamada a showTile com o MESMO objeto
+  // de stream -- entao na 1a chamada (so video) pode nao existir audio track
+  // ainda, e a 2a chamada (audio chegou) e a que realmente precisa construir
+  // o grafo. Tambem cobre tiles camera-only, que nunca ganham audio track:
+  // nesse caso so retornamos sem tentar nada, sem lancar excecao.
   function ensureTileAudio(id, video, stream) {
     if (id === 'me' || id === 'cam-me') return;
-    video.muted = true;
     const state = getOrCreateAudioState(id);
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks.length) return; // sem audio track (ainda, ou nunca) -- nada a conectar
+    if (state.source && state.builtForStream === stream && state.builtAudioTrackCount === audioTracks.length) {
+      return; // grafo ja construido pra essa combinacao exata de stream+tracks
+    }
+
     const ctx = getPlaybackAudioContext();
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     if (state.source) {
       try { state.source.disconnect(); } catch { /* ja desconectado */ }
     }
-    state.source = ctx.createMediaStreamSource(stream);
+    try {
+      // MediaStreamAudioSourceNode so enxerga as tracks que existem no
+      // momento da criacao -- por isso recriamos sempre que a contagem de
+      // audio tracks muda, em vez de confiar que uma track adicionada depois
+      // vai "aparecer" nesse node.
+      state.source = ctx.createMediaStreamSource(stream);
+    } catch {
+      // Chromium pode lancar InvalidStateError numa corrida (ex: track
+      // removida entre o check acima e a criacao). Nao derruba showTile --
+      // so deixa sem grafo ativo pra esse tile, e tenta de novo na proxima
+      // chamada.
+      state.source = null;
+      return;
+    }
     if (!state.gain) state.gain = ctx.createGain();
     state.gain.gain.value = state.muted ? 0 : state.volume;
     state.source.connect(state.gain).connect(ctx.destination);
+    state.builtForStream = stream;
+    state.builtAudioTrackCount = audioTracks.length;
   }
 
   function releaseTileAudio(id) {
@@ -84,11 +118,16 @@
     }
 
     const video = tile.querySelector('video');
-    video.muted = muted;
     if (video.srcObject !== stream) {
       video.srcObject = stream;
-      ensureTileAudio(id, video, stream);
     }
+    ensureTileAudio(id, video, stream);
+    // Ultima coisa a mexer em video.muted -- tem que rodar em TODA chamada
+    // (nao so quando o srcObject muda), porque a 2a chamada de showTile pro
+    // mesmo peer (audio track chegando separado, ver ensureTileAudio acima)
+    // reusa o mesmo objeto de stream e passaria pelo `if` de cima sem entrar
+    // nele, deixando o video desmutado se essa linha so rodasse ali dentro.
+    video.muted = (id === 'me' || id === 'cam-me') ? muted : true;
     tile.querySelector('.tile-label').textContent = label;
   }
 
@@ -105,7 +144,7 @@
   function closeTileMenu() {
     openMenuEl?.remove();
     openMenuEl = null;
-    document.removeEventListener('click', closeTileMenu, true);
+    document.removeEventListener('click', closeTileMenu);
   }
 
   function openTileMenu(id, x, y) {
@@ -145,7 +184,12 @@
       applyGain();
     });
 
-    setTimeout(() => document.addEventListener('click', closeTileMenu, true), 0);
+    // Bubble phase (nao capture): o listener de `click` do proprio menu, que
+    // chama stopPropagation, roda ANTES desse e impede que ele chegue aqui
+    // quando o clique foi dentro do menu (botao de mute, slider). Em fase de
+    // captura isso nao funcionaria -- stopPropagation na fase de bolha nao
+    // afeta um listener de captura no document, que ja teria rodado antes.
+    setTimeout(() => document.addEventListener('click', closeTileMenu), 0);
   }
 
   const peerListEl = $('peer-list');
