@@ -3,3 +3,4 @@ dist/
 tools/iperf3.exe
 tools/iperf3/
 *.log
+.worktrees/
