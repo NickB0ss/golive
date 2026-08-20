@@ -40,6 +40,15 @@
 
   const peerListEl = $('peer-list');
 
+  const AVATAR_PALETTE = ['#f23f42', '#f0b232', '#23a55a', '#5865f2', '#eb459e', '#00a8fc'];
+
+  function avatarColorFor(id) {
+    const str = String(id);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+  }
+
   function renderMembers(peers) {
     peerListEl.innerHTML = '';
     if (!peers.size) {
@@ -49,8 +58,13 @@
     for (const peer of peers.values()) {
       const li = document.createElement('li');
       const state = peer.inConn?.connectionState || peer.outConn?.connectionState;
+      const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
+      const initial = escapeHtml((peer.name || '?').trim().charAt(0).toUpperCase() || '?');
+      const avatarInner = peer.avatar
+        ? `<img src="${escapeHtml(peer.avatar)}" alt="" />`
+        : `<span class="peer-avatar-fallback" style="background:${avatarColorFor(peer.id)}">${initial}</span>`;
       li.innerHTML = `
-        <span class="dot ${state === 'connected' ? 'ok' : state ? 'warn' : ''}"></span>
+        <span class="peer-avatar ${borderClass}">${avatarInner}</span>
         ${escapeHtml(peer.name)}
         ${peer.live ? '<em>AO VIVO</em>' : ''}`;
       peerListEl.appendChild(li);

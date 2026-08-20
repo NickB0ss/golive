@@ -250,6 +250,20 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 }
 .peer-list .muted { color: var(--muted); border: none; }
 
+.peer-avatar {
+  width: 26px; height: 26px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.peer-avatar.ok { border-color: var(--good); }
+.peer-avatar.warn { border-color: var(--warn); }
+.peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 11px; }
+
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.ok { background: var(--good); }
 .dot.warn { background: var(--warn); }
