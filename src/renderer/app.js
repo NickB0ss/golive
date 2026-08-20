@@ -123,6 +123,14 @@
     renderRoomList();
   });
 
+  $('btn-refresh-discovery').addEventListener('click', () => {
+    const btn = $('btn-refresh-discovery');
+    btn.classList.remove('spin');
+    void btn.offsetWidth; // força reflow pra reiniciar a animacao mesmo se clicado de novo dentro dos 600ms
+    btn.classList.add('spin');
+    window.golive.refreshDiscovery();
+  });
+
   $('btn-join-address').addEventListener('click', () => {
     $('join-address-form').classList.toggle('hidden');
   });

@@ -103,6 +103,25 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   letter-spacing: 0.9px;
   color: var(--muted);
   padding: 16px 16px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.icon-btn-inline {
+  width: 22px; height: 22px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+}
+.icon-btn-inline svg { width: 14px; height: 14px; }
+.icon-btn-inline:hover { background: var(--bg-inset); color: var(--text); }
+.icon-btn-inline.spin svg { animation: spin 600ms linear; }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .members-title {
   font-size: 11px;
