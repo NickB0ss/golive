@@ -64,7 +64,7 @@
   const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
   const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-  function fillRoomList(listEl, rooms, { onSelect, onDelete, activeAddress, emptyMessage }) {
+  function fillRoomList(listEl, rooms, { onSelect, onDelete, activeAddress, emptyMessage, isOnCooldown }) {
     listEl.innerHTML = '';
     if (!rooms.length) {
       if (emptyMessage) listEl.innerHTML = `<li class="muted" style="padding:8px 10px;">${escapeHtml(emptyMessage)}</li>`;
@@ -72,6 +72,7 @@
     }
     for (const room of rooms) {
       const isActive = activeAddress && room.address === activeAddress;
+      const onCooldown = !isActive && !!isOnCooldown && isOnCooldown(room.address);
       const li = document.createElement('li');
       li.className = 'room-row';
       if (isActive) li.classList.add('active');
@@ -90,7 +91,8 @@
       connectBtn.className = 'room-connect';
       connectBtn.type = 'button';
       connectBtn.title = isActive ? 'Já conectado nessa sala' : 'Conectar nessa sala';
-      connectBtn.disabled = !!isActive;
+      connectBtn.disabled = isActive || onCooldown;
+      if (onCooldown) connectBtn.classList.add('cooldown');
       connectBtn.innerHTML = isActive ? CONNECTED_ICON : CONNECT_ICON;
       connectBtn.addEventListener('click', () => onSelect(room));
       li.appendChild(connectBtn);
@@ -114,13 +116,14 @@
   // descobertas agora mesmo via broadcast UDP na LAN (src/main/discovery.js)
   // — "isso esta aberto agora", sem botao de excluir (nao e uma entrada
   // salva, so aparece enquanto o beacon continuar chegando).
-  function renderRooms(rooms, { onSelect, onDelete, activeAddress, liveRooms = [] }) {
+  function renderRooms(rooms, { onSelect, onDelete, activeAddress, liveRooms = [], isOnCooldown }) {
     roomsLiveTitleEl.classList.toggle('hidden', !liveRooms.length);
-    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress });
+    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown });
     fillRoomList(roomListEl, rooms, {
       onSelect,
       onDelete,
       activeAddress,
+      isOnCooldown,
       emptyMessage: 'nenhuma sala salva ainda — crie uma ou entre por endereço',
     });
   }

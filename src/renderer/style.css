@@ -178,6 +178,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .room-connect svg, .room-delete svg { width: 15px; height: 15px; }
 .room-connect:hover:not(:disabled) { background: var(--accent); color: #fff; }
 .room-connect:disabled { color: var(--good); cursor: default; opacity: 1; }
+.room-connect.cooldown { opacity: .35; cursor: not-allowed; }
 .room-delete { opacity: 0; margin-right: 4px; }
 .room-row:hover .room-delete { opacity: 1; }
 .room-delete:hover { background: var(--bg-inset); color: var(--bad); }
@@ -256,6 +257,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .stage-room-address { color: var(--muted); font-family: monospace; font-size: 12px; }
 #btn-disconnect { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 #btn-disconnect svg { width: 14px; height: 14px; }
+#btn-disconnect:disabled { opacity: .5; cursor: not-allowed; }
 
 .grid {
   flex: 1;

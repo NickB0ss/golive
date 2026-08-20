@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -25,6 +25,31 @@
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js). Distinto de cfg.recentRooms (historico local).
   let discoveredRooms = [];
+
+  // Cooldown de 2s pra entrar/sair da mesma sala repetidamente: endereco ->
+  // timestamp da ultima transicao (entrada ou saida).
+  const roomCooldowns = new Map();
+
+  function cooldownRemaining(address) {
+    if (!address) return 0;
+    const last = roomCooldowns.get(address);
+    if (last == null) return 0;
+    return Math.max(0, 2000 - (Date.now() - last));
+  }
+
+  function markCooldown(address) {
+    if (!address) return;
+    roomCooldowns.set(address, Date.now());
+    setTimeout(() => {
+      renderRoomList();
+      updateDisconnectButtonState();
+    }, 2000);
+  }
+
+  function updateDisconnectButtonState() {
+    const btn = $('btn-disconnect');
+    btn.disabled = !!activeRoomAddress && cooldownRemaining(activeRoomAddress) > 0;
+  }
 
   const $ = (id) => document.getElementById(id);
 
@@ -100,8 +125,10 @@
     ui.rooms.render(cfg.recentRooms, {
       activeAddress: activeRoomAddress,
       liveRooms: discoveredRooms,
+      isOnCooldown: (address) => cooldownRemaining(address) > 0,
       onSelect: (room) => {
         if (room.address === activeRoomAddress) return; // já conectado nessa sala
+        if (cooldownRemaining(room.address) > 0) return;
         hostInfo = null;
         renderHostWarning();
         joinRoom(room.address, cfg.name);
@@ -278,9 +305,12 @@
           activeRoomAddress = publicAddress || url;
           cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
           persist();
+          markCooldown(activeRoomAddress);
+          updateDisconnectButtonState();
           renderRoomList();
           session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo' });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
+          sound.playJoinSound();
           onSettled?.();
         },
         onMessage: (msg) => handleSignal(session, msg),
@@ -336,7 +366,10 @@
 
   function leaveRoom() {
     if (!currentSession) return;
+    if (cooldownRemaining(activeRoomAddress) > 0) return;
+    sound.playLeaveSound();
     const session = currentSession;
+    const leavingAddress = activeRoomAddress;
     currentSession = null;
     activeRoomAddress = null;
     hostInfo = null;
@@ -345,8 +378,12 @@
     renderHostWarning();
     teardownSession(session);
     renderRoomList();
+    markCooldown(leavingAddress);
   }
-  $('btn-disconnect').addEventListener('click', leaveRoom);
+  $('btn-disconnect').addEventListener('click', () => {
+    if (cooldownRemaining(activeRoomAddress) > 0) return;
+    leaveRoom();
+  });
 
   async function handleSignal(session, msg) {
     if (currentSession !== session) return;
@@ -362,6 +399,7 @@
       case 'peer-joined': {
         mesh.addPeer(msg.id, msg.name);
         ui.members.render(mesh.peers);
+        sound.playJoinSound();
         if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality);
         break;
       }
@@ -369,6 +407,7 @@
         mesh.removePeer(msg.id);
         ui.grid.removeTile(msg.id, emptyMessage());
         ui.members.render(mesh.peers);
+        sound.playLeaveSound();
         break;
       }
       case 'offer': {
