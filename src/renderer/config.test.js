@@ -76,8 +76,8 @@ test('addRecentRoom deduplica por endereco, movendo pro topo', () => {
   cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.2:9000', name: 'sala B' });
   cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.1:9000', name: 'sala A renomeada' });
   assert.deepEqual(cfg.recentRooms, [
-    { address: 'ws://26.0.0.1:9000', name: 'sala A renomeada' },
-    { address: 'ws://26.0.0.2:9000', name: 'sala B' },
+    { address: 'ws://26.0.0.1:9000', name: 'sala A renomeada', isOwn: false },
+    { address: 'ws://26.0.0.2:9000', name: 'sala B', isOwn: false },
   ]);
 });
 
@@ -88,4 +88,10 @@ test('addRecentRoom limita a 5 entradas', () => {
   }
   assert.equal(cfg.recentRooms.length, 5);
   assert.equal(cfg.recentRooms[0].address, 'ws://26.0.0.6:9000');
+});
+
+test('addRecentRoom marca isOwn quando a sala foi hospedada por mim', () => {
+  let cfg = load(null);
+  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.1:9000', name: 'sala A', isOwn: true });
+  assert.equal(cfg.recentRooms[0].isOwn, true);
 });

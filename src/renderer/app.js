@@ -17,6 +17,11 @@
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
   let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
+  // Funcoes de parada das capturas nativas de audio por processo (WASAPI
+  // Process Loopback) ligadas ao compartilhamento de tela atual, se houver
+  // -- ver startShare/stopShare. Vazio quando nao ha nenhuma rodando (sem
+  // "compartilhar som", ou addon nativo indisponivel nesta maquina).
+  let stopNativeAudioFns = [];
   let hostInfo = null;
   let activeRoomAddress = null;
   let statsTimer = null;
@@ -174,7 +179,7 @@
     if (track) {
       await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
     }
-    currentSession?.mesh?.applyEncoding(cfg.quality);
+    currentSession?.mesh?.applyEncoding(cfg.quality, 'screen');
   }
 
   // ---------- Lista de salas ----------
@@ -189,7 +194,16 @@
         if (cooldownRemaining(room.address) > 0) return;
         hostInfo = null;
         renderHostWarning();
-        joinRoom(room.address, cfg.name);
+        // Sala que EU criei: o "servidor" dela é o meu proprio processo, que
+        // morreu junto com o app da ultima vez que fechei. Nao existe nada
+        // pra "entrar como convidado" nesse endereco -- a unica forma de
+        // voltar pra ela e subir o host de novo (normalmente recupera o
+        // mesmo endereco, ja que IP e porta tendem a se repetir).
+        if (room.isOwn) {
+          hostRoomFlow();
+        } else {
+          joinRoom(room.address, cfg.name);
+        }
       },
       onDelete: (room) => {
         if (room.address === activeRoomAddress) {
@@ -203,6 +217,7 @@
     });
   }
   renderRoomList();
+  renderMembersPanel();
 
   // Assina a lista de salas descobertas ao vivo na LAN (main process manda
   // sempre que a lista muda: sala nova anunciada ou sala expirou).
@@ -243,31 +258,37 @@
     joinRoom(url, cfg.name, undefined, restoreBtn);
   });
 
-  $('btn-create-room').addEventListener('click', async () => {
+  // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto
+  // pelo botao "Criar sala" quanto ao reconectar numa sala propria que estava
+  // salva em "Recentes" (ver isOwn em onSelect, acima).
+  async function hostRoomFlow() {
     $('setup-error').textContent = '';
+    let result;
+    try {
+      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise });
+    } catch {
+      $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
+      return;
+    }
+    if (!result.ok) {
+      $('setup-error').textContent =
+        result.error === 'PORTS_EXHAUSTED'
+          ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
+          : `Não consegui subir a sala: ${result.error}`;
+      return;
+    }
+    hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+    renderHostWarning();
+    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address);
+  }
+
+  $('btn-create-room').addEventListener('click', async () => {
     const btn = $('btn-create-room');
     const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = '…';
-
     try {
-      let result;
-      try {
-        result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise });
-      } catch {
-        $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
-        return;
-      }
-      if (!result.ok) {
-        $('setup-error').textContent =
-          result.error === 'PORTS_EXHAUSTED'
-            ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
-            : `Não consegui subir a sala: ${result.error}`;
-        return;
-      }
-      hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
-      renderHostWarning();
-      joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address);
+      await hostRoomFlow();
     } finally {
       btn.disabled = false;
       btn.textContent = originalText;
@@ -313,6 +334,8 @@
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
+      stopNativeAudioFns.forEach((stop) => stop());
+      stopNativeAudioFns = [];
       ui.grid.removeTile('me', emptyMessage());
     }
     if (cameraStream) {
@@ -328,7 +351,22 @@
       }
     }
     $('btn-toggle-share').classList.remove('active');
-    ui.members.render(new Map());
+    renderMembersPanel();
+  }
+
+  // ---------- Painel "Na sala" (membros + eu) ----------
+
+  // `currentSession` so passa a existir com id/nome depois do 'welcome' (ver
+  // handleSignal), mas mostramos o proprio usuario assim que a sessao existe
+  // -- sem isso a coluna direita fica em branco enquanto o handshake nao
+  // termina, e ele nunca aparece pra si mesmo mesmo depois.
+  function currentSelfInfo() {
+    if (!currentSession) return null;
+    return { name: cfg.name || 'anônimo', avatar: cfg.avatar || null, live: !!localStream };
+  }
+
+  function renderMembersPanel() {
+    ui.members.render(currentSession ? currentSession.mesh.peers : new Map(), currentSelfInfo());
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -343,9 +381,20 @@
     return out;
   }
 
+  // Endereco "canonico" (sem esquema ws://) usado como chave em
+  // cfg.recentRooms/activeRoomAddress. Sem isso, entrar numa sala pelo
+  // endereco cru ("192.168.1.5:9000", vindo da lista ou digitado a mao) e
+  // entrar na MESMA sala hospedada por voce (que guarda o endereco sem
+  // esquema) geravam duas entradas distintas pro mesmo lugar -- uma com
+  // "ws://" e outra sem.
+  function canonicalAddress(url) {
+    return url.replace(/^wss?:\/\//, '');
+  }
+
   function joinRoom(rawUrl, name, publicAddress, onSettled) {
     $('setup-error').textContent = '';
     const url = normalizeRoomUrl(rawUrl);
+    const roomAddress = publicAddress || canonicalAddress(url);
 
     if (currentSession) {
       const oldSession = currentSession;
@@ -363,14 +412,19 @@
       connHandle = signaling.connect(url, {
         onOpen: () => {
           if (currentSession !== session) return;
-          activeRoomAddress = publicAddress || url;
-          cfg = config.addRecentRoom(cfg, { address: publicAddress || url, name: `sala de ${name || 'anônimo'}` });
+          session.opened = true;
+          activeRoomAddress = roomAddress;
+          cfg = config.addRecentRoom(cfg, {
+            address: roomAddress,
+            name: `sala de ${name || 'anônimo'}`,
+            isOwn: !!publicAddress, // publicAddress só vem preenchido quando EU estou hospedando (ver hostRoomFlow)
+          });
           persist();
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
           renderRoomList();
           session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null });
-          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: publicAddress || url });
+          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress });
           sound.playJoinSound();
           onSettled?.();
         },
@@ -387,7 +441,13 @@
           currentSession = null;
           activeRoomAddress = null;
           ui.stageHeader.clear();
-          teardownSession(session);
+          // Se a conexao nunca chegou a abrir (ex: sala propria cujo host
+          // morreu junto com o app anterior), nao ha sessao pra desmontar --
+          // so teardownSession() ja limpava o painel de membros pra "só você
+          // por aqui" mesmo sem ter entrado em lugar nenhum, mascarando o
+          // erro de conexao que o onError acima acabou de mostrar.
+          if (session.opened) teardownSession(session);
+          renderMembersPanel();
           renderRoomList();
         },
       });
@@ -405,14 +465,16 @@
       send: (payload) => {
         if (currentSession === session) session.sig.send(payload);
       },
-      onTrack: (peerId, peerName, stream) => {
+      onTrack: (peerId, peerName, stream, kind) => {
         if (currentSession !== session) return;
-        ui.grid.showTile(peerId, peerName, stream);
+        const peer = session.mesh.peers.get(peerId);
+        const tileId = kind === 'camera' ? `cam-${peerId}` : peerId;
+        ui.grid.showTile(tileId, peerName, stream, { avatar: peer?.avatar || null, kind });
       },
-      onPeerState: (peerId, { removedTile }) => {
+      onPeerState: (peerId, { removedTile, kind }) => {
         if (currentSession !== session) return;
-        if (removedTile) ui.grid.removeTile(peerId, emptyMessage());
-        ui.members.render(session.mesh.peers);
+        if (removedTile) ui.grid.removeTile(kind === 'camera' ? `cam-${peerId}` : peerId, emptyMessage());
+        renderMembersPanel();
       },
     });
 
@@ -454,47 +516,108 @@
       case 'welcome': {
         myId = msg.id;
         for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
-        ui.members.render(mesh.peers);
+        renderMembersPanel();
         break;
       }
       case 'peer-joined': {
         mesh.addPeer(msg.id, msg.name, msg.avatar);
-        ui.members.render(mesh.peers);
+        renderMembersPanel();
         sound.playJoinSound();
-        if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality);
+        if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality, 'screen');
+        if (cameraStream) await mesh.offerTo(msg.id, cameraStream, { ...cfg.camera, codec: 'video/VP8' }, 'camera');
         break;
       }
       case 'peer-left': {
         mesh.removePeer(msg.id);
         ui.grid.removeTile(msg.id, emptyMessage());
-        ui.members.render(mesh.peers);
+        ui.grid.removeTile(`cam-${msg.id}`, emptyMessage());
+        renderMembersPanel();
         sound.playLeaveSound();
         break;
       }
       case 'offer': {
-        const answerSdp = await mesh.handleOffer(msg.from, msg.sdp);
+        const answerSdp = await mesh.handleOffer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return; // sessao caiu enquanto negociava
-        sig.send({ type: 'answer', to: msg.from, sdp: answerSdp });
+        sig.send({ type: 'answer', to: msg.from, sdp: answerSdp, kind: msg.kind });
         break;
       }
       case 'answer': {
-        await mesh.handleAnswer(msg.from, msg.sdp);
+        await mesh.handleAnswer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return;
-        mesh.applyEncoding(cfg.quality);
+        const quality = msg.kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+        mesh.applyEncoding(quality, msg.kind);
         break;
       }
       case 'ice': {
-        await mesh.handleIce(msg.from, msg.dir, msg.candidate);
+        await mesh.handleIce(msg.from, msg.dir, msg.candidate, msg.kind);
         break;
       }
       case 'broadcast-state': {
         const peer = mesh.peers.get(msg.id);
         if (peer) peer.live = msg.live;
         if (!msg.live) ui.grid.removeTile(msg.id, emptyMessage());
-        ui.members.render(mesh.peers);
+        renderMembersPanel();
         break;
       }
     }
+  }
+
+  // ---------- Audio por processo (WASAPI Process Loopback) ----------
+  //
+  // Alternativa ao loopback de sistema padrao do Electron: em vez de pegar
+  // TODO o audio da maquina, o addon nativo (src/main.js + native/) captura
+  // (ou exclui) o audio de um processo especifico. So existe de verdade no
+  // Windows com o addon compilado -- em qualquer outra situacao
+  // startProcessAudioCapture devolve `{ ok: false }` e quem chamou cai pro
+  // loopback de sistema normal (ver startShare).
+  //
+  // O audio chega aqui como PCM float32 cru via IPC (main -> renderer), nao
+  // como uma MediaStreamTrack pronta -- pcm-injector-worklet.js e a ponte
+  // que injeta essas amostras num AudioWorkletNode de verdade, que da pra
+  // conectar num grafo do Web Audio (e dali, misturar e virar uma track).
+
+  let pcmAudioContext = null;
+  let pcmWorkletModule = null; // promise, carregado uma unica vez
+  const pcmNodesByCapture = new Map(); // captureId -> AudioWorkletNode
+
+  function getPcmAudioContext() {
+    if (!pcmAudioContext) pcmAudioContext = new AudioContext({ sampleRate: 48000 });
+    return pcmAudioContext;
+  }
+
+  async function ensurePcmWorklet() {
+    const ctx = getPcmAudioContext();
+    if (!pcmWorkletModule) pcmWorkletModule = ctx.audioWorklet.addModule('pcm-injector-worklet.js');
+    await pcmWorkletModule;
+    return ctx;
+  }
+
+  window.golive.onAudioChunk((captureId, samples, channels) => {
+    pcmNodesByCapture.get(captureId)?.port.postMessage({ samples, channels });
+  });
+
+  // Sobe uma captura nativa por processo e devolve o AudioWorkletNode ainda
+  // desconectado (quem chama decide pra onde ligar -- normalmente direto
+  // num MediaStreamAudioDestinationNode, sozinho ou junto de outro node
+  // pra misturar), mais uma funcao `stop()`. Devolve null se indisponivel
+  // ou a ativacao falhar (ex: processo sumiu entre escolher e confirmar).
+  async function startNativeProcessAudioNode(ctx, pid, exclude) {
+    const result = await window.golive.startProcessAudioCapture(pid, exclude);
+    if (!result.ok) return null;
+    const node = new AudioWorkletNode(ctx, 'pcm-injector', { outputChannelCount: [2] });
+    pcmNodesByCapture.set(result.captureId, node);
+    return {
+      node,
+      stop: () => {
+        pcmNodesByCapture.delete(result.captureId);
+        try {
+          node.disconnect();
+        } catch {
+          /* ja desconectado */
+        }
+        window.golive.stopProcessAudioCapture(result.captureId).catch(() => {});
+      },
+    };
   }
 
   // ---------- Compartilhar tela ----------
@@ -506,21 +629,53 @@
     ui.picker.open({ onGoLive: startShare });
   });
 
-  async function startShare(sourceId, audioMode, audioDeviceId) {
+  async function startShare(sourceId, shareSound, includeDiscord) {
     if (sharing || localStream) return;
     const session = currentSession;
     if (!session || !session.sig.isOpen()) return;
 
     sharing = true;
+    const startedNativeStops = [];
     try {
-      await window.golive.selectSource(sourceId, audioMode);
+      // Estrategia de audio, decidida ANTES de chamar getDisplayMedia
+      // porque o modo passado pra sources:select determina se o Electron
+      // tenta anexar o loopback de sistema no video capturado:
+      //  - compartilhando so uma JANELA: audio-base = so o app dono dela
+      //    (captura nativa por processo, modo "incluir").
+      //  - compartilhando a TELA inteira: audio-base = sistema inteiro
+      //    EXCLUINDO o Discord (captura nativa, modo "excluir"). Sem
+      //    Discord rodando (ou sem o addon nativo nesta maquina), cai pro
+      //    loopback de sistema normal do Electron -- nao ha o que excluir
+      //    mesmo, e esse caminho ja e testado e simples.
+      const isWindowSource = typeof sourceId === 'string' && sourceId.startsWith('window:');
+      const discordPid = shareSound ? await window.golive.findDiscordPid() : 0;
+
+      let useElectronLoopback = false;
+      let basePid = 0;
+      let baseExclude = false;
+      if (shareSound) {
+        if (isWindowSource) {
+          basePid = await window.golive.pidForSource(sourceId);
+          // Nao achou o PID da janela (SO diferente do Windows, addon
+          // indisponivel, ou a janela sumiu entre escolher e confirmar) --
+          // melhor cair pro sistema inteiro do que nao ter audio nenhum.
+          if (!basePid) useElectronLoopback = true;
+        } else if (discordPid) {
+          basePid = discordPid;
+          baseExclude = true;
+        } else {
+          useElectronLoopback = true;
+        }
+      }
+
+      await window.golive.selectSource(sourceId, useElectronLoopback ? 'system' : 'none');
       if (currentSession !== session) return; // sessao caiu antes de capturar qualquer coisa
 
       let stream;
       try {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: config.videoConstraints(cfg.quality),
-          audio: audioMode === 'system',
+          audio: useElectronLoopback,
         });
       } catch (err) {
         alert(`Não consegui capturar a tela: ${err.message}`);
@@ -532,22 +687,40 @@
         return;
       }
 
-      if (audioMode === 'device' && audioDeviceId) {
-        try {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: audioDeviceId } } });
-          if (currentSession !== session) {
-            stream.getTracks().forEach((t) => t.stop());
-            micStream.getTracks().forEach((t) => t.stop());
-            return;
-          }
-          const [track] = micStream.getAudioTracks();
-          if (track) stream.addTrack(track);
-        } catch {
-          /* usuario recusou o dispositivo, segue so com video */
+      // Captura nativa por processo (base + Discord opcional), misturadas
+      // num unico MediaStreamAudioDestinationNode -- so entra aqui quando
+      // NAO estamos usando o loopback do Electron (os dois sao alternativas
+      // mutuamente exclusivas, nunca somados, senao duplicaria o audio do
+      // sistema).
+      if (basePid) {
+        const ctx = await ensurePcmWorklet();
+        const dest = ctx.createMediaStreamDestination();
+
+        const base = await startNativeProcessAudioNode(ctx, basePid, baseExclude);
+        if (base) {
+          base.node.connect(dest);
+          startedNativeStops.push(base.stop);
         }
+        if (includeDiscord && discordPid && discordPid !== basePid) {
+          const discordNode = await startNativeProcessAudioNode(ctx, discordPid, false);
+          if (discordNode) {
+            discordNode.node.connect(dest);
+            startedNativeStops.push(discordNode.stop);
+          }
+        }
+
+        if (currentSession !== session) {
+          stream.getTracks().forEach((t) => t.stop());
+          startedNativeStops.forEach((stop) => stop());
+          return;
+        }
+
+        const mixedTrack = dest.stream.getAudioTracks()[0];
+        if (mixedTrack) stream.addTrack(mixedTrack);
       }
 
       localStream = stream;
+      stopNativeAudioFns = startedNativeStops;
       const track = localStream.getVideoTracks()[0];
       if (track) {
         track.contentHint = 'motion';
@@ -557,13 +730,16 @@
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) audioTrack.contentHint = 'music';
 
-      ui.grid.showTile('me', 'Você (prévia)', localStream, true);
+      ui.grid.showTile('me', 'Você (prévia)', localStream, { muted: true, avatar: cfg.avatar || null, kind: 'screen', displayName: cfg.name || 'anônimo' });
 
-      for (const peerId of session.mesh.peers.keys()) await session.mesh.offerTo(peerId, localStream, cfg.quality);
+      for (const peerId of session.mesh.peers.keys()) {
+        await session.mesh.offerTo(peerId, localStream, cfg.quality, 'screen');
+      }
       if (currentSession !== session) return;
 
       session.sig.send({ type: 'broadcast-state', live: true });
       $('btn-toggle-share').classList.add('active');
+      renderMembersPanel();
       startStatsLoop();
     } finally {
       sharing = false;
@@ -574,10 +750,13 @@
     if (!localStream) return;
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
-    currentSession?.mesh?.closeAllOut();
+    stopNativeAudioFns.forEach((stop) => stop());
+    stopNativeAudioFns = [];
+    currentSession?.mesh?.closeAllOut('screen');
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
+    renderMembersPanel();
     stopStatsLoop();
   }
 
@@ -592,6 +771,10 @@
   async function startCamera() {
     if (cameraStream || cameraStarting) return;
     cameraStarting = true;
+    // A camera leva um tempo pra abrir (o driver e quem manda nisso), entao
+    // o botao acusa o clique na hora em vez de ficar parecendo que nada
+    // aconteceu ate o primeiro frame chegar.
+    $('btn-toggle-camera').classList.add('loading');
     try {
       const constraints = config.cameraConstraints(cfg.camera);
       if (cfg.camera.deviceId) constraints.deviceId = { exact: cfg.camera.deviceId };
@@ -608,19 +791,26 @@
       const track = cameraStream.getVideoTracks()[0];
       if (track) track.addEventListener('ended', stopCamera);
 
-      ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, true);
+      ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, { muted: true, avatar: cfg.avatar || null, kind: 'camera', displayName: cfg.name || 'anônimo' });
       $('btn-toggle-camera').classList.add('active');
 
       if (currentSession) {
         const quality = { ...cfg.camera, codec: 'video/VP8' };
         for (const peerId of currentSession.mesh.peers.keys()) {
-          await currentSession.mesh.offerTo(peerId, cameraStream, quality);
+          await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera');
         }
       }
     } finally {
       cameraStarting = false;
+      $('btn-toggle-camera').classList.remove('loading');
     }
   }
+
+  // Aquece a pilha de captura de midia do Chromium logo na abertura do app:
+  // a primeira chamada de enumerateDevices/getUserMedia e a que paga por
+  // enumerar os dispositivos, e fazer isso aqui tira esse custo do clique
+  // no botao da camera.
+  navigator.mediaDevices?.enumerateDevices().catch(() => {});
 
   // Para a captura local e renegocia com cada peer pra remover a track de
   // camera da outConn (sem derrubar outras tracks ativas na mesma conexao,
@@ -639,7 +829,7 @@
       const session = currentSession;
       await Promise.all(
         Array.from(session.mesh.peers.keys()).map((peerId) =>
-          session.mesh.removeTrack(peerId, track).catch(() => {})
+          session.mesh.removeTrack(peerId, track, 'camera').catch(() => {})
         )
       );
     }

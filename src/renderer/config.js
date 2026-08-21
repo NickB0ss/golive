@@ -78,7 +78,7 @@
 
   function addRecentRoom(config, room) {
     const withoutDup = config.recentRooms.filter((r) => r.address !== room.address);
-    const recentRooms = [room, ...withoutDup].slice(0, 5);
+    const recentRooms = [{ ...room, isOwn: !!room.isOwn }, ...withoutDup].slice(0, 5);
     return { ...config, recentRooms };
   }
 

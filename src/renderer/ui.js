@@ -12,12 +12,48 @@
 
   const gridEl = $('grid');
 
+  // tileRegistry espelha os tiles ativos (id -> {label, stream, avatar}) e e
+  // a fonte de candidatos pro "+" do PiP. fullscreenTileId e o id do tile em
+  // fullscreen agora (ou null). pinnedPip sao os ids marcados como miniatura
+  // -- sobrevive a trocas de foco e a sair/entrar de fullscreen, so e limpo
+  // quando o id some do tileRegistry ou o usuario remove manualmente (ver
+  // spec docs/superpowers/specs/2026-08-20-tile-avatars-and-fullscreen-pip-design.md).
+  const tileRegistry = new Map();
+  let fullscreenTileId = null;
+  const pinnedPip = new Set();
+
   // Mantem a classe `.fullscreen` do tile sincronizada quando o usuario sai
   // do fullscreen por Esc ou pelos controles nativos do SO, sem passar pelo
   // nosso botao/duplo-clique (toggleTileFullscreen, mais abaixo).
   window.golive.onFullScreenChange((enabled) => {
     if (enabled) return;
-    document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen'));
+    document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen', 'idle'));
+    fullscreenTileId = null;
+    clearTimeout(fullscreenIdleTimer);
+  });
+
+  // Nome, avatar, "+" do PiP e o botao de sair do fullscreen (`.tile.fullscreen.idle`
+  // no CSS) e o proprio cursor do mouse (`cursor: none`) somem depois de um
+  // tempo parado, tipo player de video, e voltam no primeiro movimento.
+  const FULLSCREEN_IDLE_MS = 3000;
+  let fullscreenIdleTimer = null;
+
+  function scheduleFullscreenIdle(tile) {
+    clearTimeout(fullscreenIdleTimer);
+    tile.classList.remove('idle');
+    fullscreenIdleTimer = setTimeout(() => tile.classList.add('idle'), FULLSCREEN_IDLE_MS);
+  }
+
+  function clearFullscreenIdle(tile) {
+    clearTimeout(fullscreenIdleTimer);
+    fullscreenIdleTimer = null;
+    tile?.classList.remove('idle');
+  }
+
+  document.addEventListener('mousemove', () => {
+    if (!fullscreenTileId) return;
+    const tile = document.getElementById(`tile-${fullscreenTileId}`);
+    if (tile) scheduleFullscreenIdle(tile);
   });
 
   // Volume/mute por tile remoto, roteado via Web Audio pra poder passar de
@@ -97,13 +133,21 @@
     tileAudio.delete(id);
   }
 
-  function toggleTileFullscreen(tile) {
+  function toggleTileFullscreen(tile, id) {
     const entering = !tile.classList.contains('fullscreen');
     tile.classList.toggle('fullscreen', entering);
     window.golive.setFullScreen(entering);
+    if (entering) {
+      fullscreenTileId = id;
+      renderPipStrip(tile);
+      scheduleFullscreenIdle(tile);
+    } else {
+      fullscreenTileId = null;
+      clearFullscreenIdle(tile);
+    }
   }
 
-  function showTile(id, label, stream, muted = false) {
+  function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
     gridEl.querySelector('.empty')?.remove();
 
     let tile = document.getElementById(`tile-${id}`);
@@ -113,14 +157,17 @@
       tile.id = `tile-${id}`;
       tile.innerHTML = `
         <video autoplay playsinline></video>
+        <span class="tile-avatar"></span>
+        <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-        </button>`;
-      tile.addEventListener('dblclick', () => toggleTileFullscreen(tile));
+        </button>
+        <div class="pip-strip"></div>`;
+      tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
       tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
         event.stopPropagation();
-        toggleTileFullscreen(tile);
+        toggleTileFullscreen(tile, id);
       });
       if (id !== 'me' && id !== 'cam-me') {
         tile.addEventListener('contextmenu', (event) => {
@@ -143,14 +190,155 @@
     // nele, deixando o video desmutado se essa linha so rodasse ali dentro.
     video.muted = (id === 'me' || id === 'cam-me') ? muted : true;
     tile.querySelector('.tile-label').textContent = label;
+    // O nome pro avatar vem de `displayName` quando existe: o label dos tiles
+    // locais e "Voce (previa)"/"Voce (camera)", que daria a inicial "V" em vez
+    // da inicial do nome do usuario.
+    const avatarName = displayName || label;
+    tile.querySelector('.tile-avatar').innerHTML = avatarInnerHtml(displayName || id, avatarName, avatar);
+    const badgeEl = tile.querySelector('.tile-kind-badge');
+    badgeEl.innerHTML = tileKindIcon(kind);
+    if (kind === 'camera') badgeEl.title = 'Câmera';
+    else if (kind === 'screen') badgeEl.title = 'Tela';
+    else badgeEl.removeAttribute('title');
+
+    tileRegistry.set(id, { label, stream, avatar, kind, displayName });
   }
 
   function removeTile(id, emptyMessage) {
     document.getElementById(`tile-${id}`)?.remove();
     releaseTileAudio(id);
+    tileRegistry.delete(id);
+    pinnedPip.delete(id);
+    if (id === fullscreenTileId) {
+      fullscreenTileId = null;
+      clearTimeout(fullscreenIdleTimer);
+      window.golive.setFullScreen(false);
+    } else if (fullscreenTileId) {
+      const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
+      if (fsTile) renderPipStrip(fsTile);
+    }
     if (!gridEl.children.length) {
       gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
     }
+  }
+
+  // ---------- PiP (miniaturas dentro do fullscreen) ----------
+
+  let openPipMenuEl = null;
+
+  function closePipMenu() {
+    openPipMenuEl?.remove();
+    openPipMenuEl = null;
+    document.removeEventListener('click', closePipMenu);
+  }
+
+  function switchFullscreenFocus(newId) {
+    const oldId = fullscreenTileId;
+    if (oldId === newId || !tileRegistry.has(newId)) return;
+    const newTile = document.getElementById(`tile-${newId}`);
+    if (!newTile) return;
+    clearFullscreenIdle(document.getElementById(`tile-${oldId}`));
+    document.getElementById(`tile-${oldId}`)?.classList.remove('fullscreen');
+    newTile.classList.add('fullscreen');
+    fullscreenTileId = newId;
+    pinnedPip.delete(newId);
+    if (oldId) pinnedPip.add(oldId);
+    renderPipStrip(newTile);
+    scheduleFullscreenIdle(newTile);
+  }
+
+  function buildPipThumb(id) {
+    const entry = tileRegistry.get(id);
+    const wrap = document.createElement('div');
+    wrap.className = 'pip-thumb';
+
+    const video = document.createElement('video');
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.srcObject = entry.stream;
+    wrap.appendChild(video);
+
+    const avatarEl = document.createElement('span');
+    avatarEl.className = 'pip-thumb-avatar';
+    avatarEl.innerHTML = avatarInnerHtml(entry.displayName || id, entry.displayName || entry.label, entry.avatar);
+    wrap.appendChild(avatarEl);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'pip-thumb-remove';
+    removeBtn.title = 'Remover miniatura';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      pinnedPip.delete(id);
+      const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
+      if (fsTile) renderPipStrip(fsTile);
+    });
+    wrap.appendChild(removeBtn);
+
+    wrap.addEventListener('click', () => switchFullscreenFocus(id));
+    return wrap;
+  }
+
+  function openPipPicker(anchorBtn, fullscreenId) {
+    closePipMenu();
+    const rect = anchorBtn.getBoundingClientRect();
+    const candidates = Array.from(tileRegistry.entries()).filter(
+      ([id]) => id !== fullscreenId && !pinnedPip.has(id)
+    );
+
+    const menu = document.createElement('div');
+    menu.className = 'pip-picker';
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.top}px`;
+
+    if (!candidates.length) {
+      menu.innerHTML = '<div class="pip-picker-empty">ninguém mais pra mostrar</div>';
+    } else {
+      for (const [id, entry] of candidates) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'pip-picker-item';
+        item.innerHTML = `
+          <span class="pip-picker-avatar">${avatarInnerHtml(entry.displayName || id, entry.displayName || entry.label, entry.avatar)}</span>
+          <span>${escapeHtml(entry.label)}</span>`;
+        item.addEventListener('click', (event) => {
+          event.stopPropagation();
+          pinnedPip.add(id);
+          closePipMenu();
+          const fsTile = document.getElementById(`tile-${fullscreenId}`);
+          if (fsTile) renderPipStrip(fsTile);
+        });
+        menu.appendChild(item);
+      }
+    }
+
+    menu.addEventListener('click', (event) => event.stopPropagation());
+    document.body.appendChild(menu);
+    openPipMenuEl = menu;
+    setTimeout(() => document.addEventListener('click', closePipMenu), 0);
+  }
+
+  function renderPipStrip(tile) {
+    const strip = tile.querySelector('.pip-strip');
+    if (!strip) return;
+    const id = tile.id.slice('tile-'.length);
+    strip.innerHTML = '';
+    for (const pinnedId of pinnedPip) {
+      if (pinnedId === id || !tileRegistry.has(pinnedId)) continue;
+      strip.appendChild(buildPipThumb(pinnedId));
+    }
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'pip-add-btn';
+    addBtn.title = 'Adicionar miniatura';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openPipPicker(addBtn, id);
+    });
+    strip.appendChild(addBtn);
   }
 
   let openMenuEl = null;
@@ -217,25 +405,65 @@
     return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
   }
 
-  function renderMembers(peers) {
+  // Mesmo fallback (foto ou iniciais sobre cor gerada) usado em `buildMemberRow`
+  // e nos avatares de tile/PiP -- centralizado aqui pra nao divergir.
+  function avatarInnerHtml(id, name, avatar) {
+    const initial = escapeHtml((name || '?').trim().charAt(0).toUpperCase() || '?');
+    return avatar
+      ? `<img src="${escapeHtml(avatar)}" alt="" />`
+      : `<span class="peer-avatar-fallback" style="background:${avatarColorFor(id)}">${initial}</span>`;
+  }
+
+  const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+  const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+
+  // Badge no canto do tile indicando se aquele stream e tela compartilhada
+  // ou camera -- necessario pra diferenciar quando o mesmo peer compartilha
+  // as duas coisas ao mesmo tempo (ver ids `cam-<peerId>` vs `<peerId>` em
+  // app.js).
+  // Retorna so o <svg>: o elemento `.tile-kind-badge` ja existe no tile e este
+  // html vai pra dentro dele (envolver num segundo span aninhava dois badges
+  // absolutos, deixando a bolinha de fora vazia e o icone deslocado).
+  function tileKindIcon(kind) {
+    if (kind === 'camera') return CAMERA_ICON;
+    if (kind === 'screen') return SHARE_ICON;
+    return '';
+  }
+
+  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf }) {
+    const li = document.createElement('li');
+    if (isSelf) li.classList.add('self');
+    li.innerHTML = `
+      <span class="peer-avatar-wrap">
+        <span class="peer-avatar ${borderClass || ''}">${avatarInnerHtml(id, name, avatar)}</span>
+        ${live ? `<span class="peer-live-badge" title="Compartilhando tela">${SHARE_ICON}</span>` : ''}
+      </span>
+      ${escapeHtml(name)}${isSelf ? ' <span class="peer-you-tag">(você)</span>' : ''}
+      ${live ? '<em>AO VIVO</em>' : ''}`;
+    return li;
+  }
+
+  // `self` = { name, avatar, live } | null (null quando nao esta em nenhuma
+  // sala). `peers` nunca inclui o proprio usuario (ver mesh.js) -- por isso
+  // ele e montado e inserido separadamente, sempre no topo da lista.
+  function renderMembers(peers, self) {
     peerListEl.innerHTML = '';
-    if (!peers.size) {
-      peerListEl.innerHTML = '<li class="muted">só você por aqui</li>';
+    if (!self && !peers.size) {
+      peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
       return;
     }
+    if (self) {
+      peerListEl.appendChild(
+        buildMemberRow({ id: 'me', name: self.name || 'anônimo', avatar: self.avatar, live: self.live, isSelf: true })
+      );
+    }
     for (const peer of peers.values()) {
-      const li = document.createElement('li');
-      const state = peer.inConn?.connectionState || peer.outConn?.connectionState;
+      const state = peer.inConns?.screen?.connectionState || peer.outConns?.screen?.connectionState
+        || peer.inConns?.camera?.connectionState || peer.outConns?.camera?.connectionState;
       const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
-      const initial = escapeHtml((peer.name || '?').trim().charAt(0).toUpperCase() || '?');
-      const avatarInner = peer.avatar
-        ? `<img src="${escapeHtml(peer.avatar)}" alt="" />`
-        : `<span class="peer-avatar-fallback" style="background:${avatarColorFor(peer.id)}">${initial}</span>`;
-      li.innerHTML = `
-        <span class="peer-avatar ${borderClass}">${avatarInner}</span>
-        ${escapeHtml(peer.name)}
-        ${peer.live ? '<em>AO VIVO</em>' : ''}`;
-      peerListEl.appendChild(li);
+      peerListEl.appendChild(
+        buildMemberRow({ id: peer.id, name: peer.name, avatar: peer.avatar, borderClass, live: peer.live })
+      );
     }
   }
 
@@ -525,33 +753,41 @@
 
   const pickerEl = $('picker');
   const pickerGridEl = $('picker-grid');
-  const audioDeviceEl = $('audio-device');
+  const pickerTabsEl = $('picker-tabs');
+  const shareSoundEl = $('share-sound');
+  const shareDiscordRowEl = $('share-discord-row');
+  const shareDiscordEl = $('share-discord');
   const btnGoLiveEl = $('btn-go-live');
   let selectedSourceId = null;
+  let pickerSources = [];
+  let pickerTab = 'screen';
+  // Um lote por aba: enquanto a busca daquela aba nao voltou, a grade mostra
+  // "procurando..." em vez de "nenhuma janela encontrada" (que seria mentira).
+  let pickerLoading = { screen: false, window: false };
+  // Invalida respostas de uma abertura anterior do dialogo que so chegaram
+  // depois do usuario fechar e abrir de novo.
+  let pickerRun = 0;
 
-  function currentAudioMode() {
-    return document.querySelector('input[name="audio-mode"]:checked').value;
-  }
-
-  document.querySelectorAll('input[name="audio-mode"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      audioDeviceEl.classList.toggle('hidden', currentAudioMode() !== 'device');
-    });
-  });
-
-  $('picker-cancel').addEventListener('click', () => pickerEl.classList.add('hidden'));
-
-  async function openPicker({ onGoLive }) {
-    selectedSourceId = null;
-    btnGoLiveEl.disabled = true;
+  function renderPickerGrid() {
     pickerGridEl.innerHTML = '';
-    audioDeviceEl.innerHTML = '';
-
-    const sources = await window.golive.listSources();
-    for (const source of sources) {
+    const filtered = pickerSources.filter((s) => (pickerTab === 'screen' ? s.isScreen : !s.isScreen));
+    if (!filtered.length) {
+      if (pickerLoading[pickerTab]) {
+        pickerGridEl.innerHTML = `<div class="picker-grid-empty">${
+          pickerTab === 'screen' ? 'procurando telas…' : 'procurando janelas…'
+        }</div>`;
+        return;
+      }
+      pickerGridEl.innerHTML = `<div class="picker-grid-empty">${
+        pickerTab === 'screen' ? 'nenhuma tela encontrada' : 'nenhuma janela encontrada'
+      }</div>`;
+      return;
+    }
+    for (const source of filtered) {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'source-card';
+      card.classList.toggle('selected', source.id === selectedSourceId);
       card.innerHTML = `
         <img src="${source.thumbnail}" alt="" />
         <span class="source-name">${escapeHtml(source.name)}</span>
@@ -566,23 +802,78 @@
       });
       pickerGridEl.appendChild(card);
     }
+  }
 
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      for (const d of devices.filter((d) => d.kind === 'audioinput')) {
-        audioDeviceEl.add(new Option(d.label || 'Entrada de áudio', d.deviceId));
-      }
-    } catch {
-      /* sem permissao ainda */
+  pickerTabsEl.addEventListener('click', (event) => {
+    const btn = event.target.closest('.picker-tab');
+    if (!btn || btn.classList.contains('active')) return;
+    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.remove('active'));
+    btn.classList.add('active');
+    pickerTab = btn.dataset.tab;
+    renderPickerGrid();
+  });
+
+  // A 2a checkbox ("incluir o som do Discord") so faz sentido com a 1a
+  // ligada -- some junto, e some desmarcada tambem (nao fica um estado
+  // "incluir Discord" escondido e ativo por baixo dos panos).
+  shareSoundEl.addEventListener('change', () => {
+    shareDiscordRowEl.classList.toggle('hidden', !shareSoundEl.checked);
+    if (!shareSoundEl.checked) shareDiscordEl.checked = false;
+  });
+
+  $('picker-cancel').addEventListener('click', () => pickerEl.classList.add('hidden'));
+
+  // Esc fecha o dialogo (sem iniciar nada) e Enter inicia a transmissao --
+  // so quando o dialogo esta aberto e (pro Enter) ja tem uma fonte
+  // selecionada, senao o botao "Ir ao vivo" tambem estaria desabilitado.
+  document.addEventListener('keydown', (event) => {
+    if (pickerEl.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      pickerEl.classList.add('hidden');
+    } else if (event.key === 'Enter' && !btnGoLiveEl.disabled) {
+      btnGoLiveEl.click();
     }
+  });
+
+  async function openPicker({ onGoLive }) {
+    selectedSourceId = null;
+    btnGoLiveEl.disabled = true;
+    pickerTab = 'screen';
+    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
+    pickerGridEl.innerHTML = '';
+    shareSoundEl.checked = true;
+    shareDiscordEl.checked = false;
+    shareDiscordRowEl.classList.remove('hidden');
 
     btnGoLiveEl.onclick = () => {
-      const mode = currentAudioMode();
       pickerEl.classList.add('hidden');
-      onGoLive(selectedSourceId, mode, mode === 'device' ? audioDeviceEl.value : null);
+      onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
     };
 
+    // O dialogo aparece na hora e as fontes entram conforme chegam -- antes
+    // ele so era exibido depois de capturar o thumbnail de TODAS as telas e
+    // janelas, o que dava a impressao de que o clique nao tinha funcionado.
+    const run = ++pickerRun;
+    pickerSources = [];
+    pickerLoading = { screen: true, window: true };
+    renderPickerGrid();
     pickerEl.classList.remove('hidden');
+
+    // Telas primeiro (sao poucas e rapidas, e e a aba que abre selecionada);
+    // as janelas, que sao a parte cara, chegam depois sem segurar o resto.
+    const absorb = (tab) => (sources) => {
+      if (run !== pickerRun) return; // dialogo ja foi fechado e reaberto
+      pickerLoading[tab] = false;
+      pickerSources = [...pickerSources, ...sources];
+      renderPickerGrid();
+    };
+    const fail = (tab) => () => {
+      if (run !== pickerRun) return;
+      pickerLoading[tab] = false;
+      renderPickerGrid();
+    };
+    window.golive.listSources(['screen']).then(absorb('screen'), fail('screen'));
+    window.golive.listSources(['window']).then(absorb('window'), fail('window'));
   }
 
   root.GoLive = root.GoLive || {};

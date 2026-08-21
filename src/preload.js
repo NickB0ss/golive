@@ -6,8 +6,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('golive', {
-  /** Lista telas e janelas capturaveis, com thumbnail em data URL. */
-  listSources: () => ipcRenderer.invoke('sources:list'),
+  /** Lista telas e janelas capturaveis, com thumbnail em data URL. Aceita
+   * um filtro de tipos (['screen'] | ['window']) pra buscar em duas etapas
+   * e nao segurar o dialogo esperando o lote todo. */
+  listSources: (types) => ipcRenderer.invoke('sources:list', types),
 
   /** Define qual fonte o getDisplayMedia vai devolver e o modo de audio
    * ('none' | 'system' | 'device'). */
@@ -42,4 +44,29 @@ contextBridge.exposeInMainWorld('golive', {
    * Esc ou controles nativos do SO, que nao passam pelo nosso botao. */
   onFullScreenChange: (callback) =>
     ipcRenderer.on('window:fullscreen-changed', (_event, enabled) => callback(enabled)),
+
+  /** PID "raiz" do Discord rodando agora, ou 0 se nao estiver rodando ou o
+   * addon nativo nao estiver disponivel (so existe no Windows). */
+  findDiscordPid: () => ipcRenderer.invoke('audio:findDiscordPid'),
+
+  /** PID dono da janela de um id de fonte do listSources (so faz sentido
+   * pra fontes "window:..."; devolve 0 pra fontes de tela inteira). */
+  pidForSource: (sourceId) => ipcRenderer.invoke('audio:pidForSource', sourceId),
+
+  /** Inicia uma captura de audio nativa (WASAPI Process Loopback) por
+   * processo. `exclude: true` = sistema inteiro MENOS esse processo (e
+   * filhos); `exclude: false` = SO esse processo. Devolve
+   * { ok, captureId } ou { ok: false, error }. Os chunks de audio chegam
+   * via onAudioChunk ate stopProcessAudioCapture ser chamado. */
+  startProcessAudioCapture: (pid, exclude) => ipcRenderer.invoke('audio:startCapture', { pid, exclude }),
+
+  /** Para uma captura iniciada com startProcessAudioCapture. */
+  stopProcessAudioCapture: (captureId) => ipcRenderer.invoke('audio:stopCapture', captureId),
+
+  /** PCM float32 entrelacado de uma captura ativa:
+   * (captureId, samples: Float32Array, channels: number, sampleRate: number) => void. */
+  onAudioChunk: (callback) =>
+    ipcRenderer.on('audio:chunk', (_event, captureId, samples, channels, sampleRate) =>
+      callback(captureId, samples, channels, sampleRate)
+    ),
 });

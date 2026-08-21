@@ -7,13 +7,16 @@
     "start": "electron .",
     "server": "node server/signaling.js",
     "dist": "electron-builder --win",
-    "test": "node --test"
+    "test": "node --test",
+    "build:native": "node-gyp configure && node scripts/patch-clangcl-toolset.js && node-gyp build"
   },
   "devDependencies": {
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "node-gyp": "^9.4.1"
   },
   "dependencies": {
+    "node-addon-api": "^8.9.2",
     "ws": "^8.21.3"
   },
   "build": {
@@ -24,6 +27,7 @@
       "!src/**/*.test.js",
       "server/**/*",
       "!server/**/*.test.js",
+      "build/Release/golive_audio.node",
       "package.json"
     ],
     "win": {
