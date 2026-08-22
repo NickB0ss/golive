@@ -44,12 +44,15 @@ const activeCaptures = new Map();
 let nextCaptureId = 1;
 
 let win = null;
+/** Controle do auto-updater, preenchido em whenReady (so em build empacotado). */
+let updater = null;
 
 const { createSignalingServer } = require('../server/signaling-core');
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
 const { createDiscovery } = require('./main/discovery');
+const { setupAutoUpdater } = require('./main/updater');
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
@@ -129,6 +132,11 @@ app.whenReady().then(() => {
   // quem so quer entrar em salas dos outros nunca ve a lista da rede (o
   // socket UDP de escuta so era aberto ao criar/anunciar uma sala local).
   ensureDiscoveryStarted();
+
+  updater = setupAutoUpdater((payload) => {
+    if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
+  });
+  updater.checkForUpdates();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -260,6 +268,14 @@ ipcMain.handle('window:setFullScreen', (_event, enabled) => {
   return true;
 });
 
+// Instala a atualizacao ja baixada e reinicia. So chamado pelo renderer
+// depois de confirmar com o usuario (ex: fora de uma chamada ativa) --
+// nao dispara sozinho ao terminar o download.
+ipcMain.handle('update:install', () => {
+  updater?.quitAndInstall();
+  return true;
+});
+
 // --- Audio por processo (WASAPI Process Loopback) -----------------------
 //
 // So funciona no Windows 10 2004+ com o addon nativo compilado (ver
@@ -275,6 +291,11 @@ ipcMain.handle('audio:findDiscordPid', () => {
   } catch {
     return 0;
   }
+});
+
+ipcMain.handle('audio:getOwnPid', () => {
+  if (!audioAddon) return 0;
+  return process.pid;
 });
 
 ipcMain.handle('audio:pidForSource', (_event, sourceId) => {

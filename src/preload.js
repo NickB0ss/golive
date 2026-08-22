@@ -53,6 +53,13 @@ contextBridge.exposeInMainWorld('golive', {
    * pra fontes "window:..."; devolve 0 pra fontes de tela inteira). */
   pidForSource: (sourceId) => ipcRenderer.invoke('audio:pidForSource', sourceId),
 
+  /** PID do proprio GoLive (processo principal), ou 0 se o addon nativo nao
+   * estiver disponivel. Usado pra excluir o audio que o proprio GoLive
+   * reproduz (voz/tela dos outros participantes) da captura de sistema --
+   * sem isso, esse audio reproduzido entra na captura e volta pros outros,
+   * criando um eco/loop quando duas pessoas compartilham tela e se ouvem. */
+  getOwnPid: () => ipcRenderer.invoke('audio:getOwnPid'),
+
   /** Inicia uma captura de audio nativa (WASAPI Process Loopback) por
    * processo. `exclude: true` = sistema inteiro MENOS esse processo (e
    * filhos); `exclude: false` = SO esse processo. Devolve
@@ -69,4 +76,14 @@ contextBridge.exposeInMainWorld('golive', {
     ipcRenderer.on('audio:chunk', (_event, captureId, samples, channels, sampleRate) =>
       callback(captureId, samples, channels, sampleRate)
     ),
+
+  /** Status do auto-updater: { status, info?, progress?, message? }, status
+   * em 'checking' | 'available' | 'not-available' | 'downloading' |
+   * 'downloaded' | 'error'. So dispara em build empacotado. */
+  onUpdateStatus: (callback) =>
+    ipcRenderer.on('update:status', (_event, payload) => callback(payload)),
+
+  /** Instala a atualizacao ja baixada e reinicia o app. So chamar depois de
+   * 'downloaded' e com a confirmacao do usuario. */
+  installUpdate: () => ipcRenderer.invoke('update:install'),
 });

@@ -66,8 +66,25 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 
 .app {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 200px;
+  grid-template-columns: 240px minmax(0, 1fr) 220px;
   height: 100vh;
+}
+
+.update-banner {
+  position: fixed;
+  z-index: 1000;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+  max-width: 320px;
 }
 
 .rooms-col, .members-col {
@@ -241,9 +258,10 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 }
 
 .peer-list li {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0;
   border-bottom: 1px solid var(--line);
+  font-size: 16px;
 }
 .peer-list li em {
   margin-left: auto;
@@ -262,7 +280,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .peer-avatar-wrap { position: relative; flex: none; display: grid; place-items: center; }
 
 .peer-avatar {
-  width: 26px; height: 26px;
+  width: 36px; height: 36px;
   flex: none;
   border-radius: 50%;
   border: 2px solid transparent;
@@ -273,7 +291,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .peer-avatar.ok { border-color: var(--good); }
 .peer-avatar.warn { border-color: var(--warn); }
 .peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 11px; }
+.peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
 
 .peer-live-badge {
   position: absolute;
@@ -527,7 +545,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   flex-direction: column;
   gap: 10px;
 }
-.tile-menu-mute { width: 100%; }
+.tile-menu-mute { width: 100%; background: var(--bg-inset); color: var(--text); }
 .tile-menu-volume { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .tile-menu-volume input[type="range"] { width: 100%; }
 

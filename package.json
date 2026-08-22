@@ -1,6 +1,6 @@
 {
   "name": "golive-lan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Compartilhamento de tela 1080p60 na LAN virtual (Radmin VPN / Tailscale)",
   "main": "src/main.js",
   "scripts": {
@@ -16,12 +16,20 @@
     "node-gyp": "^9.4.1"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "node-addon-api": "^8.9.2",
     "ws": "^8.21.3"
   },
   "build": {
     "appId": "com.golive.lan",
     "productName": "GoLive LAN",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "NickB0ss",
+        "repo": "golive"
+      }
+    ],
     "files": [
       "src/**/*",
       "!src/**/*.test.js",

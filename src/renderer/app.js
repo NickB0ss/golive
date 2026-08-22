@@ -107,7 +107,20 @@
 
   avatarBtn.addEventListener('click', () => avatarInput.click());
 
+  // GIFs animados nao sobrevivem ao redimensionamento via canvas (drawImage +
+  // toDataURL so capturam um frame estatico) -- pra manter a animacao, GIF
+  // vai direto como data URL, sem passar pelo canvas.
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('load failed'));
+      reader.readAsDataURL(file);
+    });
+  }
+
   function resizeImageToAvatar(file) {
+    if (file.type === 'image/gif') return readFileAsDataUrl(file);
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -136,8 +149,11 @@
     const file = avatarInput.files[0];
     avatarInput.value = '';
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      alert('Imagem muito grande (máx. 10MB).');
+    // GIFs vao sem redimensionar (ver resizeImageToAvatar), entao o limite e
+    // mais apertado pra nao inflar demais as mensagens de sala/join.
+    const maxSize = file.type === 'image/gif' ? 3 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert(`Imagem muito grande (máx. ${Math.round(maxSize / (1024 * 1024))}MB).`);
       return;
     }
     try {
@@ -224,6 +240,40 @@
   window.golive.onRoomsDiscovered((rooms) => {
     discoveredRooms = Array.isArray(rooms) ? rooms : [];
     renderRoomList();
+  });
+
+  // Auto-update: mostra um aviso discreto no canto quando ha uma versao
+  // nova baixada. Nao reinicia sozinho -- se houver uma sessao ao vivo,
+  // avisamos que vai esperar terminar a chamada antes de deixar reiniciar.
+  let updateDownloaded = false;
+  function renderUpdateBanner() {
+    const banner = $('update-banner');
+    const text = $('update-banner-text');
+    const btn = $('btn-update-install');
+    if (!updateDownloaded) return;
+    banner.classList.remove('hidden');
+    text.textContent = currentSession
+      ? 'Atualização pronta. Será aplicada ao sair da sala atual.'
+      : 'Atualização pronta.';
+    btn.classList.toggle('hidden', !!currentSession);
+  }
+  window.golive.onUpdateStatus?.(({ status }) => {
+    const banner = $('update-banner');
+    const text = $('update-banner-text');
+    const btn = $('btn-update-install');
+    if (status === 'downloaded') {
+      updateDownloaded = true;
+      renderUpdateBanner();
+    } else if (status === 'downloading') {
+      banner.classList.remove('hidden');
+      btn.classList.add('hidden');
+      text.textContent = 'Baixando atualização…';
+    }
+  });
+
+  $('btn-update-install').addEventListener('click', () => {
+    if (currentSession) return; // nunca derruba uma chamada em andamento
+    window.golive.installUpdate();
   });
 
   $('btn-refresh-discovery').addEventListener('click', () => {
@@ -502,6 +552,7 @@
     teardownSession(session);
     markCooldown(leavingAddress);
     renderRoomList();
+    renderUpdateBanner();
   }
   $('btn-disconnect').addEventListener('click', () => {
     if (cooldownRemaining(activeRoomAddress) > 0) return;
@@ -643,10 +694,14 @@
       //  - compartilhando so uma JANELA: audio-base = so o app dono dela
       //    (captura nativa por processo, modo "incluir").
       //  - compartilhando a TELA inteira: audio-base = sistema inteiro
-      //    EXCLUINDO o Discord (captura nativa, modo "excluir"). Sem
-      //    Discord rodando (ou sem o addon nativo nesta maquina), cai pro
-      //    loopback de sistema normal do Electron -- nao ha o que excluir
-      //    mesmo, e esse caminho ja e testado e simples.
+      //    EXCLUINDO o proprio GoLive (captura nativa, modo "excluir"). Sem
+      //    isso, o audio que o proprio GoLive reproduz (voz e tela dos
+      //    outros participantes) entraria na nossa propria captura e
+      //    voltaria pra eles -- quando duas pessoas compartilham tela e se
+      //    ouvem, isso cria um loop/eco que amplifica a cada rodada. Sem o
+      //    addon nativo nesta maquina, cai pro loopback de sistema normal do
+      //    Electron -- nesse caso nao ha como excluir o proprio processo, e
+      //    o loop pode voltar a acontecer (limitacao do loopback padrao).
       const isWindowSource = typeof sourceId === 'string' && sourceId.startsWith('window:');
       const discordPid = shareSound ? await window.golive.findDiscordPid() : 0;
 
@@ -660,11 +715,14 @@
           // indisponivel, ou a janela sumiu entre escolher e confirmar) --
           // melhor cair pro sistema inteiro do que nao ter audio nenhum.
           if (!basePid) useElectronLoopback = true;
-        } else if (discordPid) {
-          basePid = discordPid;
-          baseExclude = true;
         } else {
-          useElectronLoopback = true;
+          const ownPid = await window.golive.getOwnPid();
+          if (ownPid) {
+            basePid = ownPid;
+            baseExclude = true;
+          } else {
+            useElectronLoopback = true;
+          }
         }
       }
 
