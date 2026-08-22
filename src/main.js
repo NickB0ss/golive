@@ -22,17 +22,37 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 /** Fonte de captura escolhida no seletor do renderer. */
 let selectedSourceId = null;
-/** Modo de audio: 'none' | 'system' | 'device'. 'device' e capturado no
- * renderer via getUserMedia, entao aqui so importa distinguir 'system'. */
+/** Modo de audio pro getDisplayMedia: 'none' | 'system'. So usado quando o
+ * renderer decide usar o loopback de sistema padrao do Electron (ver
+ * startShare em app.js) -- a captura por processo (excluir/incluir o
+ * Discord, ou audio so de uma janela) roda por fora, via o addon nativo. */
 let audioMode = 'system';
 
+/** Addon nativo (WASAPI Process Loopback) pra capturar/excluir o audio de
+ * um processo especifico (ex: incluir/excluir o Discord do que e
+ * compartilhado). So existe no Windows com o addon compilado -- em
+ * qualquer outra situacao fica null e a feature correspondente vira no-op
+ * (o renderer cai pro loopback de sistema normal). */
+let audioAddon = null;
+try {
+  audioAddon = require(path.join(__dirname, '..', 'build', 'Release', 'golive_audio.node'));
+} catch {
+  audioAddon = null;
+}
+/** captureId -> instancia nativa LoopbackCapture em andamento. */
+const activeCaptures = new Map();
+let nextCaptureId = 1;
+
 let win = null;
+/** Controle do auto-updater, preenchido em whenReady (so em build empacotado). */
+let updater = null;
 
 const { createSignalingServer } = require('../server/signaling-core');
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
 const { createDiscovery } = require('./main/discovery');
+const { setupAutoUpdater } = require('./main/updater');
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
@@ -113,6 +133,11 @@ app.whenReady().then(() => {
   // socket UDP de escuta so era aberto ao criar/anunciar uma sala local).
   ensureDiscoveryStarted();
 
+  updater = setupAutoUpdater((payload) => {
+    if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
+  });
+  updater.checkForUpdates();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -122,6 +147,14 @@ app.on('window-all-closed', () => {
   closeEmbeddedServer().catch(() => {});
   discovery.stop();
   discoveryStarted = false;
+  for (const capture of activeCaptures.values()) {
+    try {
+      capture.stop();
+    } catch {
+      /* ja parada */
+    }
+  }
+  activeCaptures.clear();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -146,11 +179,16 @@ function advertiseHostedRoom() {
 
 // --- IPC ---------------------------------------------------------------
 
-ipcMain.handle('sources:list', async () => {
+// `types` deixa o renderer pedir so as telas primeiro (rapido, sao poucas)
+// e as janelas depois -- a lista de janelas e a parte cara: cada thumbnail
+// e capturada e codificada em PNG uma a uma. O tamanho do thumbnail e o que
+// domina esse custo, entao ficamos no minimo que ainda enche o card (190px).
+ipcMain.handle('sources:list', async (_event, types) => {
+  const wanted = Array.isArray(types) && types.length ? types : ['screen', 'window'];
   const displays = screen.getAllDisplays();
   const sources = await desktopCapturer.getSources({
-    types: ['screen', 'window'],
-    thumbnailSize: { width: 320, height: 180 },
+    types: wanted,
+    thumbnailSize: { width: 224, height: 126 },
     fetchWindowIcons: false,
   });
 
@@ -173,7 +211,7 @@ ipcMain.handle('sources:list', async () => {
 
 ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
   selectedSourceId = id;
-  audioMode = mode === 'system' || mode === 'device' ? mode : 'none';
+  audioMode = mode === 'system' ? 'system' : 'none';
   return true;
 });
 
@@ -227,5 +265,91 @@ ipcMain.handle('discovery:refresh', async () => {
 
 ipcMain.handle('window:setFullScreen', (_event, enabled) => {
   win?.setFullScreen(!!enabled);
+  return true;
+});
+
+// Instala a atualizacao ja baixada e reinicia. So chamado pelo renderer
+// depois de confirmar com o usuario (ex: fora de uma chamada ativa) --
+// nao dispara sozinho ao terminar o download.
+ipcMain.handle('update:install', () => {
+  updater?.quitAndInstall();
+  return true;
+});
+
+// --- Audio por processo (WASAPI Process Loopback) -----------------------
+//
+// So funciona no Windows 10 2004+ com o addon nativo compilado (ver
+// binding.gyp / native/src). Onde nao estiver disponivel, todo handler
+// abaixo devolve um "vazio" sensato (0 / indisponivel) em vez de derrubar
+// o processo principal -- quem chama trata isso caindo pro loopback de
+// sistema normal do Electron.
+
+ipcMain.handle('audio:findDiscordPid', () => {
+  if (!audioAddon) return 0;
+  try {
+    return audioAddon.findDiscordRootPid();
+  } catch {
+    return 0;
+  }
+});
+
+ipcMain.handle('audio:getOwnPid', () => {
+  if (!audioAddon) return 0;
+  return process.pid;
+});
+
+ipcMain.handle('audio:pidForSource', (_event, sourceId) => {
+  if (!audioAddon || typeof sourceId !== 'string') return 0;
+  // Id de janela do desktopCapturer no Windows tem a forma "window:<hwnd>:0".
+  const match = /^window:(-?\d+):/.exec(sourceId);
+  if (!match) return 0;
+  try {
+    return audioAddon.pidForWindowHandle(Number(match[1]));
+  } catch {
+    return 0;
+  }
+});
+
+ipcMain.handle('audio:startCapture', (event, { pid, exclude } = {}) => {
+  if (!audioAddon || !pid) return Promise.resolve({ ok: false, error: 'indisponivel' });
+
+  return new Promise((resolve) => {
+    const captureId = nextCaptureId++;
+    const sender = event.sender;
+    let settled = false;
+
+    const onData = (samples, channels, sampleRate) => {
+      if (sender.isDestroyed()) return;
+      sender.send('audio:chunk', captureId, samples, channels, sampleRate);
+    };
+    const onReady = (ok, message) => {
+      if (settled) return;
+      settled = true;
+      if (ok) {
+        resolve({ ok: true, captureId });
+      } else {
+        activeCaptures.delete(captureId);
+        resolve({ ok: false, error: message });
+      }
+    };
+
+    try {
+      const capture = new audioAddon.LoopbackCapture(pid, !!exclude, onData, onReady);
+      activeCaptures.set(captureId, capture);
+    } catch (err) {
+      resolve({ ok: false, error: err.message });
+    }
+  });
+});
+
+ipcMain.handle('audio:stopCapture', (_event, captureId) => {
+  const capture = activeCaptures.get(captureId);
+  if (!capture) return true;
+  activeCaptures.delete(captureId);
+  try {
+    capture.stop();
+  } catch {
+    /* ja parada */
+  }
   return true;
 });

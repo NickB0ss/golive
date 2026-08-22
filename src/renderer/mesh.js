@@ -1,14 +1,85 @@
 'use strict';
 
 (function (root) {
-  const RTC_CONFIG = { iceServers: [], iceTransportPolicy: 'all' };
+  // Sem STUN o ICE so junta candidatos host, entao a unica rota possivel
+  // entre dois peers fora da mesma LAN e o adaptador virtual da VPN -- todo
+  // o video passa dentro do tunel, que costuma ser o gargalo (jitter e perda
+  // derrubam o bitrate bem abaixo do teto configurado). Com STUN o ICE
+  // tambem coleta o candidato srflx e tenta conexao direta pela internet; o
+  // candidato host da VPN continua na lista e assume se o NAT nao deixar.
+  const STUN_URLS = ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'];
+
+  const RTC_CONFIG = { iceServers: [{ urls: STUN_URLS }], iceTransportPolicy: 'all' };
+
+  // Payloads auxiliares (retransmissao e correcao de erro) nao sao codecs de
+  // verdade -- x-google-start-bitrate neles nao faz nada.
+  const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
+
+  // Metade do teto, dentro de limites sensatos. O padrao do Chromium e comecar
+  // em ~300 kbps e subir conforme o congestion control ganha confianca, o que
+  // deixa os primeiros segundos de qualquer compartilhamento borrados mesmo
+  // com banda de sobra. Comecar direto no maximo tambem nao serve: se a rede
+  // nao aguentar, a rajada vira perda e o GCC derruba tudo. Metade e um
+  // palpite inicial -- ele continua livre pra subir ate maxBitrate ou descer.
+  function startBitrateKbps(maxBitrateBps) {
+    const half = Math.round((maxBitrateBps || 0) / 2000);
+    return Math.min(Math.max(half, 300), 10000);
+  }
+
+  // x-google-start-bitrate e uma extensao do Chromium (a unica engine que roda
+  // aqui, ja que e Electron) e so existe via SDP -- nao ha equivalente em
+  // setParameters, dai a edicao na mao. Mexe apenas na secao de video.
+  function withStartBitrate(sdp, kbps) {
+    if (!sdp || !kbps) return sdp;
+    const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+    const lines = sdp.split(/\r?\n/);
+
+    // Primeira passada: descobre quais payloads sao codecs e quais ja tem uma
+    // linha a=fmtp (VP8, por exemplo, costuma nao ter -- ai precisamos criar).
+    const codecPts = new Set();
+    const withFmtp = new Set();
+    let inVideo = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inVideo = line.startsWith('m=video');
+      if (!inVideo) continue;
+      const rtpmap = /^a=rtpmap:(\d+) ([^/]+)\//.exec(line);
+      if (rtpmap && !NON_CODEC_ENCODINGS.has(rtpmap[2].toLowerCase())) codecPts.add(rtpmap[1]);
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp) withFmtp.add(fmtp[1]);
+    }
+
+    const out = [];
+    inVideo = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inVideo = line.startsWith('m=video');
+      if (!inVideo) {
+        out.push(line);
+        continue;
+      }
+
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp && codecPts.has(fmtp[1]) && !line.includes('x-google-start-bitrate')) {
+        out.push(`${line};x-google-start-bitrate=${kbps}`);
+        continue;
+      }
+
+      out.push(line);
+
+      const rtpmap = /^a=rtpmap:(\d+) /.exec(line);
+      if (rtpmap && codecPts.has(rtpmap[1]) && !withFmtp.has(rtpmap[1])) {
+        out.push(`a=fmtp:${rtpmap[1]} x-google-start-bitrate=${kbps}`);
+      }
+    }
+
+    return out.join(eol);
+  }
 
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
 
     function addPeer(id, name, avatar) {
       if (!peers.has(id)) {
-        peers.set(id, { id, name, avatar: avatar || null, live: false, outConn: null, inConn: null });
+        peers.set(id, { id, name, avatar: avatar || null, live: false, outConns: {}, inConns: {} });
       } else if (avatar) {
         peers.get(id).avatar = avatar;
       }
@@ -18,50 +89,54 @@
     function removePeer(id) {
       const peer = peers.get(id);
       if (!peer) return;
-      peer.outConn?.close();
-      peer.inConn?.close();
+      Object.values(peer.outConns).forEach((pc) => pc?.close());
+      Object.values(peer.inConns).forEach((pc) => pc?.close());
       peers.delete(id);
     }
 
-    function makeConnection(peerId, dir) {
+    // `kind` distingue tela ('screen') de camera ('camera') -- cada uma tem
+    // sua propria RTCPeerConnection por peer, pra nao atropelar a track uma
+    // da outra quando as duas estao ativas ao mesmo tempo (ver showTile no
+    // ui.js, que agora usa ids diferentes por kind).
+    function makeConnection(peerId, dir, kind) {
       const pc = new RTCPeerConnection(RTC_CONFIG);
 
       pc.addEventListener('icecandidate', (event) => {
-        if (event.candidate) send({ type: 'ice', to: peerId, dir, candidate: event.candidate });
+        if (event.candidate) send({ type: 'ice', to: peerId, dir, kind, candidate: event.candidate });
       });
 
       if (dir === 'in') {
         pc.addEventListener('track', (event) => {
           const peer = peers.get(peerId);
-          onTrack(peerId, peer ? peer.name : peerId, event.streams[0]);
+          onTrack(peerId, peer ? peer.name : peerId, event.streams[0], kind);
         });
       }
 
       pc.addEventListener('connectionstatechange', () => {
         if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && dir === 'in') {
-          onPeerState(peerId, { removedTile: true });
+          onPeerState(peerId, { removedTile: true, kind });
         } else {
-          onPeerState(peerId, {});
+          onPeerState(peerId, { kind });
         }
       });
 
       return pc;
     }
 
-    function ensureOutConn(peerId) {
+    function ensureOutConn(peerId, kind) {
       const peer = addPeer(peerId, peers.get(peerId)?.name || `#${peerId}`);
-      if (!peer.outConn) peer.outConn = makeConnection(peerId, 'out');
-      return peer.outConn;
+      if (!peer.outConns[kind]) peer.outConns[kind] = makeConnection(peerId, 'out', kind);
+      return peer.outConns[kind];
     }
 
-    function ensureInConn(peerId) {
+    function ensureInConn(peerId, kind) {
       const peer = addPeer(peerId, peers.get(peerId)?.name || `#${peerId}`);
-      if (peer.inConn) {
-        peer.inConn.close();
-        onPeerState(peerId, { removedTile: true });
+      if (peer.inConns[kind]) {
+        peer.inConns[kind].close();
+        onPeerState(peerId, { removedTile: true, kind });
       }
-      peer.inConn = makeConnection(peerId, 'in');
-      return peer.inConn;
+      peer.inConns[kind] = makeConnection(peerId, 'in', kind);
+      return peer.inConns[kind];
     }
 
     function preferCodec(transceiver, mimeType) {
@@ -78,8 +153,8 @@
       }
     }
 
-    async function offerTo(peerId, stream, quality) {
-      const pc = ensureOutConn(peerId);
+    async function offerTo(peerId, stream, quality, kind) {
+      const pc = ensureOutConn(peerId, kind);
 
       for (const track of stream.getTracks()) {
         const transceiver = pc.addTransceiver(track, {
@@ -89,32 +164,43 @@
             ? [{ maxBitrate: quality.bitrate, maxFramerate: quality.fps }]
             : undefined,
         });
-        if (track.kind === 'video') preferCodec(transceiver, quality.codec);
+        if (track.kind === 'video') {
+          preferCodec(transceiver, quality.codec);
+          // degradationPreference nao existe no RTCRtpTransceiverInit, so em
+          // setParameters -- sem isto a conexao nasce em 'balanced' e so vira
+          // 'maintain-framerate' se o usuario mexer na qualidade (o que chama
+          // applyEncoding). Pra tela em movimento, derrubar resolucao e menos
+          // ruim do que engasgar os frames.
+          setDegradationPreference(transceiver.sender);
+        }
       }
 
       const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      send({ type: 'offer', to: peerId, sdp: pc.localDescription });
+      await pc.setLocalDescription({
+        type: offer.type,
+        sdp: withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate)),
+      });
+      send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
     }
 
-    async function handleOffer(fromId, sdp) {
-      const pc = ensureInConn(fromId);
+    async function handleOffer(fromId, sdp, kind) {
+      const pc = ensureInConn(fromId, kind);
       await pc.setRemoteDescription(sdp);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       return pc.localDescription;
     }
 
-    async function handleAnswer(fromId, sdp) {
+    async function handleAnswer(fromId, sdp, kind) {
       const peer = peers.get(fromId);
-      if (!peer?.outConn) return;
-      await peer.outConn.setRemoteDescription(sdp);
+      if (!peer?.outConns[kind]) return;
+      await peer.outConns[kind].setRemoteDescription(sdp);
     }
 
-    async function handleIce(fromId, dir, candidate) {
+    async function handleIce(fromId, dir, candidate, kind) {
       const peer = peers.get(fromId);
       if (!peer || !candidate) return;
-      const target = dir === 'out' ? peer.inConn : peer.outConn;
+      const target = dir === 'out' ? peer.inConns[kind] : peer.outConns[kind];
       if (!target) return;
       try {
         await target.addIceCandidate(candidate);
@@ -123,10 +209,22 @@
       }
     }
 
-    function applyEncoding(quality) {
+    function setDegradationPreference(sender, pref = 'maintain-framerate') {
+      if (!sender) return;
+      try {
+        const params = sender.getParameters();
+        params.degradationPreference = pref;
+        sender.setParameters(params).catch(() => {});
+      } catch {
+        /* sender pode ter sido fechado no meio da negociacao */
+      }
+    }
+
+    function applyEncoding(quality, kind) {
       for (const peer of peers.values()) {
-        if (!peer.outConn) continue;
-        for (const sender of peer.outConn.getSenders()) {
+        const pc = peer.outConns[kind];
+        if (!pc) continue;
+        for (const sender of pc.getSenders()) {
           if (!sender.track || sender.track.kind !== 'video') continue;
           const params = sender.getParameters();
           if (!params.encodings || !params.encodings.length) params.encodings = [{}];
@@ -138,51 +236,42 @@
       }
     }
 
-    // Remove uma track especifica (ex: camera) da outConn de um peer sem
-    // mexer nas outras tracks que possam estar ativas na mesma conexao (ex:
-    // compartilhamento de tela, que usa a mesma outConn via ensureOutConn).
-    // Renegocia com uma nova oferta pra avisar o lado remoto — do contrario
-    // a track para de mandar frames mas a conexao continua "viva" e o peer
-    // remoto fica vendo o ultimo frame congelado indefinidamente.
-    //
-    // Do lado receptor, essa renegociacao entra por handleOffer -> ensureInConn,
-    // que HOJE fecha e recria o inConn inteiro a cada nova oferta (comportamento
-    // existente, intencional). Isso ja remove o tile antigo (via onPeerState
-    // removedTile) e recria a partir das tracks que sobrarem no novo SDP —
-    // entao se so a camera for removida, o tile some; se tela+camera estavam
-    // ativas juntas, o tile reaparece com a tela assim que o evento `track`
-    // disparar de novo. Limitacao conhecida (pre-existente, fora do escopo
-    // desta funcao): a UI usa UM tile por peer (ui.grid.showTile(peerId, ...)),
-    // entao tela e camera do MESMO peer simultaneas se atropelam no mesmo
-    // tile — nao ha como distinguir qual stream esta sendo mostrada.
-    async function removeTrack(peerId, track) {
+    // Remove uma track especifica (ex: camera) da outConn daquele kind sem
+    // mexer na outConn de outro kind do mesmo peer (ex: tela, que agora vive
+    // numa RTCPeerConnection separada -- ver comentario acima de
+    // makeConnection). Renegocia com uma nova oferta pra avisar o lado
+    // remoto -- do contrario a track para de mandar frames mas a conexao
+    // continua "viva" e o peer remoto fica vendo o ultimo frame congelado
+    // indefinidamente.
+    async function removeTrack(peerId, track, kind) {
       const peer = peers.get(peerId);
-      if (!peer?.outConn) return;
-      const pc = peer.outConn;
+      const pc = peer?.outConns[kind];
+      if (!pc) return;
       const sender = pc.getSenders().find((s) => s.track === track);
       if (!sender) return;
       try {
         pc.removeTrack(sender);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        send({ type: 'offer', to: peerId, sdp: pc.localDescription });
+        send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
       } catch {
         /* conexao pode ja ter fechado (peer saiu durante a renegociacao) */
       }
     }
 
-    function closeAllOut() {
+    function closeAllOut(kind) {
       for (const peer of peers.values()) {
-        if (!peer.outConn) continue;
-        peer.outConn.close();
-        peer.outConn = null;
+        const pc = peer.outConns[kind];
+        if (!pc) continue;
+        pc.close();
+        peer.outConns[kind] = null;
       }
     }
 
-    async function statsFor(peerId) {
-      const peer = peers.get(peerId);
-      if (!peer?.outConn || peer.outConn.connectionState !== 'connected') return null;
-      return peer.outConn.getStats();
+    async function statsFor(peerId, kind = 'screen') {
+      const pc = peers.get(peerId)?.outConns[kind];
+      if (!pc || pc.connectionState !== 'connected') return null;
+      return pc.getStats();
     }
 
     return {
@@ -200,6 +289,10 @@
     };
   }
 
+  const api = { createMesh, withStartBitrate, startBitrateKbps, RTC_CONFIG };
+
   root.GoLive = root.GoLive || {};
-  root.GoLive.mesh = { createMesh };
-})(window);
+  root.GoLive.mesh = api;
+
+  if (typeof module !== 'undefined') module.exports = api;
+})(typeof window !== 'undefined' ? window : global);

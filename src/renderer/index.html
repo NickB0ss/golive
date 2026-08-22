@@ -9,6 +9,11 @@
 </head>
 <body>
 
+<div id="update-banner" class="update-banner hidden">
+  <span id="update-banner-text"></span>
+  <button id="btn-update-install" class="ghost small hidden" type="button">Reiniciar e atualizar</button>
+</div>
+
 <div id="app" class="app">
   <!-- ============ COLUNA DE SALAS ============ -->
   <aside class="rooms-col">
@@ -113,15 +118,19 @@
 <div id="picker" class="modal hidden">
   <div class="modal-box picker-box">
     <h2>O que você quer compartilhar?</h2>
+    <div id="picker-tabs" class="picker-tabs">
+      <button class="picker-tab active" data-tab="screen" type="button">Telas</button>
+      <button class="picker-tab" data-tab="window" type="button">Janelas</button>
+    </div>
     <div id="picker-grid" class="picker-grid"></div>
 
     <h3>Áudio</h3>
     <div id="audio-mode" class="audio-mode">
-      <label><input type="radio" name="audio-mode" value="none" /> Sem áudio</label>
-      <label><input type="radio" name="audio-mode" value="system" checked /> Áudio do sistema (inclui a voz do Discord)</label>
-      <label><input type="radio" name="audio-mode" value="device" /> Um dispositivo específico</label>
+      <label class="check-inline"><input type="checkbox" id="share-sound" checked /> Compartilhar som</label>
+      <label class="check-inline hidden" id="share-discord-row">
+        <input type="checkbox" id="share-discord" /> Incluir o som do Discord também
+      </label>
     </div>
-    <select id="audio-device" class="hidden"></select>
 
     <div class="picker-actions">
       <button id="picker-cancel" class="ghost" type="button">Cancelar</button>
