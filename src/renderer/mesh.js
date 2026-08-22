@@ -1,7 +1,78 @@
 'use strict';
 
 (function (root) {
-  const RTC_CONFIG = { iceServers: [], iceTransportPolicy: 'all' };
+  // Sem STUN o ICE so junta candidatos host, entao a unica rota possivel
+  // entre dois peers fora da mesma LAN e o adaptador virtual da VPN -- todo
+  // o video passa dentro do tunel, que costuma ser o gargalo (jitter e perda
+  // derrubam o bitrate bem abaixo do teto configurado). Com STUN o ICE
+  // tambem coleta o candidato srflx e tenta conexao direta pela internet; o
+  // candidato host da VPN continua na lista e assume se o NAT nao deixar.
+  const STUN_URLS = ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'];
+
+  const RTC_CONFIG = { iceServers: [{ urls: STUN_URLS }], iceTransportPolicy: 'all' };
+
+  // Payloads auxiliares (retransmissao e correcao de erro) nao sao codecs de
+  // verdade -- x-google-start-bitrate neles nao faz nada.
+  const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
+
+  // Metade do teto, dentro de limites sensatos. O padrao do Chromium e comecar
+  // em ~300 kbps e subir conforme o congestion control ganha confianca, o que
+  // deixa os primeiros segundos de qualquer compartilhamento borrados mesmo
+  // com banda de sobra. Comecar direto no maximo tambem nao serve: se a rede
+  // nao aguentar, a rajada vira perda e o GCC derruba tudo. Metade e um
+  // palpite inicial -- ele continua livre pra subir ate maxBitrate ou descer.
+  function startBitrateKbps(maxBitrateBps) {
+    const half = Math.round((maxBitrateBps || 0) / 2000);
+    return Math.min(Math.max(half, 300), 10000);
+  }
+
+  // x-google-start-bitrate e uma extensao do Chromium (a unica engine que roda
+  // aqui, ja que e Electron) e so existe via SDP -- nao ha equivalente em
+  // setParameters, dai a edicao na mao. Mexe apenas na secao de video.
+  function withStartBitrate(sdp, kbps) {
+    if (!sdp || !kbps) return sdp;
+    const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+    const lines = sdp.split(/\r?\n/);
+
+    // Primeira passada: descobre quais payloads sao codecs e quais ja tem uma
+    // linha a=fmtp (VP8, por exemplo, costuma nao ter -- ai precisamos criar).
+    const codecPts = new Set();
+    const withFmtp = new Set();
+    let inVideo = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inVideo = line.startsWith('m=video');
+      if (!inVideo) continue;
+      const rtpmap = /^a=rtpmap:(\d+) ([^/]+)\//.exec(line);
+      if (rtpmap && !NON_CODEC_ENCODINGS.has(rtpmap[2].toLowerCase())) codecPts.add(rtpmap[1]);
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp) withFmtp.add(fmtp[1]);
+    }
+
+    const out = [];
+    inVideo = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inVideo = line.startsWith('m=video');
+      if (!inVideo) {
+        out.push(line);
+        continue;
+      }
+
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp && codecPts.has(fmtp[1]) && !line.includes('x-google-start-bitrate')) {
+        out.push(`${line};x-google-start-bitrate=${kbps}`);
+        continue;
+      }
+
+      out.push(line);
+
+      const rtpmap = /^a=rtpmap:(\d+) /.exec(line);
+      if (rtpmap && codecPts.has(rtpmap[1]) && !withFmtp.has(rtpmap[1])) {
+        out.push(`a=fmtp:${rtpmap[1]} x-google-start-bitrate=${kbps}`);
+      }
+    }
+
+    return out.join(eol);
+  }
 
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
@@ -93,11 +164,22 @@
             ? [{ maxBitrate: quality.bitrate, maxFramerate: quality.fps }]
             : undefined,
         });
-        if (track.kind === 'video') preferCodec(transceiver, quality.codec);
+        if (track.kind === 'video') {
+          preferCodec(transceiver, quality.codec);
+          // degradationPreference nao existe no RTCRtpTransceiverInit, so em
+          // setParameters -- sem isto a conexao nasce em 'balanced' e so vira
+          // 'maintain-framerate' se o usuario mexer na qualidade (o que chama
+          // applyEncoding). Pra tela em movimento, derrubar resolucao e menos
+          // ruim do que engasgar os frames.
+          setDegradationPreference(transceiver.sender);
+        }
       }
 
       const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      await pc.setLocalDescription({
+        type: offer.type,
+        sdp: withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate)),
+      });
       send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
     }
 
@@ -124,6 +206,17 @@
         await target.addIceCandidate(candidate);
       } catch {
         /* candidato tardio, ignorar */
+      }
+    }
+
+    function setDegradationPreference(sender, pref = 'maintain-framerate') {
+      if (!sender) return;
+      try {
+        const params = sender.getParameters();
+        params.degradationPreference = pref;
+        sender.setParameters(params).catch(() => {});
+      } catch {
+        /* sender pode ter sido fechado no meio da negociacao */
       }
     }
 
@@ -196,6 +289,10 @@
     };
   }
 
+  const api = { createMesh, withStartBitrate, startBitrateKbps, RTC_CONFIG };
+
   root.GoLive = root.GoLive || {};
-  root.GoLive.mesh = { createMesh };
-})(window);
+  root.GoLive.mesh = api;
+
+  if (typeof module !== 'undefined') module.exports = api;
+})(typeof window !== 'undefined' ? window : global);
