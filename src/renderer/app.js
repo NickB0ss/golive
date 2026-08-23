@@ -25,8 +25,16 @@
   let hostInfo = null;
   let activeRoomAddress = null;
   let statsTimer = null;
-  let lastBytes = 0;
-  let lastAt = 0;
+  // Amostra anterior por sender (`${peerId}:${kind}`), pra derivar taxas a
+  // partir dos contadores acumulados do getStats: Mbps a partir de
+  // bytesSent, e ms de encode por frame a partir de totalEncodeTime e
+  // framesEncoded. Sem a amostra anterior so daria pra ver a media desde o
+  // inicio da conexao, que esconde exatamente o momento em que o encoder
+  // comeca a sofrer.
+  const statsPrev = new Map();
+  // Aviso derivado das estatisticas (encoder em software). Fica separado do
+  // aviso de host porque os dois dividem o mesmo #stage-warning.
+  let encoderWarning = '';
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
@@ -320,23 +328,23 @@
 
   // ---------- Aviso de firewall/endereco do host ----------
 
+  // Um unico #stage-warning atende duas fontes independentes: os avisos de
+  // host (endereco/firewall, definidos ao criar a sala) e o aviso derivado
+  // das estatisticas (encoder caiu pra software). Elas nao se anulam --
+  // podem estar ativas ao mesmo tempo -- entao o texto e a juncao das duas.
   function renderHostWarning() {
     const el = $('stage-warning');
     if (!el) return;
-    if (!hostInfo) {
-      el.classList.add('hidden');
-      el.textContent = '';
-      return;
-    }
     const parts = [];
-    if (hostInfo.addressWarning) {
+    if (hostInfo?.addressWarning) {
       parts.push(`${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`);
     }
-    if (hostInfo.firewall && !hostInfo.firewall.ok) {
+    if (hostInfo?.firewall && !hostInfo.firewall.ok) {
       parts.push(
         `Não consegui liberar a porta no firewall automaticamente. Comando manual: ${hostInfo.firewall.manualCommand}`
       );
     }
+    if (encoderWarning) parts.push(encoderWarning);
     if (!parts.length) {
       el.classList.add('hidden');
       el.textContent = '';
@@ -557,6 +565,11 @@
         const answerSdp = await mesh.handleOffer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return; // sessao caiu enquanto negociava
         sig.send({ type: 'answer', to: msg.from, sdp: answerSdp, kind: msg.kind });
+        // Comecamos a receber com a janela ja oculta: o transmissor assume
+        // "assistindo" por padrao, entao precisa ser corrigido na hora --
+        // do contrario ele paga um encode que ninguem esta vendo ate a
+        // proxima mudanca de visibilidade.
+        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false });
         break;
       }
       case 'answer': {
@@ -575,6 +588,16 @@
         if (peer) peer.live = msg.live;
         if (!msg.live) ui.grid.removeTile(msg.id, emptyMessage());
         renderMembersPanel();
+        break;
+      }
+      // Um espectador avisando que parou (ou voltou) de assistir. Suspender
+      // o encode dele libera um encoder inteiro no PC de quem transmite.
+      // Ver a spec de 2026-08-23, F1.3.
+      case 'view-state': {
+        const track = trackForKind(msg.kind);
+        if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
+          renderMembersPanel();
+        }
         break;
       }
     }
@@ -671,9 +694,38 @@
   // Process Loopback so exclui UMA arvore por captura. Em vez disso,
   // enumeramos quem esta tocando audio agora e subimos uma captura INCLUDE
   // por processo, pulando as arvores do GoLive e do Discord. Reavalia a
-  // cada 2s enquanto a transmissao estiver no ar, pra pegar processos que
+  // cada ciclo do poll enquanto a transmissao estiver no ar, pra pegar processos que
   // comecam a tocar som depois (ex: abriu um video no meio da call).
-  const INCLUDE_LIST_POLL_MS = 2000;
+  //
+  // O intervalo era de 2s. O que este poll detecta e "um app comecou a tocar
+  // som" -- 5s de atraso pra um som novo entrar na mistura e imperceptivel
+  // num jogo, e cada ciclo custa varredura da tabela de processos do Windows
+  // no processo principal, disputando CPU com o jogo. Ver a spec de
+  // 2026-08-23, F1.5.
+  const INCLUDE_LIST_POLL_MS = 5000;
+
+  // O pid do proprio GoLive nao muda durante a execucao, e findDiscordPid()
+  // varre a tabela de processos inteira. Os dois eram chamados a cada ciclo
+  // do poll -- duas varreduras completas a cada 2 segundos, durante o jogo.
+  let ownPidCache = null;
+  async function getOwnPidCached() {
+    if (ownPidCache === null) ownPidCache = await window.golive.getOwnPid();
+    return ownPidCache;
+  }
+
+  // O Discord reiniciar no meio de uma transmissao e raro, e se acontecer 30s
+  // de atraso pra notar o pid novo e aceitavel. Fora do poll (em startShare,
+  // que roda uma vez so) a chamada continua direta, sem cache: la o pid pode
+  // ter acabado de nascer e nao ha ciclo seguinte pra corrigir.
+  const DISCORD_PID_TTL_MS = 30_000;
+  let discordPidCache = { pid: 0, at: 0 };
+  async function getDiscordPidCached() {
+    const now = Date.now();
+    if (discordPidCache.at && now - discordPidCache.at < DISCORD_PID_TTL_MS) return discordPidCache.pid;
+    const pid = await window.golive.findDiscordPid();
+    discordPidCache = { pid, at: now };
+    return pid;
+  }
 
   function startIncludeListCapture(ctx, dest) {
     const nodesByPid = new Map(); // pid -> { node, stop }
@@ -683,8 +735,8 @@
       const [renderPids, processes, ownPid, discordPid] = await Promise.all([
         window.golive.listAudioRenderPids(),
         window.golive.listProcessNames(),
-        window.golive.getOwnPid(),
-        window.golive.findDiscordPid(),
+        getOwnPidCached(),
+        getDiscordPidCached(),
       ]);
       if (stopped) return;
       const excluded = new Set([...pidTreeSet(ownPid, processes), ...pidTreeSet(discordPid, processes)]);
@@ -731,7 +783,7 @@
   let nativeAudioAvailable = null;
   async function isNativeAudioAvailable() {
     if (nativeAudioAvailable === null) {
-      nativeAudioAvailable = (await window.golive.getOwnPid()) !== 0;
+      nativeAudioAvailable = (await getOwnPidCached()) !== 0;
     }
     return nativeAudioAvailable;
   }
@@ -793,7 +845,7 @@
           // melhor cair pro sistema inteiro do que nao ter audio nenhum.
           if (!basePid) useElectronLoopback = true;
         } else {
-          const ownPid = await window.golive.getOwnPid();
+          const ownPid = await getOwnPidCached();
           if (!ownPid) {
             useElectronLoopback = true; // addon indisponivel nesta maquina
           } else if (includeDiscord) {
@@ -987,69 +1039,287 @@
     await startCamera();
   }
 
+  // ---------- Visibilidade da janela ----------
+
+  // Duas fontes pro mesmo estado, porque nenhuma cobre tudo sozinha:
+  // document.visibilityState pega troca de aba/ocultacao do documento, e os
+  // eventos de minimize/restore da janela vem do main (ver createWindow) --
+  // disable-renderer-backgrounding faz o Chromium tratar o renderer como
+  // visivel em situacoes em que ele nao esta.
+  //
+  // O que este estado desliga e PINTURA, nada mais: os <video> param de
+  // compor frames e o painel de estatisticas desacelera. A captura e o
+  // encode do WebRTC vivem no processo de GPU e seguem intactos -- os
+  // espectadores nao veem diferenca nenhuma. Ver a spec de 2026-08-23, F1.4.
+  let windowVisible = true;
+
+  function isAppVisible() {
+    return windowVisible && document.visibilityState !== 'hidden';
+  }
+
+  function onVisibilityChanged() {
+    const visible = isAppVisible();
+    ui.grid.setPainting(visible);
+    if (statsTimer) scheduleStatsLoop();
+    broadcastViewState();
+  }
+
+  /** A track de video local daquele kind, ou null. E o que volta pro sender
+   * quando um espectador avisa que voltou a assistir. */
+  function trackForKind(kind) {
+    const stream = kind === 'camera' ? cameraStream : localStream;
+    return stream?.getVideoTracks()[0] || null;
+  }
+
+  // Avisa cada transmissor de quem estamos recebendo se ainda estamos ou nao
+  // olhando. Peer que nunca recebeu um 'view-state' conta como assistindo --
+  // padrao seguro, entao so mandamos quando ha algo a corrigir ou quando o
+  // estado muda. Ver a spec de 2026-08-23, F1.3.
+  function broadcastViewState() {
+    const session = currentSession;
+    if (!session?.mesh || !session.sig.isOpen()) return;
+    const watching = isAppVisible();
+    for (const { peerId, kind } of session.mesh.receivingFrom()) {
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching });
+    }
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChanged);
+  window.golive.onWindowVisibilityChange?.((visible) => {
+    windowVisible = visible;
+    onVisibilityChanged();
+  });
+
   // ---------- Estatisticas ----------
+
+  // Nomes que o Chromium usa quando quem codifica e a CPU. Qualquer outro
+  // valor ('ExternalEncoder', 'NvCodec...', 'MediaFoundationVideo...') e
+  // hardware. A comparacao e por substring porque com simulcast o nome vem
+  // embrulhado: 'SimulcastEncoderAdapter (libvpx, libvpx)'.
+  const SOFTWARE_ENCODERS = ['openh264', 'libvpx', 'libaom', 'ffmpeg', 'x264'];
+
+  function isSoftwareEncoder(impl) {
+    if (!impl) return false;
+    const name = String(impl).toLowerCase();
+    return SOFTWARE_ENCODERS.some((needle) => name.includes(needle));
+  }
+
+  // Com a janela oculta o painel de estatisticas nao esta na tela de
+  // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
+  // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
+  const STATS_POLL_VISIBLE_MS = 1000;
+  const STATS_POLL_HIDDEN_MS = 5000;
 
   function startStatsLoop() {
     stopStatsLoop();
-    lastBytes = 0;
-    lastAt = 0;
-    statsTimer = setInterval(updateStats, 1000);
+    statsPrev.clear();
+    scheduleStatsLoop();
+  }
+
+  function scheduleStatsLoop() {
+    clearInterval(statsTimer);
+    statsTimer = setInterval(updateStats, isAppVisible() ? STATS_POLL_VISIBLE_MS : STATS_POLL_HIDDEN_MS);
   }
 
   function stopStatsLoop() {
     clearInterval(statsTimer);
     statsTimer = null;
+    statsPrev.clear();
+    if (encoderWarning) {
+      encoderWarning = '';
+      renderHostWarning();
+    }
     ui.settings.setStatsHtml('');
   }
+
+  // Le um relatorio de getStats de UM sender e devolve os campos que
+  // interessam pro diagnostico de encode. Ver a spec de 2026-08-23 (F1.1):
+  // o campo decisivo e encoderImplementation -- o Chromium cai pro encoder
+  // de software sem emitir erro nenhum quando estoura o limite de sessoes
+  // do NVENC, e ate agora o app nao tinha como perceber isso.
+  function readSenderReport(report) {
+    const sample = {
+      fps: 0,
+      captureFps: null,
+      bytesSent: 0,
+      width: 0,
+      height: 0,
+      codec: '',
+      limitation: '',
+      encoder: '',
+      powerEfficient: null,
+      totalEncodeTime: 0,
+      framesEncoded: 0,
+      framesSent: 0,
+      rtt: 0,
+    };
+
+    report.forEach((stat) => {
+      if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
+        sample.fps = Math.max(sample.fps, stat.framesPerSecond || 0);
+        sample.bytesSent += stat.bytesSent || 0;
+        sample.width = stat.frameWidth || sample.width;
+        sample.height = stat.frameHeight || sample.height;
+        sample.totalEncodeTime += stat.totalEncodeTime || 0;
+        sample.framesEncoded += stat.framesEncoded || 0;
+        sample.framesSent += stat.framesSent || 0;
+        if (stat.encoderImplementation) sample.encoder = stat.encoderImplementation;
+        if (stat.powerEfficientEncoder != null) sample.powerEfficient = stat.powerEfficientEncoder;
+        if (stat.qualityLimitationReason && stat.qualityLimitationReason !== 'none') {
+          sample.limitation = stat.qualityLimitationReason;
+        }
+      }
+      // fps que a CAPTURA entrega, distinto do que sai codificado. Os dois
+      // divergirem e o sinal de que o encoder nao esta dando conta.
+      if (stat.type === 'media-source' && stat.kind === 'video' && stat.framesPerSecond != null) {
+        sample.captureFps = stat.framesPerSecond;
+      }
+      if (stat.type === 'codec' && stat.mimeType?.startsWith('video/')) {
+        sample.codec = stat.mimeType.split('/')[1];
+      }
+      if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
+        sample.rtt = Math.max(sample.rtt, stat.currentRoundTripTime * 1000);
+      }
+    });
+
+    return sample;
+  }
+
+  // Deriva as taxas do intervalo comparando com a amostra anterior daquele
+  // mesmo sender. Contador acumulado sozinho da a media desde o inicio da
+  // conexao, que e justamente onde o problema se esconde.
+  function deriveRates(key, sample, now) {
+    const prev = statsPrev.get(key);
+    statsPrev.set(key, {
+      bytesSent: sample.bytesSent,
+      totalEncodeTime: sample.totalEncodeTime,
+      framesEncoded: sample.framesEncoded,
+      at: now,
+    });
+    if (!prev || now <= prev.at) return { mbps: 0, msPerFrame: null };
+
+    const seconds = (now - prev.at) / 1000;
+    const mbps = ((sample.bytesSent - prev.bytesSent) * 8) / seconds / 1_000_000;
+
+    const frames = sample.framesEncoded - prev.framesEncoded;
+    const encodeMs = (sample.totalEncodeTime - prev.totalEncodeTime) * 1000;
+    const msPerFrame = frames > 0 ? encodeMs / frames : null;
+
+    return { mbps: Math.max(mbps, 0), msPerFrame };
+  }
+
+  const LIMITATION_LABELS = {
+    bandwidth: 'banda da rede insuficiente',
+    cpu: 'CPU no limite',
+    other: 'limite do encoder',
+  };
 
   async function updateStats() {
     const session = currentSession;
     if (!session?.mesh) return;
     const activeMesh = session.mesh;
 
-    let fps = 0, bytes = 0, rtt = 0, width = 0, height = 0, codec = '', limitation = '', connections = 0;
+    const rows = [];
+    const now = performance.now();
 
-    for (const peerId of activeMesh.peers.keys()) {
-      if (currentSession !== session) return; // sessao encerrou enquanto aguardavamos as stats
-      const report = await activeMesh.statsFor(peerId);
-      if (!report) continue;
-      connections++;
-      report.forEach((stat) => {
-        if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
-          fps = Math.max(fps, stat.framesPerSecond || 0);
-          bytes += stat.bytesSent || 0;
-          width = stat.frameWidth || width;
-          height = stat.frameHeight || height;
-          if (stat.qualityLimitationReason && stat.qualityLimitationReason !== 'none') {
-            limitation = stat.qualityLimitationReason;
-          }
-        }
-        if (stat.type === 'codec' && stat.mimeType?.startsWith('video/')) {
-          codec = stat.mimeType.split('/')[1];
-        }
-        if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
-          rtt = Math.max(rtt, stat.currentRoundTripTime * 1000);
-        }
-      });
+    // Uma linha por sender -- peer x kind. Agregar aqui (como antes) esconde
+    // o caso tipico: a degradacao atinge UM sender so, e a media dos tres
+    // continua parecendo saudavel.
+    for (const [peerId, peer] of activeMesh.peers) {
+      for (const kind of ['screen', 'camera']) {
+        if (currentSession !== session) return; // sessao encerrou enquanto aguardavamos as stats
+        const report = await activeMesh.statsFor(peerId, kind);
+        if (!report) continue;
+        const sample = readSenderReport(report);
+        if (!sample.framesEncoded && !sample.bytesSent) continue;
+        const rates = deriveRates(`${peerId}:${kind}`, sample, now);
+        rows.push({ peerId, kind, name: peer.name || `#${peerId}`, ...sample, ...rates });
+      }
     }
 
     if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
 
-    const now = performance.now();
-    let mbps = 0;
-    if (lastAt) mbps = ((bytes - lastBytes) * 8) / ((now - lastAt) / 1000) / 1_000_000;
-    lastBytes = bytes;
-    lastAt = now;
+    renderStats(rows);
+    updateEncoderWarning(rows);
+  }
 
-    const motivo = { bandwidth: 'banda da rede insuficiente', cpu: 'CPU no limite', other: 'limite do encoder' }[limitation];
+  // O orcamento de encode a 60 fps e 16,6 ms POR QUADRO, somando todos os
+  // senders -- eles disputam o mesmo encoder. Por isso o resumo soma
+  // ms/frame em vez de tirar media.
+  function renderStats(rows) {
+    if (!rows.length) {
+      ui.settings.setStatsHtml('<div class="stat"><span>enviando pra</span><b>0 peer(s)</b></div>');
+      return;
+    }
 
-    ui.settings.setStatsHtml(`
-      <div class="stat"><span>enviando pra</span><b>${connections} peer(s)</b></div>
-      <div class="stat"><span>resolução</span><b>${width}x${height}</b></div>
-      <div class="stat"><span>fps real</span><b class="${fps >= 50 ? 'good' : 'warn-text'}">${Math.round(fps)}</b></div>
-      <div class="stat"><span>saída total</span><b>${mbps.toFixed(1)} Mbps</b></div>
-      <div class="stat"><span>latência</span><b>${rtt ? Math.round(rtt) + ' ms' : '-'}</b></div>
-      <div class="stat"><span>codec</span><b>${codec || '-'}</b></div>
-      ${motivo ? `<div class="stat-warn">Limitado por: ${motivo}</div>` : ''}`);
+    const esc = ui.escapeHtml;
+    const totalMbps = rows.reduce((sum, r) => sum + r.mbps, 0);
+    const encodeMsRows = rows.filter((r) => r.msPerFrame != null);
+    const totalEncodeMs = encodeMsRows.reduce((sum, r) => sum + r.msPerFrame, 0);
+    const anySoftware = rows.some((r) => isSoftwareEncoder(r.encoder));
+    const budget = rows[0].fps >= 50 ? 16.6 : 33.3;
+    const first = rows[0];
+
+    const summary = `
+      <div class="stat"><span>enviando pra</span><b>${rows.length} sender(s)</b></div>
+      <div class="stat"><span>resolução</span><b>${first.width}x${first.height}</b></div>
+      <div class="stat"><span>saída total</span><b>${totalMbps.toFixed(1)} Mbps</b></div>
+      <div class="stat"><span>codec</span><b>${esc(first.codec || '-')}</b></div>
+      <div class="stat"><span>encoder</span><b class="${anySoftware ? 'warn-text' : 'good'}">${
+        anySoftware ? 'software (CPU)' : 'hardware'
+      }</b></div>
+      <div class="stat"><span>encode somado</span><b class="${
+        encodeMsRows.length && totalEncodeMs > budget ? 'warn-text' : 'good'
+      }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>`;
+
+    const body = rows
+      .map((r) => {
+        const software = isSoftwareEncoder(r.encoder);
+        const dropped = Math.max(r.framesEncoded - r.framesSent, 0);
+        return `<tr>
+          <td>${esc(r.name)}<span class="stats-kind">${r.kind === 'camera' ? 'câmera' : 'tela'}</span></td>
+          <td class="${r.fps >= 50 ? 'good' : 'warn-text'}">${Math.round(r.fps)}${
+            r.captureFps != null ? `<span class="stats-kind">cap ${Math.round(r.captureFps)}</span>` : ''
+          }</td>
+          <td class="${r.msPerFrame != null && r.msPerFrame > budget ? 'warn-text' : ''}">${
+            r.msPerFrame != null ? `${r.msPerFrame.toFixed(1)} ms` : '-'
+          }</td>
+          <td class="${software ? 'warn-text' : ''}">${esc(r.encoder || '-')}${
+            r.powerEfficient === false ? '<span class="stats-kind">não eficiente</span>' : ''
+          }</td>
+          <td>${r.mbps.toFixed(1)}</td>
+          <td>${r.rtt ? `${Math.round(r.rtt)} ms` : '-'}</td>
+          <td class="${dropped ? 'warn-text' : ''}">${dropped || '-'}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const limited = rows.filter((r) => r.limitation);
+    const limitWarn = limited.length
+      ? `<div class="stat-warn">Limitado por: ${limited
+          .map((r) => `${esc(r.name)} — ${LIMITATION_LABELS[r.limitation] || esc(r.limitation)}`)
+          .join('; ')}</div>`
+      : '';
+
+    ui.settings.setStatsHtml(`${summary}
+      <table class="stats-table">
+        <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perdidos</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      ${limitWarn}`);
+  }
+
+  // O aviso so aparece com mais de um sender ativo: com um sender so, encoder
+  // de software e desconfortavel mas nao e o problema que a spec persegue --
+  // e a queda silenciosa por estouro do limite de sessoes do NVENC.
+  function updateEncoderWarning(rows) {
+    const software = rows.filter((r) => isSoftwareEncoder(r.encoder));
+    const next =
+      software.length && rows.length > 1
+        ? 'Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de espectadores.'
+        : '';
+    if (next === encoderWarning) return;
+    encoderWarning = next;
+    renderHostWarning();
   }
 })();

@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { withStartBitrate, startBitrateKbps, RTC_CONFIG } = require('./mesh');
+const { createMesh, withStartBitrate, startBitrateKbps, RTC_CONFIG } = require('./mesh');
 
 // SDP reduzido, mas com as armadilhas reais: secao de audio antes da de video
 // (nao pode ser tocada), payload de video sem a=fmtp (VP8), payload com fmtp
@@ -64,4 +64,63 @@ test('start bitrate e metade do teto, preso entre 300 kbps e 10 Mbps', () => {
 test('RTC_CONFIG tem STUN pra tentar rota direta antes de cair pra VPN', () => {
   assert.ok(RTC_CONFIG.iceServers.length > 0);
   assert.equal(RTC_CONFIG.iceTransportPolicy, 'all');
+});
+
+// --- setPeerDemand (encode sob demanda, spec de 2026-08-23 F1.3) ---
+//
+// Nao precisa de RTCPeerConnection: `peers` e exposto, entao da pra plantar
+// um peer com uma pc falsa e exercitar so a logica de suspensao.
+function fakeSender(track) {
+  return {
+    track,
+    replaceTrack(next) {
+      this.track = next;
+      return Promise.resolve();
+    },
+  };
+}
+
+function meshWithPeer(senders) {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  mesh.peers.get('7').outConns.screen = { getSenders: () => senders };
+  return mesh;
+}
+
+test('suspender libera o encoder de video e nao toca no audio', () => {
+  const video = fakeSender({ kind: 'video' });
+  const audio = fakeSender({ kind: 'audio' });
+  const mesh = meshWithPeer([video, audio]);
+
+  assert.equal(mesh.setPeerDemand('7', 'screen', false), true);
+  assert.equal(video.track, null, 'video suspenso');
+  assert.notEqual(audio.track, null, 'quem minimizou ainda quer ouvir');
+  assert.equal(mesh.isPeerSuspended('7', 'screen'), true);
+});
+
+test('religar devolve a track ao mesmo sender', () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+  const track = { kind: 'video' };
+
+  mesh.setPeerDemand('7', 'screen', false);
+  assert.equal(mesh.setPeerDemand('7', 'screen', true, track), true);
+  assert.equal(video.track, track);
+  assert.equal(mesh.isPeerSuspended('7', 'screen'), false);
+});
+
+test('pedir o estado em que ja esta nao faz nada', () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+
+  assert.equal(mesh.setPeerDemand('7', 'screen', true, { kind: 'video' }), false);
+  assert.equal(mesh.setPeerDemand('7', 'screen', false), true);
+  assert.equal(mesh.setPeerDemand('7', 'screen', false), false);
+});
+
+test('peer sem conexao daquele kind e ignorado, sem lancar', () => {
+  const mesh = meshWithPeer([]);
+  assert.equal(mesh.setPeerDemand('7', 'camera', false), false);
+  assert.equal(mesh.setPeerDemand('999', 'screen', false), false);
+  assert.equal(mesh.isPeerSuspended('999', 'screen'), false);
 });

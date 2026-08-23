@@ -11,9 +11,31 @@
 const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen } = require('electron');
 const path = require('path');
 
-// Encoder de hardware. Sem isso o Chromium as vezes cai no encoder de
-// software e 1080p60 come CPU sem necessidade.
-app.commandLine.appendSwitch('enable-features', 'WebRtcAllowH264Send,PlatformHEVCEncoderSupport');
+// TODAS as features do Chromium tem que sair daqui, numa lista so:
+// appendSwitch('enable-features', ...) chamado duas vezes NAO soma -- a
+// segunda chamada sobrescreve a primeira, em silencio.
+//
+// Uma feature que nao existe nesta versao do Chromium tambem e ignorada em
+// silencio -- parece que funcionou. Por isso os nomes de WGC abaixo estao
+// marcados como NAO VERIFICADOS: eles mudaram de nome e de granularidade
+// entre versoes. Como confirmar qual capturador esta em uso, em ordem:
+//   1. rodar com --enable-logging --v=1 e procurar WgcCapturerWin no log
+//      (o caminho lento aparece como ScreenCapturerWinGdi/WindowCapturerWinGdi);
+//   2. teste decisivo: compartilhar uma janela de jogo em fullscreen
+//      exclusivo -- GDI devolve tela preta, WGC devolve imagem.
+// Ver a spec de 2026-08-23, F1.2.
+const ENABLED_FEATURES = [
+  // Encoder de hardware. Sem isso o Chromium as vezes cai no encoder de
+  // software e 1080p60 come CPU sem necessidade.
+  'WebRtcAllowH264Send',
+  // Windows.Graphics.Capture: captura pelo lado da GPU. O caminho antigo
+  // (GDI/BitBlt) codifica janela na CPU e devolve preto em fullscreen
+  // exclusivo. NAO VERIFICADO nesta versao -- ver acima.
+  'AllowWgcScreenCapturer',
+  'AllowWgcWindowCapturer',
+  'AllowWgcDesktopCapturer',
+];
+app.commandLine.appendSwitch('enable-features', ENABLED_FEATURES.join(','));
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 app.commandLine.appendSwitch('force_high_performance_gpu');
 // Sem isso o Chromium derruba o framerate quando a janela nao esta em foco.
@@ -104,6 +126,22 @@ function createWindow() {
   win.setMenuBarVisibility(false);
   win.on('enter-full-screen', () => win?.webContents.send('window:fullscreen-changed', true));
   win.on('leave-full-screen', () => win?.webContents.send('window:fullscreen-changed', false));
+
+  // Quem transmite passa a maior parte do tempo com o jogo por cima. Estes
+  // eventos sao o sinal pro renderer parar de PINTAR (prévia local, tiles,
+  // stats) -- a captura e o encode do WebRTC vivem no processo de GPU e
+  // seguem intactos. Ver a spec de 2026-08-23, F1.4.
+  //
+  // 'minimize'/'restore' vem alem do document.visibilityState porque
+  // disable-renderer-backgrounding (acima) faz o Chromium tratar o renderer
+  // como visivel em situacoes em que ele nao esta.
+  const sendVisibility = (visible) => {
+    if (win && !win.isDestroyed()) win.webContents.send('window:visibility-changed', visible);
+  };
+  win.on('minimize', () => sendVisibility(false));
+  win.on('restore', () => sendVisibility(true));
+  win.on('show', () => sendVisibility(true));
+  win.on('hide', () => sendVisibility(false));
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 

@@ -155,6 +155,12 @@
 
     async function offerTo(peerId, stream, quality, kind) {
       const pc = ensureOutConn(peerId, kind);
+      // Transceivers novos nascem com track: qualquer suspensao anterior
+      // (F1.3) deixou de valer, e manter o registro faria o proximo
+      // 'view-state: watching' virar no-op.
+      const peerRef = peers.get(peerId);
+      if (peerRef?.suspended) peerRef.suspended[kind] = false;
+      if (peerRef?.suspendedSenders) peerRef.suspendedSenders[kind] = [];
 
       for (const track of stream.getTracks()) {
         const transceiver = pc.addTransceiver(track, {
@@ -259,6 +265,67 @@
       }
     }
 
+    // ---------- Encode sob demanda (spec de 2026-08-23, F1.3) ----------
+    //
+    // Ninguem deve pagar encode por um espectador que nao esta olhando. Cada
+    // RTCRtpSender do Chromium instancia SEU PROPRIO encoder -- com 3
+    // espectadores sao 3 encodes de 1080p60 saindo da mesma captura, na
+    // mesma GPU que o jogo usa.
+    //
+    // replaceTrack(null) libera o encoder na hora e NAO exige renegociacao:
+    // a PeerConnection, o ICE e o DTLS continuam de pe, entao religar custa
+    // um frame. Fechar a pc faria o oposto -- ICE + DTLS + SDP de novo,
+    // segundos de tela preta ao voltar.
+    //
+    // So a track de VIDEO suspende: quem minimizou provavelmente ainda quer
+    // ouvir, e encode de audio e irrelevante perto do de video.
+    //
+    // Devolve true quando houve mudanca de estado (pra quem chama saber se
+    // precisa redesenhar), false quando ja estava no estado pedido ou nao ha
+    // conexao daquele kind.
+    function setPeerDemand(peerId, kind, wanted, track) {
+      const peer = peers.get(peerId);
+      const pc = peer?.outConns[kind];
+      if (!pc) return false;
+
+      peer.suspended ||= {};
+      peer.suspendedSenders ||= {};
+      if (Boolean(peer.suspended[kind]) === !wanted) return false;
+
+      if (wanted) {
+        // Religa nos MESMOS senders que foram suspensos -- depois do
+        // replaceTrack(null) o sender fica sem track, entao nao da pra
+        // reencontra-lo por sender.track.kind.
+        for (const sender of peer.suspendedSenders[kind] || []) {
+          sender.replaceTrack(track || null).catch(() => {});
+        }
+        peer.suspendedSenders[kind] = [];
+        peer.suspended[kind] = false;
+      } else {
+        const senders = pc.getSenders().filter((s) => s.track?.kind === 'video');
+        peer.suspendedSenders[kind] = senders;
+        for (const sender of senders) sender.replaceTrack(null).catch(() => {});
+        peer.suspended[kind] = true;
+      }
+      return true;
+    }
+
+    function isPeerSuspended(peerId, kind) {
+      return Boolean(peers.get(peerId)?.suspended?.[kind]);
+    }
+
+    /** Pares { peerId, kind } de quem estamos RECEBENDO video agora. E a
+     * lista de destinatarios do nosso proprio 'view-state'. */
+    function receivingFrom() {
+      const out = [];
+      for (const [peerId, peer] of peers) {
+        for (const kind of Object.keys(peer.inConns)) {
+          if (peer.inConns[kind]) out.push({ peerId, kind });
+        }
+      }
+      return out;
+    }
+
     function closeAllOut(kind) {
       for (const peer of peers.values()) {
         const pc = peer.outConns[kind];
@@ -286,6 +353,9 @@
       applyEncoding,
       closeAllOut,
       statsFor,
+      setPeerDemand,
+      isPeerSuspended,
+      receivingFrom,
     };
   }
 

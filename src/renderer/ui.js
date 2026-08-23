@@ -169,6 +169,26 @@
     }
   }
 
+  // Pintura dos <video>. Um <video> pausado deixa de compor frames, mas a
+  // MediaStreamTrack por tras continua viva e sendo enviada -- pausar o
+  // elemento e parada de EXIBICAO, nao de captura nem de encode (que rodam
+  // no processo de GPU). E o que permite nao gastar GPU desenhando a propria
+  // tela dentro da propria tela enquanto o jogo esta por cima. Ver a spec de
+  // 2026-08-23, F1.4.
+  let paintingEnabled = true;
+
+  function applyPainting(video) {
+    if (!video) return;
+    if (paintingEnabled) video.play().catch(() => {});
+    else video.pause();
+  }
+
+  function setPainting(enabled) {
+    if (paintingEnabled === enabled) return;
+    paintingEnabled = enabled;
+    gridEl.querySelectorAll('video').forEach(applyPainting);
+  }
+
   function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
     gridEl.querySelector('.empty')?.remove();
 
@@ -222,6 +242,10 @@
     if (kind === 'camera') badgeEl.title = 'Câmera';
     else if (kind === 'screen') badgeEl.title = 'Tela';
     else badgeEl.removeAttribute('title');
+
+    // Tile criado enquanto a janela esta oculta nasce pausado (o atributo
+    // autoplay do <video> tocaria sozinho, sem isto).
+    applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
   }
@@ -570,16 +594,20 @@
     return '';
   }
 
-  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf }) {
+  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, notWatching }) {
     const li = document.createElement('li');
     if (isSelf) li.classList.add('self');
+    // Sem esta marca o encode sob demanda (F1.3) vira bug fantasma: o
+    // espectador para de receber video e ninguem na sala sabe por que.
+    if (notWatching) li.classList.add('not-watching');
     li.innerHTML = `
       <span class="peer-avatar-wrap">
         <span class="peer-avatar ${borderClass || ''}">${avatarInnerHtml(id, name, avatar)}</span>
         ${live ? `<span class="peer-live-badge" title="Compartilhando tela">${SHARE_ICON}</span>` : ''}
       </span>
       ${escapeHtml(name)}${isSelf ? ' <span class="peer-you-tag">(você)</span>' : ''}
-      ${live ? '<em>AO VIVO</em>' : ''}`;
+      ${live ? '<em>AO VIVO</em>' : ''}
+      ${notWatching ? '<span class="peer-not-watching">não está assistindo</span>' : ''}`;
     return li;
   }
 
@@ -602,7 +630,14 @@
         || peer.inConns?.camera?.connectionState || peer.outConns?.camera?.connectionState;
       const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
       peerListEl.appendChild(
-        buildMemberRow({ id: peer.id, name: peer.name, avatar: peer.avatar, borderClass, live: peer.live })
+        buildMemberRow({
+          id: peer.id,
+          name: peer.name,
+          avatar: peer.avatar,
+          borderClass,
+          live: peer.live,
+          notWatching: Boolean(peer.suspended?.screen || peer.suspended?.camera),
+        })
       );
     }
   }
@@ -853,6 +888,7 @@
   const pickerEl = $('picker');
   const pickerGridEl = $('picker-grid');
   const pickerTabsEl = $('picker-tabs');
+  const pickerWindowHintEl = $('picker-window-hint');
   const pickerQualityPresetEl = $('picker-quality-preset');
   const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
   const shareSoundEl = $('share-sound');
@@ -924,8 +960,54 @@
     pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.remove('active'));
     btn.classList.add('active');
     pickerTab = btn.dataset.tab;
+    syncWindowHint();
     renderPickerGrid();
   });
+
+  // sources:list captura e codifica em PNG uma miniatura de CADA janela
+  // aberta -- um pico de trabalho no instante exato em que a pessoa vai
+  // transmitir, ou seja, com o jogo aberto. Por isso roda uma vez por
+  // abertura do dialogo (trocar de aba nao recarrega: renderPickerGrid
+  // filtra a lista ja em memoria) e so repete quando o usuario pede.
+  // Ver a spec de 2026-08-23, F1.6.
+  function loadPickerSources() {
+    const run = ++pickerRun;
+    pickerSources = [];
+    pickerLoading = { screen: true, window: true };
+    renderPickerGrid();
+
+    // Telas primeiro (sao poucas e rapidas, e e a aba que abre selecionada);
+    // as janelas, que sao a parte cara, chegam depois sem segurar o resto.
+    const absorb = (tab) => (sources) => {
+      if (run !== pickerRun) return; // dialogo ja foi fechado e reaberto
+      pickerLoading[tab] = false;
+      pickerSources = [...pickerSources, ...sources];
+      renderPickerGrid();
+    };
+    const fail = (tab) => () => {
+      if (run !== pickerRun) return;
+      pickerLoading[tab] = false;
+      renderPickerGrid();
+    };
+    window.golive.listSources(['screen']).then(absorb('screen'), fail('screen'));
+    window.golive.listSources(['window']).then(absorb('window'), fail('window'));
+  }
+
+  // Uma fonte selecionada some se ela nao existir mais na lista nova, entao
+  // o botao "Ir ao vivo" volta a ficar desabilitado -- melhor do que
+  // transmitir uma janela que acabou de fechar.
+  $('picker-refresh').addEventListener('click', () => {
+    selectedSourceId = null;
+    btnGoLiveEl.disabled = true;
+    loadPickerSources();
+  });
+
+  // Capturar uma janela cai no caminho GDI/BitBlt do Chromium, que codifica
+  // na CPU e devolve tela preta em fullscreen exclusivo -- ver a spec de
+  // 2026-08-23, F1.2. A dica so aparece na aba onde a escolha errada mora.
+  function syncWindowHint() {
+    pickerWindowHintEl?.classList.toggle('hidden', pickerTab !== 'window');
+  }
 
   // A 2a checkbox ("incluir o som do Discord") so faz sentido com a 1a
   // ligada -- some junto, e some desmarcada tambem (nao fica um estado
@@ -954,6 +1036,7 @@
     btnGoLiveEl.disabled = true;
     pickerTab = 'screen';
     pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
+    syncWindowHint();
     pickerGridEl.innerHTML = '';
     pickerQualityPresetEl.value = quality.preset;
     pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
@@ -977,33 +1060,14 @@
     // O dialogo aparece na hora e as fontes entram conforme chegam -- antes
     // ele so era exibido depois de capturar o thumbnail de TODAS as telas e
     // janelas, o que dava a impressao de que o clique nao tinha funcionado.
-    const run = ++pickerRun;
-    pickerSources = [];
-    pickerLoading = { screen: true, window: true };
-    renderPickerGrid();
     pickerEl.classList.remove('hidden');
-
-    // Telas primeiro (sao poucas e rapidas, e e a aba que abre selecionada);
-    // as janelas, que sao a parte cara, chegam depois sem segurar o resto.
-    const absorb = (tab) => (sources) => {
-      if (run !== pickerRun) return; // dialogo ja foi fechado e reaberto
-      pickerLoading[tab] = false;
-      pickerSources = [...pickerSources, ...sources];
-      renderPickerGrid();
-    };
-    const fail = (tab) => () => {
-      if (run !== pickerRun) return;
-      pickerLoading[tab] = false;
-      renderPickerGrid();
-    };
-    window.golive.listSources(['screen']).then(absorb('screen'), fail('screen'));
-    window.golive.listSources(['window']).then(absorb('window'), fail('window'));
+    loadPickerSources();
   }
 
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile },
+    grid: { showTile, removeTile, setPainting },
     members: { render: renderMembers },
     rooms: { render: renderRooms },
     stageHeader: { set: setStageHeader, clear: clearStageHeader },

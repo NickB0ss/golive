@@ -98,3 +98,48 @@ test('avatar e repassado em welcome e peer-joined', async () => {
     await server.close();
   }
 });
+
+// Versao com prazo: sem isto, uma regressao no encaminhamento faz o teste
+// pendurar pra sempre em vez de falhar.
+function onceWithin(ws, type, ms = 2000) {
+  return Promise.race([
+    once(ws, type),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`sem ${type} em ${ms}ms`)), ms).unref()),
+  ]);
+}
+
+// view-state (e, na fase 2, tree) sao encaminhamento direto peer-a-peer,
+// igual a offer/answer/ice: o servidor nao interpreta nada, so entrega ao
+// destinatario carimbando quem mandou. Ver a spec de 2026-08-23, F1.3.
+test('encaminha view-state e tree ao destinatario, com o from carimbado', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const welcomeA = await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    const welcomeB = await once(b, 'welcome');
+
+    const viewStateAtA = onceWithin(a, 'view-state');
+    b.send(JSON.stringify({ type: 'view-state', to: welcomeA.id, kind: 'screen', watching: false }));
+    const viewState = await viewStateAtA;
+    assert.equal(viewState.from, welcomeB.id);
+    assert.equal(viewState.kind, 'screen');
+    assert.equal(viewState.watching, false);
+
+    const treeAtB = onceWithin(b, 'tree');
+    a.send(JSON.stringify({ type: 'tree', to: welcomeB.id, kind: 'screen', epoch: 3, filhos: [] }));
+    const tree = await treeAtB;
+    assert.equal(tree.from, welcomeA.id);
+    assert.equal(tree.epoch, 3);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});

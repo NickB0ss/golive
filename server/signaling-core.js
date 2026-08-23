@@ -76,9 +76,16 @@ function createSignalingServer({ port }) {
               break;
             }
 
+            // Encaminhamento direto peer-a-peer: o servidor nao interpreta
+            // nada, so entrega ao destinatario carimbando quem mandou.
+            // 'view-state' e o espectador dizendo se esta ou nao assistindo
+            // (F1.3); 'tree' e a origem distribuindo papeis da arvore de
+            // retransmissao (F2). Ver a spec de 2026-08-23.
             case 'offer':
             case 'answer':
-            case 'ice': {
+            case 'ice':
+            case 'view-state':
+            case 'tree': {
               const target = peers.get(String(msg.to));
               if (!target) return;
               send(target.ws, { ...msg, from: id });
