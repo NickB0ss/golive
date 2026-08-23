@@ -1,18 +1,114 @@
-/* GoLive LAN - tema estilo Discord */
+/* GoLive LAN — direcao visual "Superficie e sinal".
+ *
+ * A regra que organiza o tema inteiro: o acento e reservado a UMA coisa --
+ * alguem esta ao vivo. Nada mais na interface usa cor saturada em estado
+ * normal. Botao primario, aba ativa e item selecionado se distinguem por
+ * ELEVACAO e CONTRASTE, nao por cor. Consequencia: qualquer cor na tela
+ * quer dizer transmissao, e a sala fica legivel de relance.
+ *
+ * Sem blur em lugar nenhum. backdrop-filter e trabalho de GPU continuo por
+ * camada, na mesma GPU que o encoder de video e o jogo de quem transmite
+ * disputam -- seria o redesign gastando exatamente o recurso que a Parte I
+ * da spec tenta liberar. Ver docs/superpowers/specs/2026-08-23-*.
+ */
 
 :root {
-  --bg-app: #313338;
-  --bg-panel: #2b2d31;
-  --bg-rail: #1e1f22;
-  --bg-inset: #1e1f22;
-  --line: #3f4147;
-  --text: #f2f3f5;
-  --muted: #949ba4;
-  --accent: #5865f2;
-  --good: #23a55a;
-  --warn: #f0b232;
-  --bad: #f23f42;
-  --radius: 8px;
+  /* Superficies: elevacao por luminosidade, nao por sombra. 0 e o mais
+     fundo, 4 e o mais proximo do usuario. */
+  --surface-0: #0d0f13;   /* fundo da janela, atras de tudo */
+  --surface-1: #14171d;   /* colunas laterais */
+  --surface-2: #1b1f27;   /* cards, linhas de lista, campos */
+  --surface-3: #232833;   /* hover */
+  --surface-4: #2d3340;   /* pressionado, selecionado */
+  --surface-modal: #171b22;
+
+  --text-1: #eef1f6;      /* principal */
+  --text-2: #9aa4b5;      /* secundario, rotulos */
+  --text-3: #616b7d;      /* terciario e desabilitado -- NUNCA informacao */
+
+  /* Linhas em alpha sobre a superficie, nao cor fixa: funcionam em
+     qualquer nivel de elevacao sem precisar de uma variante por nivel. */
+  --line-subtle: rgba(255, 255, 255, 0.06);
+  --line:        rgba(255, 255, 255, 0.10);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  /* Semantica: tres cores, e a primeira tem um significado so.
+     Ciano porque #5865f2 e Discord, #9146ff e Twitch e vermelho e YouTube
+     -- e porque convive sem ambiguidade com ambar e vermelho, que e
+     exatamente o problema que um acento verde ou coral teria. */
+  --live:   #39d8ff;   /* ao vivo. E SO ao vivo. */
+  --warn:   #f5b544;   /* degradado: encoder em software, banda insuficiente */
+  --danger: #ff5d5d;   /* quebrado, e acoes destrutivas */
+
+  --live-dim:   rgba(57, 216, 255, 0.14);
+  --warn-dim:   rgba(245, 181, 68, 0.13);
+  --danger-dim: rgba(255, 93, 93, 0.13);
+
+  /* Raio progressivo -- um raio unico pra pilula, card e modal achata a
+     hierarquia. */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-full: 999px;
+
+  --s-1: 4px;  --s-2: 8px;   --s-3: 12px;
+  --s-4: 16px; --s-5: 24px;  --s-6: 32px;  --s-7: 48px;
+
+  /* Sombra dupla: contato curto ancora o elemento, difusao longa da a
+     maciez. Uma camada so nao constroi eixo de elevacao. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 1px 3px rgba(0, 0, 0, 0.40), 0 16px 48px rgba(0, 0, 0, 0.50);
+
+  /* Anel de foco duplo: o offset na cor da superficie de baixo separa o
+     anel do elemento sem depender de outline-offset. */
+  --ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--live);
+
+  /* --- Motion ---
+     Nada de ease-in em UI: comeca lento e parece que a interface atrasou. */
+  --ease-enter:  cubic-bezier(0.22, 1, 0.36, 1);   /* entradas, hover com transform */
+  --ease-move:   cubic-bezier(0.25, 1, 0.5, 1);    /* deslizes, indicadores, paineis */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* saidas de superficie */
+
+  --t-press: 120ms;
+  --t-hover: 140ms;
+  --t-tint:  200ms;
+  --t-pop:   180ms;
+  --t-move:  240ms;
+  --t-modal: 260ms;
+  --t-exit:  150ms;
+
+  /* Aliases dos nomes antigos. Existem pra migracao ser incremental: o
+     componente que ainda nao foi reancorado continua funcionando. Repare
+     que --accent NAO aponta pra --live -- se apontasse, o acento voltaria
+     a aparecer em toda parte, que e justamente o que este tema desfaz. */
+  --bg-app: var(--surface-0);
+  --bg-panel: var(--surface-1);
+  --bg-rail: var(--surface-0);
+  --bg-inset: var(--surface-2);
+  --text: var(--text-1);
+  --muted: var(--text-2);
+  --accent: var(--surface-4);
+  --good: var(--live);
+  --bad: var(--danger);
+  --radius: var(--r-sm);
+}
+
+/* Zerar as duracoes NOS TOKENS faz todo componente herdar o caminho
+   reduzido sem precisar de uma regra por componente. O bloco `*` abaixo e
+   a rede de seguranca pro que escapar. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-press: 0ms; --t-hover: 0ms; --t-tint: 0ms; --t-pop: 0ms;
+    --t-move: 0ms;  --t-modal: 0ms; --t-exit: 0ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,39 +124,67 @@ body {
 
 .hidden { display: none !important; }
 
+/* Botoes: tres niveis distinguidos por SUPERFICIE, nao por cor -- ver a
+   regra do acento no topo do arquivo. Hover sobe um nivel de superficie;
+   `filter: brightness` (o hover universal de antes) clareava o texto e o
+   icone junto com o fundo e derrubava o contraste. */
 button {
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
-  border: none;
-  border-radius: var(--radius);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
   padding: 10px 16px;
   cursor: pointer;
-  transition: filter 0.12s;
-  color: var(--text);
+  background: transparent;
+  color: var(--text-1);
+  transition: background-color var(--t-tint) var(--ease-move),
+              border-color var(--t-tint) var(--ease-move),
+              color var(--t-tint) var(--ease-move),
+              transform var(--t-press) var(--ease-enter);
 }
-button:hover:not(:disabled) { filter: brightness(1.15); }
 button:disabled { opacity: 0.5; cursor: default; }
 
-.primary { background: var(--accent); color: #fff; }
-.danger { background: var(--bad); color: #fff; }
-.ghost { background: var(--bg-inset); color: var(--text); }
+/* Feedback de toque: entra em 0ms (a mao ja esta la, esperar parece
+   travamento) e volta em --t-press. */
+button:active:not(:disabled) { transform: scale(0.96); transition-duration: 0ms; }
+
+:where(button, .icon-btn, .room-row, .source-card, .picker-tab, .settings-cat, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.primary { background: var(--surface-4); border-color: var(--line-strong); color: var(--text-1); }
+.primary:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-strong); }
+
+.ghost { background: transparent; border-color: var(--line); color: var(--text-1); }
+.ghost:hover:not(:disabled) { background: var(--surface-3); }
+
+/* Destrutivo e ghost com texto vermelho, nao fundo vermelho: e o que
+   libera o vermelho pra significar "quebrado" sem competir com um botao
+   que esta sempre visivel na tela. */
+.danger { background: transparent; border-color: var(--line); color: var(--text-1); }
+.danger:hover:not(:disabled) { background: var(--danger-dim); border-color: var(--danger); color: var(--danger); }
+
 .small { padding: 6px 10px; font-size: 0.85em; }
 
-.error { color: var(--bad); margin-top: 10px; font-size: 13px; line-height: 1.5; }
+.error { color: var(--danger); margin-top: 10px; font-size: 13px; line-height: 1.5; }
 .hint { color: var(--muted); font-size: 0.85em; min-height: 1.2em; }
 
 input[type="text"], select {
   width: 100%;
   padding: 9px 11px;
-  background: var(--bg-inset);
+  background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: var(--text);
+  border-radius: var(--r-sm);
+  color: var(--text-1);
   font-size: 14px;
   font-family: inherit;
 }
-input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); }
+/* O anel de foco substitui a troca de border-color: a borda mudando de cor
+   nao muda a espessura, entao passava despercebida. */
+input[type="text"]:focus-visible, select:focus-visible { outline: none; box-shadow: var(--ring); }
+input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 
 /* ---------- Layout raiz ---------- */
 
@@ -78,17 +202,28 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--bg-panel);
+  background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
   padding: 10px 14px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-2);
   font-size: 13px;
   max-width: 320px;
+  /* Toast legitimo: nao tem origem na tela, entao entra do canto. Sem
+     allow-discrete + @starting-style a transicao nao roda saindo de
+     display:none. */
+  transition: opacity var(--t-modal) var(--ease-enter),
+              transform var(--t-modal) var(--ease-enter),
+              display var(--t-modal) allow-discrete;
+  opacity: 1;
+  transform: translateY(0);
+}
+@starting-style {
+  .update-banner { opacity: 0; transform: translateY(12px); }
 }
 
 .rooms-col, .members-col {
-  background: var(--bg-panel);
+  background: var(--surface-1);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -105,8 +240,10 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 }
 .app-brand-badge {
   width: 28px; height: 28px;
-  border-radius: 8px;
-  background: var(--accent);
+  border-radius: var(--r-xs);
+  /* A marca nao e sinal -- ver a regra do acento no topo do arquivo. */
+  background: var(--surface-3);
+  color: var(--text-1);
   display: grid; place-items: center;
   font-weight: 700;
   font-size: 12px;
@@ -125,16 +262,18 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   justify-content: space-between;
 }
 .icon-btn-inline {
-  width: 22px; height: 22px;
+  /* 32x32 e o alvo minimo de toque (§5.6 da spec). O icone continua 14px --
+     cresce a area clicavel, nao o desenho. */
+  width: 32px; height: 32px;
   padding: 0;
   background: transparent;
-  color: var(--muted);
-  border-radius: 4px;
+  color: var(--text-2);
+  border-radius: var(--r-xs);
   display: grid;
   place-items: center;
 }
 .icon-btn-inline svg { width: 14px; height: 14px; }
-.icon-btn-inline:hover { background: var(--bg-inset); color: var(--text); }
+.icon-btn-inline:hover { background: var(--surface-3); color: var(--text-1); }
 .icon-btn-inline.spin svg { animation: spin 600ms linear; }
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -158,16 +297,33 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   color: var(--muted);
   padding: 8px 16px 4px;
 }
-#room-list-live .room-name::before { content: '● '; color: var(--good); }
+/* O ::before com um bullet virou o componente de status de verdade: a
+   linha ja renderiza um `.dot`, entao ele so precisa herdar a cor certa. */
+#room-list-live .dot { background: var(--live); }
 .room-row {
   display: flex;
   align-items: center;
   gap: 2px;
   margin-bottom: 2px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
+  position: relative;
+  /* Alta frequencia inverte a assimetria: entra em 0ms (abaixo), sai em
+     --t-tint. Esperar pelo hover de uma lista parece travamento. */
+  transition: background-color var(--t-tint) var(--ease-move);
 }
-.room-row:hover { background: var(--bg-inset); }
-.room-row.active { background: rgba(88, 101, 242, 0.16); }
+@media (hover: hover) and (pointer: fine) {
+  .room-row:hover { background: var(--surface-3); transition-duration: 0ms; }
+}
+.room-row.active { background: var(--surface-4); }
+/* O unico acento da coluna, e ele quer dizer "e nesta sala que voce esta". */
+.room-row.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 6px; bottom: 6px;
+  width: 3px;
+  border-radius: var(--r-full);
+  background: var(--live);
+}
 
 .room-info {
   flex: 1;
@@ -192,12 +348,12 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   color: var(--muted);
 }
 .room-connect svg, .room-delete svg { width: 15px; height: 15px; }
-.room-connect:hover:not(:disabled) { background: var(--accent); color: #fff; }
-.room-connect:disabled { color: var(--good); cursor: default; opacity: 1; }
+.room-connect:hover:not(:disabled) { background: var(--surface-4); color: var(--text-1); }
+.room-connect:disabled { color: var(--live); cursor: default; opacity: 1; }
 .room-connect.cooldown { opacity: .35; cursor: not-allowed; }
 .room-delete { opacity: 0; margin-right: 4px; }
 .room-row:hover .room-delete { opacity: 1; }
-.room-delete:hover { background: var(--bg-inset); color: var(--bad); }
+.room-delete:hover { background: var(--surface-3); color: var(--danger); }
 
 .rooms-actions { padding: 4px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
 .room-action-btn { width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; }
@@ -207,7 +363,8 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .user-panel {
   margin-top: auto;
   padding: 10px 12px;
-  background: var(--bg-inset);
+  background: var(--surface-2);
+  border-top: 1px solid var(--line-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -217,7 +374,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   padding: 0;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--accent);
+  background: var(--surface-4);
   display: grid;
   place-items: center;
   flex: none;
@@ -235,7 +392,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   border-radius: 4px;
   padding: 2px 4px;
 }
-#user-panel-name:hover { background: var(--bg-panel); }
+#user-panel-name:hover { background: var(--surface-3); }
 .user-panel-actions { display: flex; gap: 4px; }
 .icon-btn {
   width: 32px; height: 32px;
@@ -246,11 +403,12 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   place-items: center;
 }
 .icon-btn svg { width: 17px; height: 17px; }
-.icon-btn:hover { background: var(--bg-panel); }
-.icon-btn.active { background: var(--accent); }
+.icon-btn:hover { background: var(--surface-3); }
+/* Ativo se distingue por elevacao, nao por cor. */
+.icon-btn.active { background: var(--surface-4); box-shadow: inset 0 0 0 1px var(--line-strong); }
 /* Camera abrindo: pulsa ate o primeiro frame chegar (o driver decide quanto
    tempo isso leva) pra deixar claro que o clique foi registrado. */
-.icon-btn.loading { background: var(--bg-panel); animation: icon-btn-pulse 900ms ease-in-out infinite; }
+.icon-btn.loading { background: var(--surface-3); animation: icon-btn-pulse 900ms ease-in-out infinite; }
 @keyframes icon-btn-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
@@ -259,18 +417,36 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .peer-list li {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 16px;
+  border-bottom: 1px solid var(--line-subtle);
+  font-size: 14px;
+  /* O nome encolhe antes de empurrar o badge "AO VIVO" pra fora da coluna
+     -- sem isto a linha estoura 2px e a coluna inteira ganha uma barra de
+     rolagem horizontal. */
+  min-width: 0;
+  overflow: hidden;
 }
 .peer-list li em {
   margin-left: auto;
+  flex: none;
+  white-space: nowrap;
   font-style: normal;
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
-  background: var(--bad);
+  letter-spacing: 0.04em;
+  color: var(--live);
+  background: var(--live-dim);
+  box-shadow: inset 0 0 0 1px rgba(57, 216, 255, 0.35);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
+}
+/* O nome precisa ser um elemento pra poder truncar: um no de texto solto
+   vira item anonimo do flex e nao aceita text-overflow. */
+.peer-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .peer-list .muted { color: var(--muted); border: none; }
 .peer-list li.self { font-weight: 600; }
@@ -300,7 +476,10 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   display: grid;
   place-items: center;
 }
-.peer-avatar.ok { border-color: var(--good); }
+/* Anel do avatar: --live quando ha sinal, --warn quando degradado, sem
+   anel no estado normal. "Conectado" e "ao vivo" sao a mesma afirmacao --
+   ha sinal -- entao sao a mesma cor. */
+.peer-avatar.ok { border-color: var(--live); }
 .peer-avatar.warn { border-color: var(--warn); }
 .peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
@@ -310,18 +489,19 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   right: -3px; bottom: -3px;
   width: 14px; height: 14px;
   border-radius: 50%;
-  background: var(--bad);
-  border: 2px solid var(--bg-panel);
+  background: var(--live);
+  border: 2px solid var(--surface-1);
   display: grid;
   place-items: center;
   color: #fff;
 }
 .peer-live-badge svg { width: 8px; height: 8px; }
+.peer-live-badge { color: var(--surface-0); }
 
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-.dot.ok { background: var(--good); }
+.dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--text-3); flex: none; }
+.dot.ok { background: var(--live); }
 .dot.warn { background: var(--warn); }
-.dot.bad { background: var(--bad); }
+.dot.bad { background: var(--danger); }
 
 /* ---------- Palco ---------- */
 
@@ -329,12 +509,16 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 
 .stage-header {
   display: flex; align-items: center; gap: 10px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--line-subtle);
 }
-.stage-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
-.stage-room-name { font-weight: 700; }
-.stage-room-address { color: var(--muted); font-family: monospace; font-size: 12px; }
+.stage-status-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--live); flex: none; }
+.stage-room-name { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
+.stage-room-address {
+  color: var(--text-2);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+}
 #btn-disconnect { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 #btn-disconnect svg { width: 14px; height: 14px; }
 #btn-disconnect:disabled { opacity: .5; cursor: not-allowed; }
@@ -366,16 +550,26 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   grid-column: 1 / -1;
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: var(--s-3);
   height: 100%;
-  color: var(--muted);
+  color: var(--text-2);
+  text-align: center;
 }
 
 .tile {
   position: relative;
   min-width: 0;
   background: #000;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
+  /* Sem borda: a sombra e a superficie ja separam o tile do fundo, e uma
+     borda clara em cima de video escuro vira um retangulo desenhado. */
+  box-shadow: var(--shadow-1);
+  transition: box-shadow var(--t-hover) var(--ease-enter),
+              opacity var(--t-move) var(--ease-enter),
+              transform var(--t-move) var(--ease-enter);
+  opacity: 1;
+  transform: scale(1);
   overflow: hidden;
   aspect-ratio: 16 / 9;
   /* Trava a altura na trilha do grid (ver grid-auto-rows: minmax(0, 1fr)
@@ -383,16 +577,25 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
      linha que lhe foi atribuida quando a janela fica baixa. */
   max-height: 100%;
 }
+.tile:hover, .tile:focus-within { box-shadow: var(--shadow-2); }
+/* Orientacao: alguem ficou ao vivo. @starting-style da o estado inicial
+   de um elemento que acabou de entrar no DOM -- sem ele nao ha "de onde"
+   pra transicao partir. */
+@starting-style {
+  .tile { opacity: 0; transform: scale(0.97); }
+}
 .tile video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .tile-label {
   position: absolute;
-  left: 10px; bottom: 10px;
-  padding: 3px 9px;
-  background: rgba(0, 0, 0, 0.65);
-  border-radius: 5px;
+  left: 0; right: 0; bottom: 0;
+  padding: 28px 12px 10px;
+  /* Scrim em vez de pilula: nome claro sobre cena clara sumia. O gradiente
+     escurece so a faixa de baixo, sem cobrir o video. */
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
   font-size: 12px;
+  font-weight: 600;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--t-tint) var(--ease-move);
 }
 .tile:hover .tile-label { opacity: 1; }
 .tile.fullscreen { position: fixed; inset: 0; z-index: 50; border-radius: 0; aspect-ratio: auto; }
@@ -609,50 +812,102 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 
 /* ---------- Modais (Configuracoes + Compartilhar) ---------- */
 
+/* Overlay opaco, SEM blur -- ver a decisao no topo do arquivo. */
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.55);
   display: grid;
   place-items: center;
   z-index: 100;
+  opacity: 1;
+  transition: opacity var(--t-modal) var(--ease-enter),
+              display var(--t-modal) allow-discrete;
+}
+@starting-style {
+  .modal { opacity: 0; }
 }
 .modal-box {
   position: relative;
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 26px;
+  background: var(--surface-modal);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  padding: var(--s-5);
+  /* O modal fica no centro da tela: nao ha gatilho pra ancorar, entao a
+     origem e o proprio centro. Popover seria o caso contrario. */
+  transform-origin: center;
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition: opacity var(--t-modal) var(--ease-enter),
+              transform var(--t-modal) var(--ease-enter);
+}
+@starting-style {
+  .modal-box { opacity: 0; transform: scale(0.96) translateY(8px); }
 }
 .modal-close {
   position: absolute;
   top: 14px; right: 14px;
   width: 32px; height: 32px;
   padding: 0;
-  background: var(--bg-inset);
+  background: var(--surface-2);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-2);
   font-size: 18px;
   line-height: 1;
-  border-radius: 50%;
+  border-radius: var(--r-full);
 }
+.modal-close:hover { background: var(--surface-3); color: var(--text-1); }
 
 .settings-box { width: min(880px, 90vw); height: min(600px, 85vh); display: grid; grid-template-columns: 200px 1fr; padding: 0; overflow: hidden; }
-.settings-nav { background: var(--bg-inset); padding: 20px 10px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav {
+  background: var(--surface-1);
+  border-right: 1px solid var(--line-subtle);
+  padding: 20px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Ancora do indicador deslizante (motion #8): UM indicador que desliza
+     entre as categorias, em vez de um fundo que acende e apaga. As
+     variaveis sao escritas por ui.js. */
+  position: relative;
+}
+.settings-nav::before {
+  content: '';
+  position: absolute;
+  left: 10px; right: 10px;
+  top: 0;
+  height: var(--nav-ind-h, 0px);
+  transform: translateY(var(--nav-ind-y, 0px));
+  border-radius: var(--r-sm);
+  background: var(--surface-4);
+  opacity: var(--nav-ind-o, 0);
+  /* So transform e opacity. `height` fica FORA da transicao de proposito:
+     e propriedade de layout, e como todas as categorias tem a mesma altura
+     ela nunca muda enquanto o indicador desliza. */
+  transition: transform var(--t-move) var(--ease-move),
+              opacity var(--t-move) var(--ease-move);
+  pointer-events: none;
+}
 .settings-cat {
   background: transparent;
   text-align: left;
   padding: 8px 12px;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-2);
+  position: relative;
+  z-index: 1;
 }
-.settings-cat.active { background: var(--bg-panel); color: var(--text); }
+.settings-cat:hover { color: var(--text-1); }
+.settings-cat.active { color: var(--text-1); font-weight: 650; }
 .settings-content { padding: 26px; overflow-y: auto; }
 .settings-pane h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
 .settings-pane h3:first-child { margin-top: 0; }
 .settings-field { margin-bottom: 14px; }
 .settings-field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .settings-field small { display: block; font-weight: 400; color: var(--muted); margin-top: 5px; }
-.settings-field input[type="range"] { width: 100%; accent-color: var(--accent); }
-.settings-field video { width: 100%; max-width: 280px; border-radius: var(--radius); background: #000; aspect-ratio: 4/3; }
+.settings-field input[type="range"] { width: 100%; accent-color: var(--live); }
+.settings-field video { width: 100%; max-width: 280px; border-radius: var(--r-md); background: #000; aspect-ratio: 4/3; }
 .settings-profile-field { display: flex; }
 .user-avatar-lg {
   width: 84px; height: 84px;
@@ -665,16 +920,42 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   max-height: 88vh;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--line) var(--bg-inset);
+  scrollbar-color: var(--line-strong) var(--surface-2);
 }
 .picker-box::-webkit-scrollbar { width: 10px; }
-.picker-box::-webkit-scrollbar-track { background: var(--bg-inset); border-radius: 8px; }
-.picker-box::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; border: 2px solid var(--bg-inset); }
-.picker-box::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.picker-box::-webkit-scrollbar-track { background: var(--surface-2); border-radius: var(--r-xs); }
+.picker-box::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-xs); border: 2px solid var(--surface-2); }
+/* Sem hover na scrollbar: alta frequencia, proposito zero. */
 .picker-box h2 { font-size: 17px; margin-bottom: 18px; }
 .picker-box h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 18px 0 10px; }
 
-.picker-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.picker-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--line-subtle);
+  margin-bottom: 16px;
+  position: relative;
+}
+/* Mesmo indicador deslizante da nav de Configuracoes, na horizontal.
+   Continuidade direcional: da pra ver pra onde a selecao foi. */
+.picker-tabs::after {
+  content: '';
+  position: absolute;
+  left: 0; bottom: -1px;
+  height: 2px;
+  /* Largura fixa de 1px esticada por scaleX: as abas tem larguras
+     diferentes, e animar `width` seria animar layout. transform-origin na
+     esquerda faz translateX + scaleX descreverem o retangulo inteiro. */
+  width: 1px;
+  transform-origin: left center;
+  transform: translateX(var(--tab-ind-x, 0px)) scaleX(var(--tab-ind-w, 0));
+  background: var(--text-1);
+  border-radius: var(--r-full);
+  opacity: var(--tab-ind-o, 0);
+  transition: transform var(--t-move) var(--ease-move),
+              opacity var(--t-move) var(--ease-move);
+  pointer-events: none;
+}
 .picker-refresh {
   margin-left: auto;
   align-self: center;
@@ -700,38 +981,43 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 }
 .picker-tab {
   background: transparent;
-  color: var(--muted);
-  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--text-2);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
   padding: 8px 14px;
   font-size: 13px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
 }
-.picker-tab:hover:not(.active) { color: var(--text); }
-.picker-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.picker-tab:hover:not(.active) { color: var(--text-1); }
+.picker-tab.active { color: var(--text-1); font-weight: 650; }
 
 .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 8px; }
 .picker-grid-empty { grid-column: 1 / -1; color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
 .source-card {
-  background: var(--bg-inset);
+  background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
   padding: 8px;
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  color: var(--text);
+  color: var(--text-1);
+  transition: background-color var(--t-tint) var(--ease-move),
+              box-shadow var(--t-hover) var(--ease-enter),
+              transform var(--t-press) var(--ease-enter);
 }
-.source-card.selected { border-color: var(--accent); }
-.source-card:hover { border-color: var(--accent); }
-.source-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: #000; }
+@media (hover: hover) and (pointer: fine) {
+  .source-card:hover { background: var(--surface-3); }
+}
+/* Selecionado e um anel que cresce, nao uma borda que troca de cor: a
+   borda mudando de cor nao muda a espessura e passa despercebida. */
+.source-card.selected { box-shadow: 0 0 0 2px var(--text-1); border-color: transparent; }
+.source-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-xs); background: #000; }
 .source-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .source-meta { font-size: 11px; color: var(--muted); font-weight: 400; }
 
 .audio-mode { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .audio-mode label { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 13px; }
-.audio-mode input { accent-color: var(--accent); }
+.audio-mode input { accent-color: var(--live); }
 #share-discord-row { margin-left: 22px; color: var(--muted); }
 
 .picker-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
@@ -776,20 +1062,86 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .stat-warn {
   margin-top: 10px;
   padding: 8px 10px;
-  background: rgba(240, 178, 50, 0.12);
+  background: var(--warn-dim);
   border-left: 3px solid var(--warn);
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   color: var(--warn);
 }
 
 .warn-box {
-  margin-top: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  background: rgba(240, 178, 50, 0.15);
-  border: 1px solid rgba(240, 178, 50, 0.4);
+  margin-top: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--warn-dim);
+  border: 1px solid rgba(245, 181, 68, 0.35);
+  color: var(--text-1);
   font-size: 0.85em;
+  line-height: 1.45;
 }
-.warn-box code { display: block; margin: 6px 0; word-break: break-all; }
+.warn-box code {
+  display: block;
+  margin: 6px 0;
+  word-break: break-all;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
 
-#stage-warning { margin: 8px 20px 0; }
+/* Abre a altura sem animar `height`: grid-template-rows de 0fr pra 1fr e
+   interpolavel e nao dispara layout em cada frame como height faria.
+   O filho precisa de min-height: 0 + overflow: hidden pra ser cortado. */
+#stage-warning {
+  margin: var(--s-2) var(--s-5) 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--t-move) var(--ease-move),
+              opacity var(--t-move) var(--ease-move),
+              display var(--t-move) allow-discrete;
+  opacity: 1;
+}
+#stage-warning > * { min-height: 0; overflow: hidden; }
+@starting-style {
+  #stage-warning { grid-template-rows: 0fr; opacity: 0; }
+}
+
+/* ---------- O pulso de "ao vivo" (motion #10) ---------- */
+
+/* Unica animacao em laco do app inteiro, e de proposito: delight escala
+   inversamente com a frequencia, e "alguem esta ao vivo" e o estado mais
+   raro e mais importante desta interface.
+
+   Tres exigencias nao-negociaveis:
+   1. transform e opacity apenas -- nada de box-shadow animado;
+   2. pausa com a janela oculta (`.no-paint`, posto por app.js), porque
+      animacao em laco queima GPU mesmo invisivel -- e e a Parte I desta
+      mesma spec que diz isso;
+   3. so UM na tela por vez (`.pulsing`, posto por ui.js). Tres pulsos
+      dessincronizados viram ruido. */
+.live-pulse { position: relative; }
+.live-pulse.pulsing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-full);
+  border: 2px solid var(--live);
+  /* O dot em si nao se mexe -- so o anel expande e desvanece. */
+  animation: live-ring 2400ms ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes live-ring {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
+
+/* Confirmacao no lugar (motion #4): o botao vira "Copiado" onde o dedo
+   ja esta, em vez de um toast no canto que ninguem esta olhando. */
+.copied-flash { color: var(--live); }
+
+/* Tile -> fullscreen (motion #14). O nome so existe DURANTE a transicao --
+   dois elementos com o mesmo view-transition-name ao mesmo tempo abortam a
+   transicao inteira. Ver toggleTileFullscreen em ui.js. */
+::view-transition-old(tile),
+::view-transition-new(tile) {
+  animation-duration: var(--t-modal);
+  animation-timing-function: var(--ease-enter);
+}

@@ -350,7 +350,14 @@
       el.textContent = '';
       return;
     }
-    el.textContent = parts.join(' ');
+    // O texto vai dentro de um filho, nao direto no container: a abertura
+    // anima `grid-template-rows: 0fr -> 1fr` (nunca `height`), e so um
+    // elemento de verdade aceita o `min-height: 0; overflow: hidden` que
+    // faz o corte funcionar. Um no de texto solto nao aceita.
+    el.textContent = '';
+    const inner = document.createElement('span');
+    inner.textContent = parts.join(' ');
+    el.appendChild(inner);
     el.classList.remove('hidden');
   }
   renderHostWarning();
@@ -506,8 +513,26 @@
     currentSession = session;
   }
 
-  $('btn-copy-address').addEventListener('click', () => {
-    if (hostInfo?.address) navigator.clipboard.writeText(hostInfo.address);
+  // Confirmacao no lugar (motion #4): o proprio botao vira "Copiado ✓" e
+  // volta sozinho. Um toast no canto pede que a pessoa olhe pra outro lugar
+  // pra confirmar algo que ela acabou de fazer aqui.
+  const COPIED_HOLD_MS = 1400;
+  let copiedTimer = null;
+
+  $('btn-copy-address').addEventListener('click', (event) => {
+    if (!hostInfo?.address) return;
+    navigator.clipboard.writeText(hostInfo.address);
+
+    const btn = event.currentTarget;
+    if (copiedTimer) clearTimeout(copiedTimer);
+    else btn.dataset.label = btn.textContent; // so na 1a vez, senao guarda "Copiado ✓"
+    btn.textContent = 'Copiado ✓';
+    btn.classList.add('copied-flash');
+    copiedTimer = setTimeout(() => {
+      btn.textContent = btn.dataset.label || 'Copiar';
+      btn.classList.remove('copied-flash');
+      copiedTimer = null;
+    }, COPIED_HOLD_MS);
   });
 
   // ---------- Desconectar ----------
@@ -1060,6 +1085,9 @@
   function onVisibilityChanged() {
     const visible = isAppVisible();
     ui.grid.setPainting(visible);
+    // Pausa o pulso de "ao vivo" (motion #10): animacao em laco queima GPU
+    // mesmo invisivel, e e a Parte I desta mesma spec que diz isso.
+    document.body.classList.toggle('no-paint', !visible);
     if (statsTimer) scheduleStatsLoop();
     broadcastViewState();
   }
