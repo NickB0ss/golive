@@ -79,7 +79,10 @@
 
     function addPeer(id, name, avatar) {
       if (!peers.has(id)) {
-        peers.set(id, { id, name, avatar: avatar || null, live: false, outConns: {}, inConns: {} });
+        peers.set(id, {
+          id, name, avatar: avatar || null, live: false,
+          outConns: {}, inConns: {}, joinedAt: Date.now(),
+        });
       } else if (avatar) {
         peers.get(id).avatar = avatar;
       }
@@ -108,6 +111,7 @@
       if (dir === 'in') {
         pc.addEventListener('track', (event) => {
           const peer = peers.get(peerId);
+          if (peer) (peer.inStreams ||= {})[kind] = event.streams[0];
           onTrack(peerId, peer ? peer.name : peerId, event.streams[0], kind);
         });
       }
@@ -265,6 +269,40 @@
       }
     }
 
+    // Fecha so a outConn de um peer/kind especifico, sem mexer no outro
+    // kind do mesmo peer nem nos demais peers. Usado na troca de PAPEL na
+    // arvore (F2): a origem para de mandar direto pra um peer que passou a
+    // ser folha de um relay. Diferente de setPeerDemand (F1.3): aqui a
+    // conexao fecha de verdade, porque quem vai mandar video pra esse peer
+    // e outro no (o relay), nao mais a origem.
+    function closeOut(peerId, kind) {
+      const peer = peers.get(peerId);
+      const pc = peer?.outConns[kind];
+      if (!pc) return;
+      pc.close();
+      peer.outConns[kind] = null;
+    }
+
+    // Repassa uma track JA RECEBIDA (peers.get(sourcePeerId).inStreams[kind])
+    // pra um peer abaixo na arvore (F2). O Chromium recodifica -- nao existe
+    // passagem direta de frame codificado entre RTCPeerConnections -- entao
+    // isto custa 1 decode + 1 encode a mais no relay. Ver a spec de
+    // 2026-08-23, secao F2.
+    //
+    // Devolve false sem lancar se a stream ainda nao chegou (a mensagem
+    // 'tree' pode chegar antes da 'offer' da origem terminar de negociar --
+    // ver o retry em app.js, Task 5).
+    async function relayTo(childId, sourcePeerId, kind, quality) {
+      const inbound = peers.get(sourcePeerId)?.inStreams?.[kind];
+      if (!inbound) return false;
+      const track = inbound.getVideoTracks()[0];
+      // Heranca do contentHint da origem nao e garantida pelo Chromium na
+      // recodificacao -- reaplicar aqui.
+      if (track) track.contentHint = 'motion';
+      await offerTo(childId, inbound, quality, kind);
+      return true;
+    }
+
     // ---------- Encode sob demanda (spec de 2026-08-23, F1.3) ----------
     //
     // Ninguem deve pagar encode por um espectador que nao esta olhando. Cada
@@ -366,6 +404,8 @@
       removeTrack,
       applyEncoding,
       closeAllOut,
+      closeOut,
+      relayTo,
       statsFor,
       setPeerDemand,
       isPeerSuspended,

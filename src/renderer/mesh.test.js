@@ -147,3 +147,98 @@ test('watchersOf de um kind sem nenhum outConn e lista vazia', () => {
   mesh.addPeer('7', 'Bruno');
   assert.deepEqual(mesh.watchersOf('camera'), []);
 });
+
+// --- F2: inStreams, relayTo, closeOut ---
+
+test('addPeer registra joinedAt', () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  const before = Date.now();
+  mesh.addPeer('7', 'Bruno');
+  const peer = mesh.peers.get('7');
+  assert.ok(typeof peer.joinedAt === 'number');
+  assert.ok(peer.joinedAt >= before);
+});
+
+test('closeOut fecha so a outConn daquele peer/kind, sem afetar outros', () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  let screenClosed = false;
+  let cameraClosed = false;
+  mesh.peers.get('7').outConns.screen = { close: () => { screenClosed = true; } };
+  mesh.peers.get('7').outConns.camera = { close: () => { cameraClosed = true; } };
+
+  mesh.closeOut('7', 'screen');
+
+  assert.equal(screenClosed, true);
+  assert.equal(cameraClosed, false);
+  assert.equal(mesh.peers.get('7').outConns.screen, null);
+  assert.ok(mesh.peers.get('7').outConns.camera); // intacta
+});
+
+test('closeOut em peer ou kind sem conexao e ignorado, sem lancar', () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  assert.doesNotThrow(() => mesh.closeOut('7', 'camera'));
+  assert.doesNotThrow(() => mesh.closeOut('999', 'screen'));
+});
+
+test('relayTo sem stream recebida ainda (corrida tree x offer) devolve false, sem lancar', async () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+  const ok = await mesh.relayTo('folha', 'origem', 'screen', { bitrate: 1_000_000, fps: 30, codec: 'video/H264' });
+  assert.equal(ok, false);
+});
+
+// Fake minimo de RTCPeerConnection: so o suficiente pra offerTo (chamado
+// por relayTo) rodar sem lancar. RTCRtpSender.getCapabilities devolvendo
+// null faz preferCodec voltar cedo (ver mesh.js), entao nao precisa
+// simular codecs de verdade.
+function installFakeWebRTC() {
+  global.RTCRtpSender = { getCapabilities: () => null };
+  global.RTCPeerConnection = class {
+    constructor() {
+      this.senders = [];
+      this.localDescription = null;
+    }
+    addEventListener() {}
+    addTransceiver(track) {
+      const sender = { track, getParameters: () => ({}), setParameters: () => Promise.resolve() };
+      this.senders.push(sender);
+      return { sender, setCodecPreferences: undefined };
+    }
+    createOffer() {
+      return Promise.resolve({ type: 'offer', sdp: 'v=0' });
+    }
+    setLocalDescription(desc) {
+      this.localDescription = desc;
+      return Promise.resolve();
+    }
+    getSenders() {
+      return this.senders;
+    }
+  };
+}
+
+test('relayTo com stream recebida chama offerTo e manda offer pro filho', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+  mesh.addPeer('folha', 'Bruno');
+
+  const videoTrack = { kind: 'video' };
+  const fakeStream = { getTracks: () => [videoTrack], getVideoTracks: () => [videoTrack] };
+  mesh.peers.get('origem').inStreams = { screen: fakeStream };
+
+  const ok = await mesh.relayTo('folha', 'origem', 'screen', { bitrate: 1_000_000, fps: 30, codec: 'video/H264' });
+
+  assert.equal(ok, true);
+  assert.equal(videoTrack.contentHint, 'motion');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'offer');
+  assert.equal(sent[0].to, 'folha');
+  assert.equal(sent[0].kind, 'screen');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
