@@ -15,6 +15,41 @@
   // verdade -- x-google-start-bitrate neles nao faz nada.
   const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
 
+  // ---------- Chave de conexao de retransmissao (F2) ----------
+  //
+  // Toda RTCPeerConnection e indexada por (peerId, kind). Quando um RELAY
+  // repassa a tela da ORIGEM pra um filho, quem manda a oferta e o relay --
+  // entao, com `kind` cru, essa conexao cairia no MESMO slot
+  // (relayId, 'screen') que a conexao do proprio compartilhamento do relay,
+  // se ele tambem estiver transmitindo. ensureInConn FECHA o que estiver no
+  // slot antes de criar o novo: as duas se destruiriam alternadamente,
+  // dependendo de qual oferta chegasse por ultimo.
+  //
+  // Por isso a conexao de repasse usa um kind composto, 'screen@<origemId>':
+  // nunca colide com o 'screen' proprio do relay, e carrega, ate o outro
+  // lado, de QUEM e o conteudo -- e o que deixa a folha desenhar o tile com
+  // o nome e o avatar da ORIGEM em vez dos do relay. O kind composto viaja
+  // identico nas mensagens offer/answer/ice/view-state, entao os dois lados
+  // concordam na chave sem estado extra.
+  //
+  // So aparece em conexoes de repasse: com `cfg.network.tree` desligado
+  // relayTo nunca e chamado e todo kind continua sendo 'screen'/'camera'
+  // cru, exatamente como antes.
+  const RELAY_KIND_SEP = '@';
+
+  function relayKindFor(kind, sourcePeerId) {
+    return `${kind}${RELAY_KIND_SEP}${sourcePeerId}`;
+  }
+
+  /** Devolve { baseKind, sourceId }. sourceId e null pra kind cru (conexao
+   * direta) e o id da ORIGEM pra conexao de repasse. */
+  function parseKind(kind) {
+    const raw = String(kind ?? '');
+    const at = raw.indexOf(RELAY_KIND_SEP);
+    if (at < 0) return { baseKind: raw, sourceId: null };
+    return { baseKind: raw.slice(0, at), sourceId: raw.slice(at + 1) || null };
+  }
+
   // Metade do teto, dentro de limites sensatos. O padrao do Chromium e comecar
   // em ~300 kbps e subir conforme o congestion control ganha confianca, o que
   // deixa os primeiros segundos de qualquer compartilhamento borrados mesmo
@@ -119,6 +154,11 @@
       pc.addEventListener('connectionstatechange', () => {
         const failed = ['failed', 'closed', 'disconnected'].includes(pc.connectionState);
         if (failed && dir === 'in') {
+          // A stream guardada morre junto com a conexao que a trouxe --
+          // sem limpar aqui, relayTo repassaria adiante uma stream cujas
+          // tracks ja estao 'ended' e o filho ficaria com tela preta sem
+          // nenhum evento pra corrigir depois.
+          clearInStream(peerId, kind);
           onPeerState(peerId, { removedTile: true, kind, dir, failed });
         } else {
           onPeerState(peerId, { kind, dir, failed });
@@ -134,10 +174,18 @@
       return peer.outConns[kind];
     }
 
+    function clearInStream(peerId, kind) {
+      const peer = peers.get(peerId);
+      if (peer?.inStreams) peer.inStreams[kind] = null;
+    }
+
     function ensureInConn(peerId, kind) {
       const peer = addPeer(peerId, peers.get(peerId)?.name || `#${peerId}`);
       if (peer.inConns[kind]) {
         peer.inConns[kind].close();
+        // A stream antiga pertence a conexao que acabou de fechar; a nova
+        // so existe quando o evento 'track' da nova conexao chegar.
+        clearInStream(peerId, kind);
         onPeerState(peerId, { removedTile: true, kind });
       }
       peer.inConns[kind] = makeConnection(peerId, 'in', kind);
@@ -293,14 +341,20 @@
     // Devolve false sem lancar se a stream ainda nao chegou (a mensagem
     // 'tree' pode chegar antes da 'offer' da origem terminar de negociar --
     // ver o retry em app.js, Task 5).
+    //
+    // A conexao criada pro filho usa o kind COMPOSTO ('screen@<origem>'),
+    // nao o cru -- ver relayKindFor no topo deste arquivo pro porque.
     async function relayTo(childId, sourcePeerId, kind, quality) {
       const inbound = peers.get(sourcePeerId)?.inStreams?.[kind];
       if (!inbound) return false;
       const track = inbound.getVideoTracks()[0];
+      // Track ja encerrada (a conexao com a origem caiu e a stream guardada
+      // ficou pra tras): repassar isto so entrega tela preta.
+      if (track?.readyState === 'ended') return false;
       // Heranca do contentHint da origem nao e garantida pelo Chromium na
       // recodificacao -- reaplicar aqui.
       if (track) track.contentHint = 'motion';
-      await offerTo(childId, inbound, quality, kind);
+      await offerTo(childId, inbound, quality, relayKindFor(kind, sourcePeerId));
       return true;
     }
 
@@ -415,7 +469,7 @@
     };
   }
 
-  const api = { createMesh, withStartBitrate, startBitrateKbps, RTC_CONFIG };
+  const api = { createMesh, withStartBitrate, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.mesh = api;

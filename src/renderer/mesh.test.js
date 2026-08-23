@@ -1,7 +1,9 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createMesh, withStartBitrate, startBitrateKbps, RTC_CONFIG } = require('./mesh');
+const {
+  createMesh, withStartBitrate, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG,
+} = require('./mesh');
 
 // SDP reduzido, mas com as armadilhas reais: secao de audio antes da de video
 // (nao pode ser tocada), payload de video sem a=fmtp (VP8), payload com fmtp
@@ -201,6 +203,9 @@ function installFakeWebRTC() {
       this.localDescription = null;
     }
     addEventListener() {}
+    close() {
+      this.closed = true;
+    }
     addTransceiver(track) {
       const sender = { track, getParameters: () => ({}), setParameters: () => Promise.resolve() };
       this.senders.push(sender);
@@ -244,7 +249,87 @@ test('relayTo com stream recebida chama offerTo e manda offer pro filho', async 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'offer');
   assert.equal(sent[0].to, 'folha');
-  assert.equal(sent[0].kind, 'screen');
+  // Kind COMPOSTO, nao 'screen' cru: e o que impede a conexao de repasse de
+  // brigar pelo slot (relayId, 'screen') com o compartilhamento proprio do
+  // relay, e o que diz a folha de quem e de verdade o video.
+  assert.equal(sent[0].kind, 'screen@origem');
+  assert.equal(mesh.peers.get('folha').outConns['screen@origem'] != null, true);
+  assert.equal(mesh.peers.get('folha').outConns.screen, undefined);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('relayKindFor/parseKind sao inversos, e kind cru nao tem origem', () => {
+  assert.equal(relayKindFor('screen', '42'), 'screen@42');
+  assert.deepEqual(parseKind('screen@42'), { baseKind: 'screen', sourceId: '42' });
+  assert.deepEqual(parseKind('camera@7'), { baseKind: 'camera', sourceId: '7' });
+  // Conexao direta (o caminho de sempre, com a arvore desligada): sem origem.
+  assert.deepEqual(parseKind('screen'), { baseKind: 'screen', sourceId: null });
+  assert.deepEqual(parseKind('camera'), { baseKind: 'camera', sourceId: null });
+});
+
+test('repasse e compartilhamento proprio do relay convivem em slots distintos (#1)', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+  mesh.addPeer('folha', 'Bruno');
+
+  const relayedTrack = { kind: 'video' };
+  mesh.peers.get('origem').inStreams = {
+    screen: { getTracks: () => [relayedTrack], getVideoTracks: () => [relayedTrack] },
+  };
+  const ownTrack = { kind: 'video' };
+  const ownStream = { getTracks: () => [ownTrack], getVideoTracks: () => [ownTrack] };
+  const quality = { bitrate: 1_000_000, fps: 30, codec: 'video/H264' };
+
+  // O relay tambem compartilha a PROPRIA tela pro mesmo filho.
+  await mesh.offerTo('folha', ownStream, quality, 'screen');
+  await mesh.relayTo('folha', 'origem', 'screen', quality);
+
+  const conns = mesh.peers.get('folha').outConns;
+  assert.notEqual(conns.screen, conns['screen@origem']);
+  assert.deepEqual(conns.screen.getSenders().map((s) => s.track), [ownTrack]);
+  assert.deepEqual(conns['screen@origem'].getSenders().map((s) => s.track), [relayedTrack]);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('relayTo recusa repassar uma stream cuja track ja encerrou (#9)', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+  mesh.addPeer('folha', 'Bruno');
+
+  const dead = { kind: 'video', readyState: 'ended' };
+  mesh.peers.get('origem').inStreams = {
+    screen: { getTracks: () => [dead], getVideoTracks: () => [dead] },
+  };
+
+  const ok = await mesh.relayTo('folha', 'origem', 'screen', { bitrate: 1, fps: 30, codec: 'video/H264' });
+  assert.equal(ok, false);
+  assert.equal(sent.length, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('trocar a inConn de um kind descarta a inStream que era dela (#9)', async () => {
+  installFakeWebRTC();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const stale = { getTracks: () => [], getVideoTracks: () => [] };
+  mesh.peers.get('origem').inStreams = { screen: stale };
+
+  // Segunda oferta do mesmo peer/kind: ensureInConn fecha a anterior. A
+  // stream guardada pertencia aquela conexao e nao vale mais.
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=0' }, 'screen');
+  assert.equal(mesh.peers.get('origem').inStreams.screen, null);
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
