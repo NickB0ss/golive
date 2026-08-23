@@ -298,6 +298,30 @@ ipcMain.handle('audio:getOwnPid', () => {
   return process.pid;
 });
 
+// PIDs de todo processo com audio tocando agora no dispositivo de saida
+// padrao -- base do modo "lista de inclusao" usado quando a pessoa
+// compartilha a tela SEM incluir o Discord (ver startShare em app.js).
+ipcMain.handle('audio:listRenderPids', () => {
+  if (!audioAddon) return [];
+  try {
+    return audioAddon.listAudioRenderPids();
+  } catch {
+    return [];
+  }
+});
+
+// Lista de processos (pid/ppid/name) pra montar a arvore do Discord e do
+// proprio GoLive a partir dos PIDs "raiz" -- usado junto com
+// audio:listRenderPids pra saber quais PIDs excluir da lista de inclusao.
+ipcMain.handle('audio:listProcessNames', () => {
+  if (!audioAddon) return [];
+  try {
+    return audioAddon.listProcessNames();
+  } catch {
+    return [];
+  }
+});
+
 ipcMain.handle('audio:pidForSource', (_event, sourceId) => {
   if (!audioAddon || typeof sourceId !== 'string') return 0;
   // Id de janela do desktopCapturer no Windows tem a forma "window:<hwnd>:0".

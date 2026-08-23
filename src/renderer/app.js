@@ -28,7 +28,7 @@
   let lastBytes = 0;
   let lastAt = 0;
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
-  // src/main/discovery.js). Distinto de cfg.recentRooms (historico local).
+  // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
 
   // Cooldown de 2s pra entrar/sair da mesma sala repetidamente: endereco ->
@@ -66,16 +66,15 @@
     return currentSession ? 'Ninguém transmitindo ainda.' : 'Entre ou crie uma sala pra começar.';
   }
 
-  // ---------- Painel do usuario ----------
+  // ---------- Painel do usuario (so exibicao -- edicao mora em Configuracoes > Perfil) ----------
 
-  const nameInput = $('user-panel-name');
+  const nameDisplay = $('user-panel-name');
   const avatarBtn = $('user-panel-avatar');
-  const avatarInput = $('user-panel-avatar-input');
   const avatarImg = $('user-panel-avatar-img');
   const avatarFallback = $('user-panel-avatar-fallback');
 
   function renderUserPanel() {
-    nameInput.value = cfg.name || '';
+    nameDisplay.textContent = cfg.name || 'anônimo';
     if (cfg.avatar) {
       avatarImg.src = cfg.avatar;
       avatarImg.classList.remove('hidden');
@@ -88,24 +87,8 @@
   }
   renderUserPanel();
 
-  function commitName() {
-    const value = nameInput.value.trim();
-    cfg = { ...cfg, name: value };
-    persist();
-    renderUserPanel();
-  }
-  nameInput.addEventListener('blur', commitName);
-  nameInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      nameInput.blur(); // dispara commitName via blur
-    } else if (event.key === 'Escape') {
-      renderUserPanel();
-      nameInput.blur();
-    }
-  });
-
-  avatarBtn.addEventListener('click', () => avatarInput.click());
+  avatarBtn.addEventListener('click', openSettingsOnProfile);
+  nameDisplay.addEventListener('click', openSettingsOnProfile);
 
   // GIFs animados nao sobrevivem ao redimensionamento via canvas (drawImage +
   // toDataURL so capturam um frame estatico) -- pra manter a animacao, GIF
@@ -145,37 +128,36 @@
     });
   }
 
-  avatarInput.addEventListener('change', async () => {
-    const file = avatarInput.files[0];
-    avatarInput.value = '';
-    if (!file) return;
-    // GIFs vao sem redimensionar (ver resizeImageToAvatar), entao o limite e
-    // mais apertado pra nao inflar demais as mensagens de sala/join.
-    const maxSize = file.type === 'image/gif' ? 3 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      alert(`Imagem muito grande (máx. ${Math.round(maxSize / (1024 * 1024))}MB).`);
-      return;
-    }
-    try {
-      const dataUrl = await resizeImageToAvatar(file);
-      cfg = { ...cfg, avatar: dataUrl };
-      persist();
-      renderUserPanel();
-    } catch {
-      alert('Não consegui processar essa imagem.');
-    }
-  });
+  function openSettingsOnProfile() {
+    $('btn-open-settings').click();
+    document.querySelector('.settings-cat[data-cat="profile"]')?.click();
+  }
 
   $('btn-open-settings').addEventListener('click', () => {
     ui.settings.open(cfg, {
-      onQualityChange: (quality) => {
-        cfg = { ...cfg, quality };
+      getConfig: () => cfg,
+      onNameChange: (name) => {
+        cfg = { ...cfg, name };
         persist();
-        if (localStream) applyLiveQuality();
+        renderUserPanel();
       },
-      onCameraQualityChange: (camera) => {
-        cfg = { ...cfg, camera };
-        persist();
+      onAvatarChange: async (file) => {
+        // GIFs vao sem redimensionar (ver resizeImageToAvatar), entao o
+        // limite e mais apertado pra nao inflar demais as mensagens de
+        // sala/join.
+        const maxSize = file.type === 'image/gif' ? 3 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          alert(`Imagem muito grande (máx. ${Math.round(maxSize / (1024 * 1024))}MB).`);
+          return;
+        }
+        try {
+          const dataUrl = await resizeImageToAvatar(file);
+          cfg = { ...cfg, avatar: dataUrl };
+          persist();
+          renderUserPanel();
+        } catch {
+          alert('Não consegui processar essa imagem.');
+        }
       },
       onCameraDeviceChange: (deviceId) => {
         cfg = { ...cfg, camera: { ...cfg.camera, deviceId } };
@@ -198,10 +180,19 @@
     currentSession?.mesh?.applyEncoding(cfg.quality, 'screen');
   }
 
+  // Escolhida no dialogo de compartilhar (ver ui.picker.open, no clique de
+  // "Compartilhar tela"), nao mais nas Configuracoes -- e a qualidade que
+  // vai valer pra transmissao que esta prestes a comecar.
+  function onQualityPresetChange(quality) {
+    cfg = { ...cfg, quality };
+    persist();
+    if (localStream) applyLiveQuality();
+  }
+
   // ---------- Lista de salas ----------
 
   function renderRoomList() {
-    ui.rooms.render(cfg.recentRooms, {
+    ui.rooms.render({
       activeAddress: activeRoomAddress,
       liveRooms: discoveredRooms,
       isOnCooldown: (address) => cooldownRemaining(address) > 0,
@@ -210,25 +201,7 @@
         if (cooldownRemaining(room.address) > 0) return;
         hostInfo = null;
         renderHostWarning();
-        // Sala que EU criei: o "servidor" dela é o meu proprio processo, que
-        // morreu junto com o app da ultima vez que fechei. Nao existe nada
-        // pra "entrar como convidado" nesse endereco -- a unica forma de
-        // voltar pra ela e subir o host de novo (normalmente recupera o
-        // mesmo endereco, ja que IP e porta tendem a se repetir).
-        if (room.isOwn) {
-          hostRoomFlow();
-        } else {
-          joinRoom(room.address, cfg.name);
-        }
-      },
-      onDelete: (room) => {
-        if (room.address === activeRoomAddress) {
-          if (cooldownRemaining(activeRoomAddress) > 0) return; // delete de sala ativa espera o cooldown, evita estado desincronizado
-          leaveRoom();
-        }
-        cfg = config.removeRecentRoom(cfg, room.address);
-        persist();
-        renderRoomList();
+        joinRoom(room.address, cfg.name);
       },
     });
   }
@@ -432,11 +405,11 @@
   }
 
   // Endereco "canonico" (sem esquema ws://) usado como chave em
-  // cfg.recentRooms/activeRoomAddress. Sem isso, entrar numa sala pelo
+  // activeRoomAddress/roomCooldowns. Sem isso, entrar numa sala pelo
   // endereco cru ("192.168.1.5:9000", vindo da lista ou digitado a mao) e
   // entrar na MESMA sala hospedada por voce (que guarda o endereco sem
-  // esquema) geravam duas entradas distintas pro mesmo lugar -- uma com
-  // "ws://" e outra sem.
+  // esquema) seriam tratados como enderecos distintos -- um com "ws://" e
+  // outro sem.
   function canonicalAddress(url) {
     return url.replace(/^wss?:\/\//, '');
   }
@@ -464,12 +437,6 @@
           if (currentSession !== session) return;
           session.opened = true;
           activeRoomAddress = roomAddress;
-          cfg = config.addRecentRoom(cfg, {
-            address: roomAddress,
-            name: `sala de ${name || 'anônimo'}`,
-            isOwn: !!publicAddress, // publicAddress só vem preenchido quando EU estou hospedando (ver hostRoomFlow)
-          });
-          persist();
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
           renderRoomList();
@@ -671,13 +638,114 @@
     };
   }
 
+  // Todo PID cuja arvore de processo tem `rootPid` como ancestral (inclusive
+  // ele mesmo) -- usado pra excluir a arvore do GoLive e a do Discord da
+  // lista de inclusao abaixo (o WASAPI Process Loopback so exclui UMA arvore
+  // por captura, entao pra excluir duas de uma vez a gente inclui manualmente
+  // todo o resto).
+  function pidTreeSet(rootPid, processes) {
+    const result = new Set();
+    if (!rootPid) return result;
+    const childrenOf = new Map();
+    for (const p of processes) {
+      if (!childrenOf.has(p.ppid)) childrenOf.set(p.ppid, []);
+      childrenOf.get(p.ppid).push(p.pid);
+    }
+    const queue = [rootPid];
+    result.add(rootPid);
+    while (queue.length) {
+      const pid = queue.shift();
+      for (const childPid of childrenOf.get(pid) || []) {
+        if (!result.has(childPid)) {
+          result.add(childPid);
+          queue.push(childPid);
+        }
+      }
+    }
+    return result;
+  }
+
+  // "Lista de inclusao": usada ao compartilhar a tela inteira com a
+  // checkbox "Incluir o som do Discord" DESMARCADA. Nao existe uma unica
+  // captura WASAPI que peça "tudo menos GoLive menos Discord" -- o
+  // Process Loopback so exclui UMA arvore por captura. Em vez disso,
+  // enumeramos quem esta tocando audio agora e subimos uma captura INCLUDE
+  // por processo, pulando as arvores do GoLive e do Discord. Reavalia a
+  // cada 2s enquanto a transmissao estiver no ar, pra pegar processos que
+  // comecam a tocar som depois (ex: abriu um video no meio da call).
+  const INCLUDE_LIST_POLL_MS = 2000;
+
+  function startIncludeListCapture(ctx, dest) {
+    const nodesByPid = new Map(); // pid -> { node, stop }
+    let stopped = false;
+
+    async function refresh() {
+      const [renderPids, processes, ownPid, discordPid] = await Promise.all([
+        window.golive.listAudioRenderPids(),
+        window.golive.listProcessNames(),
+        window.golive.getOwnPid(),
+        window.golive.findDiscordPid(),
+      ]);
+      if (stopped) return;
+      const excluded = new Set([...pidTreeSet(ownPid, processes), ...pidTreeSet(discordPid, processes)]);
+      const wanted = new Set(renderPids.filter((pid) => !excluded.has(pid)));
+
+      for (const pid of Array.from(nodesByPid.keys())) {
+        if (wanted.has(pid)) continue;
+        nodesByPid.get(pid).stop();
+        nodesByPid.delete(pid);
+      }
+      for (const pid of wanted) {
+        if (nodesByPid.has(pid)) continue;
+        const node = await startNativeProcessAudioNode(ctx, pid, false);
+        if (stopped) {
+          node?.stop();
+          continue;
+        }
+        if (node) {
+          node.node.connect(dest);
+          nodesByPid.set(pid, node);
+        }
+      }
+    }
+
+    refresh();
+    const pollTimer = setInterval(refresh, INCLUDE_LIST_POLL_MS);
+
+    return {
+      stop: () => {
+        stopped = true;
+        clearInterval(pollTimer);
+        for (const { stop } of nodesByPid.values()) stop();
+        nodesByPid.clear();
+      },
+    };
+  }
+
   // ---------- Compartilhar tela ----------
 
-  $('btn-toggle-share').addEventListener('click', () => {
+  // `getOwnPid()` devolve 0 quando o addon nativo de audio nao esta
+  // disponivel nesta maquina (so existe no Windows com o addon compilado)
+  // -- mesmo sinal que startShare ja usa pra decidir se cai pro loopback de
+  // sistema do Electron. Cacheado porque nao muda durante a execucao do app.
+  let nativeAudioAvailable = null;
+  async function isNativeAudioAvailable() {
+    if (nativeAudioAvailable === null) {
+      nativeAudioAvailable = (await window.golive.getOwnPid()) !== 0;
+    }
+    return nativeAudioAvailable;
+  }
+
+  $('btn-toggle-share').addEventListener('click', async () => {
     if (localStream) return stopShare();
     if (sharing) return; // ja tem um startShare() em andamento, ignora o duplo clique
     if (!currentSession || !currentSession.sig.isOpen()) return;
-    ui.picker.open({ onGoLive: startShare });
+    ui.picker.open({
+      onGoLive: startShare,
+      nativeAudioAvailable: await isNativeAudioAvailable(),
+      quality: cfg.quality,
+      onQualityChange: onQualityPresetChange,
+    });
   });
 
   async function startShare(sourceId, shareSound, includeDiscord) {
@@ -692,20 +760,29 @@
       // porque o modo passado pra sources:select determina se o Electron
       // tenta anexar o loopback de sistema no video capturado:
       //  - compartilhando so uma JANELA: audio-base = so o app dono dela
-      //    (captura nativa por processo, modo "incluir").
-      //  - compartilhando a TELA inteira: audio-base = sistema inteiro
-      //    EXCLUINDO o proprio GoLive (captura nativa, modo "excluir"). Sem
-      //    isso, o audio que o proprio GoLive reproduz (voz e tela dos
-      //    outros participantes) entraria na nossa propria captura e
-      //    voltaria pra eles -- quando duas pessoas compartilham tela e se
-      //    ouvem, isso cria um loop/eco que amplifica a cada rodada. Sem o
-      //    addon nativo nesta maquina, cai pro loopback de sistema normal do
-      //    Electron -- nesse caso nao ha como excluir o proprio processo, e
-      //    o loop pode voltar a acontecer (limitacao do loopback padrao).
+      //    (captura nativa por processo, modo "incluir"). "Incluir o som
+      //    do Discord" soma uma segunda captura, so do Discord, por cima.
+      //  - compartilhando a TELA inteira, com "incluir o Discord" MARCADO:
+      //    audio-base = sistema inteiro EXCLUINDO o proprio GoLive (captura
+      //    nativa, modo "excluir"). Sem isso, o audio que o proprio GoLive
+      //    reproduz (voz e tela dos outros participantes) entraria na nossa
+      //    propria captura e voltaria pra eles -- quando duas pessoas
+      //    compartilham tela e se ouvem, isso cria um loop/eco que
+      //    amplifica a cada rodada.
+      //  - compartilhando a TELA inteira, com "incluir o Discord"
+      //    DESMARCADO: nao da pra excluir GoLive E Discord numa unica
+      //    captura (Process Loopback so exclui UMA arvore), entao usamos o
+      //    modo lista de inclusao (startIncludeListCapture, acima) em vez
+      //    de um basePid/baseExclude so.
+      // Sem o addon nativo nesta maquina, tudo isso cai pro loopback de
+      // sistema normal do Electron -- nesse caso nao ha como excluir o
+      // proprio processo nem o Discord, e o loop/vazamento pode acontecer
+      // (limitacao do loopback padrao).
       const isWindowSource = typeof sourceId === 'string' && sourceId.startsWith('window:');
-      const discordPid = shareSound ? await window.golive.findDiscordPid() : 0;
+      const discordPid = shareSound && isWindowSource && includeDiscord ? await window.golive.findDiscordPid() : 0;
 
       let useElectronLoopback = false;
+      let useIncludeListMode = false;
       let basePid = 0;
       let baseExclude = false;
       if (shareSound) {
@@ -717,11 +794,13 @@
           if (!basePid) useElectronLoopback = true;
         } else {
           const ownPid = await window.golive.getOwnPid();
-          if (ownPid) {
+          if (!ownPid) {
+            useElectronLoopback = true; // addon indisponivel nesta maquina
+          } else if (includeDiscord) {
             basePid = ownPid;
             baseExclude = true;
           } else {
-            useElectronLoopback = true;
+            useIncludeListMode = true;
           }
         }
       }
@@ -745,21 +824,31 @@
         return;
       }
 
-      // Captura nativa por processo (base + Discord opcional), misturadas
-      // num unico MediaStreamAudioDestinationNode -- so entra aqui quando
-      // NAO estamos usando o loopback do Electron (os dois sao alternativas
+      // Captura nativa por processo (base e/ou lista de inclusao, mais
+      // Discord separado quando compartilhando uma janela), misturadas num
+      // unico MediaStreamAudioDestinationNode -- so entra aqui quando NAO
+      // estamos usando o loopback do Electron (os dois sao alternativas
       // mutuamente exclusivas, nunca somados, senao duplicaria o audio do
       // sistema).
-      if (basePid) {
+      if (basePid || useIncludeListMode) {
         const ctx = await ensurePcmWorklet();
         const dest = ctx.createMediaStreamDestination();
 
-        const base = await startNativeProcessAudioNode(ctx, basePid, baseExclude);
-        if (base) {
-          base.node.connect(dest);
-          startedNativeStops.push(base.stop);
+        if (basePid) {
+          const base = await startNativeProcessAudioNode(ctx, basePid, baseExclude);
+          if (base) {
+            base.node.connect(dest);
+            startedNativeStops.push(base.stop);
+          }
         }
-        if (includeDiscord && discordPid && discordPid !== basePid) {
+        if (useIncludeListMode) {
+          startedNativeStops.push(startIncludeListCapture(ctx, dest).stop);
+        }
+        // So faz sentido somar uma captura separada do Discord por cima
+        // quando a base ja e so o audio de UMA janela (isWindowSource) --
+        // nos outros dois modos o Discord ja esta incluido (baseExclude) ou
+        // deliberadamente de fora (useIncludeListMode).
+        if (isWindowSource && includeDiscord && discordPid && discordPid !== basePid) {
           const discordNode = await startNativeProcessAudioNode(ctx, discordPid, false);
           if (discordNode) {
             discordNode.node.connect(dest);

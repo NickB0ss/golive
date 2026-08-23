@@ -60,6 +60,18 @@ contextBridge.exposeInMainWorld('golive', {
    * criando um eco/loop quando duas pessoas compartilham tela e se ouvem. */
   getOwnPid: () => ipcRenderer.invoke('audio:getOwnPid'),
 
+  /** PIDs de todo processo com audio tocando agora no dispositivo de saida
+   * padrao. Devolve [] se o addon nativo nao estiver disponivel. Base do
+   * modo "lista de inclusao" usado ao compartilhar a tela SEM incluir o
+   * Discord (ver startShare em app.js). */
+  listAudioRenderPids: () => ipcRenderer.invoke('audio:listRenderPids'),
+
+  /** Snapshot de processos rodando agora: [{ pid, ppid, name }]. Devolve []
+   * se o addon nativo nao estiver disponivel. Usado junto com
+   * listAudioRenderPids pra montar a arvore do Discord/GoLive e filtrar a
+   * lista de inclusao. */
+  listProcessNames: () => ipcRenderer.invoke('audio:listProcessNames'),
+
   /** Inicia uma captura de audio nativa (WASAPI Process Loopback) por
    * processo. `exclude: true` = sistema inteiro MENOS esse processo (e
    * filhos); `exclude: false` = SO esse processo. Devolve
