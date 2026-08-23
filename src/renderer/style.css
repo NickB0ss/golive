@@ -158,7 +158,6 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   color: var(--muted);
   padding: 8px 16px 4px;
 }
-#room-list-live { flex: 0 0 auto; max-height: 40%; }
 #room-list-live .room-name::before { content: '● '; color: var(--good); }
 .room-row {
   display: flex;
@@ -230,13 +229,13 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   flex: 1;
   min-width: 0;
   width: auto;
+  text-align: left;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
   padding: 2px 4px;
 }
 #user-panel-name:hover { background: var(--bg-panel); }
-#user-panel-name:focus { outline: none; border-color: var(--accent); background: var(--bg-panel); }
 .user-panel-actions { display: flex; gap: 4px; }
 .icon-btn {
   width: 32px; height: 32px;
@@ -423,27 +422,33 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .tile.fullscreen .tile-kind-badge { bottom: 22px; right: 54px; opacity: 1; transition: opacity 0.25s; }
 .tile.fullscreen.idle .tile-kind-badge { opacity: 0; }
 
+/* Camada por cima do video em fullscreen onde as miniaturas flutuam livres
+   (posicao/tamanho vem de `pipLayout` em ui.js, aplicados via style inline
+   em cada `.pip-thumb`). A camada em si nunca captura clique -- so os
+   elementos interativos dentro dela (`pointer-events: auto`), pra nao
+   bloquear duplo-clique/clique no video por baixo. */
 .pip-strip {
   display: none;
-  position: absolute;
-  left: 16px; bottom: 16px;
-  z-index: 2;
-  gap: 10px;
 }
-.tile.fullscreen .pip-strip { display: flex; opacity: 1; transition: opacity 0.25s; }
-.tile.fullscreen.idle .pip-strip { opacity: 0; pointer-events: none; }
+.tile.fullscreen .pip-strip {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
 
 .pip-thumb {
-  position: relative;
-  width: 140px; height: 79px;
+  position: absolute;
   background: #000;
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  flex: none;
+  pointer-events: auto;
+  touch-action: none;
 }
-.pip-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pip-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
 .pip-thumb-avatar {
   position: absolute;
   top: 6px; left: 6px;
@@ -451,6 +456,8 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   border-radius: 50%;
   overflow: hidden;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  opacity: 1;
+  transition: opacity 0.25s;
 }
 .pip-thumb-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pip-thumb-remove {
@@ -462,20 +469,49 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   border-radius: 50%;
+  opacity: 1;
+  transition: opacity 0.25s;
 }
 .pip-thumb-remove:hover { background: rgba(0, 0, 0, 0.85); }
 
+/* Alca de redimensionar no canto inferior direito da miniatura -- arrastar
+   muda a largura (altura segue 16:9), ver buildPipThumb em ui.js. */
+.pip-thumb-resize {
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 16px; height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.55) 50%);
+  opacity: 1;
+  transition: opacity 0.25s;
+}
+
+/* So a papelada em volta da miniatura some com a ociosidade do mouse -- o
+   video dela (`.pip-thumb`/`video`) fica visivel sempre, diferente do resto
+   do fullscreen (ver .tile.fullscreen.idle mais acima). */
+.tile.fullscreen.idle .pip-thumb-avatar,
+.tile.fullscreen.idle .pip-thumb-remove,
+.tile.fullscreen.idle .pip-thumb-resize {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .pip-add-btn {
-  width: 40px; height: 79px;
-  flex: none;
+  position: absolute;
+  left: 16px; bottom: 16px;
+  width: 40px; height: 40px;
+  pointer-events: auto;
   background: rgba(0, 0, 0, 0.5);
   border: 1px dashed var(--line);
   border-radius: 6px;
   color: #fff;
   font-size: 20px;
   line-height: 1;
+  opacity: 1;
+  transition: opacity 0.25s;
 }
 .pip-add-btn:hover { background: rgba(0, 0, 0, 0.75); }
+.tile.fullscreen.idle .pip-add-btn { opacity: 0; pointer-events: none; }
 
 .pip-picker {
   position: fixed;
@@ -545,7 +581,16 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   flex-direction: column;
   gap: 10px;
 }
-.tile-menu-mute { width: 100%; background: var(--bg-inset); color: var(--text); }
+.tile-menu-mute-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
 .tile-menu-volume { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .tile-menu-volume input[type="range"] { width: 100%; }
 
@@ -595,6 +640,12 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .settings-field small { display: block; font-weight: 400; color: var(--muted); margin-top: 5px; }
 .settings-field input[type="range"] { width: 100%; accent-color: var(--accent); }
 .settings-field video { width: 100%; max-width: 280px; border-radius: var(--radius); background: #000; aspect-ratio: 4/3; }
+.settings-profile-field { display: flex; }
+.user-avatar-lg {
+  width: 84px; height: 84px;
+  font-size: 28px;
+}
+.user-avatar-lg #settings-profile-avatar-fallback { font-size: 28px; }
 
 .picker-box {
   width: min(880px, 90vw);

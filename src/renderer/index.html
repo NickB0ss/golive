@@ -28,10 +28,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
       </button>
     </h2>
-    <h3 id="rooms-live-title" class="rooms-subtitle hidden">Ao vivo agora</h3>
+    <h3 class="rooms-subtitle">Ao vivo agora</h3>
     <ul id="room-list-live" class="room-list"></ul>
-    <h3 id="rooms-recent-title" class="rooms-subtitle">Recentes</h3>
-    <ul id="room-list" class="room-list"></ul>
 
     <div class="rooms-actions">
       <button id="btn-create-room" class="ghost small room-action-btn" type="button">
@@ -50,12 +48,11 @@
     </div>
 
     <div class="user-panel">
-      <button id="user-panel-avatar" class="user-avatar" type="button" title="Alterar foto de perfil">
+      <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
         <img id="user-panel-avatar-img" class="hidden" alt="" />
         <span id="user-panel-avatar-fallback"></span>
       </button>
-      <input id="user-panel-avatar-input" type="file" accept="image/*" class="hidden" />
-      <input id="user-panel-name" class="user-panel-name" type="text" placeholder="seu apelido" spellcheck="false" title="Clique para editar seu apelido" />
+      <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
       <div class="user-panel-actions">
         <button id="btn-toggle-camera" class="icon-btn" title="Câmera" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
@@ -99,14 +96,14 @@
 <div id="settings-modal" class="modal hidden">
   <div class="modal-box settings-box">
     <nav class="settings-nav">
-      <button class="settings-cat active" data-cat="voice">Voz e Vídeo</button>
-      <button class="settings-cat" data-cat="broadcast">Transmissão</button>
+      <button class="settings-cat active" data-cat="profile">Perfil</button>
+      <button class="settings-cat" data-cat="voice">Voz e Vídeo</button>
       <button class="settings-cat" data-cat="network">Rede</button>
       <button class="settings-cat" data-cat="stats">Estatísticas</button>
     </nav>
     <div class="settings-content">
-      <section id="settings-voice" class="settings-pane"></section>
-      <section id="settings-broadcast" class="settings-pane hidden"></section>
+      <section id="settings-profile" class="settings-pane"></section>
+      <section id="settings-voice" class="settings-pane hidden"></section>
       <section id="settings-network" class="settings-pane hidden"></section>
       <section id="settings-stats" class="settings-pane hidden"></section>
     </div>
@@ -123,6 +120,12 @@
       <button class="picker-tab" data-tab="window" type="button">Janelas</button>
     </div>
     <div id="picker-grid" class="picker-grid"></div>
+
+    <h3>Qualidade</h3>
+    <div class="settings-field">
+      <select id="picker-quality-preset"></select>
+      <small id="picker-quality-bandwidth"></small>
+    </div>
 
     <h3>Áudio</h3>
     <div id="audio-mode" class="audio-mode">

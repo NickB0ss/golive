@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { DEFAULTS, load, serialize, videoConstraints, cameraConstraints, addRecentRoom } = require('./config');
+const { DEFAULTS, QUALITY_PRESETS, load, serialize, videoConstraints, cameraConstraints } = require('./config');
 
 test('load com null devolve os defaults', () => {
   const cfg = load(null);
@@ -20,21 +20,31 @@ test('load preenche campos ausentes de uma config antiga', () => {
   assert.equal(cfg.v, 1);
   assert.deepEqual(cfg.quality, DEFAULTS.quality);
   assert.deepEqual(cfg.camera, DEFAULTS.camera);
-  assert.deepEqual(cfg.recentRooms, []);
 });
 
 test('load preserva campos de uma config na v1 completa', () => {
   const full = serialize({
     ...DEFAULTS,
     name: 'Ana',
-    quality: { ...DEFAULTS.quality, fps: 30 },
-    recentRooms: [{ address: 'ws://26.0.0.1:9000', name: 'sala do Nicolas' }],
+    quality: QUALITY_PRESETS['1080p30'],
   });
   const cfg = load(full);
   assert.equal(cfg.name, 'Ana');
   assert.equal(cfg.quality.fps, 30);
   assert.equal(cfg.quality.width, DEFAULTS.quality.width);
-  assert.deepEqual(cfg.recentRooms, [{ address: 'ws://26.0.0.1:9000', name: 'sala do Nicolas' }]);
+});
+
+test('load migra config antigo (pre-preset) pro preset mais proximo', () => {
+  const old = serialize({ ...DEFAULTS, quality: { width: 1280, height: 720, fps: 30, bitrate: 3_000_000, codec: 'video/H264' } });
+  const cfg = load(old);
+  assert.equal(cfg.quality.preset, '720p30');
+  assert.deepEqual(cfg.quality, { ...QUALITY_PRESETS['720p30'], preset: '720p30', codec: 'video/H264' });
+});
+
+test('load com preset desconhecido cai no padrao', () => {
+  const old = serialize({ ...DEFAULTS, quality: { preset: 'inexistente' } });
+  const cfg = load(old);
+  assert.equal(cfg.quality.preset, '1080p60');
 });
 
 test('serialize sempre grava v:1', () => {
@@ -58,40 +68,4 @@ test('cameraConstraints usa a config de camera', () => {
     height: { ideal: 720, max: 720 },
     frameRate: { ideal: 30, max: 30 },
   });
-});
-
-test('addRecentRoom poe a sala nova no topo', () => {
-  let cfg = load(null);
-  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.1:9000', name: 'sala A' });
-  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.2:9000', name: 'sala B' });
-  assert.deepEqual(cfg.recentRooms.map((r) => r.address), [
-    'ws://26.0.0.2:9000',
-    'ws://26.0.0.1:9000',
-  ]);
-});
-
-test('addRecentRoom deduplica por endereco, movendo pro topo', () => {
-  let cfg = load(null);
-  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.1:9000', name: 'sala A' });
-  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.2:9000', name: 'sala B' });
-  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.1:9000', name: 'sala A renomeada' });
-  assert.deepEqual(cfg.recentRooms, [
-    { address: 'ws://26.0.0.1:9000', name: 'sala A renomeada', isOwn: false },
-    { address: 'ws://26.0.0.2:9000', name: 'sala B', isOwn: false },
-  ]);
-});
-
-test('addRecentRoom limita a 5 entradas', () => {
-  let cfg = load(null);
-  for (let i = 0; i < 7; i++) {
-    cfg = addRecentRoom(cfg, { address: `ws://26.0.0.${i}:9000`, name: `sala ${i}` });
-  }
-  assert.equal(cfg.recentRooms.length, 5);
-  assert.equal(cfg.recentRooms[0].address, 'ws://26.0.0.6:9000');
-});
-
-test('addRecentRoom marca isOwn quando a sala foi hospedada por mim', () => {
-  let cfg = load(null);
-  cfg = addRecentRoom(cfg, { address: 'ws://26.0.0.1:9000', name: 'sala A', isOwn: true });
-  assert.equal(cfg.recentRooms[0].isOwn, true);
 });

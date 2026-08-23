@@ -5,6 +5,7 @@
 
 #include "loopback_capture.h"
 #include "process_util.h"
+#include "audio_sessions.h"
 
 namespace {
 
@@ -22,6 +23,14 @@ Napi::Value PidForWindowHandleBinding(const Napi::CallbackInfo& info) {
   long long hwndValue = info[0].As<Napi::Number>().Int64Value();
   DWORD pid = ::PidForWindowHandle(hwndValue);
   return Napi::Number::New(env, pid);
+}
+
+Napi::Value ListAudioRenderPidsBinding(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  auto pids = ListAudioRenderPids();
+  Napi::Array out = Napi::Array::New(env, pids.size());
+  for (size_t i = 0; i < pids.size(); i++) out[i] = Napi::Number::New(env, pids[i]);
+  return out;
 }
 
 Napi::Value ListProcessNames(const Napi::CallbackInfo& info) {
@@ -51,6 +60,7 @@ Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
   exports.Set("findDiscordRootPid", Napi::Function::New(env, FindDiscordRootPidBinding));
   exports.Set("pidForWindowHandle", Napi::Function::New(env, PidForWindowHandleBinding));
   exports.Set("listProcessNames", Napi::Function::New(env, ListProcessNames));
+  exports.Set("listAudioRenderPids", Napi::Function::New(env, ListAudioRenderPidsBinding));
   return LoopbackCapture::Init(env, exports);
 }
 

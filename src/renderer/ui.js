@@ -3,6 +3,16 @@
 
 (function (root) {
   const $ = (id) => document.getElementById(id);
+  const configApi = root.GoLive.config;
+
+  const QUALITY_PRESET_LABELS = {
+    '720p30': '720p · 30 fps',
+    '720p60': '720p · 60 fps',
+    '1080p30': '1080p · 30 fps',
+    '1080p60': '1080p · 60 fps (padrão)',
+    '1440p30': '1440p · 30 fps',
+    '1440p60': '1440p · 60 fps',
+  };
 
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) =>
@@ -21,6 +31,18 @@
   const tileRegistry = new Map();
   let fullscreenTileId = null;
   const pinnedPip = new Set();
+
+  // Posicao/tamanho de cada miniatura arrastavel dentro do fullscreen --
+  // id -> { x, y, w }. x/y em % da area do fullscreen (0-100, sobrevive a
+  // trocar de monitor/resolucao), w em px (altura sempre w * 9/16). Mesmo
+  // ciclo de vida do pinnedPip: sobrevive a trocar de foco e a sair/entrar
+  // de fullscreen, so e limpo quando o id sai do tileRegistry ou o usuario
+  // remove a miniatura manualmente.
+  const pipLayout = new Map();
+  const PIP_MIN_W = 120;
+  const PIP_MAX_W_RATIO = 0.45;
+  const PIP_DEFAULT_W = 140;
+  const PIP_MARGIN_PX = 16;
 
   // Mantem a classe `.fullscreen` do tile sincronizada quando o usuario sai
   // do fullscreen por Esc ou pelos controles nativos do SO, sem passar pelo
@@ -209,6 +231,7 @@
     releaseTileAudio(id);
     tileRegistry.delete(id);
     pinnedPip.delete(id);
+    pipLayout.delete(id);
     if (id === fullscreenTileId) {
       fullscreenTileId = null;
       clearTimeout(fullscreenIdleTimer);
@@ -247,10 +270,54 @@
     scheduleFullscreenIdle(newTile);
   }
 
-  function buildPipThumb(id) {
+  // Posicao/tamanho inicial de uma miniatura que ainda nao foi arrastada --
+  // empilha da esquerda pra direita a partir do canto inferior esquerdo
+  // (mesmo lugar da antiga faixa fixa), e fica gravado em `pipLayout` daqui
+  // pra frente (nao e recalculado a cada render, senao empilhar de novo
+  // toda vez que uma miniatura for removida atropelaria posicoes ja
+  // arrastadas pelo usuario).
+  function ensurePipLayout(id, containerRect, stackIndex) {
+    let layout = pipLayout.get(id);
+    if (layout) return layout;
+    const w = PIP_DEFAULT_W;
+    const h = (w * 9) / 16;
+    const leftPx = PIP_MARGIN_PX + 56 + stackIndex * (w + 10); // 56 ~= largura do "+" + espaco
+    const topPx = containerRect.height - PIP_MARGIN_PX - h;
+    layout = {
+      x: containerRect.width ? (leftPx / containerRect.width) * 100 : 0,
+      y: containerRect.height ? (topPx / containerRect.height) * 100 : 0,
+      w,
+    };
+    pipLayout.set(id, layout);
+    return layout;
+  }
+
+  function applyPipLayout(wrap, layout) {
+    const h = (layout.w * 9) / 16;
+    wrap.style.left = `${layout.x}%`;
+    wrap.style.top = `${layout.y}%`;
+    wrap.style.width = `${layout.w}px`;
+    wrap.style.height = `${h}px`;
+  }
+
+  function clampPipLayout(layout, containerRect) {
+    const h = (layout.w * 9) / 16;
+    const maxXPx = Math.max(0, containerRect.width - layout.w);
+    const maxYPx = Math.max(0, containerRect.height - h);
+    const xPx = Math.min(Math.max((layout.x / 100) * containerRect.width, 0), maxXPx);
+    const yPx = Math.min(Math.max((layout.y / 100) * containerRect.height, 0), maxYPx);
+    layout.x = containerRect.width ? (xPx / containerRect.width) * 100 : 0;
+    layout.y = containerRect.height ? (yPx / containerRect.height) * 100 : 0;
+  }
+
+  function buildPipThumb(id, containerRect, stackIndex) {
     const entry = tileRegistry.get(id);
+    const layout = ensurePipLayout(id, containerRect, stackIndex);
+    clampPipLayout(layout, containerRect);
+
     const wrap = document.createElement('div');
     wrap.className = 'pip-thumb';
+    applyPipLayout(wrap, layout);
 
     const video = document.createElement('video');
     video.muted = true;
@@ -272,12 +339,81 @@
     removeBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       pinnedPip.delete(id);
+      pipLayout.delete(id);
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
       if (fsTile) renderPipStrip(fsTile);
     });
     wrap.appendChild(removeBtn);
 
-    wrap.addEventListener('click', () => switchFullscreenFocus(id));
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'pip-thumb-resize';
+    resizeHandle.title = 'Redimensionar';
+    wrap.appendChild(resizeHandle);
+
+    // Arrasto vs clique: clicar na miniatura troca o foco do fullscreen
+    // (switchFullscreenFocus), mas isso so deve valer se o ponteiro nao se
+    // moveu -- senao todo arrasto pra mover a miniatura terminaria trocando
+    // de tela junto.
+    const DRAG_THRESHOLD_PX = 4;
+
+    function startDrag(event, onMove, onClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let moved = false;
+      wrap.setPointerCapture(pointerId);
+
+      function onPointerMove(moveEvent) {
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (!moved && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) moved = true;
+        onMove(dx, dy, moveEvent);
+      }
+      function onPointerUp() {
+        wrap.releasePointerCapture(pointerId);
+        wrap.removeEventListener('pointermove', onPointerMove);
+        wrap.removeEventListener('pointerup', onPointerUp);
+        wrap.removeEventListener('pointercancel', onPointerUp);
+        if (!moved) onClick?.();
+      }
+      wrap.addEventListener('pointermove', onPointerMove);
+      wrap.addEventListener('pointerup', onPointerUp);
+      wrap.addEventListener('pointercancel', onPointerUp);
+    }
+
+    wrap.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const strip = wrap.parentElement;
+      const startXPct = layout.x;
+      const startYPct = layout.y;
+      startDrag(
+        event,
+        (dx, dy) => {
+          const rect = strip.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          layout.x = startXPct + (dx / rect.width) * 100;
+          layout.y = startYPct + (dy / rect.height) * 100;
+          clampPipLayout(layout, rect);
+          applyPipLayout(wrap, layout);
+        },
+        () => switchFullscreenFocus(id)
+      );
+    });
+
+    resizeHandle.addEventListener('pointerdown', (event) => {
+      const strip = wrap.parentElement;
+      const startW = layout.w;
+      startDrag(event, (dx) => {
+        const rect = strip.getBoundingClientRect();
+        const maxW = rect.width * PIP_MAX_W_RATIO;
+        layout.w = Math.min(Math.max(startW + dx, PIP_MIN_W), Math.max(PIP_MIN_W, maxW));
+        clampPipLayout(layout, rect);
+        applyPipLayout(wrap, layout);
+      });
+    });
+
     return wrap;
   }
 
@@ -325,9 +461,12 @@
     if (!strip) return;
     const id = tile.id.slice('tile-'.length);
     strip.innerHTML = '';
+    const containerRect = tile.getBoundingClientRect();
+    let stackIndex = 0;
     for (const pinnedId of pinnedPip) {
       if (pinnedId === id || !tileRegistry.has(pinnedId)) continue;
-      strip.appendChild(buildPipThumb(pinnedId));
+      strip.appendChild(buildPipThumb(pinnedId, containerRect, stackIndex));
+      stackIndex++;
     }
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
@@ -358,7 +497,9 @@
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
     menu.innerHTML = `
-      <button class="tile-menu-mute" type="button">${state.muted ? 'Reativar som' : 'Silenciar'}</button>
+      <label class="check-inline tile-menu-mute-row">
+        <input type="checkbox" class="tile-menu-mute" ${state.muted ? 'checked' : ''} /> Silenciar
+      </label>
       <label class="tile-menu-volume">
         <span>Volume: <b class="tile-menu-volume-label">${Math.round(state.volume * 100)}%</b></span>
         <input type="range" min="0" max="200" step="1" value="${Math.round(state.volume * 100)}" />
@@ -371,10 +512,9 @@
       if (state.gain) state.gain.gain.value = state.muted ? 0 : state.volume;
     }
 
-    const muteBtn = menu.querySelector('.tile-menu-mute');
-    muteBtn.addEventListener('click', () => {
-      state.muted = !state.muted;
-      muteBtn.textContent = state.muted ? 'Reativar som' : 'Silenciar';
+    const muteCheckbox = menu.querySelector('.tile-menu-mute');
+    muteCheckbox.addEventListener('change', () => {
+      state.muted = muteCheckbox.checked;
       applyGain();
     });
 
@@ -467,14 +607,11 @@
     }
   }
 
-  const roomListEl = $('room-list');
   const roomListLiveEl = $('room-list-live');
-  const roomsLiveTitleEl = $('rooms-live-title');
-  const TRASH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
   const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
   const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-  function fillRoomList(listEl, rooms, { onSelect, onDelete, activeAddress, emptyMessage, isOnCooldown }) {
+  function fillRoomList(listEl, rooms, { onSelect, activeAddress, emptyMessage, isOnCooldown }) {
     listEl.innerHTML = '';
     if (!rooms.length) {
       if (emptyMessage) listEl.innerHTML = `<li class="muted" style="padding:8px 10px;">${escapeHtml(emptyMessage)}</li>`;
@@ -507,34 +644,20 @@
       connectBtn.addEventListener('click', () => onSelect(room));
       li.appendChild(connectBtn);
 
-      if (onDelete) {
-        const del = document.createElement('button');
-        del.className = 'room-delete';
-        del.type = 'button';
-        del.title = 'Remover sala da lista';
-        del.innerHTML = TRASH_ICON;
-        del.addEventListener('click', () => onDelete(room));
-        li.appendChild(del);
-      }
-
       listEl.appendChild(li);
     }
   }
 
-  // `rooms` = historico local (cfg.recentRooms): enderecos ja usados antes,
-  // podem estar offline agora — tem botao de excluir. `liveRooms` = salas
-  // descobertas agora mesmo via broadcast UDP na LAN (src/main/discovery.js)
-  // — "isso esta aberto agora", sem botao de excluir (nao e uma entrada
-  // salva, so aparece enquanto o beacon continuar chegando).
-  function renderRooms(rooms, { onSelect, onDelete, activeAddress, liveRooms = [], isOnCooldown }) {
-    roomsLiveTitleEl.classList.toggle('hidden', !liveRooms.length);
-    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown });
-    fillRoomList(roomListEl, rooms, {
+  // `liveRooms` = salas descobertas agora mesmo via broadcast UDP na LAN
+  // (src/main/discovery.js) — nao ha historico local salvo em disco, so
+  // "isso esta aberto agora"; a lista some sozinha quando o beacon para de
+  // chegar.
+  function renderRooms({ onSelect, activeAddress, liveRooms = [], isOnCooldown }) {
+    fillRoomList(roomListLiveEl, liveRooms, {
       onSelect,
-      onDelete,
       activeAddress,
       isOnCooldown,
-      emptyMessage: 'nenhuma sala salva ainda — crie uma ou entre por endereço',
+      emptyMessage: 'nenhuma sala aberta na rede agora — crie uma ou entre por endereço',
     });
   }
 
@@ -557,8 +680,8 @@
   const settingsModalEl = $('settings-modal');
   const settingsCatButtons = Array.from(document.querySelectorAll('.settings-cat'));
   const settingsPanes = {
+    profile: $('settings-profile'),
     voice: $('settings-voice'),
-    broadcast: $('settings-broadcast'),
     network: $('settings-network'),
     stats: $('settings-stats'),
   };
@@ -620,13 +743,46 @@
     stopSettingsCameraPreview();
   }
 
-  function bandwidthLine(config) {
-    const screenMbps = config.quality.bitrate / 1_000_000;
-    const cameraMbps = config.camera.bitrate / 1_000_000;
-    return `${screenMbps.toFixed(1)} Mbps (tela) + ${cameraMbps.toFixed(1)} Mbps (câmera) × número de espectadores`;
+  function bandwidthLine(quality) {
+    const screenMbps = quality.bitrate / 1_000_000;
+    return `≈${screenMbps.toFixed(1).replace(/\.0$/, '')} Mbps por espectador enquanto você estiver transmitindo`;
+  }
+
+  // Preview do avatar/apelido dentro do modal (aba Perfil) -- espelha o
+  // mesmo estado que o painel do rodapé mostra, atualizado nos dois
+  // lugares junto (ver deps.onNameChange/onAvatarChange).
+  function renderProfilePreview(config) {
+    const img = $('settings-profile-avatar-img');
+    const fallback = $('settings-profile-avatar-fallback');
+    const nameInput = $('settings-profile-name');
+    if (!img || !fallback || !nameInput) return;
+    if (config.avatar) {
+      img.src = config.avatar;
+      img.classList.remove('hidden');
+      fallback.textContent = '';
+    } else {
+      img.classList.add('hidden');
+      img.src = '';
+      fallback.textContent = (config.name || '?').trim().charAt(0).toUpperCase() || '?';
+    }
+    if (document.activeElement !== nameInput) nameInput.value = config.name || '';
   }
 
   async function openSettings(config, deps) {
+    settingsPanes.profile.innerHTML = `
+      <h3>Perfil</h3>
+      <div class="settings-field settings-profile-field">
+        <button id="settings-profile-avatar" class="user-avatar user-avatar-lg" type="button" title="Alterar foto de perfil">
+          <img id="settings-profile-avatar-img" class="hidden" alt="" />
+          <span id="settings-profile-avatar-fallback"></span>
+        </button>
+        <input id="settings-profile-avatar-input" type="file" accept="image/*" class="hidden" />
+      </div>
+      <div class="settings-field">
+        <label for="settings-profile-name">Apelido</label>
+        <input id="settings-profile-name" type="text" placeholder="seu apelido" spellcheck="false" />
+      </div>`;
+
     settingsPanes.voice.innerHTML = `
       <h3>Câmera</h3>
       <div class="settings-field">
@@ -635,47 +791,6 @@
       </div>
       <div class="settings-field">
         <video id="settings-camera-preview" autoplay playsinline muted></video>
-      </div>
-      <h3>Áudio</h3>
-      <div class="settings-field">
-        <label for="settings-audio-device">Dispositivo padrão pra compartilhamento</label>
-        <select id="settings-audio-device"></select>
-      </div>`;
-
-    settingsPanes.broadcast.innerHTML = `
-      <h3>Tela</h3>
-      <div class="settings-field">
-        <label>Resolução</label>
-        <select id="settings-res">
-          <option value="1920x1080">1920x1080 (Full HD)</option>
-          <option value="2560x1440">2560x1440 (QHD)</option>
-          <option value="1280x720">1280x720 (HD)</option>
-        </select>
-      </div>
-      <div class="settings-field">
-        <label>Framerate</label>
-        <select id="settings-fps">
-          <option value="60">60 fps</option>
-          <option value="30">30 fps</option>
-        </select>
-      </div>
-      <div class="settings-field">
-        <label>Bitrate: <b id="settings-bitrate-label"></b></label>
-        <input id="settings-bitrate" type="range" min="2" max="40" step="1" />
-      </div>
-      <div class="settings-field">
-        <label>Codec</label>
-        <select id="settings-codec">
-          <option value="video/H264">H.264 (hardware, menor latência)</option>
-          <option value="video/VP9">VP9 (melhor imagem, mais CPU)</option>
-          <option value="video/AV1">AV1 (menor banda, exige GPU nova)</option>
-        </select>
-      </div>
-      <h3>Câmera</h3>
-      <div class="settings-field">
-        <label>Bitrate da câmera: <b id="settings-camera-bitrate-label"></b></label>
-        <input id="settings-camera-bitrate" type="range" min="1" max="8" step="1" />
-        <small>${escapeHtml(bandwidthLine(config))}</small>
       </div>`;
 
     settingsPanes.network.innerHTML = `
@@ -686,37 +801,25 @@
 
     settingsPanes.stats.innerHTML = '<div id="settings-stats-body" class="stats"></div>';
 
-    $('settings-res').value = `${config.quality.width}x${config.quality.height}`;
-    $('settings-fps').value = String(config.quality.fps);
-    $('settings-bitrate').value = String(config.quality.bitrate / 1_000_000);
-    $('settings-bitrate-label').textContent = `${config.quality.bitrate / 1_000_000} Mbps`;
-    $('settings-codec').value = config.quality.codec;
-    $('settings-camera-bitrate').value = String(config.camera.bitrate / 1_000_000);
-    $('settings-camera-bitrate-label').textContent = `${config.camera.bitrate / 1_000_000} Mbps`;
+    renderProfilePreview(config);
     $('settings-advertise').checked = config.network.advertise;
 
-    function emitQuality() {
-      const [width, height] = $('settings-res').value.split('x').map(Number);
-      deps.onQualityChange({
-        width,
-        height,
-        fps: Number($('settings-fps').value),
-        bitrate: Number($('settings-bitrate').value) * 1_000_000,
-        codec: $('settings-codec').value,
-      });
-    }
+    $('settings-profile-name').addEventListener('input', (event) => {
+      deps.onNameChange(event.target.value);
+      // So o fallback (iniciais) depende do nome -- so precisa re-renderizar
+      // se nao houver avatar de foto; renderProfilePreview ja preserva o
+      // valor do proprio input enquanto ele esta focado.
+      if (!deps.getConfig().avatar) renderProfilePreview(deps.getConfig());
+    });
+    $('settings-profile-avatar').addEventListener('click', () => $('settings-profile-avatar-input').click());
+    $('settings-profile-avatar-input').addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      await deps.onAvatarChange(file);
+      renderProfilePreview(deps.getConfig());
+    });
 
-    $('settings-res').addEventListener('change', emitQuality);
-    $('settings-fps').addEventListener('change', emitQuality);
-    $('settings-codec').addEventListener('change', emitQuality);
-    $('settings-bitrate').addEventListener('input', () => {
-      $('settings-bitrate-label').textContent = `${$('settings-bitrate').value} Mbps`;
-      emitQuality();
-    });
-    $('settings-camera-bitrate').addEventListener('input', () => {
-      $('settings-camera-bitrate-label').textContent = `${$('settings-camera-bitrate').value} Mbps`;
-      deps.onCameraQualityChange({ ...config.camera, bitrate: Number($('settings-camera-bitrate').value) * 1_000_000 });
-    });
     $('settings-advertise').addEventListener('change', () => {
       deps.onNetworkChange({ ...config.network, advertise: $('settings-advertise').checked });
     });
@@ -724,12 +827,8 @@
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cameraSelect = $('settings-camera-device');
-      const audioSelect = $('settings-audio-device');
       for (const d of devices.filter((d) => d.kind === 'videoinput')) {
         cameraSelect.add(new Option(d.label || 'Câmera', d.deviceId));
-      }
-      for (const d of devices.filter((d) => d.kind === 'audioinput')) {
-        audioSelect.add(new Option(d.label || 'Entrada de áudio', d.deviceId));
       }
       if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
       cameraSelect.addEventListener('change', () => {
@@ -754,11 +853,26 @@
   const pickerEl = $('picker');
   const pickerGridEl = $('picker-grid');
   const pickerTabsEl = $('picker-tabs');
+  const pickerQualityPresetEl = $('picker-quality-preset');
+  const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
   const shareSoundEl = $('share-sound');
   const shareDiscordRowEl = $('share-discord-row');
   const shareDiscordEl = $('share-discord');
   const btnGoLiveEl = $('btn-go-live');
   let selectedSourceId = null;
+  // Preenchido a cada abertura do dialogo (ver openPicker) -- guardado aqui
+  // porque o listener de 'change' do select e registrado uma unica vez, fora
+  // de openPicker (o elemento e estatico, so o callback de destino muda).
+  let pickerOnQualityChange = null;
+
+  pickerQualityPresetEl.innerHTML = configApi.QUALITY_PRESET_ORDER.map(
+    (preset) => `<option value="${preset}">${escapeHtml(QUALITY_PRESET_LABELS[preset] || preset)}</option>`
+  ).join('');
+  pickerQualityPresetEl.addEventListener('change', () => {
+    const quality = configApi.qualityFromPreset(pickerQualityPresetEl.value);
+    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
+    pickerOnQualityChange?.(quality);
+  });
   let pickerSources = [];
   let pickerTab = 'screen';
   // Um lote por aba: enquanto a busca daquela aba nao voltou, a grade mostra
@@ -835,15 +949,25 @@
     }
   });
 
-  async function openPicker({ onGoLive }) {
+  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange }) {
     selectedSourceId = null;
     btnGoLiveEl.disabled = true;
     pickerTab = 'screen';
     pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
     pickerGridEl.innerHTML = '';
+    pickerQualityPresetEl.value = quality.preset;
+    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
+    pickerOnQualityChange = onQualityChange;
     shareSoundEl.checked = true;
     shareDiscordEl.checked = false;
     shareDiscordRowEl.classList.remove('hidden');
+    // Sem o addon nativo (Windows apenas), nao ha como excluir o Discord do
+    // audio capturado -- a checkbox nao teria efeito nenhum, entao fica
+    // desabilitada em vez de prometer algo que nao entrega.
+    shareDiscordEl.disabled = !nativeAudioAvailable;
+    shareDiscordRowEl.title = nativeAudioAvailable
+      ? ''
+      : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
 
     btnGoLiveEl.onclick = () => {
       pickerEl.classList.add('hidden');
