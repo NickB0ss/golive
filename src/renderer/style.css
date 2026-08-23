@@ -425,8 +425,14 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   min-width: 0;
   overflow: hidden;
 }
-.peer-list li em {
+.peer-live-group {
   margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.peer-list li em {
   flex: none;
   white-space: nowrap;
   font-style: normal;
@@ -452,19 +458,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .peer-list li.self { font-weight: 600; }
 .peer-you-tag { color: var(--muted); font-weight: 400; font-size: 12px; }
 
-/* Encode sob demanda (F1.3): quem minimizou o GoLive para de receber video
-   ate voltar. Sem esta marca, os outros so veem o tile sumir. */
-.peer-list li.not-watching { flex-wrap: wrap; }
-.peer-list li.not-watching .peer-avatar-wrap { opacity: 0.55; }
-.peer-not-watching {
-  flex: 0 0 100%;
-  padding-left: 42px; /* alinha com o nome, depois do avatar + gap */
-  margin-top: -4px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-
 .peer-avatar-wrap { position: relative; flex: none; display: grid; place-items: center; }
 
 .peer-avatar {
@@ -484,19 +477,20 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
 
+/* Vive ao lado de "AO VIVO" (dentro de .peer-live-group), nao mais
+   colado no avatar -- os dois formam um so grupo de sinal, no lado
+   direito da linha. */
 .peer-live-badge {
-  position: absolute;
-  right: -3px; bottom: -3px;
+  position: relative;
+  flex: none;
   width: 14px; height: 14px;
   border-radius: 50%;
   background: var(--live);
-  border: 2px solid var(--surface-1);
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--surface-0);
 }
 .peer-live-badge svg { width: 8px; height: 8px; }
-.peer-live-badge { color: var(--surface-0); }
 
 .dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--text-3); flex: none; }
 .dot.ok { background: var(--live); }
@@ -637,6 +631,69 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .tile-kind-badge svg { width: 12px; height: 12px; }
 .tile.fullscreen .tile-kind-badge { bottom: 22px; right: 54px; opacity: 1; transition: opacity 0.25s; }
 .tile.fullscreen.idle .tile-kind-badge { opacity: 0; }
+
+/* "Quem esta assistindo": aparece ao mirar o mouse no tile, no canto
+   superior direito -- qualquer um na sala pode estar transmitindo (nao so
+   o host), entao isto vive no tile de quem transmite, nao numa lista fixa
+   na coluna de membros. Some quando ninguem esta assistindo (`.empty`),
+   nao so quando o mouse sai, senao um tile sem nenhum espectador mostraria
+   um balao vazio. */
+.tile-watchers {
+  position: absolute;
+  top: 10px; right: 10px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  background: rgba(13, 15, 19, 0.82);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-1);
+  opacity: 0;
+  transition: opacity var(--t-tint) var(--ease-move);
+  pointer-events: none;
+  z-index: 1;
+}
+.tile:hover .tile-watchers:not(.empty) { opacity: 1; }
+.tile.fullscreen .tile-watchers:not(.empty) { opacity: 1; transition: opacity 0.25s; }
+.tile.fullscreen.idle .tile-watchers { opacity: 0; }
+
+.tile-watchers-label {
+  display: block;
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.tile-watchers-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.tile-watchers-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+.tile-watchers-avatar {
+  flex: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+}
+.tile-watchers-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tile-watchers-avatar .peer-avatar-fallback { font-size: 9px; }
+.tile-watchers-name { overflow: hidden; text-overflow: ellipsis; }
 
 /* Camada por cima do video em fullscreen onde as miniaturas flutuam livres
    (posicao/tamanho vem de `pipLayout` em ui.js, aplicados via style inline

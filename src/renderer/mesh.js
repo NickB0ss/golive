@@ -314,6 +314,20 @@
       return Boolean(peers.get(peerId)?.suspended?.[kind]);
     }
 
+    /** Quem, entre os peers pra quem estamos ENVIANDO aquele kind, esta de
+     * fato assistindo agora (nao suspenso por F1.3). E a lista que o
+     * transmissor broadcasta pra sala poder desenhar "quem esta assistindo"
+     * no proprio tile -- ver app.js broadcastWatchers. */
+    function watchersOf(kind) {
+      const out = [];
+      for (const peer of peers.values()) {
+        if (!peer.outConns[kind]) continue;
+        if (peer.suspended?.[kind]) continue;
+        out.push({ id: peer.id, name: peer.name, avatar: peer.avatar || null });
+      }
+      return out;
+    }
+
     /** Pares { peerId, kind } de quem estamos RECEBENDO video agora. E a
      * lista de destinatarios do nosso proprio 'view-state'. */
     function receivingFrom() {
@@ -356,6 +370,7 @@
       setPeerDemand,
       isPeerSuspended,
       receivingFrom,
+      watchersOf,
     };
   }
 

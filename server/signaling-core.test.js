@@ -143,3 +143,40 @@ test('encaminha view-state e tree ao destinatario, com o from carimbado', async 
     await server.close();
   }
 });
+
+test('watchers e broadcast pra sala inteira, com o from carimbado', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const c = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => c.once('open', r));
+    c.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Carla' }));
+    await once(c, 'welcome');
+
+    const atB = onceWithin(b, 'watchers');
+    const atC = onceWithin(c, 'watchers');
+    a.send(JSON.stringify({ type: 'watchers', kind: 'screen', watchers: [{ id: '2', name: 'Bruno' }] }));
+
+    const msgB = await atB;
+    const msgC = await atC;
+    assert.equal(msgB.from, '1');
+    assert.equal(msgC.from, '1');
+    assert.equal(msgB.kind, 'screen');
+    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno' }]);
+
+    a.close();
+    b.close();
+    c.close();
+  } finally {
+    await server.close();
+  }
+});

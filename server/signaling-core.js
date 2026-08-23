@@ -104,6 +104,23 @@ function createSignalingServer({ port }) {
               break;
             }
 
+            // Quem esta transmitindo avisa a SALA INTEIRA (nao so quem
+            // pediu) quem esta de fato assistindo aquele kind agora -- e o
+            // que permite ao dono de qualquer tile (nao so o host) desenhar
+            // "quem esta assistindo" no proprio tile, mesmo pra quem nao e o
+            // remetente do view-state que mudou a lista.
+            case 'watchers': {
+              const me = peers.get(id);
+              if (!me) return;
+              broadcastToRoom(me.room, id, {
+                type: 'watchers',
+                from: id,
+                kind: msg.kind,
+                watchers: Array.isArray(msg.watchers) ? msg.watchers : [],
+              });
+              break;
+            }
+
             default:
               break;
           }

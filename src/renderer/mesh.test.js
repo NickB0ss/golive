@@ -124,3 +124,26 @@ test('peer sem conexao daquele kind e ignorado, sem lancar', () => {
   assert.equal(mesh.setPeerDemand('999', 'screen', false), false);
   assert.equal(mesh.isPeerSuspended('999', 'screen'), false);
 });
+
+// --- watchersOf (lista de "quem esta assistindo" pro overlay do tile) ---
+
+test('watchersOf exclui quem suspendeu e quem nao tem outConn daquele kind', () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  mesh.addPeer('8', 'Carla');
+  mesh.addPeer('9', 'Diego'); // sem outConn de screen -- nunca recebeu oferta
+  mesh.peers.get('7').outConns.screen = { getSenders: () => [fakeSender({ kind: 'video' })] };
+  mesh.peers.get('8').outConns.screen = { getSenders: () => [fakeSender({ kind: 'video' })] };
+
+  mesh.setPeerDemand('8', 'screen', false); // Carla minimizou
+
+  const watchers = mesh.watchersOf('screen');
+  assert.deepEqual(watchers.map((w) => w.id).sort(), ['7']);
+  assert.equal(watchers[0].name, 'Bruno');
+});
+
+test('watchersOf de um kind sem nenhum outConn e lista vazia', () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  assert.deepEqual(mesh.watchersOf('camera'), []);
+});

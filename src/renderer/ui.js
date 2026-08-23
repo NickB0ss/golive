@@ -212,6 +212,43 @@
     gridEl.querySelectorAll('video').forEach(applyPainting);
   }
 
+  // Quem esta assistindo cada tile agora (F1.3 + o broadcast de
+  // 'watchers' em app.js) -- id do tile -> [{ id, name, avatar }]. Guardado
+  // aqui (nao so no DOM) porque a mensagem 'watchers' pode chegar antes do
+  // tile existir (renegociacao) ou depois dele ter sido recriado.
+  const tileWatchers = new Map();
+
+  function renderTileWatchers(tile, watchers) {
+    const el = tile?.querySelector('.tile-watchers');
+    if (!el) return;
+    if (!watchers?.length) {
+      el.classList.add('empty');
+      el.innerHTML = '';
+      return;
+    }
+    el.classList.remove('empty');
+    el.innerHTML = `
+      <span class="tile-watchers-label">assistindo</span>
+      <ul class="tile-watchers-list">
+        ${watchers
+          .map(
+            (w) => `<li>
+              <span class="tile-watchers-avatar">${avatarInnerHtml(w.id, w.name, w.avatar)}</span>
+              <span class="tile-watchers-name">${escapeHtml(w.name || '?')}</span>
+            </li>`
+          )
+          .join('')}
+      </ul>`;
+  }
+
+  /** `tileId` e o id usado em showTile ('me'/'cam-me' pro proprio, peerId ou
+   * `cam-${peerId}` pro de um peer). `watchers` e a lista devolvida por
+   * mesh.watchersOf, ja carimbada com quem mandou (ver app.js). */
+  function setWatchers(tileId, watchers) {
+    tileWatchers.set(tileId, watchers || []);
+    renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
+  }
+
   function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
     gridEl.querySelector('.empty')?.remove();
 
@@ -225,6 +262,7 @@
         <span class="tile-avatar"></span>
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
+        <div class="tile-watchers empty"></div>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
@@ -241,6 +279,10 @@
         });
       }
       gridEl.appendChild(tile);
+      // Tile pode ter sido recriado (ex: renegociacao) depois de ja termos
+      // recebido um 'watchers' pra esse id -- sem isto o overlay ficaria
+      // vazio ate a proxima mudanca de audiencia.
+      renderTileWatchers(tile, tileWatchers.get(id));
     }
 
     const video = tile.querySelector('video');
@@ -277,6 +319,7 @@
     document.getElementById(`tile-${id}`)?.remove();
     releaseTileAudio(id);
     tileRegistry.delete(id);
+    tileWatchers.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
     if (id === fullscreenTileId) {
@@ -622,20 +665,22 @@
     return '';
   }
 
-  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, notWatching, pulsing }) {
+  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, pulsing }) {
     const li = document.createElement('li');
     if (isSelf) li.classList.add('self');
-    // Sem esta marca o encode sob demanda (F1.3) vira bug fantasma: o
-    // espectador para de receber video e ninguem na sala sabe por que.
-    if (notWatching) li.classList.add('not-watching');
     li.innerHTML = `
       <span class="peer-avatar-wrap">
         <span class="peer-avatar ${borderClass || ''}">${avatarInnerHtml(id, name, avatar)}</span>
-        ${live ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}</span>` : ''}
       </span>
       <span class="peer-name">${escapeHtml(name)}${isSelf ? ' <span class="peer-you-tag">(você)</span>' : ''}</span>
-      ${live ? '<em>AO VIVO</em>' : ''}
-      ${notWatching ? '<span class="peer-not-watching">não está assistindo</span>' : ''}`;
+      ${
+        live
+          ? `<span class="peer-live-group">
+               <span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}</span>
+               <em>AO VIVO</em>
+             </span>`
+          : ''
+      }`;
     return li;
   }
 
@@ -682,7 +727,6 @@
           avatar: peer.avatar,
           borderClass,
           live: peer.live,
-          notWatching: Boolean(peer.suspended?.screen || peer.suspended?.camera),
           pulsing: claimPulse(peer.live),
         })
       );
@@ -1189,7 +1233,7 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting },
+    grid: { showTile, removeTile, setPainting, setWatchers },
     members: { render: renderMembers },
     rooms: { render: renderRooms },
     stageHeader: { set: setStageHeader, clear: clearStageHeader },

@@ -574,8 +574,14 @@
         mesh.addPeer(msg.id, msg.name, msg.avatar);
         renderMembersPanel();
         sound.playJoinSound();
-        if (localStream) await mesh.offerTo(msg.id, localStream, cfg.quality, 'screen');
-        if (cameraStream) await mesh.offerTo(msg.id, cameraStream, { ...cfg.camera, codec: 'video/VP8' }, 'camera');
+        if (localStream) {
+          await mesh.offerTo(msg.id, localStream, cfg.quality, 'screen');
+          broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
+        }
+        if (cameraStream) {
+          await mesh.offerTo(msg.id, cameraStream, { ...cfg.camera, codec: 'video/VP8' }, 'camera');
+          broadcastWatchers('camera');
+        }
         break;
       }
       case 'peer-left': {
@@ -584,6 +590,8 @@
         ui.grid.removeTile(`cam-${msg.id}`, emptyMessage());
         renderMembersPanel();
         sound.playLeaveSound();
+        broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
+        broadcastWatchers('camera');
         break;
       }
       case 'offer': {
@@ -622,7 +630,18 @@
         const track = trackForKind(msg.kind);
         if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
           renderMembersPanel();
+          broadcastWatchers(msg.kind);
         }
+        break;
+      }
+      // Recebido de QUALQUER peer da sala que esteja transmitindo (nao so o
+      // host) -- desenha a lista de quem esta assistindo no tile daquele
+      // kind. O tile local (nosso proprio) usa 'me'/'cam-me' e nunca chega
+      // por aqui -- ver broadcastWatchers, que aplica localmente antes de
+      // mandar pro servidor.
+      case 'watchers': {
+        const tileId = msg.kind === 'camera' ? `cam-${msg.from}` : msg.from;
+        ui.grid.setWatchers(tileId, msg.watchers);
         break;
       }
     }
@@ -960,6 +979,7 @@
         await session.mesh.offerTo(peerId, localStream, cfg.quality, 'screen');
       }
       if (currentSession !== session) return;
+      broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
 
       session.sig.send({ type: 'broadcast-state', live: true });
       $('btn-toggle-share').classList.add('active');
@@ -1023,6 +1043,7 @@
         for (const peerId of currentSession.mesh.peers.keys()) {
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera');
         }
+        broadcastWatchers('camera'); // lista inicial: todo mundo conta como assistindo
       }
     } finally {
       cameraStarting = false;
@@ -1117,6 +1138,21 @@
     windowVisible = visible;
     onVisibilityChanged();
   });
+
+  // Quem esta transmitindo (tela OU camera -- qualquer um na sala pode
+  // compartilhar, nao so o host) manda pra SALA INTEIRA quem esta de fato
+  // assistindo aquele kind agora. E o que deixa o overlay "assistindo" no
+  // proprio tile funcionar pra qualquer espectador, nao so pra quem enviou
+  // o view-state que mudou a lista.
+  function broadcastWatchers(kind) {
+    const session = currentSession;
+    if (!session?.mesh) return;
+    const hasStream = kind === 'camera' ? Boolean(cameraStream) : Boolean(localStream);
+    if (!hasStream) return;
+    const watchers = session.mesh.watchersOf(kind);
+    ui.grid.setWatchers(kind === 'camera' ? 'cam-me' : 'me', watchers);
+    if (session.sig.isOpen()) session.sig.send({ type: 'watchers', kind, watchers });
+  }
 
   // ---------- Estatisticas ----------
 
