@@ -1,7 +1,10 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { computeTree, FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX } = require('./tree');
+const {
+  computeTree, allDirect, sameAssignments,
+  FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX,
+} = require('./tree');
 
 test('constantes batem com a spec de 2026-08-23 (F2)', () => {
   assert.equal(FANOUT_ORIGEM, 1);
@@ -76,4 +79,85 @@ test('overflow alem da capacidade do relay (fanout 2) cai pra direct com a orige
 
 test('lista de candidatos vazia devolve mapa vazio', () => {
   assert.equal(computeTree('a', []).size, 0);
+});
+
+// ---------- Revisao final F2 ----------
+
+test('relayIneligible tira o no da eleicao de relay sem tira-lo da arvore (#2)', () => {
+  const candidates = [
+    // Melhor RTT da sala, mas acabou de falhar como relay: nao pode ser
+    // reeleito na hora, senao a arvore fica batendo entre dois estados.
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false, relayIneligible: true },
+    { id: 'c', joinedAt: 2, rtt: 40, transmitting: false, suspended: false },
+    { id: 'd', joinedAt: 3, rtt: 50, transmitting: false, suspended: false },
+  ];
+  const out = computeTree('a', candidates);
+  assert.equal(out.get('c').role, 'relay');
+  assert.notEqual(out.get('b').role, 'relay');
+  // Continua na arvore -- so nao como relay.
+  assert.ok(out.has('b'));
+});
+
+test('todos vetados como relay caem pra direct (malha)', () => {
+  const candidates = [
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false, relayIneligible: true },
+    { id: 'c', joinedAt: 2, rtt: 6, transmitting: false, suspended: false, relayIneligible: true },
+  ];
+  const out = computeTree('a', candidates);
+  assert.equal(out.get('b').role, 'direct');
+  assert.equal(out.get('c').role, 'direct');
+  assert.equal(out.get('b').paiId, 'a');
+});
+
+test('allDirect poe todo mundo direto na origem (dissolve a arvore, #5)', () => {
+  const out = allDirect('a', [{ id: 'b' }, { id: 'c' }]);
+  assert.equal(out.size, 2);
+  for (const id of ['b', 'c']) {
+    assert.equal(out.get(id).role, 'direct');
+    assert.equal(out.get(id).paiId, 'a');
+    assert.deepEqual(out.get(id).filhosIds, []);
+  }
+});
+
+test('sameAssignments: topologia igual e igual, com filhos em qualquer ordem (#4)', () => {
+  const candidates = [
+    { id: 'b', joinedAt: 1, rtt: 10, transmitting: false, suspended: false },
+    { id: 'c', joinedAt: 2, rtt: 20, transmitting: false, suspended: false },
+    { id: 'd', joinedAt: 3, rtt: 30, transmitting: false, suspended: false },
+  ];
+  const a = computeTree('a', candidates);
+  const b = computeTree('a', candidates);
+  assert.equal(sameAssignments(a, b), true);
+
+  // Mesma topologia, filhos invertidos -- a ORDEM nao e informacao.
+  const reordered = new Map(b);
+  reordered.set('b', { ...b.get('b'), filhosIds: [...b.get('b').filhosIds].reverse() });
+  assert.equal(sameAssignments(a, reordered), true);
+});
+
+test('sameAssignments detecta mudanca de papel, de pai, de filhos e de tamanho', () => {
+  const base = new Map([
+    ['b', { role: 'relay', paiId: 'a', filhosIds: ['c', 'd'] }],
+    ['c', { role: 'folha', paiId: 'b', filhosIds: [] }],
+    ['d', { role: 'folha', paiId: 'b', filhosIds: [] }],
+  ]);
+  const roleChanged = new Map(base);
+  roleChanged.set('c', { role: 'direct', paiId: 'a', filhosIds: [] });
+  assert.equal(sameAssignments(base, roleChanged), false);
+
+  const paiChanged = new Map(base);
+  paiChanged.set('c', { role: 'folha', paiId: 'x', filhosIds: [] });
+  assert.equal(sameAssignments(base, paiChanged), false);
+
+  const filhosChanged = new Map(base);
+  filhosChanged.set('b', { role: 'relay', paiId: 'a', filhosIds: ['c', 'e'] });
+  assert.equal(sameAssignments(base, filhosChanged), false);
+
+  const smaller = new Map(base);
+  smaller.delete('d');
+  assert.equal(sameAssignments(base, smaller), false);
+
+  // Mapa vazio (estado inicial) nunca e igual a uma arvore de verdade --
+  // e o que garante que o PRIMEIRO recalculo sempre se aplica.
+  assert.equal(sameAssignments(base, new Map()), false);
 });

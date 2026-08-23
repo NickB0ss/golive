@@ -11,8 +11,41 @@
   const FANOUT_RELAY = 2;
   const PROFUNDIDADE_MAX = 2;
 
+  // Topologia degenerada: todo mundo recebe oferta direta da origem. E o
+  // que a malha (arvore desligada) sempre foi, escrito como uma atribuicao
+  // de verdade pra que DESLIGAR o interruptor no meio de uma sessao consiga
+  // dissolver uma arvore ja no ar -- sem isto as folhas ficariam orfas,
+  // cortadas da origem e sem relay. Ver app.js recomputeTree.
+  function allDirect(originId, candidates) {
+    const assignments = new Map();
+    for (const c of candidates) assignments.set(c.id, { role: 'direct', paiId: originId, filhosIds: [] });
+    return assignments;
+  }
+
+  // Compara duas atribuicoes pelo que de fato importa (papel, pai e
+  // conjunto de filhos -- a ORDEM dos filhos nao muda nada). Serve pra
+  // origem pular um recalculo que nao mudou nada: sem isto, qualquer
+  // entra-e-sai na sala re-emitia 'tree' com epoch novo, e cada relay
+  // chamava relayTo de novo pros MESMOS filhos -- o que empilha um
+  // transceiver (e portanto um encoder) extra por vez, exatamente o custo
+  // que a arvore existe pra evitar.
+  function sameAssignments(a, b) {
+    if (!a || !b || a.size !== b.size) return false;
+    for (const [id, x] of a) {
+      const y = b.get(id);
+      if (!y) return false;
+      if (x.role !== y.role || x.paiId !== y.paiId) return false;
+      const xs = [...(x.filhosIds || [])].sort();
+      const ys = [...(y.filhosIds || [])].sort();
+      if (xs.length !== ys.length) return false;
+      for (let i = 0; i < xs.length; i += 1) if (xs[i] !== ys[i]) return false;
+    }
+    return true;
+  }
+
   // candidates: Array<{ id, joinedAt, rtt: number|null, transmitting,
-  // suspended }> -- todo peer da sala, exceto a propria origem.
+  // suspended, relayIneligible }> -- todo peer da sala, exceto a propria
+  // origem.
   //
   // Devolve Map<peerId, { role: 'relay'|'folha'|'direct', paiId, filhosIds }>.
   // 'direct' fica fora da arvore e recebe oferta direta da origem -- e o
@@ -25,8 +58,12 @@
     if (!candidates.length) return assignments;
 
     // Nao pode estar transmitindo (ja e origem de outra arvore) nem estar
-    // suspenso por F1.3 (quem minimizou nao e candidato).
-    const eligible = candidates.filter((c) => !c.transmitting && !c.suspended);
+    // suspenso por F1.3 (quem minimizou nao e candidato). `relayIneligible`
+    // e o veto de curto prazo de quem ACABOU de falhar como relay -- sem
+    // ele a re-eleicao logo apos a falha reelege o mesmo no (ele continua
+    // com o melhor RTT lembrado, justamente por ter estado conectado) e a
+    // arvore fica batendo entre os mesmos dois estados. Ver app.js.
+    const eligible = candidates.filter((c) => !c.transmitting && !c.suspended && !c.relayIneligible);
 
     eligible.sort((a, b) => {
       const rttA = a.rtt == null ? Infinity : a.rtt;
@@ -37,10 +74,7 @@
 
     const relay = eligible[0] || null;
 
-    if (!relay) {
-      for (const c of candidates) assignments.set(c.id, { role: 'direct', paiId: originId, filhosIds: [] });
-      return assignments;
-    }
+    if (!relay) return allDirect(originId, candidates);
 
     const rest = candidates.filter((c) => c.id !== relay.id);
     const leaves = rest.slice(0, FANOUT_RELAY);
@@ -54,7 +88,7 @@
     return assignments;
   }
 
-  const api = { computeTree, FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX };
+  const api = { computeTree, allDirect, sameAssignments, FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.tree = api;
