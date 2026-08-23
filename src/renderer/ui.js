@@ -980,12 +980,17 @@
       <div class="settings-field">
         <label class="check-inline"><input id="settings-advertise" type="checkbox" /> Anunciar minha sala na rede</label>
         <small>Desligado, a sala funciona normalmente e só entra quem receber o endereço.</small>
+      </div>
+      <div class="settings-field">
+        <label class="check-inline"><input id="settings-tree" type="checkbox" /> Retransmissão em cadeia (experimental)</label>
+        <small>Reduz o custo pra quem transmite, às custas de um pouco de latência pra quem assiste.</small>
       </div>`;
 
     settingsPanes.stats.innerHTML = '<div id="settings-stats-body" class="stats"></div>';
 
     renderProfilePreview(config);
     $('settings-advertise').checked = config.network.advertise;
+    $('settings-tree').checked = Boolean(config.network.tree);
 
     $('settings-profile-name').addEventListener('input', (event) => {
       deps.onNameChange(event.target.value);
@@ -1005,6 +1010,10 @@
 
     $('settings-advertise').addEventListener('change', () => {
       deps.onNetworkChange({ ...config.network, advertise: $('settings-advertise').checked });
+    });
+
+    $('settings-tree').addEventListener('change', () => {
+      deps.onNetworkChange({ ...config.network, tree: $('settings-tree').checked });
     });
 
     try {
