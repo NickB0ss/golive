@@ -24,6 +24,15 @@
     screen: { epoch: 0, assignments: new Map() },
     camera: { epoch: 0, assignments: new Map() },
   };
+  // Papel que ESTA sessao recebeu de alguma origem, por kind -- so
+  // relevante quando esta sessao NAO e a origem daquele kind. 'relayed'
+  // registra pra quais filhos ja repassamos NESTE epoch, pra relayTo nao
+  // ser chamado duas vezes pro mesmo filho (duplicaria transceivers) --
+  // ver o retry em 'offer' no handleSignal.
+  const myRole = {
+    screen: { epoch: 0, role: 'direct', paiId: null, filhosIds: [], relayed: new Set() },
+    camera: { epoch: 0, role: 'direct', paiId: null, filhosIds: [], relayed: new Set() },
+  };
   let localStream = null;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
@@ -618,6 +627,7 @@
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
         if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false });
+        await flushPendingRelay(session, msg.kind, msg.from);
         break;
       }
       case 'answer': {
@@ -657,6 +667,26 @@
       case 'watchers': {
         const tileId = msg.kind === 'camera' ? `cam-${msg.from}` : msg.from;
         ui.grid.setWatchers(tileId, msg.watchers);
+        break;
+      }
+      // Atribuicao de papel na arvore de retransmissao (F2), mandada pela
+      // origem daquele kind. epoch descarta atribuicao velha (mensagens
+      // cruzando) -- mesmo padrao do currentSession !== session usado no
+      // resto deste arquivo. Ver a spec de 2026-08-23, secao F2.
+      case 'tree': {
+        const kind = msg.kind;
+        if (kind !== 'screen' && kind !== 'camera') break;
+        const state = myRole[kind];
+        if (msg.epoch < state.epoch) break;
+        state.epoch = msg.epoch;
+        state.paiId = msg.paiId;
+        state.filhosIds = Array.isArray(msg.filhos) ? msg.filhos : [];
+        state.relayed = new Set();
+        state.role = state.filhosIds.length
+          ? 'relay'
+          : msg.paiId === msg.origem ? 'direct' : 'folha';
+
+        if (state.role === 'relay') await flushPendingRelay(session, kind, msg.origem);
         break;
       }
     }
@@ -1172,6 +1202,23 @@
   }
 
   // ---------- Arvore de retransmissao (F2, spec de 2026-08-23) ----------
+
+  // Tenta repassar (relayTo) pros filhos pendentes deste epoch. Chamado
+  // tanto ao receber 'tree' (o caso comum: a offer da origem ja chegou)
+  // quanto depois de processar uma 'offer' daquela origem (o caso de
+  // corrida: 'tree' chegou ANTES da offer terminar de negociar, entao
+  // mesh.relayTo devolveu false na hora -- ver Task 3). 'relayed' evita
+  // repassar duas vezes pro mesmo filho.
+  async function flushPendingRelay(session, kind, sourcePeerId) {
+    const state = myRole[kind];
+    if (state.role !== 'relay' || state.paiId !== sourcePeerId) return;
+    const quality = kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    for (const childId of state.filhosIds) {
+      if (state.relayed.has(childId)) continue;
+      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, quality);
+      if (ok) state.relayed.add(childId);
+    }
+  }
 
   // So a origem chama isto, e so quando aquele kind esta ao vivo. Junta os
   // candidatos (todo peer da sala, com o RTT mais recente medido nas
