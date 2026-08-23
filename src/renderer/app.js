@@ -656,6 +656,7 @@
         if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
           renderMembersPanel();
           broadcastWatchers(msg.kind);
+          broadcastViewState(); // se formos relay, isto pode mudar o que reportamos rio acima
         }
         break;
       }
@@ -1169,13 +1170,21 @@
 
   // Avisa cada transmissor de quem estamos recebendo se ainda estamos ou nao
   // olhando. Peer que nunca recebeu um 'view-state' conta como assistindo --
-  // padrao seguro, entao so mandamos quando ha algo a corrigir ou quando o
-  // estado muda. Ver a spec de 2026-08-23, F1.3.
+  // padrao seguro. Quando esta sessao e RELAY do peer em questao (F2), o
+  // watching mandado pra cima e agregado: continua "sim" se qualquer folha
+  // da nossa sub-arvore ainda estiver olhando, mesmo que esta janela esteja
+  // minimizada -- um relay que minimizou mas tem espectadores atras nao pode
+  // cortar o encode de quem esta assistindo de verdade. Ver a spec de
+  // 2026-08-23, secao "Demanda propaga pra cima".
   function broadcastViewState() {
     const session = currentSession;
     if (!session?.mesh || !session.sig.isOpen()) return;
-    const watching = isAppVisible();
     for (const { peerId, kind } of session.mesh.receivingFrom()) {
+      const state = myRole[kind];
+      const isUpstreamOfRelay = state.role === 'relay' && state.paiId === peerId;
+      const anyFolhaWatching = isUpstreamOfRelay
+        && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, kind));
+      const watching = isAppVisible() || anyFolhaWatching;
       session.sig.send({ type: 'view-state', to: peerId, kind, watching });
     }
   }
