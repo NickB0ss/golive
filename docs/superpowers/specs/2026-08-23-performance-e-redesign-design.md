@@ -422,6 +422,20 @@ medir.
 A mudança estrutural. **Fazer só depois da fase 1 estar medida**, porque a
 fase 1 pode já resolver o sintoma.
 
+> **Medido em 2026-08-23 — decisão tomada, seguir com F2.** Com a fase 1
+> implementada e a instrumentação de F1.1 em uso: sem jogo nenhum aberto,
+> 4 espectadores já derrubavam o encoder pra software (`OpenH264`) em
+> todos os senders; com jogo pesado e só 2 espectadores, a transmissão não
+> passou de 30fps nem em 720p (resolução baixa o bastante pra excluir
+> banda como causa). **Correção ao diagnóstico:** o sintoma medido não é o
+> jogo travando — é o **fps da própria transmissão** caindo, enquanto o
+> jogo continua liso. A causa raiz é a mesma (N encoders de software
+> disputando CPU/GPU), o que muda é qual vítima sofre. Isso reduz o ganho
+> esperado de F1.2 e F1.4 (ambas existiam pra sobrar recurso pro jogo, que
+> não era a vítima) e confirma que só reduzir pra 1 encoder resolve. Ver
+> nota de decisão no vault: `golive - árvore de retransmissão em vez de
+> SFU no host`.
+
 ### O princípio
 
 ```
