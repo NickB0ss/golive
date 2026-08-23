@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -12,27 +12,65 @@
   // way a late event from a torn-down or superseded session is a no-op
   // instead of throwing on stale/null state.
   let currentSession = null; // { sig, mesh } | null
-  const { tree } = window.GoLive;
   let myId = null;
+
+  const KINDS = ['screen', 'camera'];
+  const { relayKindFor, parseKind } = meshModule;
 
   // Topologia da arvore de retransmissao (F2), por kind -- so significativa
   // quando ESTA sessao e a origem daquele kind (localStream/cameraStream
-  // existe). epoch sobe a cada recalculo, mesmo quando o resultado nao
-  // muda -- o pior caso e um recalculo redundante, nao uma atribuicao velha
-  // vencendo (ver a mensagem 'tree' em handleSignal, Task 5).
+  // existe). epoch so sobe quando a topologia REALMENTE muda (ver
+  // recomputeTree): antes ele subia a cada recalculo, e como o 'tree'
+  // resultante zera o registro de repasse de cada relay, qualquer
+  // entra-e-sai na sala fazia todo relay repassar de novo pros mesmos
+  // filhos -- um encoder a mais por vez.
   const originTree = {
     screen: { epoch: 0, assignments: new Map() },
     camera: { epoch: 0, assignments: new Map() },
   };
   // Papel que ESTA sessao recebeu de alguma origem, por kind -- so
-  // relevante quando esta sessao NAO e a origem daquele kind. 'relayed'
+  // relevante quando esta sessao NAO e a origem daquele kind.
+  //
+  // A chave e a ORIGEM, nao so o kind: a sala permite varias pessoas
+  // transmitindo ao mesmo tempo, e cada origem tem seu PROPRIO contador de
+  // epoch (a spec: "epoch e por-origem: ignorar tree com epoch menor que o
+  // ultimo visto DAQUELA origem"). Com um estado unico por kind, a origem B
+  // no epoch 1 tinha seu 'tree' descartado pelo epoch 5 da origem A -- ou
+  // sobrescrevia o papel dela.
+  //
+  // Cada entrada: { epoch, role, paiId, filhosIds, relayed }. 'relayed'
   // registra pra quais filhos ja repassamos NESTE epoch, pra relayTo nao
   // ser chamado duas vezes pro mesmo filho (duplicaria transceivers) --
   // ver o retry em 'offer' no handleSignal.
-  const myRole = {
-    screen: { epoch: 0, role: 'direct', paiId: null, filhosIds: [], relayed: new Set() },
-    camera: { epoch: 0, role: 'direct', paiId: null, filhosIds: [], relayed: new Set() },
-  };
+  const myRole = { screen: new Map(), camera: new Map() };
+
+  function roleFor(kind, origem) {
+    const byOrigin = myRole[kind];
+    if (!byOrigin) return null;
+    let state = byOrigin.get(origem);
+    if (!state) {
+      state = { epoch: 0, role: 'direct', paiId: null, filhosIds: [], relayed: new Set() };
+      byOrigin.set(origem, state);
+    }
+    return state;
+  }
+
+  // Quem falhou como relay ha pouco, por kind: peerId -> timestamp. Ver
+  // RELAY_FAILURE_COOLDOWN_MS e recoverFromRelayLoss.
+  const recentRelayFailures = { screen: new Map(), camera: new Map() };
+
+  // Todo o estado de arvore morre com a sessao. Sem isto, o epoch guardado
+  // de uma sala anterior (digamos, 7) descarta pra sempre os 'tree' de uma
+  // origem nova numa sala nova, cujo contador comeca em 1 -- este no nunca
+  // mais aprenderia seu papel, ate reiniciar o app.
+  function resetTreeState() {
+    for (const kind of KINDS) {
+      myRole[kind].clear();
+      originTree[kind].epoch = 0;
+      originTree[kind].assignments = new Map();
+      recentRelayFailures[kind].clear();
+    }
+  }
   let localStream = null;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
@@ -88,6 +126,44 @@
 
   function persist() {
     localStorage.setItem('golive', config.serialize(cfg));
+  }
+
+  /** Id do tile de um peer naquele kind. `kind` aqui e sempre o kind BASE
+   * ('screen'/'camera'), nunca o composto de repasse -- ver parseKind. */
+  function tileIdFor(peerId, kind) {
+    return kind === 'camera' ? `cam-${peerId}` : peerId;
+  }
+
+  // Qual conexao (peer + kind EXATO, composto inclusive) esta alimentando
+  // cada tile agora. Durante uma troca de topologia a mesma origem chega
+  // por dois caminhos ao mesmo tempo -- a oferta direta nova ('screen') e o
+  // repasse antigo que ainda nao fechou ('screen@origem') -- e os dois
+  // desenham no MESMO tile. Sem saber de quem e o tile, o fechamento do
+  // caminho velho apagaria o tile que o caminho novo acabou de preencher, e
+  // nada mais o traria de volta.
+  const tileSource = new Map(); // tileId -> `${peerId}|${kind}`
+
+  function connKeyOf(peerId, kind) {
+    return `${peerId}|${kind}`;
+  }
+
+  function dropTile(tileId) {
+    tileSource.delete(tileId);
+    ui.grid.removeTile(tileId, emptyMessage());
+  }
+
+  /** Aceita tanto o kind cru quanto o composto de repasse. Tudo que chega
+   * pela rede passa por aqui antes de virar chave de conexao ou indice de
+   * estado -- um `kind` inventado por um cliente nao pode nos fazer
+   * indexar em undefined. */
+  function isKnownKind(kind) {
+    return KINDS.includes(parseKind(kind).baseKind);
+  }
+
+  /** Qualidade de encode daquele kind. Usa o kind BASE, pra que uma
+   * conexao de repasse ('camera@<origem>') nao caia no preset de tela. */
+  function qualityFor(kind) {
+    return parseKind(kind).baseKind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
   }
 
   function emptyMessage() {
@@ -193,9 +269,16 @@
         if (cameraStream) restartCamera();
       },
       onNetworkChange: (network) => {
+        const treeWas = cfg.network.tree;
         cfg = { ...cfg, network };
         persist();
         window.golive.setAdvertise(network.advertise);
+        // Mexer no interruptor tem que valer AGORA, nao so na proxima
+        // transmissao. Ligando, monta a arvore do que ja esta no ar;
+        // desligando, dissolve a que estiver montada (recomputeTree produz
+        // uma topologia toda 'direct' nesse caso) -- sem isto, desligar no
+        // meio da sessao deixava as folhas cortadas da origem pra sempre.
+        if (network.tree !== treeWas) for (const kind of KINDS) recomputeTree(kind);
       },
     });
   });
@@ -389,6 +472,7 @@
   // callback tardio dessa sessao ja vai ter parado de agir sozinho.
   function teardownSession(session) {
     stopStatsLoop();
+    resetTreeState();
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
@@ -405,9 +489,11 @@
     if (session?.mesh) {
       for (const peerId of Array.from(session.mesh.peers.keys())) {
         session.mesh.removePeer(peerId);
-        ui.grid.removeTile(peerId, emptyMessage());
+        dropTile(peerId);
+        dropTile(`cam-${peerId}`);
       }
     }
+    tileSource.clear();
     $('btn-toggle-share').classList.remove('active');
     renderMembersPanel();
   }
@@ -463,6 +549,12 @@
       teardownSession(oldSession);
     }
 
+    // Sessao nova, arvore nova: nenhum epoch, papel ou atribuicao da sala
+    // anterior pode sobreviver ate aqui (teardownSession ja limpa quando
+    // havia sessao; isto cobre a primeira entrada e o caminho em que a
+    // conexao anterior nunca chegou a abrir).
+    resetTreeState();
+
     const session = { sig: null, mesh: null };
 
     let connHandle;
@@ -517,17 +609,54 @@
       send: (payload) => {
         if (currentSession === session) session.sig.send(payload);
       },
+      // O tile pertence a quem PRODUZIU o video, nao a quem o entregou. Numa
+      // conexao de repasse (kind composto 'screen@<origem>') quem entrega e
+      // o relay, mas o conteudo e da origem -- desenhar sob o id do relay
+      // mostraria a tela da origem com o nome e o avatar do relay, e ainda
+      // brigaria pelo mesmo tile com o compartilhamento proprio do relay.
       onTrack: (peerId, peerName, stream, kind) => {
         if (currentSession !== session) return;
-        const peer = session.mesh.peers.get(peerId);
-        const tileId = kind === 'camera' ? `cam-${peerId}` : peerId;
-        ui.grid.showTile(tileId, peerName, stream, { avatar: peer?.avatar || null, kind });
+        const { baseKind, sourceId } = parseKind(kind);
+        const ownerId = sourceId || peerId;
+        const owner = session.mesh.peers.get(ownerId);
+        const displayName = owner?.name || (sourceId ? `#${ownerId}` : peerName);
+        const tileId = tileIdFor(ownerId, baseKind);
+        tileSource.set(tileId, connKeyOf(peerId, kind));
+        ui.grid.showTile(tileId, displayName, stream, {
+          avatar: owner?.avatar || null,
+          kind: baseKind,
+        });
+        // A stream chegou: se somos relay dela, e a hora de repassar. Este
+        // e o gatilho CERTO pro repasse -- antes ele dependia de a
+        // mensagem 'tree' ou uma 'offer' chegarem depois da stream, e como
+        // a origem agora so re-emite 'tree' quando a topologia muda de
+        // verdade, um repasse que perdeu a corrida nao teria segunda
+        // chance. flushPendingRelay ignora quem nao e relay e nao repassa
+        // duas vezes pro mesmo filho.
+        if (!sourceId) flushPendingRelay(session, baseKind, peerId).catch(() => {});
       },
       onPeerState: (peerId, { removedTile, kind, dir, failed }) => {
         if (currentSession !== session) return;
-        if (removedTile) ui.grid.removeTile(kind === 'camera' ? `cam-${peerId}` : peerId, emptyMessage());
-        if (failed && dir === 'out' && originTree[kind]?.assignments.get(peerId)?.role === 'relay') {
-          recoverFromRelayLoss(kind, peerId);
+        const { baseKind, sourceId } = parseKind(kind);
+        if (removedTile) {
+          // So apaga se o tile ainda for DESTA conexao: um caminho novo pro
+          // mesmo conteudo pode ja te-lo assumido (ver tileSource).
+          const tileId = tileIdFor(sourceId || peerId, baseKind);
+          if (tileSource.get(tileId) === connKeyOf(peerId, kind)) dropTile(tileId);
+          // A stream que entrava por esta conexao morreu (ou foi
+          // substituida). Se estavamos RETRANSMITINDO ela, o que sai pros
+          // filhos vale tanto quanto ela: derruba os repasses e limpa o
+          // registro, pra que a proxima stream desta origem seja repassada
+          // de novo em conexoes novas em vez de virar um transceiver extra
+          // empilhado numa conexao que ja carrega uma track morta.
+          if (!sourceId) dropRelaysOf(session, baseKind, peerId);
+        }
+        // So a conexao DIRETA origem->relay sinaliza perda de relay. Uma
+        // out-conn de repasse que falha e a nossa ponta com um filho, nao
+        // com o relay -- e nesse caso nem somos a origem.
+        if (failed && dir === 'out' && !sourceId
+            && originTree[baseKind]?.assignments.get(peerId)?.role === 'relay') {
+          recoverFromRelayLoss(baseKind, peerId);
         }
         renderMembersPanel();
       },
@@ -611,13 +740,18 @@
       }
       case 'peer-left': {
         mesh.removePeer(msg.id);
-        ui.grid.removeTile(msg.id, emptyMessage());
-        ui.grid.removeTile(`cam-${msg.id}`, emptyMessage());
+        dropTile(msg.id);
+        dropTile(`cam-${msg.id}`);
         renderMembersPanel();
         sound.playLeaveSound();
         broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
         broadcastWatchers('camera');
-        for (const kind of ['screen', 'camera']) {
+        for (const kind of KINDS) {
+          // Quem saiu nao e mais origem de nada: descarta o papel que ele
+          // nos deu, junto com o epoch dele. Sem isto o mapa por-origem so
+          // cresce, e um id reaproveitado herdaria um epoch alto.
+          myRole[kind].delete(msg.id);
+          recentRelayFailures[kind].delete(msg.id);
           if (originTree[kind].assignments.get(msg.id)?.role === 'relay') {
             recoverFromRelayLoss(kind, msg.id);
           } else {
@@ -627,6 +761,10 @@
         break;
       }
       case 'offer': {
+        // msg.kind pode ser composto ('screen@<origem>') quando quem oferta
+        // e um relay -- handleOffer usa a chave como veio, pra nao atropelar
+        // o slot do compartilhamento proprio do relay.
+        if (!isKnownKind(msg.kind)) break;
         const answerSdp = await mesh.handleOffer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return; // sessao caiu enquanto negociava
         sig.send({ type: 'answer', to: msg.from, sdp: answerSdp, kind: msg.kind });
@@ -635,14 +773,16 @@
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
         if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false });
-        await flushPendingRelay(session, msg.kind, msg.from);
+        // So uma oferta DIRETA da origem destrava um repasse pendente: a
+        // stream que vamos repassar e a que acabou de chegar por ela.
+        if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
         break;
       }
       case 'answer': {
+        if (!isKnownKind(msg.kind)) break;
         await mesh.handleAnswer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return;
-        const quality = msg.kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
-        mesh.applyEncoding(quality, msg.kind);
+        mesh.applyEncoding(qualityFor(msg.kind), msg.kind);
         break;
       }
       case 'ice': {
@@ -660,10 +800,15 @@
       // o encode dele libera um encoder inteiro no PC de quem transmite.
       // Ver a spec de 2026-08-23, F1.3.
       case 'view-state': {
+        if (!isKnownKind(msg.kind)) break;
         const track = trackForKind(msg.kind);
         if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
           renderMembersPanel();
-          broadcastWatchers(msg.kind);
+          // A lista de "quem esta assistindo" e da ORIGEM. Num kind
+          // composto quem suspendeu foi um filho NOSSO, e nos somos relay,
+          // nao origem -- nao ha tile local pra atualizar nem lista pra
+          // anunciar. O que muda rio acima vai no broadcastViewState.
+          if (!parseKind(msg.kind).sourceId) broadcastWatchers(msg.kind);
           broadcastViewState(); // se formos relay, isto pode mudar o que reportamos rio acima
         }
         break;
@@ -685,17 +830,45 @@
       case 'tree': {
         const kind = msg.kind;
         if (kind !== 'screen' && kind !== 'camera') break;
-        const state = myRole[kind];
+        // `msg.from` e carimbado pelo servidor (signaling-core.js) e nao da
+        // pra forjar; `msg.origem` vem do cliente e deveria ser identico.
+        // Usar o carimbado como CHAVE do estado impede que uma origem
+        // (mesmo por engano) mexa no papel que outra nos deu.
+        const origem = msg.from;
+        if (origem == null) break;
+        const state = roleFor(kind, origem);
+        // epoch e por-origem: cada origem tem seu proprio contador, entao a
+        // comparacao so faz sentido contra o ultimo visto DAQUELA origem.
         if (msg.epoch < state.epoch) break;
+        const filhosIds = Array.isArray(msg.filhos) ? msg.filhos : [];
+        // `relayed` NAO e zerado aqui. Ele registra pra quais filhos ja
+        // existe uma conexao de repasse viva, e um 'tree' novo nao mata
+        // essas conexoes -- zerar fazia o flush abaixo chamar relayTo de
+        // novo pros MESMOS filhos, e cada chamada empilha um transceiver
+        // (um encoder) a mais na conexao que ja existe. Sai do conjunto
+        // quem realmente perdeu a conexao: os filhos removidos logo abaixo,
+        // e todos eles quando a stream da origem se vai (ver onPeerState).
+        //
+        // Filhos que saem da nossa lista precisam ter o repasse FECHADO --
+        // seja porque a arvore mudou, seja porque ela foi dissolvida (o
+        // interruptor desligado manda todo mundo pra 'direct'). Sem isto o
+        // relay segue pagando um encoder por um filho que a origem ja
+        // reassumiu, e o filho recebe o mesmo video por dois caminhos
+        // brigando pelo mesmo tile.
+        const dropped = state.filhosIds.filter((id) => !filhosIds.includes(id));
+        for (const childId of dropped) {
+          mesh.closeOut(childId, relayKindFor(kind, origem));
+          state.relayed.delete(childId);
+        }
+
         state.epoch = msg.epoch;
         state.paiId = msg.paiId;
-        state.filhosIds = Array.isArray(msg.filhos) ? msg.filhos : [];
-        state.relayed = new Set();
-        state.role = state.filhosIds.length
+        state.filhosIds = filhosIds;
+        state.role = filhosIds.length
           ? 'relay'
-          : msg.paiId === msg.origem ? 'direct' : 'folha';
+          : msg.paiId === origem ? 'direct' : 'folha';
 
-        if (state.role === 'relay') await flushPendingRelay(session, kind, msg.origem);
+        if (state.role === 'relay') await flushPendingRelay(session, kind, origem);
         break;
       }
     }
@@ -1052,6 +1225,7 @@
     stopNativeAudioFns.forEach((stop) => stop());
     stopNativeAudioFns = [];
     currentSession?.mesh?.closeAllOut('screen');
+    forgetOriginTree('screen');
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
@@ -1123,6 +1297,7 @@
     const track = cameraStream.getVideoTracks()[0];
     cameraStream.getTracks().forEach((t) => t.stop());
     cameraStream = null;
+    forgetOriginTree('camera');
     ui.grid.removeTile('cam-me', emptyMessage());
     $('btn-toggle-camera').classList.remove('active');
 
@@ -1172,7 +1347,15 @@
   /** A track de video local daquele kind, ou null. E o que volta pro sender
    * quando um espectador avisa que voltou a assistir. */
   function trackForKind(kind) {
-    const stream = kind === 'camera' ? cameraStream : localStream;
+    const { baseKind, sourceId } = parseKind(kind);
+    // Kind composto: quem voltou a assistir e um filho NOSSO, e o que
+    // devolvemos ao sender e a track que RECEBEMOS da origem -- nao a
+    // captura local, que num relay pode nem existir.
+    if (sourceId) {
+      const inbound = currentSession?.mesh?.peers.get(sourceId)?.inStreams?.[baseKind];
+      return inbound?.getVideoTracks()[0] || null;
+    }
+    const stream = baseKind === 'camera' ? cameraStream : localStream;
     return stream?.getVideoTracks()[0] || null;
   }
 
@@ -1188,11 +1371,21 @@
     const session = currentSession;
     if (!session?.mesh || !session.sig.isOpen()) return;
     for (const { peerId, kind } of session.mesh.receivingFrom()) {
-      const state = myRole[kind];
-      const isUpstreamOfRelay = state.role === 'relay' && state.paiId === peerId;
-      const anyFolhaWatching = isUpstreamOfRelay
-        && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, kind));
-      const watching = isAppVisible() || anyFolhaWatching;
+      const { baseKind, sourceId } = parseKind(kind);
+      if (!KINDS.includes(baseKind)) continue;
+      // Num kind composto quem esta rio acima e o RELAY que nos serve, e
+      // nos somos folha: nao ha sub-arvore nossa pra agregar. Numa conexao
+      // direta, `peerId` E a origem -- que e exatamente a chave do estado
+      // por-origem, entao a pergunta "sou relay DESTE peer?" vira uma
+      // consulta direta.
+      const state = sourceId ? null : myRole[baseKind].get(peerId);
+      // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
+      // assim que relayTo as criou) -- consultar isPeerSuspended com o
+      // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
+      const childKind = relayKindFor(baseKind, peerId);
+      const anyFolhaWatching = state?.role === 'relay'
+        && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+      const watching = isAppVisible() || Boolean(anyFolhaWatching);
       session.sig.send({ type: 'view-state', to: peerId, kind, watching });
     }
   }
@@ -1220,16 +1413,35 @@
 
   // ---------- Arvore de retransmissao (F2, spec de 2026-08-23) ----------
 
-  // Tenta repassar (relayTo) pros filhos pendentes deste epoch. Chamado
-  // tanto ao receber 'tree' (o caso comum: a offer da origem ja chegou)
-  // quanto depois de processar uma 'offer' daquela origem (o caso de
-  // corrida: 'tree' chegou ANTES da offer terminar de negociar, entao
-  // mesh.relayTo devolveu false na hora -- ver Task 3). 'relayed' evita
-  // repassar duas vezes pro mesmo filho.
+  /** Fecha todo repasse do conteudo de `sourcePeerId` naquele kind e
+   * esquece que ele existiu. Chamado quando a stream que alimentava esses
+   * repasses acabou. */
+  function dropRelaysOf(session, kind, sourcePeerId) {
+    if (!KINDS.includes(kind)) return;
+    const state = myRole[kind].get(sourcePeerId);
+    if (!state?.relayed.size) return;
+    const childKind = relayKindFor(kind, sourcePeerId);
+    for (const childId of state.relayed) session.mesh.closeOut(childId, childKind);
+    state.relayed = new Set();
+  }
+
+  // Tenta repassar (relayTo) pros filhos que ainda nao temos servindo.
+  // Chamado ao receber 'tree' (o caso comum), depois de processar uma
+  // 'offer' daquela origem, e -- o gatilho mais confiavel -- quando a
+  // stream da origem de fato chega (onTrack): a 'tree' pode ganhar a
+  // corrida da 'offer', e nesse caso relayTo devolve false na hora. Ver
+  // Task 3. 'relayed' evita repassar duas vezes pro mesmo filho.
   async function flushPendingRelay(session, kind, sourcePeerId) {
-    const state = myRole[kind];
-    if (state.role !== 'relay' || state.paiId !== sourcePeerId) return;
-    const quality = kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    // `kind` chega da rede (msg.kind de uma 'offer') -- sem esta guarda,
+    // um kind malformado indexaria myRole em undefined e estouraria uma
+    // promise rejeitada sem dono.
+    if (!KINDS.includes(kind) || sourcePeerId == null) return;
+    // O estado e por-origem: so repassamos o que veio DAQUELA origem, e
+    // `paiId === sourcePeerId` e implicito na chave (um relay tem sempre a
+    // origem como pai -- profundidade maxima 2).
+    const state = myRole[kind].get(sourcePeerId);
+    if (!state || state.role !== 'relay') return;
+    const quality = qualityFor(kind);
     for (const childId of state.filhosIds) {
       if (state.relayed.has(childId)) continue;
       const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, quality);
@@ -1243,25 +1455,97 @@
   // modulo tree.js. Recalculo e discreto: peer entrou/saiu, ou comecamos a
   // transmitir -- NAO a cada amostra de RTT (evitaria trocar de papel toda
   // hora). Ver "Fora de escopo" no cabecalho deste plano.
-  function recomputeTree(kind) {
+
+  // Quanto tempo um relay que acabou de falhar fica fora da lista de
+  // candidatos. Precisa cobrir com folga a deteccao de falha do ICE (o
+  // Chromium leva alguns segundos entre 'disconnected' e 'failed'), senao a
+  // re-eleicao imediata reelege o mesmo no -- ele continua na sala, nao
+  // transmitindo, e com o MELHOR RTT lembrado justamente porque esteve
+  // conectado -- e a arvore fica batendo entre os mesmos dois estados. E
+  // precisa ser curto o bastante pra que uma queda passageira nao exile o
+  // melhor candidato da sala por muito tempo: o veto expira sozinho e ele
+  // volta a concorrer no proximo evento discreto (alguem entra ou sai).
+  // 8s atende os dois lados; nao vale um ajuste em Configuracoes.
+  const RELAY_FAILURE_COOLDOWN_MS = 8000;
+
+  function isRelayOnCooldown(kind, peerId) {
+    const at = recentRelayFailures[kind].get(peerId);
+    if (at == null) return false;
+    if (Date.now() - at >= RELAY_FAILURE_COOLDOWN_MS) {
+      recentRelayFailures[kind].delete(peerId); // expirou: volta a concorrer
+      return false;
+    }
+    return true;
+  }
+
+  /** Parar de transmitir desmonta a arvore daquele kind (closeAllOut ja
+   * fechou todas as conexoes). O registro precisa sumir junto: guardado, a
+   * comparacao de recomputeTree acharia a topologia "inalterada" na
+   * proxima transmissao e nao aplicaria nada -- ninguem receberia papel. */
+  function forgetOriginTree(kind) {
+    originTree[kind].assignments = new Map();
+  }
+
+  /** Ha alguma arvore montada agora naquele kind (alguem que nao seja
+   * 'direct')? Usado pra decidir se vale dissolver quando o interruptor
+   * e desligado no meio da sessao. */
+  function hasActiveTree(kind) {
+    for (const assignment of originTree[kind].assignments.values()) {
+      if (assignment.role !== 'direct') return true;
+    }
+    return false;
+  }
+
+  // `force` pula a comparacao com a topologia anterior: usado na
+  // recuperacao de falha, onde a conexao morta precisa ser re-ofertada
+  // mesmo que o resultado do calculo tenha dado igual.
+  function recomputeTree(kind, { force = false } = {}) {
     const session = currentSession;
-    if (!session?.mesh || !cfg.network.tree) return;
+    if (!session?.mesh) return;
     const stream = kind === 'camera' ? cameraStream : localStream;
     if (!stream) return;
+    // Com o interruptor desligado nao ha nada a calcular -- EXCETO quando
+    // ele acabou de ser desligado com uma arvore no ar: ai precisamos
+    // dissolve-la (todo mundo 'direct'), senao as folhas ficam cortadas da
+    // origem e sem relay. Quando nunca houve arvore, isto e zero-op e o
+    // comportamento de malha segue igual ao de sempre.
+    if (!cfg.network.tree && !hasActiveTree(kind)) return;
 
     const candidates = [];
     for (const [id, peer] of session.mesh.peers) {
       candidates.push({
         id,
-        joinedAt: peer.joinedAt || 0,
+        // LIMITACAO CONHECIDA (F2): `peer.rtt[kind]` so e alimentado por
+        // updateStats, que le statsFor -- e statsFor exige uma out-conn
+        // CONECTADA daquele kind. Assim que um peer vira 'folha', a origem
+        // fecha essa out-conn (closeOut) e para de medir: o RTT dele
+        // congela no ultimo valor visto (ou fica null, se ele virou folha
+        // antes da primeira amostra). Uma re-eleicao futura, portanto,
+        // julga as folhas por dado velho. Reotimizacao continua esta
+        // explicitamente fora de escopo no plano ("Fora de escopo:
+        // recomputo continuo por RTT"), e nao ha outra fonte de RTT
+        // origem->folha disponivel aqui (o caminho passa pelo relay). Fica
+        // registrado pra nao ser redescoberto como bug.
         rtt: peer.rtt?.[kind] ?? null,
+        joinedAt: peer.joinedAt || 0,
         transmitting: Boolean(peer.live),
         suspended: session.mesh.isPeerSuspended(id, kind),
+        relayIneligible: isRelayOnCooldown(kind, id),
       });
     }
     if (!candidates.length) return;
 
-    const assignments = tree.computeTree(myId, candidates);
+    const assignments = cfg.network.tree
+      ? tree.computeTree(myId, candidates)
+      : tree.allDirect(myId, candidates);
+
+    // Topologia identica a que ja esta no ar: nao mexe em nada. Antes o
+    // epoch subia de qualquer jeito e o 'tree' resultante mandava cada
+    // relay repassar de novo pros MESMOS filhos -- um transceiver (um
+    // encoder) a mais por evento de sala, e uma renegociacao (tela preta)
+    // em cada folha a cada entra-e-sai que nao tinha nada a ver com ela.
+    if (!force && tree.sameAssignments(assignments, originTree[kind].assignments)) return;
+
     const epoch = ++originTree[kind].epoch;
     originTree[kind].assignments = assignments;
     applyOriginAssignments(session, kind, assignments, epoch);
@@ -1275,14 +1559,34 @@
     const session = currentSession;
     const stream = kind === 'camera' ? cameraStream : localStream;
     if (!session?.mesh || !stream) return;
+
+    // PRIMEIRA coisa, antes de qualquer outra: zerar o slot da out-conn pro
+    // relay. Quando a causa e falha de CONEXAO (e nao o relay ter saido da
+    // sala), ninguem chamou removePeer -- a RTCPeerConnection morta continua
+    // em outConns[kind]. applyOriginAssignments so oferta pra quem NAO tem
+    // out-conn, entao, com o cadaver ali, uma re-eleicao que mantivesse este
+    // mesmo relay nunca mais lhe mandaria uma oferta, e as folhas que
+    // acabamos de reconectar seriam cortadas de novo pelo papel 'folha'.
+    // Resultado: todo mundo sem video, e nenhum evento restante pra
+    // consertar. closeOut aqui e o oposto de setPeerDemand: a conexao morre
+    // de verdade porque ela ja esta morta.
+    session.mesh.closeOut(relayId, kind);
+    // E veta este no como relay por um tempo, senao a re-eleicao logo abaixo
+    // o escolhe de novo (ver RELAY_FAILURE_COOLDOWN_MS).
+    recentRelayFailures[kind].set(relayId, Date.now());
+
     const orphans = originTree[kind].assignments.get(relayId)?.filhosIds || [];
     if (!orphans.length) {
-      recomputeTree(kind);
+      recomputeTree(kind, { force: true });
       return;
     }
-    const quality = kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    // Reconecta as orfas direto (malha) PRIMEIRO -- o video volta rapido --
+    // e so depois recalcula. `force` porque a conexao com o relay acabou de
+    // ser fechada: mesmo que a topologia calculada saia igual, ela precisa
+    // ser reaplicada pra que a oferta seja refeita.
+    const quality = qualityFor(kind);
     Promise.all(orphans.map((id) => session.mesh.offerTo(id, stream, quality, kind).catch(() => {})))
-      .then(() => recomputeTree(kind));
+      .then(() => recomputeTree(kind, { force: true }));
   }
 
   // Distribui os papeis calculados: manda 'tree' pra todo mundo (protocolo
@@ -1293,7 +1597,7 @@
   // relayTo (Task 5).
   function applyOriginAssignments(session, kind, assignments, epoch) {
     const stream = kind === 'camera' ? cameraStream : localStream;
-    const quality = kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    const quality = qualityFor(kind);
 
     for (const [peerId, assignment] of assignments) {
       session.sig.send({
@@ -1373,7 +1677,12 @@
       totalEncodeTime: 0,
       framesEncoded: 0,
       framesSent: 0,
-      rtt: 0,
+      // null (nao 0) porque "nenhum candidate-pair reportou RTT" e
+      // "reportou 0 ms" sao coisas diferentes -- 0 ms acontece de verdade
+      // em loopback/mesma maquina, e trata-lo como ausente descartaria a
+      // medida e ainda faria a eleicao de relay cair no desempate por
+      // joinedAt em vez de usar o melhor RTT que existe.
+      rtt: null,
     };
 
     report.forEach((stat) => {
@@ -1400,7 +1709,7 @@
         sample.codec = stat.mimeType.split('/')[1];
       }
       if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
-        sample.rtt = Math.max(sample.rtt, stat.currentRoundTripTime * 1000);
+        sample.rtt = Math.max(sample.rtt ?? 0, stat.currentRoundTripTime * 1000);
       }
     });
 
@@ -1453,7 +1762,9 @@
         const report = await activeMesh.statsFor(peerId, kind);
         if (!report) continue;
         const sample = readSenderReport(report);
-        (peer.rtt ||= {})[kind] = sample.rtt || peer.rtt?.[kind] || null;
+        // `??`, nao `||`: um RTT de 0 ms e uma medida valida (loopback /
+        // mesma maquina) e nao pode ser confundido com "sem amostra".
+        (peer.rtt ||= {})[kind] = sample.rtt ?? peer.rtt?.[kind] ?? null;
         if (!sample.framesEncoded && !sample.bytesSent) continue;
         const rates = deriveRates(`${peerId}:${kind}`, sample, now);
         rows.push({ peerId, kind, name: peer.name || `#${peerId}`, ...sample, ...rates });
@@ -1511,7 +1822,7 @@
             r.powerEfficient === false ? '<span class="stats-kind">não eficiente</span>' : ''
           }</td>
           <td>${r.mbps.toFixed(1)}</td>
-          <td>${r.rtt ? `${Math.round(r.rtt)} ms` : '-'}</td>
+          <td>${r.rtt != null ? `${Math.round(r.rtt)} ms` : '-'}</td>
           <td class="${dropped ? 'warn-text' : ''}">${dropped || '-'}</td>
         </tr>`;
       })
