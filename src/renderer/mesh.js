@@ -117,10 +117,11 @@
       }
 
       pc.addEventListener('connectionstatechange', () => {
-        if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && dir === 'in') {
-          onPeerState(peerId, { removedTile: true, kind });
+        const failed = ['failed', 'closed', 'disconnected'].includes(pc.connectionState);
+        if (failed && dir === 'in') {
+          onPeerState(peerId, { removedTile: true, kind, dir, failed });
         } else {
-          onPeerState(peerId, { kind });
+          onPeerState(peerId, { kind, dir, failed });
         }
       });
 

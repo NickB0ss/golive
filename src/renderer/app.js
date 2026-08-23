@@ -523,9 +523,12 @@
         const tileId = kind === 'camera' ? `cam-${peerId}` : peerId;
         ui.grid.showTile(tileId, peerName, stream, { avatar: peer?.avatar || null, kind });
       },
-      onPeerState: (peerId, { removedTile, kind }) => {
+      onPeerState: (peerId, { removedTile, kind, dir, failed }) => {
         if (currentSession !== session) return;
         if (removedTile) ui.grid.removeTile(kind === 'camera' ? `cam-${peerId}` : peerId, emptyMessage());
+        if (failed && dir === 'out' && originTree[kind]?.assignments.get(peerId)?.role === 'relay') {
+          recoverFromRelayLoss(kind, peerId);
+        }
         renderMembersPanel();
       },
     });
@@ -614,8 +617,13 @@
         sound.playLeaveSound();
         broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
         broadcastWatchers('camera');
-        recomputeTree('screen');
-        recomputeTree('camera');
+        for (const kind of ['screen', 'camera']) {
+          if (originTree[kind].assignments.get(msg.id)?.role === 'relay') {
+            recoverFromRelayLoss(kind, msg.id);
+          } else {
+            recomputeTree(kind);
+          }
+        }
         break;
       }
       case 'offer': {
@@ -1257,6 +1265,24 @@
     const epoch = ++originTree[kind].epoch;
     originTree[kind].assignments = assignments;
     applyOriginAssignments(session, kind, assignments, epoch);
+  }
+
+  // Um relay saiu da sala (ou a conexao origem->relay caiu): as folhas dele
+  // ficam orfas. Reconecta direto (malha) PRIMEIRO -- o video volta rapido
+  // -- e SO DEPOIS recalcula a arvore (que pode escolher um relay novo).
+  // Ver a spec de 2026-08-23, tabela de Recuperacao em F2.
+  function recoverFromRelayLoss(kind, relayId) {
+    const session = currentSession;
+    const stream = kind === 'camera' ? cameraStream : localStream;
+    if (!session?.mesh || !stream) return;
+    const orphans = originTree[kind].assignments.get(relayId)?.filhosIds || [];
+    if (!orphans.length) {
+      recomputeTree(kind);
+      return;
+    }
+    const quality = kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    Promise.all(orphans.map((id) => session.mesh.offerTo(id, stream, quality, kind).catch(() => {})))
+      .then(() => recomputeTree(kind));
   }
 
   // Distribui os papeis calculados: manda 'tree' pra todo mundo (protocolo

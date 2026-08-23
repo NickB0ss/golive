@@ -213,6 +213,13 @@ function installFakeWebRTC() {
       this.localDescription = desc;
       return Promise.resolve();
     }
+    setRemoteDescription(desc) {
+      this.remoteDescription = desc;
+      return Promise.resolve();
+    }
+    createAnswer() {
+      return Promise.resolve({ type: 'answer', sdp: 'v=0' });
+    }
     getSenders() {
       return this.senders;
     }
@@ -238,6 +245,50 @@ test('relayTo com stream recebida chama offerTo e manda offer pro filho', async 
   assert.equal(sent[0].type, 'offer');
   assert.equal(sent[0].to, 'folha');
   assert.equal(sent[0].kind, 'screen');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-conn pra relay)', () => {
+  // makeConnection nao e exportado -- exercita via ensureOutConn/ensureInConn,
+  // que criam RTCPeerConnection de verdade. Sem RTCPeerConnection no
+  // ambiente Node, isto so roda com o fake instalado (mesmo do teste
+  // anterior de relayTo).
+  installFakeWebRTC();
+  global.RTCPeerConnection.prototype.connectionState = 'failed';
+  // Estende o fake com addEventListener que guarda o listener de
+  // connectionstatechange pra disparar manualmente.
+  const listeners = [];
+  const OriginalCtor = global.RTCPeerConnection;
+  global.RTCPeerConnection = class extends OriginalCtor {
+    addEventListener(event, fn) {
+      if (event === 'connectionstatechange') listeners.push(fn);
+    }
+  };
+
+  const events = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, payload) => events.push({ peerId, ...payload }),
+  });
+  mesh.addPeer('7', 'Bruno');
+  mesh.peers.get('7'); // garante que o peer existe antes de abrir a conexao
+  const pc = mesh.peers.get('7').outConns.screen; // ainda nao existe -- ensureOutConn cria abaixo
+
+  // ensureOutConn nao e exportado; usa offerTo indiretamente via relayTo
+  // seria mais indireto -- em vez disso, cria a conexao via handleOffer
+  // (dir 'in') que E exportado, e cobre o mesmo trecho de connectionstatechange.
+  mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+
+  assert.equal(listeners.length, 1);
+  listeners[0](); // dispara connectionstatechange com pc.connectionState = 'failed'
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].dir, 'in');
+  assert.equal(events[0].failed, true);
+  assert.equal(events[0].removedTile, true);
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
