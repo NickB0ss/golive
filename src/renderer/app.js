@@ -12,7 +12,18 @@
   // way a late event from a torn-down or superseded session is a no-op
   // instead of throwing on stale/null state.
   let currentSession = null; // { sig, mesh } | null
+  const { tree } = window.GoLive;
   let myId = null;
+
+  // Topologia da arvore de retransmissao (F2), por kind -- so significativa
+  // quando ESTA sessao e a origem daquele kind (localStream/cameraStream
+  // existe). epoch sobe a cada recalculo, mesmo quando o resultado nao
+  // muda -- o pior caso e um recalculo redundante, nao uma atribuicao velha
+  // vencendo (ver a mensagem 'tree' em handleSignal, Task 5).
+  const originTree = {
+    screen: { epoch: 0, assignments: new Map() },
+    camera: { epoch: 0, assignments: new Map() },
+  };
   let localStream = null;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
@@ -577,10 +588,12 @@
         if (localStream) {
           await mesh.offerTo(msg.id, localStream, cfg.quality, 'screen');
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
+          recomputeTree('screen');
         }
         if (cameraStream) {
           await mesh.offerTo(msg.id, cameraStream, { ...cfg.camera, codec: 'video/VP8' }, 'camera');
           broadcastWatchers('camera');
+          recomputeTree('camera');
         }
         break;
       }
@@ -592,6 +605,8 @@
         sound.playLeaveSound();
         broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
         broadcastWatchers('camera');
+        recomputeTree('screen');
+        recomputeTree('camera');
         break;
       }
       case 'offer': {
@@ -980,6 +995,7 @@
       }
       if (currentSession !== session) return;
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
+      recomputeTree('screen');
 
       session.sig.send({ type: 'broadcast-state', live: true });
       $('btn-toggle-share').classList.add('active');
@@ -1044,6 +1060,7 @@
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera');
         }
         broadcastWatchers('camera'); // lista inicial: todo mundo conta como assistindo
+        recomputeTree('camera');
       }
     } finally {
       cameraStarting = false;
@@ -1152,6 +1169,65 @@
     const watchers = session.mesh.watchersOf(kind);
     ui.grid.setWatchers(kind === 'camera' ? 'cam-me' : 'me', watchers);
     if (session.sig.isOpen()) session.sig.send({ type: 'watchers', kind, watchers });
+  }
+
+  // ---------- Arvore de retransmissao (F2, spec de 2026-08-23) ----------
+
+  // So a origem chama isto, e so quando aquele kind esta ao vivo. Junta os
+  // candidatos (todo peer da sala, com o RTT mais recente medido nas
+  // estatisticas -- ver updateStats na Task 8) e delega o calculo puro pro
+  // modulo tree.js. Recalculo e discreto: peer entrou/saiu, ou comecamos a
+  // transmitir -- NAO a cada amostra de RTT (evitaria trocar de papel toda
+  // hora). Ver "Fora de escopo" no cabecalho deste plano.
+  function recomputeTree(kind) {
+    const session = currentSession;
+    if (!session?.mesh || !cfg.network.tree) return;
+    const stream = kind === 'camera' ? cameraStream : localStream;
+    if (!stream) return;
+
+    const candidates = [];
+    for (const [id, peer] of session.mesh.peers) {
+      candidates.push({
+        id,
+        joinedAt: peer.joinedAt || 0,
+        rtt: peer.rtt?.[kind] ?? null,
+        transmitting: Boolean(peer.live),
+        suspended: session.mesh.isPeerSuspended(id, kind),
+      });
+    }
+    if (!candidates.length) return;
+
+    const assignments = tree.computeTree(myId, candidates);
+    const epoch = ++originTree[kind].epoch;
+    originTree[kind].assignments = assignments;
+    applyOriginAssignments(session, kind, assignments, epoch);
+  }
+
+  // Distribui os papeis calculados: manda 'tree' pra todo mundo (protocolo
+  // exato da spec: { type, to, kind, origem, paiId, filhos, epoch }), e
+  // ajusta as outConns desta sessao pra bater com o papel de cada um.
+  // 'direct' e 'relay' recebem oferta direta (se ainda nao tiverem); quem
+  // virou 'folha' e cortado daqui -- quem vai mandar pra ele e o relay, via
+  // relayTo (Task 5).
+  function applyOriginAssignments(session, kind, assignments, epoch) {
+    const stream = kind === 'camera' ? cameraStream : localStream;
+    const quality = kind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+
+    for (const [peerId, assignment] of assignments) {
+      session.sig.send({
+        type: 'tree', to: peerId, kind,
+        origem: myId, paiId: assignment.paiId, filhos: assignment.filhosIds, epoch,
+      });
+
+      const hasOutConn = Boolean(session.mesh.peers.get(peerId)?.outConns[kind]);
+      if (assignment.role === 'direct' || assignment.role === 'relay') {
+        if (!hasOutConn) session.mesh.offerTo(peerId, stream, quality, kind).catch(() => {});
+      } else {
+        session.mesh.closeOut(peerId, kind);
+      }
+    }
+
+    broadcastWatchers(kind);
   }
 
   // ---------- Estatisticas ----------
