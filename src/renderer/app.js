@@ -1453,6 +1453,7 @@
         const report = await activeMesh.statsFor(peerId, kind);
         if (!report) continue;
         const sample = readSenderReport(report);
+        (peer.rtt ||= {})[kind] = sample.rtt || peer.rtt?.[kind] || null;
         if (!sample.framesEncoded && !sample.bytesSent) continue;
         const rates = deriveRates(`${peerId}:${kind}`, sample, now);
         rows.push({ peerId, kind, name: peer.name || `#${peerId}`, ...sample, ...rates });
