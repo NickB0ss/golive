@@ -155,18 +155,98 @@
     tileAudio.delete(id);
   }
 
+  // Motion #14, a transicao de maior alavancagem do app: o tile CRESCE ate
+  // virar fullscreen em vez de cortar seco. startViewTransition existe no
+  // Chromium 128 (Electron 32), entao nao precisa de polyfill nem de
+  // biblioteca.
+  //
+  // O `view-transition-name` so existe DURANTE a transicao: dois elementos
+  // com o mesmo nome ao mesmo tempo abortam a transicao inteira, e sair do
+  // fullscreen com outro tile ja marcado seria exatamente isso.
+  //
+  // ATENCAO, pendencia de verificacao da spec: view transitions tiram um
+  // snapshot do elemento, e <video> tocando pode piscar ou congelar um
+  // frame na captura. Se piscar na pratica, a alternativa e animar o
+  // transform do tile do retangulo de origem ate o de destino (FLIP).
   function toggleTileFullscreen(tile, id) {
-    const entering = !tile.classList.contains('fullscreen');
-    tile.classList.toggle('fullscreen', entering);
-    window.golive.setFullScreen(entering);
-    if (entering) {
-      fullscreenTileId = id;
-      renderPipStrip(tile);
-      scheduleFullscreenIdle(tile);
-    } else {
-      fullscreenTileId = null;
-      clearFullscreenIdle(tile);
+    const apply = () => {
+      const entering = !tile.classList.contains('fullscreen');
+      tile.classList.toggle('fullscreen', entering);
+      window.golive.setFullScreen(entering);
+      if (entering) {
+        fullscreenTileId = id;
+        renderPipStrip(tile);
+        scheduleFullscreenIdle(tile);
+      } else {
+        fullscreenTileId = null;
+        clearFullscreenIdle(tile);
+      }
+    };
+
+    if (!document.startViewTransition) return apply(); // fallback: corte seco, como antes
+
+    tile.style.viewTransitionName = 'tile';
+    const transition = document.startViewTransition(apply);
+    transition.finished.finally(() => {
+      tile.style.viewTransitionName = '';
+    });
+  }
+
+  // Pintura dos <video>. Um <video> pausado deixa de compor frames, mas a
+  // MediaStreamTrack por tras continua viva e sendo enviada -- pausar o
+  // elemento e parada de EXIBICAO, nao de captura nem de encode (que rodam
+  // no processo de GPU). E o que permite nao gastar GPU desenhando a propria
+  // tela dentro da propria tela enquanto o jogo esta por cima. Ver a spec de
+  // 2026-08-23, F1.4.
+  let paintingEnabled = true;
+
+  function applyPainting(video) {
+    if (!video) return;
+    if (paintingEnabled) video.play().catch(() => {});
+    else video.pause();
+  }
+
+  function setPainting(enabled) {
+    if (paintingEnabled === enabled) return;
+    paintingEnabled = enabled;
+    gridEl.querySelectorAll('video').forEach(applyPainting);
+  }
+
+  // Quem esta assistindo cada tile agora (F1.3 + o broadcast de
+  // 'watchers' em app.js) -- id do tile -> [{ id, name, avatar }]. Guardado
+  // aqui (nao so no DOM) porque a mensagem 'watchers' pode chegar antes do
+  // tile existir (renegociacao) ou depois dele ter sido recriado.
+  const tileWatchers = new Map();
+
+  function renderTileWatchers(tile, watchers) {
+    const el = tile?.querySelector('.tile-watchers');
+    if (!el) return;
+    if (!watchers?.length) {
+      el.classList.add('empty');
+      el.innerHTML = '';
+      return;
     }
+    el.classList.remove('empty');
+    el.innerHTML = `
+      <span class="tile-watchers-label">assistindo</span>
+      <ul class="tile-watchers-list">
+        ${watchers
+          .map(
+            (w) => `<li>
+              <span class="tile-watchers-avatar">${avatarInnerHtml(w.id, w.name, w.avatar)}</span>
+              <span class="tile-watchers-name">${escapeHtml(w.name || '?')}</span>
+            </li>`
+          )
+          .join('')}
+      </ul>`;
+  }
+
+  /** `tileId` e o id usado em showTile ('me'/'cam-me' pro proprio, peerId ou
+   * `cam-${peerId}` pro de um peer). `watchers` e a lista devolvida por
+   * mesh.watchersOf, ja carimbada com quem mandou (ver app.js). */
+  function setWatchers(tileId, watchers) {
+    tileWatchers.set(tileId, watchers || []);
+    renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
   }
 
   function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
@@ -182,6 +262,7 @@
         <span class="tile-avatar"></span>
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
+        <div class="tile-watchers empty"></div>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
@@ -198,6 +279,10 @@
         });
       }
       gridEl.appendChild(tile);
+      // Tile pode ter sido recriado (ex: renegociacao) depois de ja termos
+      // recebido um 'watchers' pra esse id -- sem isto o overlay ficaria
+      // vazio ate a proxima mudanca de audiencia.
+      renderTileWatchers(tile, tileWatchers.get(id));
     }
 
     const video = tile.querySelector('video');
@@ -223,6 +308,10 @@
     else if (kind === 'screen') badgeEl.title = 'Tela';
     else badgeEl.removeAttribute('title');
 
+    // Tile criado enquanto a janela esta oculta nasce pausado (o atributo
+    // autoplay do <video> tocaria sozinho, sem isto).
+    applyPainting(video);
+
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
   }
 
@@ -230,6 +319,7 @@
     document.getElementById(`tile-${id}`)?.remove();
     releaseTileAudio(id);
     tileRegistry.delete(id);
+    tileWatchers.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
     if (id === fullscreenTileId) {
@@ -536,7 +626,12 @@
 
   const peerListEl = $('peer-list');
 
-  const AVATAR_PALETTE = ['#f23f42', '#f0b232', '#23a55a', '#5865f2', '#eb459e', '#00a8fc'];
+  // Tons neutros com um traco de matiz, nao as seis cores saturadas do
+  // Discord que estavam aqui antes. O avatar diz QUEM, nao O QUE ESTA
+  // ACONTECENDO -- e neste tema cor saturada quer dizer uma coisa so:
+  // alguem esta ao vivo. Continua dando pra distinguir as pessoas de
+  // relance, sem competir com o unico sinal que importa.
+  const AVATAR_PALETTE = ['#3a4152', '#453c4e', '#4a3f39', '#38474a', '#444a38', '#4c3a41'];
 
   function avatarColorFor(id) {
     const str = String(id);
@@ -570,16 +665,22 @@
     return '';
   }
 
-  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf }) {
+  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, pulsing }) {
     const li = document.createElement('li');
     if (isSelf) li.classList.add('self');
     li.innerHTML = `
       <span class="peer-avatar-wrap">
         <span class="peer-avatar ${borderClass || ''}">${avatarInnerHtml(id, name, avatar)}</span>
-        ${live ? `<span class="peer-live-badge" title="Compartilhando tela">${SHARE_ICON}</span>` : ''}
       </span>
-      ${escapeHtml(name)}${isSelf ? ' <span class="peer-you-tag">(você)</span>' : ''}
-      ${live ? '<em>AO VIVO</em>' : ''}`;
+      <span class="peer-name">${escapeHtml(name)}${isSelf ? ' <span class="peer-you-tag">(você)</span>' : ''}</span>
+      ${
+        live
+          ? `<span class="peer-live-group">
+               <span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}</span>
+               <em>AO VIVO</em>
+             </span>`
+          : ''
+      }`;
     return li;
   }
 
@@ -592,9 +693,27 @@
       peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
       return;
     }
+    // O anel pulsante (motion #10) vai em UM so por vez: tres pulsos
+    // dessincronizados na mesma coluna viram ruido, e o proposito dele e ser
+    // o unico movimento em laco da interface. Quem ganha e o primeiro da
+    // lista que esta ao vivo -- voce mesmo, se for o caso.
+    let pulseTaken = false;
+    const claimPulse = (live) => {
+      if (!live || pulseTaken) return false;
+      pulseTaken = true;
+      return true;
+    };
+
     if (self) {
       peerListEl.appendChild(
-        buildMemberRow({ id: 'me', name: self.name || 'anônimo', avatar: self.avatar, live: self.live, isSelf: true })
+        buildMemberRow({
+          id: 'me',
+          name: self.name || 'anônimo',
+          avatar: self.avatar,
+          live: self.live,
+          isSelf: true,
+          pulsing: claimPulse(self.live),
+        })
       );
     }
     for (const peer of peers.values()) {
@@ -602,7 +721,14 @@
         || peer.inConns?.camera?.connectionState || peer.outConns?.camera?.connectionState;
       const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
       peerListEl.appendChild(
-        buildMemberRow({ id: peer.id, name: peer.name, avatar: peer.avatar, borderClass, live: peer.live })
+        buildMemberRow({
+          id: peer.id,
+          name: peer.name,
+          avatar: peer.avatar,
+          borderClass,
+          live: peer.live,
+          pulsing: claimPulse(peer.live),
+        })
       );
     }
   }
@@ -686,12 +812,51 @@
     stats: $('settings-stats'),
   };
 
+  // Indicador deslizante (motion #8). O CSS desenha UM retangulo em
+  // ::before/::after e o JS so escreve onde ele fica; a transicao acontece
+  // em `transform`, nunca em `top`/`left`.
+  //
+  // `animate` = false na abertura do modal: sem isso o indicador desliza
+  // sozinho da posicao anterior toda vez que o dialogo abre, o que e
+  // movimento sem acao do usuario -- justamente o anti-padrao.
+  function moveIndicator(container, active, axis, animate = true) {
+    if (!container) return;
+    if (!active) {
+      container.style.setProperty(axis === 'y' ? '--nav-ind-o' : '--tab-ind-o', '0');
+      return;
+    }
+    const prev = container.style.transition;
+    if (!animate) container.style.transition = 'none';
+    if (axis === 'y') {
+      container.style.setProperty('--nav-ind-y', `${active.offsetTop}px`);
+      container.style.setProperty('--nav-ind-h', `${active.offsetHeight}px`);
+      container.style.setProperty('--nav-ind-o', '1');
+    } else {
+      container.style.setProperty('--tab-ind-x', `${active.offsetLeft}px`);
+      // Sem unidade: e um fator de scaleX sobre uma barra de 1px, nao uma
+      // largura -- animar `width` seria animar layout (ver o CSS).
+      container.style.setProperty('--tab-ind-w', String(active.offsetWidth));
+      container.style.setProperty('--tab-ind-o', '1');
+    }
+    if (!animate) {
+      void container.offsetWidth; // força o layout antes de devolver a transicao
+      container.style.transition = prev;
+    }
+  }
+
+  const settingsNavEl = document.querySelector('.settings-nav');
+
+  function syncSettingsIndicator(animate = true) {
+    moveIndicator(settingsNavEl, settingsCatButtons.find((b) => b.classList.contains('active')), 'y', animate);
+  }
+
   settingsCatButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       settingsCatButtons.forEach((b) => b.classList.toggle('active', b === btn));
       Object.entries(settingsPanes).forEach(([cat, pane]) =>
         pane.classList.toggle('hidden', cat !== btn.dataset.cat)
       );
+      syncSettingsIndicator();
     });
   });
 
@@ -740,7 +905,25 @@
 
   function closeSettings() {
     settingsModalEl.classList.add('hidden');
+    restoreFocusAfterModal();
     stopSettingsCameraPreview();
+  }
+
+  // Gestao de foco dos modais (§5.6). Antes nao havia nenhuma: abrir um
+  // dialogo deixava o foco no botao que ficou escondido atras do overlay,
+  // entao um Tab levava pra tras da caixa em vez de pra dentro dela.
+  const FOCUSABLE =
+    'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  let lastFocusedBeforeModal = null;
+
+  function focusFirstInteractive(modalEl) {
+    lastFocusedBeforeModal = document.activeElement;
+    modalEl.querySelector(FOCUSABLE)?.focus();
+  }
+
+  function restoreFocusAfterModal() {
+    lastFocusedBeforeModal?.focus?.();
+    lastFocusedBeforeModal = null;
   }
 
   function bandwidthLine(quality) {
@@ -840,6 +1023,11 @@
     }
 
     settingsModalEl.classList.remove('hidden');
+    // Sem animar: o indicador aparece ja no lugar em vez de deslizar sozinho
+    // toda vez que o dialogo abre. offsetTop/offsetHeight so valem depois de
+    // o modal sair de display:none, dai a leitura ser aqui.
+    syncSettingsIndicator(false);
+    focusFirstInteractive(settingsModalEl);
     startSettingsCameraPreview($('settings-camera-device').value);
   }
 
@@ -853,6 +1041,7 @@
   const pickerEl = $('picker');
   const pickerGridEl = $('picker-grid');
   const pickerTabsEl = $('picker-tabs');
+  const pickerWindowHintEl = $('picker-window-hint');
   const pickerQualityPresetEl = $('picker-quality-preset');
   const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
   const shareSoundEl = $('share-sound');
@@ -924,64 +1113,26 @@
     pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.remove('active'));
     btn.classList.add('active');
     pickerTab = btn.dataset.tab;
+    syncPickerIndicator();
+    syncWindowHint();
     renderPickerGrid();
   });
 
-  // A 2a checkbox ("incluir o som do Discord") so faz sentido com a 1a
-  // ligada -- some junto, e some desmarcada tambem (nao fica um estado
-  // "incluir Discord" escondido e ativo por baixo dos panos).
-  shareSoundEl.addEventListener('change', () => {
-    shareDiscordRowEl.classList.toggle('hidden', !shareSoundEl.checked);
-    if (!shareSoundEl.checked) shareDiscordEl.checked = false;
-  });
+  function syncPickerIndicator(animate = true) {
+    moveIndicator(pickerTabsEl, pickerTabsEl.querySelector('.picker-tab.active'), 'x', animate);
+  }
 
-  $('picker-cancel').addEventListener('click', () => pickerEl.classList.add('hidden'));
-
-  // Esc fecha o dialogo (sem iniciar nada) e Enter inicia a transmissao --
-  // so quando o dialogo esta aberto e (pro Enter) ja tem uma fonte
-  // selecionada, senao o botao "Ir ao vivo" tambem estaria desabilitado.
-  document.addEventListener('keydown', (event) => {
-    if (pickerEl.classList.contains('hidden')) return;
-    if (event.key === 'Escape') {
-      pickerEl.classList.add('hidden');
-    } else if (event.key === 'Enter' && !btnGoLiveEl.disabled) {
-      btnGoLiveEl.click();
-    }
-  });
-
-  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange }) {
-    selectedSourceId = null;
-    btnGoLiveEl.disabled = true;
-    pickerTab = 'screen';
-    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
-    pickerGridEl.innerHTML = '';
-    pickerQualityPresetEl.value = quality.preset;
-    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
-    pickerOnQualityChange = onQualityChange;
-    shareSoundEl.checked = true;
-    shareDiscordEl.checked = false;
-    shareDiscordRowEl.classList.remove('hidden');
-    // Sem o addon nativo (Windows apenas), nao ha como excluir o Discord do
-    // audio capturado -- a checkbox nao teria efeito nenhum, entao fica
-    // desabilitada em vez de prometer algo que nao entrega.
-    shareDiscordEl.disabled = !nativeAudioAvailable;
-    shareDiscordRowEl.title = nativeAudioAvailable
-      ? ''
-      : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
-
-    btnGoLiveEl.onclick = () => {
-      pickerEl.classList.add('hidden');
-      onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
-    };
-
-    // O dialogo aparece na hora e as fontes entram conforme chegam -- antes
-    // ele so era exibido depois de capturar o thumbnail de TODAS as telas e
-    // janelas, o que dava a impressao de que o clique nao tinha funcionado.
+  // sources:list captura e codifica em PNG uma miniatura de CADA janela
+  // aberta -- um pico de trabalho no instante exato em que a pessoa vai
+  // transmitir, ou seja, com o jogo aberto. Por isso roda uma vez por
+  // abertura do dialogo (trocar de aba nao recarrega: renderPickerGrid
+  // filtra a lista ja em memoria) e so repete quando o usuario pede.
+  // Ver a spec de 2026-08-23, F1.6.
+  function loadPickerSources() {
     const run = ++pickerRun;
     pickerSources = [];
     pickerLoading = { screen: true, window: true };
     renderPickerGrid();
-    pickerEl.classList.remove('hidden');
 
     // Telas primeiro (sao poucas e rapidas, e e a aba que abre selecionada);
     // as janelas, que sao a parte cara, chegam depois sem segurar o resto.
@@ -1000,10 +1151,89 @@
     window.golive.listSources(['window']).then(absorb('window'), fail('window'));
   }
 
+  // Uma fonte selecionada some se ela nao existir mais na lista nova, entao
+  // o botao "Ir ao vivo" volta a ficar desabilitado -- melhor do que
+  // transmitir uma janela que acabou de fechar.
+  $('picker-refresh').addEventListener('click', () => {
+    selectedSourceId = null;
+    btnGoLiveEl.disabled = true;
+    loadPickerSources();
+  });
+
+  // Capturar uma janela cai no caminho GDI/BitBlt do Chromium, que codifica
+  // na CPU e devolve tela preta em fullscreen exclusivo -- ver a spec de
+  // 2026-08-23, F1.2. A dica so aparece na aba onde a escolha errada mora.
+  function syncWindowHint() {
+    pickerWindowHintEl?.classList.toggle('hidden', pickerTab !== 'window');
+  }
+
+  // A 2a checkbox ("incluir o som do Discord") so faz sentido com a 1a
+  // ligada -- some junto, e some desmarcada tambem (nao fica um estado
+  // "incluir Discord" escondido e ativo por baixo dos panos).
+  shareSoundEl.addEventListener('change', () => {
+    shareDiscordRowEl.classList.toggle('hidden', !shareSoundEl.checked);
+    if (!shareSoundEl.checked) shareDiscordEl.checked = false;
+  });
+
+  function closePicker() {
+    pickerEl.classList.add('hidden');
+    restoreFocusAfterModal();
+  }
+
+  $('picker-cancel').addEventListener('click', closePicker);
+
+  // Esc fecha o dialogo (sem iniciar nada) e Enter inicia a transmissao --
+  // so quando o dialogo esta aberto e (pro Enter) ja tem uma fonte
+  // selecionada, senao o botao "Ir ao vivo" tambem estaria desabilitado.
+  document.addEventListener('keydown', (event) => {
+    if (pickerEl.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      closePicker();
+    } else if (event.key === 'Enter' && !btnGoLiveEl.disabled) {
+      btnGoLiveEl.click();
+    }
+  });
+
+  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange }) {
+    selectedSourceId = null;
+    btnGoLiveEl.disabled = true;
+    pickerTab = 'screen';
+    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
+    syncWindowHint();
+    pickerGridEl.innerHTML = '';
+    pickerQualityPresetEl.value = quality.preset;
+    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
+    pickerOnQualityChange = onQualityChange;
+    shareSoundEl.checked = true;
+    shareDiscordEl.checked = false;
+    shareDiscordRowEl.classList.remove('hidden');
+    // Sem o addon nativo (Windows apenas), nao ha como excluir o Discord do
+    // audio capturado -- a checkbox nao teria efeito nenhum, entao fica
+    // desabilitada em vez de prometer algo que nao entrega.
+    shareDiscordEl.disabled = !nativeAudioAvailable;
+    shareDiscordRowEl.title = nativeAudioAvailable
+      ? ''
+      : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
+
+    btnGoLiveEl.onclick = () => {
+      closePicker();
+      onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
+    };
+
+    // O dialogo aparece na hora e as fontes entram conforme chegam -- antes
+    // ele so era exibido depois de capturar o thumbnail de TODAS as telas e
+    // janelas, o que dava a impressao de que o clique nao tinha funcionado.
+    pickerEl.classList.remove('hidden');
+    // offsetLeft/offsetWidth so valem depois de sair de display:none.
+    syncPickerIndicator(false);
+    focusFirstInteractive(pickerEl);
+    loadPickerSources();
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile },
+    grid: { showTile, removeTile, setPainting, setWatchers },
     members: { render: renderMembers },
     rooms: { render: renderRooms },
     stageHeader: { set: setStageHeader, clear: clearStageHeader },

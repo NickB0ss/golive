@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld('golive', {
   onFullScreenChange: (callback) =>
     ipcRenderer.on('window:fullscreen-changed', (_event, enabled) => callback(enabled)),
 
+  /** Avisa quando a janela e minimizada/restaurada (ou escondida/mostrada).
+   * O renderer usa isso pra parar de pintar o que ninguem esta vendo --
+   * sem tocar na captura nem no encode, que rodam no processo de GPU. */
+  onWindowVisibilityChange: (callback) =>
+    ipcRenderer.on('window:visibility-changed', (_event, visible) => callback(visible)),
+
   /** PID "raiz" do Discord rodando agora, ou 0 se nao estiver rodando ou o
    * addon nativo nao estiver disponivel (so existe no Windows). */
   findDiscordPid: () => ipcRenderer.invoke('audio:findDiscordPid'),

@@ -76,9 +76,16 @@ function createSignalingServer({ port }) {
               break;
             }
 
+            // Encaminhamento direto peer-a-peer: o servidor nao interpreta
+            // nada, so entrega ao destinatario carimbando quem mandou.
+            // 'view-state' e o espectador dizendo se esta ou nao assistindo
+            // (F1.3); 'tree' e a origem distribuindo papeis da arvore de
+            // retransmissao (F2). Ver a spec de 2026-08-23.
             case 'offer':
             case 'answer':
-            case 'ice': {
+            case 'ice':
+            case 'view-state':
+            case 'tree': {
               const target = peers.get(String(msg.to));
               if (!target) return;
               send(target.ws, { ...msg, from: id });
@@ -93,6 +100,23 @@ function createSignalingServer({ port }) {
                 id,
                 name: me.name,
                 live: Boolean(msg.live),
+              });
+              break;
+            }
+
+            // Quem esta transmitindo avisa a SALA INTEIRA (nao so quem
+            // pediu) quem esta de fato assistindo aquele kind agora -- e o
+            // que permite ao dono de qualquer tile (nao so o host) desenhar
+            // "quem esta assistindo" no proprio tile, mesmo pra quem nao e o
+            // remetente do view-state que mudou a lista.
+            case 'watchers': {
+              const me = peers.get(id);
+              if (!me) return;
+              broadcastToRoom(me.room, id, {
+                type: 'watchers',
+                from: id,
+                kind: msg.kind,
+                watchers: Array.isArray(msg.watchers) ? msg.watchers : [],
               });
               break;
             }
