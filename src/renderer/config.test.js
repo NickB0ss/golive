@@ -69,3 +69,19 @@ test('cameraConstraints usa a config de camera', () => {
     frameRate: { ideal: 30, max: 30 },
   });
 });
+
+test('network.tree comeca desligado e config antigo migra pra false', () => {
+  const fresh = load(null);
+  assert.equal(fresh.network.tree, false);
+
+  const old = serialize({ ...DEFAULTS, network: { advertise: true } }); // sem 'tree'
+  const cfg = load(old);
+  assert.equal(cfg.network.tree, false);
+  assert.equal(cfg.network.advertise, true);
+});
+
+test('network.tree e preservado quando ja esta salvo como true', () => {
+  const saved = serialize({ ...DEFAULTS, network: { advertise: true, tree: true } });
+  const cfg = load(saved);
+  assert.equal(cfg.network.tree, true);
+});
