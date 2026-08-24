@@ -56,6 +56,7 @@
     },
     network: {
       advertise: true,
+      tree: false,
     },
   };
 
