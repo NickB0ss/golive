@@ -100,11 +100,25 @@ contextBridge.exposeInMainWorld('golive', {
       callback(captureId, samples, channels, sampleRate)
     ),
 
-  /** Status do auto-updater: { status, info?, progress?, message? }, status
-   * em 'checking' | 'available' | 'not-available' | 'downloading' |
-   * 'downloaded' | 'error'. So dispara em build empacotado. */
+  /** Status do updater: { status, manual, version?, progress?, message? },
+   * status em 'checking' | 'available' | 'not-available' | 'downloading' |
+   * 'downloaded' | 'error'. `manual` diz se o ciclo partiu do botao de
+   * buscar. */
   onUpdateStatus: (callback) =>
     ipcRenderer.on('update:status', (_event, payload) => callback(payload)),
+
+  /** Dispara uma busca manual por atualizacao (nao baixa nada). */
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+
+  /** Comeca a baixar a atualizacao ja detectada (botao "Reiniciar e
+   * instalar"). O progresso chega pelos eventos 'downloading'. */
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+
+  /** Fecha o app, instala o pacote baixado e reabre na versao nova. */
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+
+  /** Versao desta instalacao (ex: '0.1.6'). */
+  getVersion: () => ipcRenderer.invoke('app:version'),
 
   /** Abre a pasta de logs desta instalacao no explorador de arquivos, pra
    * mandar pra quem for investigar um bug depois. */

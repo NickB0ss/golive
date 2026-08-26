@@ -206,7 +206,7 @@ app.whenReady().then(() => {
     logger.log(`update: ${payload.status}${payload.message ? ' -- ' + payload.message : ''}`);
     if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
   });
-  updater.checkForUpdates();
+  updater.checkForUpdates(false); // check no boot, mas sem baixar nada
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -343,6 +343,24 @@ ipcMain.handle('discovery:refresh', async () => {
   if (wasAdvertising) advertiseHostedRoom();
   return true;
 });
+
+// Atualizacao: o renderer dirige o fluxo. 'check' e disparado tanto no boot
+// (main, manual=false) quanto pelo botao de buscar (manual=true); 'download'
+// so pelo botao "Reiniciar e instalar"; 'install' quando o download termina.
+ipcMain.handle('update:check', () => {
+  updater?.checkForUpdates(true);
+  return true;
+});
+ipcMain.handle('update:download', () => {
+  updater?.downloadUpdate();
+  return true;
+});
+ipcMain.handle('update:install', () => {
+  updater?.quitAndInstall();
+  return true;
+});
+
+ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('window:setFullScreen', (_event, enabled) => {
   win?.setFullScreen(!!enabled);

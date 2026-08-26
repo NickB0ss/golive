@@ -319,21 +319,85 @@
     renderRoomList();
   });
 
-  // Auto-update: so um aviso discreto e passivo. A instalacao em si acontece
-  // sozinha quando o app fecha (autoInstallOnAppQuit, ver main/updater.js) --
-  // sem procedimento nenhum pra pedir: a proxima vez que abrir ja esta na
-  // versao nova.
-  window.golive.onUpdateStatus?.(({ status }) => {
-    const banner = $('update-banner');
-    const text = $('update-banner-text');
-    if (status === 'downloaded') {
-      banner.classList.remove('hidden');
-      text.textContent = 'Atualização baixada — será aplicada da próxima vez que o app fechar.';
-    } else if (status === 'downloading') {
-      banner.classList.remove('hidden');
-      text.textContent = 'Baixando atualização…';
+  // Atualizacao: fluxo explicito. O check roda no boot e quando a pessoa
+  // aperta o botao de buscar (#btn-check-update). Nada e baixado ate o clique
+  // em "Reiniciar e instalar"; quando o download termina, instala e reinicia
+  // sozinho. Ver main/updater.js e a spec de 2026-08-26.
+  let updateVersionAtual = null;
+  Promise.resolve(window.golive.getVersion?.()).then((v) => { updateVersionAtual = v || null; }).catch(() => {});
+
+  const btnCheckUpdate = $('btn-check-update');
+  const spinCheck = (on) => {
+    btnCheckUpdate.classList.remove('spin');
+    if (on) {
+      void btnCheckUpdate.offsetWidth; // reflow: reinicia a animacao
+      btnCheckUpdate.classList.add('spin');
+    }
+  };
+
+  function showUpdateBanner({ text, action = false, progress = null, indeterminate = false }) {
+    $('update-banner').classList.remove('hidden');
+    $('update-banner-text').textContent = text;
+    $('update-banner-action').classList.toggle('hidden', !action);
+    const wrap = $('update-progress');
+    const fill = $('update-progress-fill');
+    const showBar = progress != null || indeterminate;
+    wrap.classList.toggle('hidden', !showBar);
+    fill.classList.toggle('indeterminate', indeterminate);
+    if (progress != null) fill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+  }
+
+  window.golive.onUpdateStatus?.((payload) => {
+    const { status, manual, version, progress } = payload || {};
+    switch (status) {
+      case 'checking':
+        if (manual) spinCheck(true);
+        break;
+      case 'available':
+        spinCheck(false);
+        showUpdateBanner({ text: `Atualização ${version || 'nova'} disponível.`, action: true });
+        break;
+      case 'downloading':
+        showUpdateBanner({ text: `Baixando atualização… ${progress ?? 0}%`, progress: progress ?? 0 });
+        break;
+      case 'downloaded':
+        showUpdateBanner({ text: 'Instalando atualização…', indeterminate: true });
+        window.golive.installUpdate?.();
+        break;
+      case 'not-available':
+        spinCheck(false);
+        if (manual) showToast(`Você já está na versão mais recente${updateVersionAtual ? ` (${updateVersionAtual})` : ''}.`);
+        break;
+      case 'error':
+        spinCheck(false);
+        if (manual) showToast('Não consegui verificar a atualização. Tente de novo mais tarde.');
+        break;
+      default:
+        break;
     }
   });
+
+  $('update-banner-action').addEventListener('click', () => {
+    $('update-banner-action').classList.add('hidden');
+    showUpdateBanner({ text: 'Baixando atualização… 0%', progress: 0 });
+    window.golive.downloadUpdate?.();
+  });
+
+  btnCheckUpdate.addEventListener('click', () => {
+    spinCheck(true);
+    window.golive.checkForUpdates?.();
+  });
+
+  let toastTimer = null;
+  function showToast(msg, ms = 4000) {
+    $('toast-text').textContent = msg;
+    $('toast').classList.remove('hidden');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      $('toast').classList.add('hidden');
+      toastTimer = null;
+    }, ms);
+  }
 
   $('btn-refresh-discovery').addEventListener('click', () => {
     const btn = $('btn-refresh-discovery');
@@ -689,7 +753,6 @@
     teardownSession(session);
     markCooldown(leavingAddress);
     renderRoomList();
-    renderUpdateBanner();
   }
   $('btn-disconnect').addEventListener('click', () => {
     if (cooldownRemaining(activeRoomAddress) > 0) return;

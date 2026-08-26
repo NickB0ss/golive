@@ -194,14 +194,11 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   height: 100vh;
 }
 
-.update-banner {
+.update-banner, .toast {
   position: fixed;
   z-index: 1000;
   right: 16px;
   bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -218,8 +215,43 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   opacity: 1;
   transform: translateY(0);
 }
+/* O banner empilha texto / botao / barra; o toast e so uma linha. */
+.update-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+/* Se os dois aparecerem juntos (ex: erro de download com o banner ainda na
+   tela), o toast fica por cima e some sozinho em segundos. */
+.toast { z-index: 1001; }
 @starting-style {
-  .update-banner { opacity: 0; transform: translateY(12px); }
+  .update-banner, .toast { opacity: 0; transform: translateY(12px); }
+}
+
+.update-progress {
+  height: 4px;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%;
+  width: 0%;
+  /* A marca nao e sinal (ver regra do acento no topo): barra em cor neutra. */
+  background: var(--text-1);
+  border-radius: inherit;
+  transition: width 120ms linear;
+}
+.update-progress-fill.indeterminate {
+  width: 40% !important;
+  transition: none;
+  animation: update-progress-slide 1.1s ease-in-out infinite;
+}
+@keyframes update-progress-slide {
+  0%   { margin-left: -40%; }
+  100% { margin-left: 100%; }
 }
 
 .rooms-col, .members-col {
@@ -249,7 +281,7 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   font-size: 12px;
   flex: none;
 }
-.app-brand-name { font-weight: 700; font-size: 14px; }
+.app-brand-name { font-weight: 700; font-size: 14px; margin-right: auto; }
 
 .rooms-title {
   font-size: 11px;
