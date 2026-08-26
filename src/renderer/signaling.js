@@ -17,7 +17,7 @@
       onMessage(data);
     });
     ws.addEventListener('error', () => onError && onError());
-    ws.addEventListener('close', () => onClose && onClose());
+    ws.addEventListener('close', (event) => onClose && onClose({ code: event.code, reason: event.reason, wasClean: event.wasClean }));
 
     return {
       send(payload) {

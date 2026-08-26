@@ -3,9 +3,11 @@
  *
  * So faz sentido em build empacotado (app.isPackaged) -- em dev nao ha
  * instalador nenhum pra aplicar. O download roda em background assim que
- * uma versao nova e encontrada; a instalacao (que precisa fechar o app) fica
- * a cargo do renderer, via applyUpdateAndRestart, pra nao derrubar o usuario
- * no meio de uma transmissao.
+ * uma versao nova e encontrada; com autoInstallOnAppQuit, a instalacao
+ * acontece sozinha quando o app fecha (nsis.oneClick, ver package.json,
+ * garante que roda silenciosa, sem o assistente de "escolher pasta e
+ * avancar") -- o usuario so precisa abrir o app de novo pra estar na versao
+ * nova, sem nenhum procedimento no meio.
  */
 
 'use strict';
@@ -20,13 +22,13 @@ const { app } = require('electron');
  * `progress` (0-100) e mandado junto durante 'downloading'.
  */
 function setupAutoUpdater(onStatus) {
-  if (!app.isPackaged) return { checkForUpdates: () => {}, quitAndInstall: () => {} };
+  if (!app.isPackaged) return { checkForUpdates: () => {} };
 
   // Import tardio: electron-updater loga bastante no require, sem valor em
   // dev.
   const { autoUpdater } = require('electron-updater');
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => onStatus({ status: 'checking' }));
   autoUpdater.on('update-available', (info) => onStatus({ status: 'available', info }));
@@ -39,7 +41,6 @@ function setupAutoUpdater(onStatus) {
 
   return {
     checkForUpdates: () => autoUpdater.checkForUpdates().catch(() => {}),
-    quitAndInstall: () => autoUpdater.quitAndInstall(),
   };
 }
 

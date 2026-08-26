@@ -56,7 +56,14 @@
     },
     network: {
       advertise: true,
-      tree: false,
+      // Retransmissao em cadeia (F2): sem opcao de desligar na UI -- a
+      // medida no PC real (ver spec de 2026-08-23) mostrou que a malha
+      // direta derruba o encoder pra software com poucos espectadores, e
+      // isso nao e algo que uma pessoa comum deveria precisar entender ou
+      // escolher. Forcado em `load()` abaixo, independente do que estiver
+      // salvo (config antigo pode ter `tree: false` de quando isto ainda
+      // era experimental).
+      tree: true,
     },
   };
 
@@ -102,7 +109,7 @@
       avatar: typeof parsed.avatar === 'string' ? parsed.avatar : DEFAULTS.avatar,
       quality: loadQuality(parsed.quality),
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
-      network: mergeSection(DEFAULTS.network, parsed.network),
+      network: { ...mergeSection(DEFAULTS.network, parsed.network), tree: true },
     };
   }
 

@@ -101,7 +101,7 @@ contextBridge.exposeInMainWorld('golive', {
   onUpdateStatus: (callback) =>
     ipcRenderer.on('update:status', (_event, payload) => callback(payload)),
 
-  /** Instala a atualizacao ja baixada e reinicia o app. So chamar depois de
-   * 'downloaded' e com a confirmacao do usuario. */
-  installUpdate: () => ipcRenderer.invoke('update:install'),
+  /** Abre a pasta de logs desta instalacao no explorador de arquivos, pra
+   * mandar pra quem for investigar um bug depois. */
+  openLogsFolder: () => ipcRenderer.invoke('logs:openFolder'),
 });

@@ -70,18 +70,18 @@ test('cameraConstraints usa a config de camera', () => {
   });
 });
 
-test('network.tree comeca desligado e config antigo migra pra false', () => {
+test('network.tree comeca ligado e config antigo migra pra true', () => {
   const fresh = load(null);
-  assert.equal(fresh.network.tree, false);
+  assert.equal(fresh.network.tree, true);
 
   const old = serialize({ ...DEFAULTS, network: { advertise: true } }); // sem 'tree'
   const cfg = load(old);
-  assert.equal(cfg.network.tree, false);
+  assert.equal(cfg.network.tree, true);
   assert.equal(cfg.network.advertise, true);
 });
 
-test('network.tree e preservado quando ja esta salvo como true', () => {
-  const saved = serialize({ ...DEFAULTS, network: { advertise: true, tree: true } });
+test('network.tree ignora false salvo por uma versao antiga (nao e mais opcional)', () => {
+  const saved = serialize({ ...DEFAULTS, network: { advertise: true, tree: false } });
   const cfg = load(saved);
   assert.equal(cfg.network.tree, true);
 });

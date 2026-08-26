@@ -8,7 +8,7 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell } = require('electron');
 const path = require('path');
 
 // TODAS as features do Chromium tem que sair daqui, numa lista so:
@@ -75,6 +75,16 @@ const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
 const { createDiscovery } = require('./main/discovery');
 const { setupAutoUpdater } = require('./main/updater');
+const { setupLogger } = require('./main/logger');
+
+// Criado cedo (antes de whenReady) pra pegar exceptions que acontecam
+// durante a inicializacao tambem. app.getPath('userData') ja funciona
+// aqui -- so depende do appId, fixado no topo deste arquivo via app info
+// implicita do Electron.
+const logger = setupLogger();
+logger.log(`GoLive iniciando -- versao ${app.getVersion()}, log em ${logger.path}`);
+process.on('uncaughtException', (err) => logger.error('uncaughtException no main:', err?.stack || err));
+process.on('unhandledRejection', (err) => logger.error('unhandledRejection no main:', err?.stack || err));
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
@@ -142,6 +152,27 @@ function createWindow() {
   win.on('restore', () => sendVisibility(true));
   win.on('show', () => sendVisibility(true));
   win.on('hide', () => sendVisibility(false));
+
+  // Instrumentacao pro relato de "saiu da sala sozinho, sem crash visivel":
+  // se o renderer cair ou travar sob carga (encoder de software pegando a
+  // CPU), isso fecha a conexao de sinalizacao sem deixar rastro nenhum hoje.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    logger.error(`renderer caiu: reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+  win.webContents.on('unresponsive', () => {
+    logger.error('renderer ficou sem responder (unresponsive)');
+  });
+  win.webContents.on('responsive', () => {
+    logger.error('renderer voltou a responder');
+  });
+  // Todo console.log/warn/error do renderer (inclusive o [signaling] conexao
+  // fechada... de app.js) cai aqui tambem -- sem isto so aparecia no DevTools,
+  // que ninguem deixa aberto compartilhando tela.
+  win.webContents.on('console-message', (_event, level, message) => {
+    const LEVELS = ['log', 'info', 'warn', 'error'];
+    logger[level >= 2 ? 'error' : 'log'](`[renderer:${LEVELS[level] || level}] ${message}`);
+  });
+
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -172,6 +203,7 @@ app.whenReady().then(() => {
   ensureDiscoveryStarted();
 
   updater = setupAutoUpdater((payload) => {
+    logger.log(`update: ${payload.status}${payload.message ? ' -- ' + payload.message : ''}`);
     if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
   });
   updater.checkForUpdates();
@@ -306,11 +338,10 @@ ipcMain.handle('window:setFullScreen', (_event, enabled) => {
   return true;
 });
 
-// Instala a atualizacao ja baixada e reinicia. So chamado pelo renderer
-// depois de confirmar com o usuario (ex: fora de uma chamada ativa) --
-// nao dispara sozinho ao terminar o download.
-ipcMain.handle('update:install', () => {
-  updater?.quitAndInstall();
+// Abre a pasta de logs no explorador de arquivos -- pra mandar pra quem for
+// investigar um bug depois (ver golive #12).
+ipcMain.handle('logs:openFolder', () => {
+  shell.openPath(logger.dir);
   return true;
 });
 

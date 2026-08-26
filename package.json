@@ -1,6 +1,6 @@
 {
   "name": "golive-lan",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Compartilhamento de tela 1080p60 na LAN virtual (Radmin VPN / Tailscale)",
   "main": "src/main.js",
   "scripts": {
@@ -42,8 +42,8 @@
       "target": "nsis"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
       "createDesktopShortcut": true,
       "shortcutName": "GoLive LAN"
     }
