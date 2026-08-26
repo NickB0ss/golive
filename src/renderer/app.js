@@ -675,10 +675,15 @@
     sound.playLeaveSound();
     const session = currentSession;
     const leavingAddress = activeRoomAddress;
+    const wasHosting = !!hostInfo;
     currentSession = null;
     activeRoomAddress = null;
     hostInfo = null;
     session.sig?.close();
+    // Se a sala era nossa, derruba o servidor embutido e o anuncio UDP junto
+    // -- senao ela continua aparecendo em "Ao vivo agora" pros outros mesmo
+    // vazia, ate o app fechar.
+    if (wasHosting) window.golive.stopHosting?.().catch(() => {});
     ui.stageHeader.clear();
     renderHostWarning();
     teardownSession(session);

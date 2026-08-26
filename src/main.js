@@ -314,6 +314,17 @@ ipcMain.handle('room:host', async (_event, { name, advertise } = {}) => {
   }
 });
 
+// Quem hospeda e sai da sala tem que derrubar a sala junto: para o anuncio
+// UDP na hora e fecha o servidor embutido. Sem isto o beacon continua saindo
+// e a sala fica pendurada em "Ao vivo agora" nas outras maquinas ate o app
+// do host fechar. Ordem importa: para o advertise ANTES de fechar o servidor,
+// senao o proximo tick do beacon chama getPeerCount() num servidor ja nulo.
+ipcMain.handle('room:unhost', async () => {
+  discovery.stopAdvertising();
+  await closeEmbeddedServer();
+  return true;
+});
+
 ipcMain.handle('discovery:setAdvertise', async (_event, enabled) => {
   await ensureDiscoveryStarted();
   if (!enabled || !embeddedServer) {
