@@ -11,7 +11,11 @@
 
 <div id="update-banner" class="update-banner hidden">
   <span id="update-banner-text"></span>
+  <button id="update-banner-action" class="primary small hidden" type="button">Reiniciar e instalar</button>
+  <div id="update-progress" class="update-progress hidden"><div id="update-progress-fill" class="update-progress-fill"></div></div>
 </div>
+
+<div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <div id="app" class="app">
   <!-- ============ COLUNA DE SALAS ============ -->
@@ -19,6 +23,9 @@
     <div class="app-brand">
       <span class="app-brand-badge">GL</span>
       <span class="app-brand-name">GoLive LAN</span>
+      <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      </button>
     </div>
 
     <h2 class="rooms-title">
