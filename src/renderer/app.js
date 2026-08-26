@@ -269,16 +269,9 @@
         if (cameraStream) restartCamera();
       },
       onNetworkChange: (network) => {
-        const treeWas = cfg.network.tree;
         cfg = { ...cfg, network };
         persist();
         window.golive.setAdvertise(network.advertise);
-        // Mexer no interruptor tem que valer AGORA, nao so na proxima
-        // transmissao. Ligando, monta a arvore do que ja esta no ar;
-        // desligando, dissolve a que estiver montada (recomputeTree produz
-        // uma topologia toda 'direct' nesse caso) -- sem isto, desligar no
-        // meio da sessao deixava as folhas cortadas da origem pra sempre.
-        if (network.tree !== treeWas) for (const kind of KINDS) recomputeTree(kind);
       },
     });
   });
@@ -326,38 +319,20 @@
     renderRoomList();
   });
 
-  // Auto-update: mostra um aviso discreto no canto quando ha uma versao
-  // nova baixada. Nao reinicia sozinho -- se houver uma sessao ao vivo,
-  // avisamos que vai esperar terminar a chamada antes de deixar reiniciar.
-  let updateDownloaded = false;
-  function renderUpdateBanner() {
-    const banner = $('update-banner');
-    const text = $('update-banner-text');
-    const btn = $('btn-update-install');
-    if (!updateDownloaded) return;
-    banner.classList.remove('hidden');
-    text.textContent = currentSession
-      ? 'Atualização pronta. Será aplicada ao sair da sala atual.'
-      : 'Atualização pronta.';
-    btn.classList.toggle('hidden', !!currentSession);
-  }
+  // Auto-update: so um aviso discreto e passivo. A instalacao em si acontece
+  // sozinha quando o app fecha (autoInstallOnAppQuit, ver main/updater.js) --
+  // sem procedimento nenhum pra pedir: a proxima vez que abrir ja esta na
+  // versao nova.
   window.golive.onUpdateStatus?.(({ status }) => {
     const banner = $('update-banner');
     const text = $('update-banner-text');
-    const btn = $('btn-update-install');
     if (status === 'downloaded') {
-      updateDownloaded = true;
-      renderUpdateBanner();
+      banner.classList.remove('hidden');
+      text.textContent = 'Atualização baixada — será aplicada da próxima vez que o app fechar.';
     } else if (status === 'downloading') {
       banner.classList.remove('hidden');
-      btn.classList.add('hidden');
       text.textContent = 'Baixando atualização…';
     }
-  });
-
-  $('btn-update-install').addEventListener('click', () => {
-    if (currentSession) return; // nunca derruba uma chamada em andamento
-    window.golive.installUpdate();
   });
 
   $('btn-refresh-discovery').addEventListener('click', () => {
@@ -580,8 +555,13 @@
           }
           onSettled?.();
         },
-        onClose: () => {
+        onClose: (detail) => {
           if (currentSession !== session) return; // conexao antiga, ja substituida
+          // Instrumentacao temporaria pro relato de saida sozinha da sala sem
+          // crash visivel: o code/reason do WebSocket diz se foi um close
+          // limpo (1000/1001, ex: o proprio host fechando o app) ou uma
+          // queda anormal de rede/processo (1006, sem handshake de close).
+          console.error(`[signaling] conexao fechada: code=${detail?.code} reason="${detail?.reason}" wasClean=${detail?.wasClean}`);
           currentSession = null;
           activeRoomAddress = null;
           ui.stageHeader.clear();
