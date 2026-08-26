@@ -9,10 +9,25 @@ const {
   isExpired,
   pruneExpiredRooms,
   toRoomList,
+  createDiscovery,
   BEACON_INTERVAL_MS,
   ROOM_TTL_MS,
   DISCOVERY_PORT,
 } = require('./discovery');
+
+// dgram falso: guarda os datagramas enviados pra gente inspecionar o beacon.
+function fakeDgram() {
+  const sent = [];
+  const socket = {
+    on() {},
+    bind(_port, cb) { cb && cb(); },
+    setBroadcast() {},
+    send(buf) { sent.push(buf.toString()); },
+    close() {},
+    address() { return { port: 0 }; },
+  };
+  return { sent, dgram: { createSocket: () => socket } };
+}
 
 test('constantes basicas', () => {
   assert.equal(typeof DISCOVERY_PORT, 'number');
@@ -84,6 +99,32 @@ test('parseBeacon rejeita porta invalida ou ausente', () => {
 test('parseBeacon rejeita endereco ausente/vazio', () => {
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000, address: '' })), null);
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000 })), null);
+});
+
+test('startAdvertising nao emite beacon quando a sala esta vazia (0 peers)', async () => {
+  const { sent, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+
+  let peers = 0;
+  d.startAdvertising({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', getPeerCount: () => peers });
+  assert.equal(sent.length, 0); // ninguem conectado -> nada anunciado
+
+  peers = 1;
+  d.startAdvertising({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', getPeerCount: () => peers });
+  assert.ok(sent.length >= 1); // host presente -> volta a anunciar
+  assert.equal(JSON.parse(sent[sent.length - 1]).peers, 1);
+
+  d.stop();
+});
+
+test('startAdvertising anuncia normalmente quando nao ha contagem de peers', async () => {
+  const { sent, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  d.startAdvertising({ name: 'Sala', port: 9000, address: '1.2.3.4:9000' });
+  assert.ok(sent.length >= 1);
+  d.stop();
 });
 
 test('isExpired usa o TTL informado', () => {

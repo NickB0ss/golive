@@ -181,6 +181,11 @@ function createDiscovery({
     const send = () => {
       if (!socket) return;
       const peers = typeof getPeerCount === 'function' ? getPeerCount() : undefined;
+      // Sala sem ninguem conectado (nem o proprio host) nao e anunciada: o
+      // timer continua vivo e o beacon volta sozinho assim que alguem entra.
+      // Evita a sala ficar pendurada em "Ao vivo agora" depois que todo mundo
+      // saiu. `undefined` (sem contagem) segue anunciando normalmente.
+      if (peers === 0) return;
       const payload = Buffer.from(formatBeacon({ name, port: roomPort, address, peers }));
       for (const target of listBroadcastTargets()) {
         socket.send(payload, port, target, () => {});

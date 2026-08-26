@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld('golive', {
    * assim que a sala sobe. */
   hostRoom: (payload) => ipcRenderer.invoke('room:host', payload),
 
+  /** Derruba a sala hospedada localmente: para o anuncio UDP e fecha o
+   * servidor de sinalizacao embutido. Chamado quando o host sai da propria
+   * sala, pra ela nao ficar pendurada em "Ao vivo agora" pros outros. */
+  stopHosting: () => ipcRenderer.invoke('room:unhost'),
+
   /** Liga/desliga o anuncio da sala ativa via broadcast UDP em tempo real
    * (ex: usuario mexeu no toggle de Configuracoes > Rede depois de ja ter
    * criado a sala). Sem efeito se nao houver sala local hospedada. */
