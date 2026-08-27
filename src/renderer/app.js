@@ -959,10 +959,13 @@
               'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
           }
 
-          // Orfanizamos: mantem o cabecalho da sala (peers e video seguem na
-          // tela) -- igual ao caminho de retry. So limpa quando nao ha nada
-          // orfanizado (conexao que nunca abriu).
-          if (orphanSession !== session) ui.stageHeader.clear();
+          // Cabecalho da sala: limpa SO quando nao sobrou orfa nenhuma. Se
+          // esta sessao virou orfa (retry ou desistencia), ou se uma orfa
+          // ANTERIOR segue viva (esta tentativa fechou sem abrir mas a queda
+          // de antes ainda tem video na tela), o cabecalho fica -- peers e
+          // video continuam visiveis. So limpa quando esta e uma tentativa
+          // que nunca abriu E nao ha orfa anterior: ai nao ha sala nenhuma.
+          if (!orphanSession) ui.stageHeader.clear();
           renderMembersPanel();
           renderRoomList();
         },
