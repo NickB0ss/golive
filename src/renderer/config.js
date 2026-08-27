@@ -42,6 +42,58 @@
     return best;
   }
 
+  // Cadeia de degradacao: preset -> proximo preset mais barato, `null` no
+  // piso. Derruba FPS antes de resolucao, porque a resolucao e o que a
+  // pessoa escolheu ver -- 1080p30 ainda parece "a tela dela"; 720p60 nao.
+  //
+  // ARMADILHA: ordenar por bitrate NAO serve como cadeia. 1440p30 (10 Mbps)
+  // e mais barato que 1080p60 (12 Mbps), entao "descer um degrau de
+  // bitrate" a partir de 1080p60 AUMENTARIA a resolucao. Por isso a cadeia
+  // e escrita a mao, e nao derivada da tabela acima.
+  const QUALITY_DEGRADE_CHAIN = {
+    '1440p60': '1440p30',
+    '1440p30': '1080p30',
+    '1080p60': '1080p30',
+    '1080p30': '720p30',
+    '720p60': '720p30',
+    '720p30': null,
+  };
+
+  // Anda `steps` passos na cadeia e para no piso. Preset desconhecido ou
+  // `steps <= 0` devolve a entrada -- esta funcao roda no caminho de
+  // transmitir, entao ela nunca lanca.
+  function degradePreset(preset, steps) {
+    if (!QUALITY_PRESETS[preset]) return preset;
+    let current = preset;
+    for (let i = 0; i < steps; i += 1) {
+      const next = QUALITY_DEGRADE_CHAIN[current];
+      if (!next) break;
+      current = next;
+    }
+    return current;
+  }
+
+  // Quantos degraus a sala custa. A medicao do proprio projeto (ver
+  // docs/2026-08-27-auditoria-de-fragilidade.md, H4) mostrou 4 espectadores
+  // a 1080p60 quebrando o NVENC SEM jogo aberto -- entao a partir de 3 a
+  // sala ja nao cabe no preset de topo. Um degrau so, de proposito: e o que
+  // a auditoria pede, e cada degrau a mais e uma piora que o usuario ve sem
+  // ter pedido nada.
+  function audienceSteps(viewers) {
+    return Number(viewers) >= 3 ? 1 : 0;
+  }
+
+  // Qualidade efetiva pra uma sala daquele tamanho. Devolve o mesmo formato
+  // de qualityFromPreset, com `preset` sendo o preset EFETIVO (o degradado),
+  // nao o que o usuario escolheu -- quem le esse campo quer saber o que esta
+  // sendo codificado de verdade.
+  function qualityForAudience(preset, viewers) {
+    // Normaliza antes de degradar pra que um preset invalido caia no padrao
+    // e degrade a partir DELE, em vez de escapar da degradacao.
+    const base = qualityFromPreset(preset).preset;
+    return qualityFromPreset(degradePreset(base, audienceSteps(viewers)));
+  }
+
   const DEFAULTS = {
     v: 1,
     name: '',
@@ -139,6 +191,9 @@
     QUALITY_PRESET_ORDER,
     DEFAULT_QUALITY_PRESET,
     qualityFromPreset,
+    degradePreset,
+    audienceSteps,
+    qualityForAudience,
     load,
     serialize,
     videoConstraints,

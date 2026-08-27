@@ -166,10 +166,46 @@
     return KINDS.includes(parseKind(kind).baseKind);
   }
 
+  /** Quantas pessoas ha na sala alem de nos.
+   *
+   * E o tamanho da SALA, nao a contagem de out-conns: com a arvore de
+   * retransmissao ligada a origem tem so 1-2 out-conns por kind, entao
+   * contar conexoes faria a degradacao nunca disparar. O custo que importa
+   * e o total de encoders na sala -- os nossos mais os 2 de cada relay --
+   * e esse escala com o tamanho da sala, nao com os nossos vizinhos. */
+  function audienceSize() {
+    return currentSession?.mesh.peers.size ?? 0;
+  }
+
   /** Qualidade de encode daquele kind. Usa o kind BASE, pra que uma
-   * conexao de repasse ('camera@<origem>') nao caia no preset de tela. */
+   * conexao de repasse ('camera@<origem>') nao caia no preset de tela.
+   *
+   * A tela degrada com o tamanho da sala (H4): 1080p60 e o preset certo pra
+   * 1 espectador e o preset errado pra 3 -- a medicao do projeto mostrou 4
+   * espectadores a 1080p60 quebrando o NVENC sem jogo nenhum aberto.
+   * Ninguem escolhe nada, a sala so nao entra no regime onde quebra. O
+   * relay tambem re-codifica com esta funcao, entao os 2 encoders dele
+   * herdam o preset degradado de graca.
+   *
+   * A camera fica como esta: 720p30 a 2 Mbps ja e o piso, degradar nao
+   * resolve nada. */
   function qualityFor(kind) {
-    return parseKind(kind).baseKind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    if (parseKind(kind).baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
+    return config.qualityForAudience(cfg.quality.preset, audienceSize());
+  }
+
+  /** Reaplica o teto de encode nas conexoes JA ABERTAS daquele kind --
+   * `applyEncoding` mexe em maxBitrate/maxFramerate via setParameters, sem
+   * renegociacao e sem tela preta. Chamado quando a sala muda de tamanho;
+   * sem isto, so quem entrasse depois pegaria o preset novo.
+   *
+   * Limitacao consciente: o preset de CAPTURA (getDisplayMedia) nao muda no
+   * meio da transmissao -- mexer nele exigiria recapturar a tela. So o
+   * encode se ajusta. */
+  function reapplyAudienceQuality() {
+    if (!currentSession) return;
+    if (localStream) currentSession.mesh.applyEncoding(qualityFor('screen'), 'screen');
+    if (cameraStream) currentSession.mesh.applyEncoding(qualityFor('camera'), 'camera');
   }
 
   function emptyMessage() {
@@ -287,7 +323,11 @@
     if (track) {
       await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
     }
-    currentSession?.mesh?.applyEncoding(cfg.quality, 'screen');
+    // A captura vai no preset que a pessoa escolheu, mas o encode passa por
+    // qualityFor -- senao trocar de preset no meio de uma sala cheia
+    // escaparia da degradacao por tamanho da sala ate o proximo
+    // peer-joined/peer-left.
+    currentSession?.mesh?.applyEncoding(qualityFor('screen'), 'screen');
   }
 
   // Escolhida no dialogo de compartilhar (ver ui.picker.open, no clique de
@@ -889,8 +929,12 @@
         mesh.addPeer(msg.id, msg.name, msg.avatar);
         renderMembersPanel();
         sound.playJoinSound();
+        // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
+        // oferta abaixo ja sai com ele (qualityFor le o tamanho da sala,
+        // que o addPeer acima acabou de atualizar).
+        reapplyAudienceQuality();
         if (localStream) {
-          await mesh.offerTo(msg.id, localStream, cfg.quality, 'screen');
+          await mesh.offerTo(msg.id, localStream, qualityFor('screen'), 'screen');
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
@@ -909,6 +953,8 @@
         sound.playLeaveSound();
         broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
         broadcastWatchers('camera');
+        // A sala encolheu: quem ficou pode voltar pro preset de cima.
+        reapplyAudienceQuality();
         for (const kind of KINDS) {
           // Quem saiu nao e mais origem de nada: descarta o papel que ele
           // nos deu, junto com o epoch dele. Sem isto o mapa por-origem so
