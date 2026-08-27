@@ -16,12 +16,24 @@ const { WebSocketServer } = require('ws');
 // folga pra base64 + envelope JSON sem abrir espaco pra abuso.
 const MAX_PAYLOAD_BYTES = 512 * 1024;
 
-// Teto de mensagens por segundo por socket. A sinalizacao normal e um punhado
-// de mensagens por SESSAO (join, algumas offer/answer/ice, view-state
-// esporadico) -- nunca um fluxo continuo. 40/s e ordens de grandeza acima do
-// uso real e ainda assim corta um cliente que entrou em loop ou esta tentando
-// afogar o processo do host.
-const MAX_MSGS_PER_SECOND = 40;
+// Teto de mensagens por segundo por socket. A sinalizacao e ociosa quase o
+// tempo todo, MAS e bursty por natureza (ICE trickle) e tem uma rajada real
+// no reingresso: quando um cliente reconecta, o handler de 'welcome' re-oferta
+// pra sala inteira de uma vez -- ate `peers x kinds` RTCPeerConnection novas
+// no mesmo instante, cada uma emitindo os candidatos ICE que junta.
+//
+// Pior caso realista (sala de 6, tela + camera):
+//   pcs novas:        5 peers x 2 kinds                       = 10
+//   ice/pc:           Ethernet + adaptador VPN + IPv6 + 2 srflx ~ 6-8
+//   ice total:        10 x 8                                   = 80
+//   offer + answer:   10 + 10                                  = 20
+//   tree + watchers + view-state                               ~ 15
+//   -----------------------------------------------------------------
+//   ~115 frames no segundo de gathering
+//
+// 300/s cobre isso com folga de ~2.5x e ainda corta na hora um cliente em
+// loop de verdade (um `while(true) ws.send()` faz dezenas de milhares/s).
+const MAX_MSGS_PER_SECOND = 300;
 const RATE_WINDOW_MS = 1000;
 
 /** Contador de taxa por conexao, isolado pra ser testavel sem subir socket.

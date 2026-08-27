@@ -162,6 +162,18 @@ test('createRateLimiter zera a contagem quando a janela vira', () => {
   assert.equal(rl.hit(1020), false);
 });
 
+test('createRateLimiter padrao cobre a rajada de re-oferta do welcome', () => {
+  // O teto default (MAX_MSGS_PER_SECOND = 300) tem de aguentar a rajada de
+  // reingresso: ~115 frames numa sala de 6 com tela + camera (ver a conta em
+  // signaling-core.js). 250 numa janela ainda passa; 350 nao.
+  const rl = createRateLimiter({});
+  for (let i = 0; i < 250; i += 1) assert.equal(rl.hit(i), true, `frame ${i} dentro do teto`);
+  const rl2 = createRateLimiter({});
+  let cortou = false;
+  for (let i = 0; i < 350; i += 1) if (!rl2.hit(i)) cortou = true;
+  assert.equal(cortou, true);
+});
+
 test('nao encaminha offer/ice para destino em outra sala', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
@@ -225,7 +237,9 @@ test('fecha o socket que estoura o teto de mensagens por segundo', async () => {
     await once(a, 'welcome');
 
     const closed = new Promise((r) => a.once('close', (code) => r(code)));
-    for (let i = 0; i < 200; i += 1) {
+    // Acima do teto de 300/s (ver MAX_MSGS_PER_SECOND): um loop de verdade
+    // ainda e cortado.
+    for (let i = 0; i < 500; i += 1) {
       a.send(JSON.stringify({ type: 'broadcast-state', live: true }));
     }
     const code = await closed;

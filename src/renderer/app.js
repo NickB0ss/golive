@@ -284,11 +284,23 @@
     }
   }
 
+  // Sessao "efetiva" pra UI (painel de membros, mensagem de grade vazia): a
+  // que tem tiles na tela agora. Numa reconexao automatica `currentSession`
+  // ja existe (e criada antes de o socket abrir) mas ainda esta com zero
+  // peers, enquanto a orfa da queda anterior segue com video na tela.
+  // Preferir a que abriu de verdade -- e so cair na nova quando ela abrir --
+  // evita um "so voce por aqui" desenhado sob uma tela cheia de video durante
+  // a janela do retry.
+  function displaySession() {
+    if (currentSession?.opened) return currentSession;
+    return orphanSession || currentSession;
+  }
+
   function emptyMessage() {
     // Sessao efetiva: com a orfa viva (sinalizacao caida, video P2P
     // rodando) os tiles dos peers continuam na tela -- a mensagem de grade
     // vazia tem de dizer "ainda estou vendo gente", nao "entre numa sala".
-    return (currentSession || orphanSession)
+    return displaySession()
       ? 'Ninguém transmitindo ainda.'
       : 'Entre ou crie uma sala pra começar.';
   }
@@ -749,7 +761,7 @@
   }
 
   function renderMembersPanel() {
-    const session = currentSession || orphanSession;
+    const session = displaySession();
     ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo());
   }
 
@@ -1195,6 +1207,7 @@
         // cameraStream sao nulos e nada disto roda.
         if (localStream) {
           for (const p of msg.peers) {
+            if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
               await mesh.offerTo(p.id, localStream, qualityFor('screen'), 'screen');
             } catch (err) {
@@ -1208,6 +1221,7 @@
         }
         if (cameraStream) {
           for (const p of msg.peers) {
+            if (currentSession !== session) return;
             try {
               await mesh.offerTo(p.id, cameraStream, qualityFor('camera'), 'camera');
             } catch (err) {
@@ -1217,6 +1231,16 @@
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
+        // Reconexao automatica: startStatsLoop so e chamado por startShare. Aqui
+        // a captura sobreviveu ao retry (Task 5) e os blocos acima re-ofertaram
+        // -- estamos transmitindo de novo -- mas o loop de stats foi parado no
+        // onClose que orfanou a sessao anterior. Sem religa-lo: myEncodeHealth
+        // fica null (todo view-state passa a carregar encodeHealth null e a
+        // eleicao de relay da origem degenera pra este no), peer.rtt para de ser
+        // escrito (a ordenacao por RTT some), a aba Estatisticas fica vazia e
+        // updateEncoderWarning nunca mais dispara. startStatsLoop chama
+        // stopStatsLoop antes, entao e seguro chamar mesmo ja parado.
+        if (localStream || cameraStream) startStatsLoop();
         break;
       }
       case 'peer-joined': {
@@ -1228,12 +1252,23 @@
         // que o addPeer acima acabou de atualizar).
         reapplyAudienceQuality();
         if (localStream) {
-          await mesh.offerTo(msg.id, localStream, qualityFor('screen'), 'screen');
+          try {
+            await mesh.offerTo(msg.id, localStream, qualityFor('screen'), 'screen');
+          } catch (err) {
+            // uma oferta de tela que rejeita (peer que ja saiu, glare) nao pode
+            // pular a oferta de camera, o broadcastWatchers nem o recomputeTree
+            // -- mesmo racional do try/catch por-peer do welcome (Task 5).
+            console.error(`[peer-joined] oferta de tela para ${msg.id} falhou:`, err);
+          }
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
         if (cameraStream) {
-          await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
+          try {
+            await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
+          } catch (err) {
+            console.error(`[peer-joined] oferta de camera para ${msg.id} falhou:`, err);
+          }
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
@@ -1748,6 +1783,12 @@
     stopNativeAudioFns.forEach((stop) => stop());
     stopNativeAudioFns = [];
     currentSession?.mesh?.closeAllOut('screen');
+    // Alcancavel durante uma orfa: o check de localStream la em cima vem antes
+    // do de !currentSession, e o listener 'ended' da track dispara sem checar
+    // sessao. Nesse caso currentSession e null e o closeAllOut acima e no-op,
+    // deixando as out-conns da orfa abertas com senders mortos -- fecha as dela
+    // tambem.
+    orphanSession?.mesh?.closeAllOut('screen');
     forgetOriginTree('screen');
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
@@ -2108,7 +2149,16 @@
     // desligado) nao degrada nada. Roda ANTES do short-circuit de
     // sameAssignments: o estado precisa seguir o ultimo calculo mesmo quando
     // a topologia em si nao mudou. setMeshFallback so age na transicao.
-    setMeshFallback(kind, cfg.network.tree && tree.isAllDirect(assignments));
+    //
+    // Guarda de espectadores: all-direct so e o modo de FALHA quando uma
+    // arvore PODERIA ter ajudado, e ela so ajuda com 2+ espectadores reais --
+    // a origem pagaria N encoders em vez de 1. Com 0 ou 1 espectador (ex: um
+    // compartilhamento 1-a-1) nenhum relay pouparia encoder nenhum: ali
+    // all-direct e o estado normal, nao degradacao, e baixar o preset +
+    // mostrar toast seria mentira. `transmitting` marca quem ja e origem
+    // (nao codificariamos pra ele); o resto e espectador daquele kind.
+    const espectadores = candidates.filter((c) => !c.transmitting).length;
+    setMeshFallback(kind, cfg.network.tree && espectadores >= 2 && tree.isAllDirect(assignments));
 
     // Topologia identica a que ja esta no ar: nao mexe em nada. Antes o
     // epoch subia de qualquer jeito e o 'tree' resultante mandava cada
