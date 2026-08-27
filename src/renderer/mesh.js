@@ -11,6 +11,16 @@
 
   const RTC_CONFIG = { iceServers: [{ urls: STUN_URLS }], iceTransportPolicy: 'all' };
 
+  // 'disconnected' e o estado TRANSITORIO do ICE -- perdeu conectividade e
+  // esta tentando reconectar sozinho, o que acontece o tempo todo num
+  // tunel de VPN (Radmin) com jitter, e na maioria das vezes se resolve em
+  // poucos segundos sem intervencao nenhuma. Tratar 'disconnected' como
+  // falha na hora (o comportamento antigo) faz um soluco de rede disparar
+  // a maquina inteira de recuperacao -- fechar repasses, vetar o relay,
+  // recalcular a arvore -- por algo que ia se curar sozinho. Ver a
+  // auditoria de 2026-08-27, item A2.
+  const DISCONNECT_GRACE_MS = 5000;
+
   // Payloads auxiliares (retransmissao e correcao de erro) nao sao codecs de
   // verdade -- x-google-start-bitrate neles nao faz nada.
   const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
@@ -151,18 +161,63 @@
         });
       }
 
-      pc.addEventListener('connectionstatechange', () => {
-        const failed = ['failed', 'closed', 'disconnected'].includes(pc.connectionState);
-        if (failed && dir === 'in') {
+      // `settled` garante que a falha desta conexao seja reportada UMA vez
+      // so, nao importa por qual caminho ela chegou (imediato via
+      // 'failed'/'closed', ou depois da carencia de 'disconnected'). Sem
+      // isto, um `pc.close()` explicito enquanto a carencia de disconnected
+      // ainda esta correndo dispararia dois eventos de falha pra mesma
+      // conexao: um na hora (o close vira 'closed' sincrono) e outro
+      // quando o timer da carencia checasse o estado depois.
+      let settled = false;
+      let disconnectTimer = null;
+
+      function clearDisconnectTimer() {
+        if (disconnectTimer) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = null;
+        }
+      }
+
+      function reportFailure() {
+        if (settled) return;
+        settled = true;
+        clearDisconnectTimer();
+        if (dir === 'in') {
           // A stream guardada morre junto com a conexao que a trouxe --
           // sem limpar aqui, relayTo repassaria adiante uma stream cujas
           // tracks ja estao 'ended' e o filho ficaria com tela preta sem
           // nenhum evento pra corrigir depois.
           clearInStream(peerId, kind);
-          onPeerState(peerId, { removedTile: true, kind, dir, failed });
+          onPeerState(peerId, { removedTile: true, kind, dir, failed: true });
         } else {
-          onPeerState(peerId, { kind, dir, failed });
+          onPeerState(peerId, { kind, dir, failed: true });
         }
+      }
+
+      pc.addEventListener('connectionstatechange', () => {
+        const state = pc.connectionState;
+
+        // 'failed' e 'closed' sao terminais -- reportar na hora continua
+        // certo pros dois.
+        if (state === 'failed' || state === 'closed') {
+          reportFailure();
+          return;
+        }
+
+        if (state === 'disconnected') {
+          clearDisconnectTimer();
+          disconnectTimer = setTimeout(() => {
+            disconnectTimer = null;
+            // So vira falha de verdade se, passada a carencia, AINDA nao
+            // tiver voltado a 'connected' sozinho.
+            if (pc.connectionState !== 'connected') reportFailure();
+          }, DISCONNECT_GRACE_MS);
+          onPeerState(peerId, { kind, dir, failed: false });
+          return;
+        }
+
+        if (state === 'connected') clearDisconnectTimer();
+        onPeerState(peerId, { kind, dir, failed: false });
       });
 
       return pc;
