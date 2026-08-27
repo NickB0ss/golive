@@ -1,5 +1,13 @@
 # GoLive LAN — auditoria de fragilidade (2026-08-27)
 
+> **Nota de 2026-08-27 (pós-execução):** o corpo abaixo é o diagnóstico
+> original e não foi reescrito. Boa parte do grupo A (A1–A7), B4, B5, C1–C3,
+> C6, F2, G4 e o grupo H (H1–H4) já foi feita na branch
+> `chore/robustez-e-higiene`.
+> O estado atual — o que entrou, o que falta e o que ficou de fora de
+> propósito — está em `STATUS.md`, na raiz. Consulte-o antes de agir sobre
+> qualquer item daqui.
+
 Leitura completa do código na `main` em `c06d8b6` (v0.1.8). Os 97 testes
 automatizados passam; nada aqui é regressão do que já está coberto. O que
 segue é o que **não** está coberto.
