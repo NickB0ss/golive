@@ -49,6 +49,12 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
     }
 
     function onError(err) {
+      // O bind falhou (tipicamente EADDRINUSE), mas o WebSocketServer e o
+      // http.Server interno dele ja foram criados -- sem fecha-los aqui,
+      // cada tentativa de findFreeServer (ports.js) que esbarra numa porta
+      // ocupada deixa um servidor morto pra tras. `close()` num servidor
+      // que nunca chegou a escutar e seguro (o `ws` trata isso).
+      wss.close();
       reject(err);
     }
 

@@ -378,3 +378,111 @@ test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-co
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
 });
+
+// Instala o mesmo fake de RTCPeerConnection.test acima, mas com
+// `connectionState` como propriedade de INSTANCIA (nao de prototype) --
+// os testes de carencia de 'disconnected' precisam muda-la em voo, coisa
+// que o teste de 'failed' acima nao precisava (o estado nunca mudava).
+function installFakeWebRTCWithMutableState(initialState) {
+  installFakeWebRTC();
+  const listeners = [];
+  const OriginalCtor = global.RTCPeerConnection;
+  global.RTCPeerConnection = class extends OriginalCtor {
+    constructor() {
+      super();
+      this.connectionState = initialState;
+    }
+    addEventListener(event, fn) {
+      if (event === 'connectionstatechange') listeners.push(fn);
+    }
+  };
+  return listeners;
+}
+
+test('disconnected recupera sozinho antes da carencia -- nao dispara falha (#A2)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const listeners = installFakeWebRTCWithMutableState('disconnected');
+
+  const events = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, payload) => events.push({ peerId, ...payload }),
+  });
+  mesh.addPeer('7', 'Bruno');
+  await mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+
+  const pc = mesh.peers.get('7').inConns.screen;
+  listeners[0](); // dispara connectionstatechange com 'disconnected'
+
+  // Avisa na hora, mas SEM marcar falha -- nada e derrubado ainda.
+  assert.equal(events.length, 1);
+  assert.equal(events[0].failed, false);
+
+  // Volta a 'connected' sozinho, como o ICE costuma fazer num soluco de
+  // rede -- a carencia expira depois, mas ja nao encontra 'disconnected'.
+  pc.connectionState = 'connected';
+  t.mock.timers.tick(5000);
+
+  assert.equal(events.length, 1); // nenhum evento de falha surgiu
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('disconnected que nao recupera dispara falha so depois da carencia (#A2)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const listeners = installFakeWebRTCWithMutableState('disconnected');
+
+  const events = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, payload) => events.push({ peerId, ...payload }),
+  });
+  mesh.addPeer('7', 'Bruno');
+  await mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+
+  listeners[0](); // dispara 'disconnected'
+  assert.equal(events.length, 1);
+  assert.equal(events[0].failed, false);
+
+  // Continua 'disconnected' -- a carencia expira sem recuperar.
+  t.mock.timers.tick(5000);
+
+  assert.equal(events.length, 2);
+  assert.equal(events[1].failed, true);
+  assert.equal(events[1].removedTile, true);
+  assert.equal(events[1].dir, 'in');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('fechar a conexao durante a carencia de disconnected nao duplica o evento de falha (#A2)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const listeners = installFakeWebRTCWithMutableState('disconnected');
+
+  const events = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, payload) => events.push({ peerId, ...payload }),
+  });
+  mesh.addPeer('7', 'Bruno');
+  await mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const pc = mesh.peers.get('7').inConns.screen;
+
+  listeners[0](); // arma a carencia de 'disconnected'
+
+  pc.connectionState = 'closed';
+  listeners[0](); // fechamento explicito ANTES da carencia expirar
+
+  t.mock.timers.tick(5000); // a carencia expira depois, ja com settled=true
+
+  const failures = events.filter((e) => e.failed);
+  assert.equal(failures.length, 1);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});

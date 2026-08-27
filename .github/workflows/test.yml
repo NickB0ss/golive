@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # O app e so Windows (WASAPI, netsh, node-gyp com o toolset MSVC), mas
+    # os testes automatizados sao JS puro -- nenhum deles importa o addon
+    # nativo nem o modulo 'electron' fora de um try/catch (ver updater.js).
+    # Roda em windows-latest mesmo assim, pra bater com o ambiente real do
+    # app (ex: firewall.test.js exercita caminhos que assumem netsh/Windows).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # --ignore-scripts pula o build:native (precisa do toolchain C++ do
+      # Visual Studio, que este job nao instala) -- os testes nao dependem
+      # do addon compilado, ele so precisa nao quebrar o require em main.js
+      # (que ja tem try/catch, ver src/main.js).
+      - run: npm ci --ignore-scripts
+
+      - run: npm test
