@@ -70,6 +70,12 @@
       originTree[kind].assignments = new Map();
       recentRelayFailures[kind].clear();
     }
+    // myId so tem sentido dentro de UMA sessao (e o id que o servidor nos
+    // deu no 'welcome' daquela sala). Zerar aqui junto com o resto do
+    // estado de arvore -- ele nao e usado fora de contexto de sessao ativa
+    // hoje, mas deixa-lo sobreviver seria exatamente o tipo de estado
+    // fantasma que esta funcao existe pra evitar.
+    myId = null;
   }
   let localStream = null;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
@@ -251,7 +257,7 @@
         // sala/join.
         const maxSize = file.type === 'image/gif' ? 3 * 1024 * 1024 : 10 * 1024 * 1024;
         if (file.size > maxSize) {
-          alert(`Imagem muito grande (máx. ${Math.round(maxSize / (1024 * 1024))}MB).`);
+          showToast(`Imagem muito grande (máx. ${Math.round(maxSize / (1024 * 1024))}MB).`);
           return;
         }
         try {
@@ -260,7 +266,7 @@
           persist();
           renderUserPanel();
         } catch {
-          alert('Não consegui processar essa imagem.');
+          showToast('Não consegui processar essa imagem.');
         }
       },
       onCameraDeviceChange: (deviceId) => {
@@ -863,6 +869,7 @@
     if (currentSession !== session) return;
     const mesh = session.mesh;
     const sig = session.sig;
+    try {
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
@@ -1019,6 +1026,14 @@
         if (state.role === 'relay') await flushPendingRelay(session, kind, origem);
         break;
       }
+    }
+    } catch (err) {
+      // Qualquer await acima pode rejeitar (setRemoteDescription com SDP
+      // inesperado, createAnswer numa conexao ja fechada, etc). Sem este
+      // catch a rejeicao virava unhandledrejection sem contexto nenhum de
+      // qual mensagem causou -- so o texto solto do erro no log. Ver a
+      // auditoria de 2026-08-27, item A6.
+      console.error(`[signaling] falha processando '${msg.type}' de #${msg.from ?? '?'} (kind=${msg.kind ?? '-'}):`, err);
     }
   }
 
@@ -1286,7 +1301,7 @@
           audio: useElectronLoopback,
         });
       } catch (err) {
-        alert(`Não consegui capturar a tela: ${err.message}`);
+        showToast(`Não consegui capturar a tela: ${err.message}`);
         return;
       }
 
@@ -1404,7 +1419,7 @@
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
       } catch (err) {
-        alert(`Não consegui acessar a câmera: ${err.message}`);
+        showToast(`Não consegui acessar a câmera: ${err.message}`);
         return;
       }
 
