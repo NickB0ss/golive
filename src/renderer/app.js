@@ -939,7 +939,7 @@
           recomputeTree('screen');
         }
         if (cameraStream) {
-          await mesh.offerTo(msg.id, cameraStream, { ...cfg.camera, codec: 'video/VP8' }, 'camera');
+          await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
@@ -1419,8 +1419,15 @@
 
       ui.grid.showTile('me', 'Você (prévia)', localStream, { muted: true, avatar: cfg.avatar || null, kind: 'screen', displayName: cfg.name || 'anônimo' });
 
+      // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
+      // voce entra numa sala que ja tem 4 pessoas e clica "Compartilhar
+      // tela". Corrigir depois com applyEncoding nao basta, porque offerTo
+      // grava o x-google-start-bitrate no SDP (ver withStartBitrate em
+      // mesh.js) e setParameters nao reescreve SDP: o alvo de ramp-up
+      // ficaria nos 12 Mbps nao degradados pelo resto da conexao.
+      const quality = qualityFor('screen');
       for (const peerId of session.mesh.peers.keys()) {
-        await session.mesh.offerTo(peerId, localStream, cfg.quality, 'screen');
+        await session.mesh.offerTo(peerId, localStream, quality, 'screen');
       }
       if (currentSession !== session) return;
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
@@ -1485,7 +1492,11 @@
       $('btn-toggle-camera').classList.add('active');
 
       if (currentSession) {
-        const quality = { ...cfg.camera, codec: 'video/VP8' };
+        // Hoje isto e identico a `{ ...cfg.camera, codec: 'video/VP8' }`,
+        // mas nada bruto de `cfg` deve chegar na mesh: qualityFor e a unica
+        // porta. Foi passando por fora dela que o startShare acima ficou
+        // sem degradacao.
+        const quality = qualityFor('camera');
         for (const peerId of currentSession.mesh.peers.keys()) {
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera');
         }
