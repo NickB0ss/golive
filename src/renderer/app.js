@@ -59,6 +59,22 @@
   // RELAY_FAILURE_COOLDOWN_MS e recoverFromRelayLoss.
   const recentRelayFailures = { screen: new Map(), camera: new Map() };
 
+  // Modo malha degradada, por kind (auditoria H3): true quando QUERIAMOS
+  // arvore (cfg.network.tree ligado) e computeTree so devolveu 'direct' por
+  // falta de relay elegivel. `qualityFor` consulta isto pra somar UM degrau
+  // ao que a Task 3 ja degrada -- sem isso a malha volta em qualidade cheia,
+  // os N encoders da origem derrubam o NVENC pra software, o jitter veta
+  // mais relays e a malha se realimenta. So muda de valor pela transicao
+  // (ver setMeshFallback): ligar-desligar-ligar a cada recalculo viraria
+  // spam de toast e de setParameters.
+  const meshFallback = { screen: false, camera: false };
+
+  // Histerese da re-eleicao, por kind (Parte B): instante da ultima
+  // re-eleicao aplicada e o handle de um recalculo comum que caiu dentro da
+  // janela e foi adiado. Ver REELECTION_HYSTERESIS_MS e recomputeTree.
+  const reelectionAt = { screen: 0, camera: 0 };
+  const deferredRecompute = { screen: null, camera: null };
+
   // Todo o estado de arvore morre com a sessao. Sem isto, o epoch guardado
   // de uma sala anterior (digamos, 7) descarta pra sempre os 'tree' de uma
   // origem nova numa sala nova, cujo contador comeca em 1 -- este no nunca
@@ -69,6 +85,17 @@
       originTree[kind].epoch = 0;
       originTree[kind].assignments = new Map();
       recentRelayFailures[kind].clear();
+      // Estado degradado e histerese morrem com a sessao pelo mesmo motivo
+      // que o resto: carregados pra sala seguinte, aplicariam um preset
+      // baixo (ou adiariam o primeiro recalculo) sem causa nenhuma. Zera
+      // direto, sem setMeshFallback: nao ha conexao pra retunar nem toast a
+      // dar num teardown.
+      meshFallback[kind] = false;
+      reelectionAt[kind] = 0;
+      if (deferredRecompute[kind]) {
+        clearTimeout(deferredRecompute[kind]);
+        deferredRecompute[kind] = null;
+      }
     }
     // myId so tem sentido dentro de UMA sessao (e o id que o servidor nos
     // deu no 'welcome' daquela sala). Zerar aqui junto com o resto do
@@ -190,8 +217,14 @@
    * A camera fica como esta: 720p30 a 2 Mbps ja e o piso, degradar nao
    * resolve nada. */
   function qualityFor(kind) {
-    if (parseKind(kind).baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
-    return config.qualityForAudience(cfg.quality.preset, audienceSize());
+    const baseKind = parseKind(kind).baseKind;
+    if (baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
+    const effective = config.qualityForAudience(cfg.quality.preset, audienceSize());
+    // Modo malha degradada (H3): a origem paga N encoders em vez de 1, entao
+    // desce UM degrau alem do que o tamanho da sala ja pediu. degradePreset
+    // para no piso e nunca lanca, entao isto e seguro no caminho de encode.
+    if (meshFallback[baseKind]) return config.qualityFromPreset(config.degradePreset(effective.preset, 1));
+    return effective;
   }
 
   /** Reaplica o teto de encode nas conexoes JA ABERTAS daquele kind --
@@ -206,6 +239,24 @@
     if (!currentSession) return;
     if (localStream) currentSession.mesh.applyEncoding(qualityFor('screen'), 'screen');
     if (cameraStream) currentSession.mesh.applyEncoding(qualityFor('camera'), 'camera');
+  }
+
+  /** Liga/desliga o modo malha degradada de um kind. So faz algo na
+   * TRANSICAO: fora dela seria um setParameters e um toast a cada recalculo
+   * da arvore (varios por evento de sala). Na transicao: retune das conexoes
+   * ja abertas pra seguirem o preset novo, e -- so quando ENTRA no modo
+   * degradado -- um toast. Sair do modo nao interrompe ninguem: e boa
+   * noticia e o encode ja subiu sozinho via applyEncoding. */
+  function setMeshFallback(kind, value) {
+    if (meshFallback[kind] === value) return;
+    meshFallback[kind] = value;
+    // qualityFor le meshFallback[kind], entao ja devolve o preset certo aqui.
+    currentSession?.mesh?.applyEncoding(qualityFor(kind), kind);
+    if (value && kind === 'screen') {
+      // So a tela tem cadeia de degradacao; a camera ja esta no piso, entao
+      // avisar que "baixei a qualidade" dela seria mentira.
+      showToast('Sem ninguém pra retransmitir: baixei a qualidade pra sala aguentar.');
+    }
   }
 
   function emptyMessage() {
@@ -1724,6 +1775,16 @@
     return false;
   }
 
+  // Janela de histerese da re-eleicao (Parte B). Precisa ser MAIOR que a
+  // carencia de 'disconnected' do mesh (DISCONNECT_GRACE_MS = 5000, mesh.js):
+  // dentro dessa carencia um soluco de ICE ainda pode se resolver sozinho
+  // sem virar falha, entao re-eleger antes disso troca de relay por causa de
+  // uma queda que ia passar -- e cada troca custa uma renegociacao nas
+  // folhas. 8s da folga sobre os 5s sem deixar a topologia velha no ar tempo
+  // demais. So freia o recalculo COMUM; `force` (recoverFromRelayLoss)
+  // passa reto -- ver abaixo.
+  const REELECTION_HYSTERESIS_MS = 8000;
+
   // `force` pula a comparacao com a topologia anterior: usado na
   // recuperacao de falha, onde a conexao morta precisa ser re-ofertada
   // mesmo que o resultado do calculo tenha dado igual.
@@ -1732,6 +1793,25 @@
     if (!session?.mesh) return;
     const stream = kind === 'camera' ? cameraStream : localStream;
     if (!stream) return;
+
+    // Histerese: um recalculo comum dentro da janela da ultima re-eleicao
+    // nao roda agora -- agenda UM recalculo pro fim da janela (adiar, nao
+    // descartar: descartar perderia a ultima mudanca de topologia, que e a
+    // que vale). O guard do handle impede empilhar um segundo timer. `force`
+    // nunca cai aqui: e o caminho que reconecta orfas, atrasa-lo deixa gente
+    // sem video.
+    if (!force) {
+      const since = Date.now() - reelectionAt[kind];
+      if (since < REELECTION_HYSTERESIS_MS) {
+        if (!deferredRecompute[kind]) {
+          deferredRecompute[kind] = setTimeout(() => {
+            deferredRecompute[kind] = null;
+            recomputeTree(kind);
+          }, REELECTION_HYSTERESIS_MS - since);
+        }
+        return;
+      }
+    }
     // Com o interruptor desligado nao ha nada a calcular -- EXCETO quando
     // ele acabou de ser desligado com uma arvore no ar: ai precisamos
     // dissolve-la (todo mundo 'direct'), senao as folhas ficam cortadas da
@@ -1767,6 +1847,14 @@
       ? tree.computeTree(myId, candidates)
       : tree.allDirect(myId, candidates);
 
+    // H3: a malha degenerada e o modo de FALHA, nao um estado neutro. So
+    // conta como fallback quando QUERIAMOS arvore (cfg.network.tree) e mesmo
+    // assim todo mundo saiu 'direct' -- malha por escolha (interruptor
+    // desligado) nao degrada nada. Roda ANTES do short-circuit de
+    // sameAssignments: o estado precisa seguir o ultimo calculo mesmo quando
+    // a topologia em si nao mudou. setMeshFallback so age na transicao.
+    setMeshFallback(kind, cfg.network.tree && tree.isAllDirect(assignments));
+
     // Topologia identica a que ja esta no ar: nao mexe em nada. Antes o
     // epoch subia de qualquer jeito e o 'tree' resultante mandava cada
     // relay repassar de novo pros MESMOS filhos -- um transceiver (um
@@ -1774,6 +1862,11 @@
     // em cada folha a cada entra-e-sai que nao tinha nada a ver com ela.
     if (!force && tree.sameAssignments(assignments, originTree[kind].assignments)) return;
 
+    // Aplicamos uma topologia nova: e ISTO uma re-eleicao. Marca o instante
+    // pra que os recalculos comuns dos proximos REELECTION_HYSTERESIS_MS
+    // sejam adiados em vez de trocarem o relay de novo. `force` tambem marca:
+    // recoverFromRelayLoss ja elegeu, nao faz sentido reeleger logo atras.
+    reelectionAt[kind] = Date.now();
     const epoch = ++originTree[kind].epoch;
     originTree[kind].assignments = assignments;
     applyOriginAssignments(session, kind, assignments, epoch);

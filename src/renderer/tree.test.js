@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  computeTree, allDirect, sameAssignments,
+  computeTree, allDirect, isAllDirect, sameAssignments,
   FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX,
 } = require('./tree');
 
@@ -117,6 +117,41 @@ test('allDirect poe todo mundo direto na origem (dissolve a arvore, #5)', () => 
     assert.equal(out.get(id).paiId, 'a');
     assert.deepEqual(out.get(id).filhosIds, []);
   }
+});
+
+// ---------- Malha degenerada como modo de falha (H3) ----------
+
+test('isAllDirect: malha degenerada (nenhum elegivel) e verdadeira', () => {
+  const candidates = [
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: true, suspended: false },
+    { id: 'c', joinedAt: 2, rtt: 6, transmitting: false, suspended: false, relayIneligible: true },
+  ];
+  assert.equal(isAllDirect(computeTree('a', candidates)), true);
+  // E o mesmo pra dissolucao explicita da arvore (interruptor desligado).
+  assert.equal(isAllDirect(allDirect('a', [{ id: 'b' }])), true);
+});
+
+test('isAllDirect: arvore com relay de verdade e falsa, mesmo com excedente direct', () => {
+  const comRelay = [
+    { id: 'b', joinedAt: 1, rtt: 10, transmitting: false, suspended: false },
+    { id: 'c', joinedAt: 2, rtt: 20, transmitting: false, suspended: false },
+  ];
+  assert.equal(isAllDirect(computeTree('a', comRelay)), false);
+
+  // Overflow: 'e' e direct, mas ha relay -- a origem paga 2 out-conns, nao 4.
+  const comExcedente = [
+    { id: 'b', joinedAt: 1, rtt: 10, transmitting: false, suspended: false },
+    { id: 'c', joinedAt: 2, rtt: 20, transmitting: false, suspended: false },
+    { id: 'd', joinedAt: 3, rtt: 30, transmitting: false, suspended: false },
+    { id: 'e', joinedAt: 4, rtt: 40, transmitting: false, suspended: false },
+  ];
+  assert.equal(isAllDirect(computeTree('a', comExcedente)), false);
+});
+
+test('isAllDirect: mapa vazio e falso -- sala vazia nao e modo degradado', () => {
+  assert.equal(isAllDirect(computeTree('a', [])), false);
+  assert.equal(isAllDirect(new Map()), false);
+  assert.equal(isAllDirect(null), false);
 });
 
 test('sameAssignments: topologia igual e igual, com filhos em qualquer ordem (#4)', () => {

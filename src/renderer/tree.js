@@ -88,7 +88,28 @@
     return assignments;
   }
 
-  const api = { computeTree, allDirect, sameAssignments, FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX };
+  // A malha degenerada nao e so uma topologia: e o modo de FALHA. Quando
+  // sobra alguem elegivel, a origem paga UM encoder; quando nao sobra, ela
+  // volta a pagar um por espectador. Quem chama precisa distinguir os dois
+  // casos pra baixar o preset junto -- sem isso a malha volta em qualidade
+  // cheia, o encoder cai pra software, o jitter derruba mais links, mais
+  // relays sao vetados e a malha se realimenta (auditoria H3).
+  //
+  // E uma funcao pura sobre o RESULTADO, e nao um campo novo no retorno, de
+  // proposito: `computeTree` devolve um Map que applyOriginAssignments
+  // itera direto, e embrulhar isso num objeto quebraria quem chama.
+  //
+  // Mapa vazio da `false`: sala sem ninguem nao e o modo degradado -- nao ha
+  // espectador, nao ha encoder, nao ha nada a degradar.
+  function isAllDirect(assignments) {
+    if (!assignments || assignments.size === 0) return false;
+    for (const assignment of assignments.values()) {
+      if (assignment.role !== 'direct') return false;
+    }
+    return true;
+  }
+
+  const api = { computeTree, allDirect, isAllDirect, sameAssignments, FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.tree = api;
