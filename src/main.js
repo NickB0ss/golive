@@ -56,10 +56,19 @@ let audioMode = 'system';
  * qualquer outra situacao fica null e a feature correspondente vira no-op
  * (o renderer cai pro loopback de sistema normal). */
 let audioAddon = null;
+/** Guardado pra logar depois que o logger existir (setupLogger roda mais
+ * abaixo) -- se o addon nao carregou, e crucial que isso fique registrado:
+ * a falha e completamente silenciosa pro usuario (a UI nao acusa nada, so
+ * "incluir o som do Discord" e o eco/loop de audio entre duas pessoas
+ * compartilhando tela param de funcionar direito). Ver a auditoria de
+ * 2026-08-27, item C2 -- um build empacotado sem o .node cai exatamente
+ * aqui, sem avisar ninguem. */
+let audioAddonLoadError = null;
 try {
   audioAddon = require(path.join(__dirname, '..', 'build', 'Release', 'golive_audio.node'));
-} catch {
+} catch (err) {
   audioAddon = null;
+  audioAddonLoadError = err;
 }
 /** captureId -> instancia nativa LoopbackCapture em andamento. */
 const activeCaptures = new Map();
@@ -83,6 +92,12 @@ const { setupLogger } = require('./main/logger');
 // implicita do Electron.
 const logger = setupLogger();
 logger.log(`GoLive iniciando -- versao ${app.getVersion()}, log em ${logger.path}`);
+if (audioAddonLoadError) {
+  logger.error(
+    'addon de audio nativo indisponivel -- "incluir o som do Discord" e a exclusao do audio do proprio GoLive vao ficar fora do ar:',
+    audioAddonLoadError.message
+  );
+}
 process.on('uncaughtException', (err) => logger.error('uncaughtException no main:', err?.stack || err));
 process.on('unhandledRejection', (err) => logger.error('unhandledRejection no main:', err?.stack || err));
 
@@ -184,7 +199,14 @@ app.whenReady().then(() => {
       desktopCapturer
         .getSources({ types: ['screen', 'window'] })
         .then((sources) => {
-          const chosen = sources.find((s) => s.id === selectedSourceId) || sources[0];
+          const chosen = sources.find((s) => s.id === selectedSourceId);
+          // Antes caia pra `sources[0]` quando o id escolhido nao batia mais
+          // (janela fechada entre o clique no card e a confirmacao do SO) --
+          // sources[0] costuma ser o monitor principal inteiro, entao quem
+          // achava que estava mostrando uma janela acabava compartilhando a
+          // area de trabalho inteira, sem aviso nenhum. Recusar aqui faz o
+          // getDisplayMedia do renderer rejeitar, e o catch de startShare
+          // mostra o motivo em vez de compartilhar a fonte errada calado.
           if (!chosen) return callback({});
           // 'loopback' so no modo 'system'; nos modos 'none' e 'device' o
           // getDisplayMedia nao carrega audio (o modo 'device' e adicionado
