@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -663,7 +663,9 @@
     // conexao anterior nunca chegou a abrir).
     resetTreeState();
 
-    const session = { sig: null, mesh: null };
+    // A fila de sinalizacao e da SESSAO: morre com ela, entao nenhuma
+    // mensagem de uma sala anterior fica encadeada na frente das novas.
+    const session = { sig: null, mesh: null, signalQueue: queue.createSerialQueue() };
 
     // Contador de reconexoes que sobrevive entre as chamadas de joinRoom
     // (o parametro reseta a cada chamada); zera quando a conexao fica de
@@ -688,7 +690,13 @@
           sound.playJoinSound();
           onSettled?.();
         },
-        onMessage: (msg) => handleSignal(session, msg),
+        // handleSignal e async e ninguem aguardava seu retorno: duas
+        // mensagens seguidas do WebSocket rodavam concorrentes, e uma 'ice'
+        // atropelava o `await setRemoteDescription` da 'offer' anterior --
+        // candidato descartado, ICE que nunca fecha. A fila serial devolve
+        // ao tratamento a mesma ordem total em que o WebSocket entregou.
+        // Ver a auditoria de 2026-08-27, item A1.
+        onMessage: (msg) => session.signalQueue.push(() => handleSignal(session, msg)),
         onError: () => {
           if (currentSession === session && attempts === 0) {
             $('setup-error').textContent =

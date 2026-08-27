@@ -486,3 +486,125 @@ test('fechar a conexao durante a carencia de disconnected nao duplica o evento d
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
 });
+
+// --- Buffer de candidatos ICE adiantados (#A1) ---
+//
+// Mesmo fake de sempre, com duas adicoes: setRemoteDescription fica PENDENTE
+// ate `releaseRemote()` ser chamado (e a janela em que a corrida acontece de
+// verdade) e addIceCandidate registra o que recebeu, na ordem.
+function installFakeWebRTCWithDeferredRemote() {
+  installFakeWebRTC();
+  const created = [];
+  const OriginalCtor = global.RTCPeerConnection;
+  global.RTCPeerConnection = class extends OriginalCtor {
+    constructor() {
+      super();
+      this.remoteDescription = null;
+      this.iceAdded = [];
+      created.push(this);
+    }
+    setRemoteDescription(desc) {
+      return new Promise((resolve) => {
+        this.releaseRemote = () => {
+          this.remoteDescription = desc;
+          resolve();
+        };
+      });
+    }
+    addIceCandidate(candidate) {
+      this.iceAdded.push(candidate);
+      return Promise.resolve();
+    }
+  };
+  return created;
+}
+
+test('candidato que chega sem remoteDescription e guardado e entregue depois (#A1)', async () => {
+  const created = installFakeWebRTCWithDeferredRemote();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  // A oferta trava no setRemoteDescription -- exatamente a janela em que a
+  // conexao ja existe mas ainda nao aceita candidato.
+  const offerDone = mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const pc = created[0];
+
+  await mesh.handleIce('7', 'out', { candidate: 'a' }, 'screen');
+  await mesh.handleIce('7', 'out', { candidate: 'b' }, 'screen');
+  assert.deepEqual(pc.iceAdded, [], 'nada entregue enquanto a SDP remota nao chegou');
+
+  pc.releaseRemote();
+  await offerDone;
+
+  assert.deepEqual(pc.iceAdded.map((c) => c.candidate), ['a', 'b'], 'drenado na ordem de chegada');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('candidato que chega com remoteDescription presente vai direto (#A1)', async () => {
+  const created = installFakeWebRTCWithDeferredRemote();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  const offerDone = mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const pc = created[0];
+  pc.releaseRemote();
+  await offerDone;
+
+  await mesh.handleIce('7', 'out', { candidate: 'c' }, 'screen');
+  assert.deepEqual(pc.iceAdded.map((x) => x.candidate), ['c']);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('o buffer de ICE tem teto e descarta o mais antigo (#A1)', async () => {
+  const created = installFakeWebRTCWithDeferredRemote();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  const offerDone = mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const pc = created[0];
+
+  const TOTAL = 70; // MAX_PENDING_ICE (64) + folga
+  for (let i = 0; i < TOTAL; i += 1) {
+    await mesh.handleIce('7', 'out', { candidate: `c${i}` }, 'screen');
+  }
+
+  pc.releaseRemote();
+  await offerDone;
+
+  assert.equal(pc.iceAdded.length, 64);
+  // Sobraram os 64 MAIS RECENTES, ainda em ordem.
+  assert.equal(pc.iceAdded[0].candidate, `c${TOTAL - 64}`);
+  assert.equal(pc.iceAdded[63].candidate, `c${TOTAL - 1}`);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('handleAnswer tambem drena os candidatos guardados da outConn (#A1)', async () => {
+  const created = installFakeWebRTCWithDeferredRemote();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  const track = { kind: 'video' };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  await mesh.offerTo('7', stream, { bitrate: 1_000_000, fps: 30, codec: 'video/H264' }, 'screen');
+  const pc = created[0];
+
+  // 'ice' do outro lado chega antes de a 'answer' ser processada: dir 'in'
+  // aponta pra outConn.
+  await mesh.handleIce('7', 'in', { candidate: 'a' }, 'screen');
+  assert.deepEqual(pc.iceAdded, []);
+
+  const answerDone = mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'screen');
+  pc.releaseRemote();
+  await answerDone;
+
+  assert.deepEqual(pc.iceAdded.map((c) => c.candidate), ['a']);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
