@@ -18,8 +18,15 @@ function send(ws, payload) {
 }
 
 /** Cria o servidor de sinalizacao. Resolve quando a porta esta escutando,
- * rejeita (com err.code === 'EADDRINUSE' se for o caso) se nao conseguir. */
-function createSignalingServer({ port }) {
+ * rejeita (com err.code === 'EADDRINUSE' se for o caso) se nao conseguir.
+ *
+ * `heartbeatMs`: intervalo do ping keep-alive. A conexao de sinalizacao
+ * fica ociosa quase o tempo todo (so a negociacao WebRTC passa por aqui);
+ * numa LAN virtual (Radmin/Tailscale) uma conexao TCP ociosa por
+ * 60-120s tem o estado de NAT descartado e o cliente "cai da sala"
+ * sozinho, com close code 1006. O ping periodico mantem o fluxo vivo e
+ * ainda deixa o servidor derrubar quem parou de responder. */
+function createSignalingServer({ port, heartbeatMs = 25000 }) {
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port });
 
@@ -50,9 +57,34 @@ function createSignalingServer({ port }) {
     wss.once('listening', () => {
       wss.off('error', onError);
 
+      // Keep-alive: marca cada socket como vivo ao receber o pong do
+      // navegador (que responde sozinho ao ping) e, a cada ciclo, derruba
+      // quem nao respondeu o ping anterior.
+      const heartbeat = setInterval(() => {
+        for (const ws of wss.clients) {
+          if (ws.isAlive === false) {
+            ws.terminate();
+            continue;
+          }
+          ws.isAlive = false;
+          try {
+            ws.ping();
+          } catch {
+            /* socket ja fechando */
+          }
+        }
+      }, heartbeatMs);
+      if (typeof heartbeat.unref === 'function') heartbeat.unref();
+      wss.on('close', () => clearInterval(heartbeat));
+
       wss.on('connection', (ws) => {
         const id = String(nextId++);
         let joined = false;
+
+        ws.isAlive = true;
+        ws.on('pong', () => {
+          ws.isAlive = true;
+        });
 
         ws.on('message', (raw) => {
           let msg;

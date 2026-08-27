@@ -481,26 +481,82 @@
     if (hostInfo?.addressWarning) {
       parts.push(`${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`);
     }
-    if (hostInfo?.firewall && !hostInfo.firewall.ok) {
-      parts.push(
-        `Não consegui liberar a porta no firewall automaticamente. Comando manual: ${hostInfo.firewall.manualCommand}`
-      );
-    }
     if (encoderWarning) parts.push(encoderWarning);
-    if (!parts.length) {
+
+    const firewallBroken = !!(hostInfo?.firewall && !hostInfo.firewall.ok);
+
+    if (!parts.length && !firewallBroken) {
       el.classList.add('hidden');
       el.textContent = '';
       return;
     }
-    // O texto vai dentro de um filho, nao direto no container: a abertura
-    // anima `grid-template-rows: 0fr -> 1fr` (nunca `height`), e so um
-    // elemento de verdade aceita o `min-height: 0; overflow: hidden` que
-    // faz o corte funcionar. Um no de texto solto nao aceita.
+    // Tudo vai dentro de um unico filho do container, nao direto nele: a
+    // abertura anima `grid-template-rows: 0fr -> 1fr` (nunca `height`), e o
+    // `min-height: 0; overflow: hidden` que faz o corte funcionar so vale
+    // pro filho direto. Multiplos filhos quebrariam a animacao.
     el.textContent = '';
-    const inner = document.createElement('span');
-    inner.textContent = parts.join(' ');
+    const inner = document.createElement('div');
+
+    if (parts.length) {
+      const span = document.createElement('span');
+      span.textContent = parts.join(' ');
+      inner.appendChild(span);
+    }
+    if (firewallBroken) inner.appendChild(buildFirewallFix());
+
     el.appendChild(inner);
     el.classList.remove('hidden');
+  }
+
+  // Bloco de correcao do firewall: em vez de so despejar o comando netsh
+  // como texto (o usuario nao vai copiar e colar no meio de uma call), um
+  // botao que re-dispara o pedido de elevacao do Windows pra mesma porta
+  // da sala. O comando manual so aparece como ultimo recurso, depois que
+  // uma tentativa pelo botao tambem falha.
+  function buildFirewallFix() {
+    const box = document.createElement('div');
+    box.className = 'firewall-fix';
+
+    const msg = document.createElement('p');
+    msg.textContent =
+      'A porta da sala não está liberada no firewall do Windows — quem tentar entrar pela rede pode não conseguir.';
+    box.appendChild(msg);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-firewall';
+    btn.textContent = 'Permitir acesso à rede';
+    box.appendChild(btn);
+
+    const detail = document.createElement('p');
+    detail.className = 'firewall-detail hidden';
+    box.appendChild(detail);
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Aguardando permissão do Windows…';
+      detail.classList.add('hidden');
+      let res;
+      try {
+        res = await window.golive.retryFirewall();
+      } catch (err) {
+        res = { ok: false, error: err?.message };
+      }
+      if (res?.ok) {
+        if (hostInfo) hostInfo.firewall = { ok: true };
+        renderHostWarning();
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Tentar de novo';
+      const cmd = res?.manualCommand || hostInfo?.firewall?.manualCommand;
+      detail.textContent = cmd
+        ? `Se continuar sem funcionar, abra o PowerShell como administrador e rode: ${cmd}`
+        : 'Não consegui liberar a porta. Confirme que aceitou o pedido do Windows e tente de novo.';
+      detail.classList.remove('hidden');
+    });
+
+    return box;
   }
   renderHostWarning();
 
@@ -574,8 +630,15 @@
     return url.replace(/^wss?:\/\//, '');
   }
 
-  function joinRoom(rawUrl, name, publicAddress, onSettled) {
-    $('setup-error').textContent = '';
+  // Quantas reconexoes automaticas seguidas tentar antes de desistir e
+  // devolver o controle pro usuario, e a folga de conexao estavel que
+  // zera essa contagem (uma queda isolada horas depois nao deve herdar o
+  // contador de uma sequencia de quedas antiga).
+  const MAX_RECONNECT = 4;
+  const STABLE_MS = 20000;
+
+  function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0) {
+    if (!reconnectAttempt) $('setup-error').textContent = '';
     const url = normalizeRoomUrl(rawUrl);
     const roomAddress = publicAddress || canonicalAddress(url);
 
@@ -596,6 +659,12 @@
 
     const session = { sig: null, mesh: null };
 
+    // Contador de reconexoes que sobrevive entre as chamadas de joinRoom
+    // (o parametro reseta a cada chamada); zera quando a conexao fica de
+    // pe por STABLE_MS.
+    let attempts = reconnectAttempt;
+    let stableTimer = null;
+
     let connHandle;
     try {
       connHandle = signaling.connect(url, {
@@ -608,12 +677,14 @@
           renderRoomList();
           session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress });
+          if (attempts > 0) $('setup-error').textContent = '';
+          stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
           sound.playJoinSound();
           onSettled?.();
         },
         onMessage: (msg) => handleSignal(session, msg),
         onError: () => {
-          if (currentSession === session) {
+          if (currentSession === session && attempts === 0) {
             $('setup-error').textContent =
               'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
           }
@@ -621,13 +692,42 @@
         },
         onClose: (detail) => {
           if (currentSession !== session) return; // conexao antiga, ja substituida
-          // Instrumentacao temporaria pro relato de saida sozinha da sala sem
-          // crash visivel: o code/reason do WebSocket diz se foi um close
-          // limpo (1000/1001, ex: o proprio host fechando o app) ou uma
-          // queda anormal de rede/processo (1006, sem handshake de close).
+          clearTimeout(stableTimer);
+          // O code/reason do WebSocket diz se foi um close limpo (1000/1001,
+          // ex: o proprio host fechando o app) ou uma queda anormal de
+          // rede/processo (1006, sem handshake de close) -- tipico de NAT de
+          // LAN virtual descartando um fluxo ocioso.
           console.error(`[signaling] conexao fechada: code=${detail?.code} reason="${detail?.reason}" wasClean=${detail?.wasClean}`);
+
+          const abnormal = detail?.code === 1006 || detail?.wasClean === false;
+          const canRetry = abnormal && (session.opened || attempts > 0) && attempts < MAX_RECONNECT;
+
           currentSession = null;
           activeRoomAddress = null;
+
+          if (canRetry) {
+            // Queda anormal, nao saida deliberada (leaveRoom zera
+            // currentSession antes de fechar, entao nunca chega aqui):
+            // volta pra mesma sala sozinho, com backoff. Desmonta a
+            // sessao morta -- a reconexao reconstroi mesh/arvore do zero,
+            // que e o estado seguro depois de perder a sinalizacao.
+            const next = attempts + 1;
+            $('setup-error').textContent = `Conexão caiu. Reconectando… (${next}/${MAX_RECONNECT})`;
+            teardownSession(session);
+            renderMembersPanel();
+            renderRoomList();
+            setTimeout(() => {
+              if (currentSession) return; // usuario ja entrou noutra sala/saiu
+              joinRoom(rawUrl, name, publicAddress, undefined, next);
+            }, 1000 * 2 ** attempts);
+            return;
+          }
+
+          if (abnormal && attempts >= MAX_RECONNECT) {
+            $('setup-error').textContent =
+              'Perdi a conexão com a sala e não consegui reconectar. Tente entrar de novo.';
+          }
+
           ui.stageHeader.clear();
           // Se a conexao nunca chegou a abrir (ex: sala propria cujo host
           // morreu junto com o app anterior), nao ha sessao pra desmontar --

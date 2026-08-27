@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld('golive', {
    * sala, pra ela nao ficar pendurada em "Ao vivo agora" pros outros. */
   stopHosting: () => ipcRenderer.invoke('room:unhost'),
 
+  /** Nova tentativa de liberar a porta da sala no firewall do Windows
+   * (re-dispara o pedido de elevacao). Usado pelo botao "Permitir acesso
+   * à rede" quando a liberacao automatica ao criar a sala falhou. Devolve
+   * { ok: true } ou { ok: false, manualCommand?, error? }. */
+  retryFirewall: () => ipcRenderer.invoke('firewall:retry'),
+
   /** Liga/desliga o anuncio da sala ativa via broadcast UDP em tempo real
    * (ex: usuario mexeu no toggle de Configuracoes > Rede depois de ja ter
    * criado a sala). Sem efeito se nao houver sala local hospedada. */

@@ -1174,6 +1174,26 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
+/* Correcao do firewall dentro do aviso do palco: mensagem + botao que
+   re-dispara a elevacao, e um detalhe (comando manual) que so aparece
+   depois de uma tentativa falhar. */
+.firewall-fix { margin-top: var(--s-2); display: grid; gap: 6px; justify-items: start; }
+.firewall-fix p { margin: 0; }
+.btn-firewall {
+  padding: 6px 12px;
+  font-size: 0.85em;
+  background: var(--surface-4);
+  border-color: var(--line-strong);
+  color: var(--text-1);
+}
+.btn-firewall:hover:not(:disabled) { background: var(--surface-3); }
+.firewall-detail {
+  font-size: 0.92em;
+  color: var(--text-2);
+  word-break: break-all;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
 /* Abre a altura sem animar `height`: grid-template-rows de 0fr pra 1fr e
    interpolavel e nao dispara layout em cada frame como height faria.
    O filho precisa de min-height: 0 + overflow: hidden pra ser cortado. */

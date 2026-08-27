@@ -144,6 +144,42 @@ test('encaminha view-state e tree ao destinatario, com o from carimbado', async 
   }
 });
 
+test('heartbeat derruba o cliente que para de responder o pong', async () => {
+  const server = await createSignalingServer({ port: 0, heartbeatMs: 50 });
+  try {
+    // autoPong: false = o cliente ignora o ping do servidor, simulando um
+    // socket morto de rede (a ponta sumiu sem handshake de close).
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`, { autoPong: false });
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+    assert.equal(server.getPeerCount(), 1);
+
+    await new Promise((r) => a.once('close', r)); // terminado pelo servidor
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(server.getPeerCount(), 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('heartbeat mantem de pe o cliente que responde o pong', async () => {
+  const server = await createSignalingServer({ port: 0, heartbeatMs: 40 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`); // autoPong padrao
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    await new Promise((r) => setTimeout(r, 160)); // varios ciclos de ping
+    assert.equal(server.getPeerCount(), 1);
+    assert.equal(a.readyState, WebSocket.OPEN);
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('watchers e broadcast pra sala inteira, com o from carimbado', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
