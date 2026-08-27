@@ -325,6 +325,15 @@ ipcMain.handle('room:unhost', async () => {
   return true;
 });
 
+// Nova tentativa de liberar a porta no firewall, disparada pelo botao
+// "Permitir acesso à rede" no aviso do palco quando a primeira tentativa
+// (durante room:host) foi cancelada ou falhou no UAC. Re-dispara o pedido
+// de elevacao pra mesma porta da sala ativa.
+ipcMain.handle('firewall:retry', async () => {
+  if (!embeddedServer) return { ok: false, error: 'NO_ROOM' };
+  return ensureFirewallRule(embeddedServer.port);
+});
+
 ipcMain.handle('discovery:setAdvertise', async (_event, enabled) => {
   await ensureDiscoveryStarted();
   if (!enabled || !embeddedServer) {
