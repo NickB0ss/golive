@@ -33,7 +33,14 @@ Branch **`chore/robustez-e-higiene`**: executa o backlog da auditoria
 `docs/2026-08-27-auditoria-de-fragilidade.md`, seguindo o plano
 `docs/superpowers/plans/2026-08-27-robustez-transmissao.md`.
 
-Já mesclado nesta branch, ainda sem tag de release:
+**Já lançado** (em release com tag):
+
+- **F2** — retransmissão em cadeia sempre ligada, sem interruptor na UI
+  (`cfg.network.tree` forçado) — desde a v0.1.5.
+- **C2/C3/C6** — addon nativo faz o build falhar se faltar; `asarUnpack` do
+  `.node`; metadados do `package.json`.
+
+**Mesclado nesta branch, aguardando o próximo release:**
 
 - **A1** — buffer de candidato ICE adiantado + fila serial de sinalização.
 - **A2** — carência de 5s antes de tratar `disconnected` como falha.
@@ -41,11 +48,9 @@ Já mesclado nesta branch, ainda sem tag de release:
 - **A4** — checagem de firewall compara o programa, não só a porta.
 - **A5** — recusa compartilhar quando a fonte escolhida sumiu (não cai em `sources[0]`).
 - **A6/A7** — `handleSignal` com try/catch; `myId` zera com a sessão.
-- **F2** — retransmissão em cadeia sem interruptor na UI (`cfg.network.tree` forçado).
 - **B4/B5** — limite de payload e taxa no WebSocket; roteamento confinado à sala.
 - **C1** — CI rodando `node --test` em push e PR (`.github/workflows/test.yml`).
-- **C2/C3/C6** — addon nativo faz o build falhar se faltar; `asarUnpack`;
-  metadados do `package.json`.
+- **G4** — `findFreeServer` fecha o `WebSocketServer` que falhou o bind.
 - **H1** — sinalização caída vira sessão órfã, o vídeo continua.
 - **H2** — relay eleito por saúde de encode, não só RTT.
 - **H3** — malha degradada (preset desce um degrau) quando não há relay.

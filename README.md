@@ -124,8 +124,9 @@ como padrão. Cada preset é um pacote fechado de resolução + fps + bitrate �
 sem sliders soltos. Ao lado, uma linha mostra o upload que aquele preset
 exige por espectador.
 
-- **Codec** — a tela é sempre codificada em **H.264**, no encoder da GPU
-  (NVENC/AMF/QuickSync). Não há opção de VP9 nem AV1. A câmera usa VP8.
+- **Codec** — a tela é sempre codificada em **H.264**, normalmente no encoder
+  de hardware da GPU (NVENC/AMF/QuickSync — a escolha final é do
+  Chromium/Windows). Não há opção de VP9 nem AV1. A câmera usa VP8.
 - **Áudio** — no mesmo diálogo, a caixa "Compartilhar som" captura o som que
   sai da placa (loopback do Windows, não o microfone). Quando o componente
   nativo de áudio está presente, aparece também "Incluir o som do Discord
@@ -136,15 +137,18 @@ exige por espectador.
 
 **A qualidade se ajusta sozinha ao tamanho da sala.** A medição do próprio
 projeto mostrou 4 espectadores a 1080p60 quebrando o NVENC sem jogo nenhum
-aberto. Por isso, a partir de **3 espectadores** o encode da tela desce um
-degrau automaticamente (1080p60 → 1080p30), voltando a subir se a telemetria
-mostrar folga por alguns segundos. Ninguém escolhe nada.
+aberto. Por isso o encode da tela desce um degrau (1080p60 → 1080p30) assim
+que a sala chega a **3 pessoas**, e volta ao preset escolhido assim que ela
+encolhe pra menos de 3. É só uma função da contagem de gente na sala — não há
+telemetria nem tempo de espera no meio. Ninguém escolhe nada.
 
 **A queda para malha degrada de propósito.** A árvore de retransmissão
 (abaixo) cai para malha direta quando não sobra nenhum relay elegível. Nesse
 modo a origem volta a pagar um encoder por espectador, então o preset desce
-**mais um degrau** de propósito — malha em qualidade cheia derrete o encoder,
-o jitter derruba mais links e a malha se realimenta.
+**mais um degrau** e aparece um aviso ("baixei a qualidade pra sala
+aguentar") — malha em qualidade cheia derrete o encoder, o jitter derruba
+mais links e a malha se realimenta. Ao voltar a ter relay, o encode sobe
+sozinho, sem aviso.
 
 O painel de estatísticas (Configurações > **Estatísticas**) mostra fps real,
 resolução, banda e latência a cada segundo. O campo **Limitado por** é o mais
