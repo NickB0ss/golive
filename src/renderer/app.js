@@ -662,9 +662,11 @@
   // Limpa o estado de UI/mesh associado a uma sessao especifica. Chamada so
   // depois que `currentSession` ja deixou de apontar pra ela, entao qualquer
   // callback tardio dessa sessao ja vai ter parado de agir sozinho.
-  function teardownSession(session) {
-    stopStatsLoop();
-    resetTreeState();
+  // Derruba SO a captura local (tela + camera). Separada de teardownSession
+  // por causa do A3: a reconexao automatica precisa desmontar a sessao morta
+  // sem matar o que a pessoa estava transmitindo -- so a saida deliberada e a
+  // desistencia do retry chamam isto.
+  function teardownMedia() {
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
@@ -678,6 +680,12 @@
       ui.grid.removeTile('cam-me', emptyMessage());
       $('btn-toggle-camera').classList.remove('active');
     }
+    $('btn-toggle-share').classList.remove('active');
+  }
+
+  // Derruba as conexoes P2P e o estado de tiles dos peers dessa sessao. A
+  // captura local NAO e tocada aqui.
+  function teardownPeers(session) {
     if (session?.mesh) {
       for (const peerId of Array.from(session.mesh.peers.keys())) {
         session.mesh.removePeer(peerId);
@@ -686,7 +694,13 @@
       }
     }
     tileSource.clear();
-    $('btn-toggle-share').classList.remove('active');
+  }
+
+  function teardownSession(session) {
+    stopStatsLoop();
+    resetTreeState();
+    teardownMedia();
+    teardownPeers(session);
     renderMembersPanel();
   }
 
@@ -818,7 +832,15 @@
             // que e o estado seguro depois de perder a sinalizacao.
             const next = attempts + 1;
             $('setup-error').textContent = `Conexão caiu. Reconectando… (${next}/${MAX_RECONNECT})`;
-            teardownSession(session);
+            // A3: queda anormal + retry NAO e saida deliberada. Desmonta a
+            // sessao morta (mesh/arvore/stats), mas preserva a captura local
+            // -- sem teardownMedia. A queda acontece sob carga e a pessoa nem
+            // percebe; se derrubassemos a captura, ela voltaria sem transmitir
+            // e teria que reescolher a fonte. O welcome da reconexao re-oferta
+            // localStream/cameraStream aos peers.
+            stopStatsLoop();
+            resetTreeState();
+            teardownPeers(session);
             renderMembersPanel();
             renderRoomList();
             setTimeout(() => {
@@ -974,6 +996,36 @@
         myId = msg.id;
         for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
         renderMembersPanel();
+        // A3: numa reconexao automatica a captura local sobreviveu (o retry
+        // do onClose nao chama mais teardownMedia), mas as conexoes P2P foram
+        // refeitas do zero. Sem re-ofertar aqui, quem reconectou fica "ao
+        // vivo" pra si mesmo e mudo pra sala inteira. Espelha o 'peer-joined',
+        // so que pra cada peer do welcome. Numa entrada normal localStream e
+        // cameraStream sao nulos e nada disto roda.
+        if (localStream) {
+          for (const p of msg.peers) {
+            try {
+              await mesh.offerTo(p.id, localStream, qualityFor('screen'), 'screen');
+            } catch (err) {
+              // uma oferta isolada que falha (peer que ja sumiu, glare) nao
+              // pode abortar as demais nem o resto do handshake do welcome
+              console.error(`[reconexao] re-oferta de tela para ${p.id} falhou:`, err);
+            }
+          }
+          broadcastWatchers('screen');
+          recomputeTree('screen');
+        }
+        if (cameraStream) {
+          for (const p of msg.peers) {
+            try {
+              await mesh.offerTo(p.id, cameraStream, qualityFor('camera'), 'camera');
+            } catch (err) {
+              console.error(`[reconexao] re-oferta de camera para ${p.id} falhou:`, err);
+            }
+          }
+          broadcastWatchers('camera');
+          recomputeTree('camera');
+        }
         break;
       }
       case 'peer-joined': {
