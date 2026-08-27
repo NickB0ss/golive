@@ -22,6 +22,15 @@
   // (teardownPeers -- preserva a captura), leaveRoom e troca de sala (ambos
   // teardownSession completo).
   let orphanSession = null;
+  // So pode haver UM retry de reconexao pendente por vez (o timer que
+  // dispara joinRoom da tentativa n+1 e agendado no onClose da tentativa n,
+  // que ja e sequencial). Modulo-level porque quem precisa cancela-lo --
+  // leaveRoom, um joinRoom deliberado, o onOpen de uma reconexao que abriu
+  // -- nao tem acesso ao objeto `session` que o agendou (pode ser a sessao
+  // B, C... de uma cadeia de tentativas que ninguem mais referencia). Sem
+  // cancelar, um Desconectar durante o "Reconectando…" era desfeito pelo
+  // timer, que so testa `if (currentSession)`.
+  let retryTimer = null;
   let myId = null;
 
   const KINDS = ['screen', 'camera'];
@@ -769,6 +778,14 @@
 
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0) {
     if (!reconnectAttempt) $('setup-error').textContent = '';
+    // Join deliberado do usuario: qualquer retry pendente de uma queda
+    // anterior morre aqui (esta chamada e por si so a nova intencao). O
+    // retry automatico (reconnectAttempt > 0) e a propria continuacao do
+    // timer -- ele nao se cancela.
+    if (!reconnectAttempt) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
     const url = normalizeRoomUrl(rawUrl);
     const roomAddress = publicAddress || canonicalAddress(url);
 
@@ -787,7 +804,6 @@
     // tambem passa por aqui com a orfa viva, e nesse caso ela e desmontada
     // no onOpen (teardownPeers, que preserva a captura), nao agora.
     if (orphanSession && !reconnectAttempt) {
-      clearTimeout(orphanSession.retryTimer); // senao o retry re-entra a sala que estamos deixando
       teardownSession(orphanSession);
       orphanSession = null;
     }
@@ -829,8 +845,10 @@
           // enquanto a orfa vivia, seu epoch/papel ainda descrevia peers
           // reais, e zera-lo cedo deixaria onPeerState sem como fechar
           // repasses. Aqui a orfa ja saiu e o 'welcome' ainda nao chegou.
+          // Esta reconexao abriu: nao ha mais retry a disparar.
+          clearTimeout(retryTimer);
+          retryTimer = null;
           if (orphanSession) {
-            clearTimeout(orphanSession.retryTimer); // esta reconexao abriu; nao ha outro retry a disparar
             teardownPeers(orphanSession);
             resetTreeState();
             orphanSession = null;
@@ -899,11 +917,11 @@
           // manter o timer vivo so queima ciclo. Levar a telemetria pra orfa
           // esta fora do escopo do H1 (manter o VIDEO no ar, nao as metricas).
           //
-          // Se a conexao nunca chegou a abrir (session.opened falso, ex: sala
-          // propria cujo host morreu junto com o app anterior) nao ha nada a
-          // orfanizar. Nao ha como uma orfa ANTERIOR ainda estar viva aqui:
-          // ela so sobrevive a uma reconexao que nao abriu, e essa sessao
-          // (session.opened falso) nao entra neste ramo.
+          // Se ESTA conexao nunca abriu (session.opened falso, ex: tentativa
+          // de reconexao com o servidor ainda fora do ar), nao ha nada a
+          // orfanizar -- e uma orfa ANTERIOR, se houver, fica de pe (a
+          // cadeia de retry continua tentando por ela). So uma sessao que
+          // chegou a abrir vira orfa.
           if (session.opened) {
             orphanSession = session;
             stopStatsLoop();
@@ -912,17 +930,17 @@
           if (canRetry) {
             // Queda anormal, nao saida deliberada (leaveRoom zera
             // currentSession antes de fechar, entao nunca chega aqui):
-            // volta pra mesma sala sozinho, com backoff. O handle fica em
-            // `session` pra que o ramo orfa de leaveRoom (e o descarte da
-            // orfa no joinRoom) possam cancelar o timer -- senao um
-            // Desconectar durante o "Reconectando…" seria desfeito pelo
-            // timer, que so testa `if (currentSession)`, e a sessao voltaria.
+            // volta pra mesma sala sozinho, com backoff. `retryTimer` e
+            // modulo-level: e o UNICO retry pendente (o proximo so e agendado
+            // no onClose da tentativa seguinte), e leaveRoom / um join
+            // deliberado / o onOpen de uma reconexao que abriu o cancelam.
             const next = attempts + 1;
             $('setup-error').textContent =
               `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`;
             renderMembersPanel();
             renderRoomList();
-            session.retryTimer = setTimeout(() => {
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
               if (currentSession) return; // usuario ja entrou noutra sala/saiu
               joinRoom(rawUrl, name, publicAddress, undefined, next);
             }, 1000 * 2 ** attempts);
@@ -1034,17 +1052,27 @@
             && originTree[baseKind]?.assignments.get(peerId)?.role === 'relay') {
           recoverFromRelayLoss(baseKind, peerId);
         }
-        // Sem sinalizacao (orfa) nunca chega um 'peer-left': se a conexao
-        // DIRETA com um peer falhou de vez (passou a carencia de 5s de A2 e
-        // nao voltou), este e o unico aviso de que ele se foi. Sem o
-        // removePeer o cadaver fica no painel de membros pra sempre -- a
-        // mesma "mentira visivel" que o brief cobra pra emptyMessage. So no
-        // kind base (!sourceId): uma falha de kind composto e um repasse
-        // origem->filho caindo, nao o filho saindo da sala.
+        // Sem sinalizacao (orfa) nunca chega um 'peer-left'. Uma falha de
+        // conexao direta (base kind, passada a carencia de 5s de A2) e o
+        // unico aviso possivel de que um peer se foi -- mas so conta como
+        // "saiu da sala" se NENHUMA outra conexao com ele ainda estiver de
+        // pe. Durante a orfa um peer pode ter a tela (out) caindo enquanto a
+        // camera (in) segue entregando video; remove-lo ali fecharia a
+        // conexao boa e mataria video vivo -- o oposto do que o H1 protege.
+        // Com conexao sobrevivente, o `removedTile` acima ja cuida do tile
+        // do kind que caiu e o peer fica. Sem o removePeer num peer que
+        // sumiu de vez, o cadaver ficaria no painel de membros pra sempre.
         if (failed && !sourceId && session === orphanSession) {
-          session.mesh.removePeer(peerId);
-          dropTile(peerId);
-          dropTile(`cam-${peerId}`);
+          const peer = session.mesh.peers.get(peerId);
+          const stillConnected = peer && [
+            ...Object.values(peer.inConns),
+            ...Object.values(peer.outConns),
+          ].some((pc) => pc && pc.connectionState === 'connected');
+          if (!stillConnected) {
+            session.mesh.removePeer(peerId);
+            dropTile(peerId);
+            dropTile(`cam-${peerId}`);
+          }
         }
         renderMembersPanel();
       },
@@ -1078,6 +1106,14 @@
   // ---------- Desconectar ----------
 
   function leaveRoom() {
+    // Desconectar e a intencao final do usuario: qualquer retry de
+    // reconexao pendente (o "Reconectando… (n/4)") morre aqui, seja qual for
+    // a sessao que o agendou. Sem isto o timer dispararia depois, passaria
+    // pelo seu unico guard `if (currentSession)` (null apos o teardown) e
+    // re-entraria a sala que o usuario acabou de deixar.
+    clearTimeout(retryTimer);
+    retryTimer = null;
+
     // H1, descarte da orfa gatilho 2: a sinalizacao caiu, sobrou uma sessao
     // orfa com video no ar e `currentSession` e null -- o botao Desconectar
     // ainda tem de encerrar tudo. teardownSession completo (mesh, PCs,
@@ -1085,7 +1121,6 @@
     if (!currentSession && orphanSession) {
       const orphan = orphanSession;
       orphanSession = null;
-      clearTimeout(orphan.retryTimer); // Desconectar durante o "Reconectando…": mata o retry pendente
       sound.playLeaveSound();
       const wasHosting = !!hostInfo;
       hostInfo = null;
@@ -1105,10 +1140,8 @@
     if (cooldownRemaining(activeRoomAddress) > 0) return;
     // Reconexao ja em curso (currentSession e a sessao NOVA, ainda
     // conectando) mas a orfa da queda anterior segue viva: Desconectar
-    // encerra as duas. clearTimeout aqui e redundante -- o retry que criou a
-    // sessao nova ja disparou -- mas mantem a intencao explicita.
+    // encerra as duas.
     if (orphanSession) {
-      clearTimeout(orphanSession.retryTimer);
       teardownSession(orphanSession);
       orphanSession = null;
     }
