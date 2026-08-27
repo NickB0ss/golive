@@ -170,6 +170,75 @@ test('sameAssignments: topologia igual e igual, com filhos em qualquer ordem (#4
   assert.equal(sameAssignments(a, reordered), true);
 });
 
+// ---------- Saude de encode na eleicao de relay (H2) ----------
+
+test('encoder de software e vetado quando ha alternativa que nao e software', () => {
+  const candidates = [
+    // Melhor RTT da sala, mas codifica em software: NVENC saturado, encode
+    // cai pra CPU. Nao pode carregar 2 encoders + 1 decoder do relay.
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: true, msPerFrame: 22 } },
+    { id: 'c', joinedAt: 2, rtt: 40, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: false, msPerFrame: 6 } },
+    { id: 'd', joinedAt: 3, rtt: 50, transmitting: false, suspended: false },
+  ];
+  const out = computeTree('a', candidates);
+  assert.equal(out.get('c').role, 'relay'); // RTT pior, mas encoder de hardware
+  assert.notEqual(out.get('b').role, 'relay');
+});
+
+test('sem alternativa, encoder de software NAO e excluido -- cai pro resto do criterio', () => {
+  const candidates = [
+    { id: 'b', joinedAt: 2, rtt: 40, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: true, msPerFrame: 12 } },
+    { id: 'c', joinedAt: 1, rtt: 40, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: true, msPerFrame: 12 } },
+  ];
+  const out = computeTree('a', candidates);
+  // Todos software: nao inventa exclusao, ordena por RTT/joinedAt.
+  assert.equal(out.get('c').role, 'relay'); // mesmo RTT, entrou primeiro
+  assert.equal(out.get('b').role, 'folha');
+});
+
+test('msPerFrame alto e penalidade: perde pra msPerFrame baixo mesmo com RTT pior', () => {
+  const candidates = [
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: false, msPerFrame: 30 } }, // acima do orcamento (~16.6)
+    { id: 'c', joinedAt: 2, rtt: 35, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: false, msPerFrame: 4 } },
+  ];
+  const out = computeTree('a', candidates);
+  assert.equal(out.get('c').role, 'relay'); // GPU livre vence RTT melhor
+  assert.equal(out.get('b').role, 'folha');
+});
+
+test('candidato sem encodeHealth e neutro: nao penalizado, nao favorecido', () => {
+  // Sem dado NAO perde pra um comprovadamente ruim...
+  const vsRuim = [
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: true, msPerFrame: 40 } },
+    { id: 'c', joinedAt: 2, rtt: 40, transmitting: false, suspended: false }, // sem encodeHealth
+  ];
+  assert.equal(computeTree('a', vsRuim).get('c').role, 'relay');
+
+  // ...mas tambem nao ganha de graca de um comprovadamente bom com RTT melhor.
+  const vsBom = [
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false,
+      encodeHealth: { softwareEncoder: false, msPerFrame: 4 } },
+    { id: 'c', joinedAt: 2, rtt: 40, transmitting: false, suspended: false },
+  ];
+  assert.equal(computeTree('a', vsBom).get('b').role, 'relay'); // RTT decide
+});
+
+test('encodeHealth null e tratado igual a ausente (cliente de versao antiga)', () => {
+  const candidates = [
+    { id: 'b', joinedAt: 1, rtt: 10, transmitting: false, suspended: false, encodeHealth: null },
+    { id: 'c', joinedAt: 2, rtt: 20, transmitting: false, suspended: false, encodeHealth: null },
+  ];
+  const out = computeTree('a', candidates);
+  assert.equal(out.get('b').role, 'relay'); // so RTT/joinedAt, como hoje
+});
+
 test('sameAssignments detecta mudanca de papel, de pai, de filhos e de tamanho', () => {
   const base = new Map([
     ['b', { role: 'relay', paiId: 'a', filhosIds: ['c', 'd'] }],

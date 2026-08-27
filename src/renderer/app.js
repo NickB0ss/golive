@@ -145,6 +145,12 @@
   // Aviso derivado das estatisticas (encoder em software). Fica separado do
   // aviso de host porque os dois dividem o mesmo #stage-warning.
   let encoderWarning = '';
+  // Resumo da NOSSA saude de encode ({ softwareEncoder, msPerFrame }), o
+  // ultimo derivado por updateStats. Sobe junto do 'view-state' pra que a
+  // origem nao eleja relay quem ja esta com o encoder afogado (H2). null
+  // enquanto nao estivermos codificando nada -- reportar valor inventado e
+  // pior que reportar ausencia.
+  let myEncodeHealth = null;
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
@@ -1269,7 +1275,7 @@
         // "assistindo" por padrao, entao precisa ser corrigido na hora --
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
-        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false });
+        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth });
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -1298,6 +1304,11 @@
       // Ver a spec de 2026-08-23, F1.3.
       case 'view-state': {
         if (!isKnownKind(msg.kind)) break;
+        // H2: guarda a saude de encode que o peer anexou (ausente ==> null,
+        // o caso neutro de tree.js). E por-peer, nao por-kind: e a maquina
+        // dele que codifica. recomputeTree le isto ao montar os candidatos.
+        const vsPeer = mesh.peers.get(msg.from);
+        if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
         const track = trackForKind(msg.kind);
         if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
           renderMembersPanel();
@@ -1902,7 +1913,10 @@
       const anyFolhaWatching = state?.role === 'relay'
         && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
       const watching = isAppVisible() || Boolean(anyFolhaWatching);
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching });
+      // H2: carona no canal que ja existe -- a origem daquele kind usa isto
+      // pra eleger relay por saude de encode, nao so por RTT. null quando
+      // nao estamos codificando nada.
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth });
     }
   }
 
@@ -2076,6 +2090,10 @@
         transmitting: Boolean(peer.live),
         suspended: session.mesh.isPeerSuspended(id, kind),
         relayIneligible: isRelayOnCooldown(kind, id),
+        // H2: ultimo resumo de encode que o peer subiu no 'view-state'.
+        // Ausente ate ele reportar -- tree.js trata undefined/null como
+        // neutro (nem veto, nem favorecimento).
+        encodeHealth: peer.encodeHealth ?? null,
       });
     }
     if (!candidates.length) return;
@@ -2188,6 +2206,30 @@
     return SOFTWARE_ENCODERS.some((needle) => name.includes(needle));
   }
 
+  // Deriva o resumo de saude de encode das linhas que updateStats ja
+  // montou. Soma ms/frame (nao media) porque todo sender local disputa o
+  // MESMO encoder -- mesmo racional do resumo do painel. rows so tem quem
+  // esta de fato codificando (updateStats descarta sender sem frames nem
+  // bytes), entao lista vazia === "nao estamos codificando" === null.
+  function summarizeOwnEncodeHealth(rows) {
+    if (!rows.length) return null;
+    const comMs = rows.filter((r) => r.msPerFrame != null);
+    return {
+      softwareEncoder: rows.some((r) => isSoftwareEncoder(r.encoder)),
+      msPerFrame: comMs.length ? comMs.reduce((sum, r) => sum + r.msPerFrame, 0) : null,
+    };
+  }
+
+  // 'view-state' de cliente antigo nao traz encodeHealth: ausencia (ou lixo)
+  // vira null -- o caso NEUTRO de tree.js -- nunca zero nem "saudavel".
+  function normalizeEncodeHealth(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const ms = typeof raw.msPerFrame === 'number' && Number.isFinite(raw.msPerFrame) && raw.msPerFrame >= 0
+      ? raw.msPerFrame
+      : null;
+    return { softwareEncoder: raw.softwareEncoder === true, msPerFrame: ms };
+  }
+
   // Com a janela oculta o painel de estatisticas nao esta na tela de
   // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
   // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
@@ -2209,6 +2251,7 @@
     clearInterval(statsTimer);
     statsTimer = null;
     statsPrev.clear();
+    myEncodeHealth = null; // paramos de medir: nao ha saude a reportar
     if (encoderWarning) {
       encoderWarning = '';
       renderHostWarning();
@@ -2330,6 +2373,10 @@
     }
 
     if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
+
+    // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
+    // acima porque some todos os senders num numero so.
+    myEncodeHealth = summarizeOwnEncodeHealth(rows);
 
     renderStats(rows);
     updateEncoderWarning(rows);

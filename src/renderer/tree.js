@@ -11,6 +11,33 @@
   const FANOUT_RELAY = 2;
   const PROFUNDIDADE_MAX = 2;
 
+  // Orcamento de encode POR QUADRO usado na eleicao de relay (H2). O gargalo
+  // medido nao e rede, e encode: o relay carrega 2 encoders + 1 decoder, o
+  // trabalho mais pesado da sala. Um candidato que JA gasta mais que um
+  // quadro inteiro codificando o pouco que ele proprio manda nao vai dar
+  // conta desse acrescimo -- entao vira PENALIDADE (nao veto). Derivado do
+  // alvo de 60 fps: 1000/60 ~= 16.6 ms. A 30 fps sobra folga, entao o teto
+  // de 60 e o pior caso e serve de referencia unica. Mesmo numero do painel
+  // de estatisticas em app.js (renderStats).
+  const ORCAMENTO_MS_POR_QUADRO = 1000 / 60;
+
+  // encodeHealth ausente/null e NEUTRO: quem nunca reportou nada nao e
+  // "software" e nao leva penalidade. Um candidato sem dado nunca pode
+  // perder para um comprovadamente ruim.
+  function encoderEhSoftware(c) {
+    return Boolean(c.encodeHealth && c.encodeHealth.softwareEncoder === true);
+  }
+
+  // Binario: 1 se o candidato COMPROVOU gastar mais que o orcamento por
+  // quadro, 0 caso contrario (inclui msPerFrame null e encodeHealth
+  // ausente). Nao e veto -- um relay lento ainda entrega melhor que a malha
+  // pura, onde a origem paga um encoder por espectador.
+  function penalidadeEncode(c) {
+    const h = c.encodeHealth;
+    if (!h || h.msPerFrame == null) return 0;
+    return h.msPerFrame > ORCAMENTO_MS_POR_QUADRO ? 1 : 0;
+  }
+
   // Topologia degenerada: todo mundo recebe oferta direta da origem. E o
   // que a malha (arvore desligada) sempre foi, escrito como uma atribuicao
   // de verdade pra que DESLIGAR o interruptor no meio de uma sessao consiga
@@ -44,8 +71,11 @@
   }
 
   // candidates: Array<{ id, joinedAt, rtt: number|null, transmitting,
-  // suspended, relayIneligible }> -- todo peer da sala, exceto a propria
-  // origem.
+  // suspended, relayIneligible,
+  //   encodeHealth?: { softwareEncoder: boolean, msPerFrame: number|null } | null
+  // }> -- todo peer da sala, exceto a propria origem. `encodeHealth` e
+  // opcional: sobe do proprio peer junto do 'view-state' (ver app.js) e so
+  // existe quando ele esta de fato codificando algum kind.
   //
   // Devolve Map<peerId, { role: 'relay'|'folha'|'direct', paiId, filhosIds }>.
   // 'direct' fica fora da arvore e recebe oferta direta da origem -- e o
@@ -65,7 +95,28 @@
     // arvore fica batendo entre os mesmos dois estados. Ver app.js.
     const eligible = candidates.filter((c) => !c.transmitting && !c.suspended && !c.relayIneligible);
 
+    // H2: ordena por SAUDE DE ENCODE antes de RTT. RTT e a metrica que menos
+    // importa aqui -- o gargalo e o encoder do relay, nao a rede.
+    //  1. encoder em software e VETO quando ha alternativa que nao codifica
+    //     em software (encodeHealth ausente conta como alternativa: e
+    //     neutro, nao "software"). Se TODOS forem software, nao inventa
+    //     exclusao -- cai pro resto do criterio.
+    //  2. msPerFrame acima do orcamento e PENALIDADE, nao veto.
+    //  3. RTT como desempate (comportamento anterior).
+    //  4. joinedAt como desempate final (comportamento anterior).
+    // Sem nenhum encodeHealth em nenhum candidato os passos 1 e 2 sao
+    // no-ops (todos empatam em 0) e a ordem e IDENTICA a de antes desta
+    // task -- rtt, depois joinedAt.
+    const algumNaoSoftware = eligible.some((c) => !encoderEhSoftware(c));
     eligible.sort((a, b) => {
+      if (algumNaoSoftware) {
+        const sa = encoderEhSoftware(a) ? 1 : 0;
+        const sb = encoderEhSoftware(b) ? 1 : 0;
+        if (sa !== sb) return sa - sb; // software vai pro fim da fila
+      }
+      const pa = penalidadeEncode(a);
+      const pb = penalidadeEncode(b);
+      if (pa !== pb) return pa - pb;
       const rttA = a.rtt == null ? Infinity : a.rtt;
       const rttB = b.rtt == null ? Infinity : b.rtt;
       if (rttA !== rttB) return rttA - rttB;
