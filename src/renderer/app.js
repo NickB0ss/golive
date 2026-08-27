@@ -12,6 +12,16 @@
   // way a late event from a torn-down or superseded session is a no-op
   // instead of throwing on stale/null state.
   let currentSession = null; // { sig, mesh } | null
+  // Sessao orfa (H1): a sinalizacao caiu, mas as RTCPeerConnection P2P
+  // seguem vivas entregando video. A sinalizacao so e necessaria pra
+  // ESTABELECER conexao -- depois pode sumir por minutos sem consequencia.
+  // Enquanto `orphanSession` existe, `currentSession` e null (todo `mesh.send`
+  // e callback tardio vira no-op, entao a orfa e muda por construcao e nunca
+  // ha duas sessoes transmitindo), mas os tiles e o mesh dela continuam.
+  // Descartada em exatamente tres pontos: onOpen de uma reconexao que abre
+  // (teardownPeers -- preserva a captura), leaveRoom e troca de sala (ambos
+  // teardownSession completo).
+  let orphanSession = null;
   let myId = null;
 
   const KINDS = ['screen', 'camera'];
@@ -260,7 +270,12 @@
   }
 
   function emptyMessage() {
-    return currentSession ? 'Ninguém transmitindo ainda.' : 'Entre ou crie uma sala pra começar.';
+    // Sessao efetiva: com a orfa viva (sinalizacao caida, video P2P
+    // rodando) os tiles dos peers continuam na tela -- a mensagem de grade
+    // vazia tem de dizer "ainda estou vendo gente", nao "entre numa sala".
+    return (currentSession || orphanSession)
+      ? 'Ninguém transmitindo ainda.'
+      : 'Entre ou crie uma sala pra começar.';
   }
 
   // ---------- Painel do usuario (so exibicao -- edicao mora em Configuracoes > Perfil) ----------
@@ -711,12 +726,16 @@
   // -- sem isso a coluna direita fica em branco enquanto o handshake nao
   // termina, e ele nunca aparece pra si mesmo mesmo depois.
   function currentSelfInfo() {
-    if (!currentSession) return null;
+    // currentSession || orphanSession: enquanto a sinalizacao esta caida e o
+    // video P2P continua, o painel segue mostrando voce e a sala -- some so
+    // quando nao ha nem sessao viva nem orfa.
+    if (!currentSession && !orphanSession) return null;
     return { name: cfg.name || 'anônimo', avatar: cfg.avatar || null, live: !!localStream };
   }
 
   function renderMembersPanel() {
-    ui.members.render(currentSession ? currentSession.mesh.peers : new Map(), currentSelfInfo());
+    const session = currentSession || orphanSession;
+    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo());
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -762,11 +781,26 @@
       teardownSession(oldSession);
     }
 
+    // H1, descarte da orfa gatilho 3: entrar noutra sala e saida deliberada
+    // da anterior -- teardownSession completo (mesh, PCs, captura, arvore).
+    // So numa chamada do usuario (reconnectAttempt 0): a reconexao automatica
+    // tambem passa por aqui com a orfa viva, e nesse caso ela e desmontada
+    // no onOpen (teardownPeers, que preserva a captura), nao agora.
+    if (orphanSession && !reconnectAttempt) {
+      teardownSession(orphanSession);
+      orphanSession = null;
+    }
+
     // Sessao nova, arvore nova: nenhum epoch, papel ou atribuicao da sala
     // anterior pode sobreviver ate aqui (teardownSession ja limpa quando
     // havia sessao; isto cobre a primeira entrada e o caminho em que a
     // conexao anterior nunca chegou a abrir).
-    resetTreeState();
+    //
+    // EXCETO com uma orfa viva (reconexao automatica): o epoch/papel dela
+    // ainda descreve peers reais recebendo video agora, e onPeerState segue
+    // ativo pra orfa. Zera so quando a orfa for desmontada -- no onOpen desta
+    // sessao, logo antes do 'welcome' reconstruir tudo.
+    if (!orphanSession) resetTreeState();
 
     // A fila de sinalizacao e da SESSAO: morre com ela, entao nenhuma
     // mensagem de uma sala anterior fica encadeada na frente das novas.
@@ -784,6 +818,23 @@
         onOpen: () => {
           if (currentSession !== session) return;
           session.opened = true;
+
+          // H1, descarte da orfa gatilho 1: a reconexao abriu DE VERDADE.
+          // Do outro lado as conexoes P2P antigas ja estao mortas (o
+          // servidor nos deu um id novo, os outros nos viram sair e entrar),
+          // entao fecha os peers da orfa -- mas NAO a captura local
+          // (teardownPeers, nao teardownMedia: a Task 5 preserva a captura
+          // pro 'welcome' re-ofertar). resetTreeState roda AGORA, nao antes:
+          // enquanto a orfa vivia, seu epoch/papel ainda descrevia peers
+          // reais, e zera-lo cedo deixaria onPeerState sem como fechar
+          // repasses. Aqui a orfa ja saiu e o 'welcome' ainda nao chegou.
+          if (orphanSession) {
+            teardownPeers(orphanSession);
+            resetTreeState();
+            orphanSession = null;
+            renderMembersPanel();
+          }
+
           activeRoomAddress = roomAddress;
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
@@ -824,23 +875,50 @@
           currentSession = null;
           activeRoomAddress = null;
 
+          // H1: perder a sinalizacao NAO pode matar a midia. A sinalizacao so
+          // e necessaria pra ESTABELECER conexao; as RTCPeerConnection P2P ja
+          // abertas continuam entregando video sem ela. Antes, este onClose
+          // chamava teardownPeers/teardownSession e fechava todas as conexoes
+          // -- o host fechando o app derrubava o video de todo mundo com os
+          // links P2P intactos. Agora a sessao vira ORFA: mesh e conexoes
+          // preservados, tiles ficam na tela. `currentSession` ja foi pra
+          // null acima, entao `mesh.send` e todo callback tardio viram no-op
+          // -- a orfa e muda por construcao, nunca ha duas sessoes mandando
+          // coisa. Vale tanto pro retry quanto pra desistencia: o retry
+          // desistiu da SINALIZACAO, nao da midia.
+          //
+          // resetTreeState NAO roda aqui: enquanto a orfa vive, seu
+          // epoch/papel ainda descreve peers reais recebendo video, e
+          // onPeerState (que segue ativo pra orfa) precisa deles pra fechar
+          // repasses de um peer que morra. Ele roda no descarte da orfa.
+          //
+          // Loop de stats: PARA. updateStats ja e guardado por
+          // currentSession === session e viraria no-op de qualquer forma;
+          // manter o timer vivo so queima ciclo. Levar a telemetria pra orfa
+          // esta fora do escopo do H1 (manter o VIDEO no ar, nao as metricas).
+          //
+          // Se a conexao nunca chegou a abrir (session.opened falso, ex: sala
+          // propria cujo host morreu junto com o app anterior) nao ha nada a
+          // orfanizar -- e uma orfa anterior, se houver, fica de pe.
+          if (session.opened) {
+            if (orphanSession && orphanSession !== session) {
+              // defensivo: uma orfa anterior ja deveria ter sido descartada
+              // no onOpen desta sessao. teardownPeers (nao teardownSession)
+              // pra nao encostar no localStream, que e compartilhado.
+              teardownPeers(orphanSession);
+              orphanSession.sig?.close();
+            }
+            orphanSession = session;
+            stopStatsLoop();
+          }
+
           if (canRetry) {
             // Queda anormal, nao saida deliberada (leaveRoom zera
             // currentSession antes de fechar, entao nunca chega aqui):
-            // volta pra mesma sala sozinho, com backoff. Desmonta a
-            // sessao morta -- a reconexao reconstroi mesh/arvore do zero,
-            // que e o estado seguro depois de perder a sinalizacao.
+            // volta pra mesma sala sozinho, com backoff.
             const next = attempts + 1;
-            $('setup-error').textContent = `Conexão caiu. Reconectando… (${next}/${MAX_RECONNECT})`;
-            // A3: queda anormal + retry NAO e saida deliberada. Desmonta a
-            // sessao morta (mesh/arvore/stats), mas preserva a captura local
-            // -- sem teardownMedia. A queda acontece sob carga e a pessoa nem
-            // percebe; se derrubassemos a captura, ela voltaria sem transmitir
-            // e teria que reescolher a fonte. O welcome da reconexao re-oferta
-            // localStream/cameraStream aos peers.
-            stopStatsLoop();
-            resetTreeState();
-            teardownPeers(session);
+            $('setup-error').textContent =
+              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`;
             renderMembersPanel();
             renderRoomList();
             setTimeout(() => {
@@ -852,16 +930,10 @@
 
           if (abnormal && attempts >= MAX_RECONNECT) {
             $('setup-error').textContent =
-              'Perdi a conexão com a sala e não consegui reconectar. Tente entrar de novo.';
+              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
           }
 
           ui.stageHeader.clear();
-          // Se a conexao nunca chegou a abrir (ex: sala propria cujo host
-          // morreu junto com o app anterior), nao ha sessao pra desmontar --
-          // so teardownSession() ja limpava o painel de membros pra "só você
-          // por aqui" mesmo sem ter entrado em lugar nenhum, mascarando o
-          // erro de conexao que o onError acima acabou de mostrar.
-          if (session.opened) teardownSession(session);
           renderMembersPanel();
           renderRoomList();
         },
@@ -886,7 +958,11 @@
       // mostraria a tela da origem com o nome e o avatar do relay, e ainda
       // brigaria pelo mesmo tile com o compartilhamento proprio do relay.
       onTrack: (peerId, peerName, stream, kind) => {
-        if (currentSession !== session) return;
+        // Orfa incluida (H1): os tiles vivem do P2P direto enquanto a
+        // sinalizacao esta caida, e uma stream nova/substituida ainda
+        // precisa pintar. mesh.send segue mudo (guardado por
+        // currentSession === session), entao nenhum sinal vaza daqui.
+        if (session !== currentSession && session !== orphanSession) return;
         const { baseKind, sourceId } = parseKind(kind);
         const ownerId = sourceId || peerId;
         const owner = session.mesh.peers.get(ownerId);
@@ -904,10 +980,20 @@
         // verdade, um repasse que perdeu a corrida nao teria segunda
         // chance. flushPendingRelay ignora quem nao e relay e nao repassa
         // duas vezes pro mesmo filho.
-        if (!sourceId) flushPendingRelay(session, baseKind, peerId).catch(() => {});
+        //
+        // Numa orfa nao ha repasse a fazer: sem sinalizacao o relayTo nunca
+        // negocia. Deixa a sub-arvore como esta -- so a sessao viva repassa.
+        if (!sourceId && currentSession === session) {
+          flushPendingRelay(session, baseKind, peerId).catch(() => {});
+        }
       },
       onPeerState: (peerId, { removedTile, kind, dir, failed }) => {
-        if (currentSession !== session) return;
+        // Orfa incluida (H1): e ESTE callback que tira da tela um peer cujo
+        // connectionstatechange disse que morreu de verdade (mesh.js reporta
+        // com failed:true apos a carencia de 5s de A2) -- o unico gatilho que
+        // derruba peer numa sessao orfa. Sem isto, um peer que some de
+        // verdade ficaria congelado na tela pra sempre.
+        if (session !== currentSession && session !== orphanSession) return;
         const { baseKind, sourceId } = parseKind(kind);
         if (removedTile) {
           // So apaga se o tile ainda for DESTA conexao: um caminho novo pro
@@ -961,6 +1047,25 @@
   // ---------- Desconectar ----------
 
   function leaveRoom() {
+    // H1, descarte da orfa gatilho 2: a sinalizacao caiu, sobrou uma sessao
+    // orfa com video no ar e `currentSession` e null -- o botao Desconectar
+    // ainda tem de encerrar tudo. teardownSession completo (mesh, PCs,
+    // captura, arvore): agora sim e o fim de verdade.
+    if (!currentSession && orphanSession) {
+      const orphan = orphanSession;
+      orphanSession = null;
+      sound.playLeaveSound();
+      const wasHosting = !!hostInfo;
+      hostInfo = null;
+      orphan.sig?.close();
+      if (wasHosting) window.golive.stopHosting?.().catch(() => {});
+      ui.stageHeader.clear();
+      $('setup-error').textContent = '';
+      renderHostWarning();
+      teardownSession(orphan);
+      renderRoomList();
+      return;
+    }
     if (!currentSession) return;
     if (cooldownRemaining(activeRoomAddress) > 0) return;
     sound.playLeaveSound();
