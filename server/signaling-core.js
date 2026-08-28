@@ -9,6 +9,51 @@
 
 const { WebSocketServer } = require('ws');
 
+// O servidor de sinalizacao roda no MESMO processo do app de quem criou a
+// sala. O `maxPayload` padrao do `ws` e 100 MB: um cliente hostil (ou com
+// bug) poderia estourar a memoria desse processo com um unico frame. A
+// maior mensagem legitima e o avatar (256 KB, cortado no 'join'); 512 KB da
+// folga pra base64 + envelope JSON sem abrir espaco pra abuso.
+const MAX_PAYLOAD_BYTES = 512 * 1024;
+
+// Teto de mensagens por segundo por socket. A sinalizacao e ociosa quase o
+// tempo todo, MAS e bursty por natureza (ICE trickle) e tem uma rajada real
+// no reingresso: quando um cliente reconecta, o handler de 'welcome' re-oferta
+// pra sala inteira de uma vez -- ate `peers x kinds` RTCPeerConnection novas
+// no mesmo instante, cada uma emitindo os candidatos ICE que junta.
+//
+// Pior caso realista (sala de 6, tela + camera):
+//   pcs novas:        5 peers x 2 kinds                       = 10
+//   ice/pc:           Ethernet + adaptador VPN + IPv6 + 2 srflx ~ 6-8
+//   ice total:        10 x 8                                   = 80
+//   offer + answer:   10 + 10                                  = 20
+//   tree + watchers + view-state                               ~ 15
+//   -----------------------------------------------------------------
+//   ~115 frames no segundo de gathering
+//
+// 300/s cobre isso com folga de ~2.5x e ainda corta na hora um cliente em
+// loop de verdade (um `while(true) ws.send()` faz dezenas de milhares/s).
+const MAX_MSGS_PER_SECOND = 300;
+const RATE_WINDOW_MS = 1000;
+
+/** Contador de taxa por conexao, isolado pra ser testavel sem subir socket.
+ * `hit(now)` registra uma mensagem e devolve `true` enquanto a conexao
+ * estiver dentro do teto na janela corrente; `false` no primeiro estouro. */
+function createRateLimiter({ limit = MAX_MSGS_PER_SECOND, windowMs = RATE_WINDOW_MS } = {}) {
+  let windowStart = 0;
+  let count = 0;
+  return {
+    hit(now) {
+      if (now - windowStart >= windowMs) {
+        windowStart = now;
+        count = 0;
+      }
+      count += 1;
+      return count <= limit;
+    },
+  };
+}
+
 function log(...args) {
   console.log(`[${new Date().toLocaleTimeString('pt-BR')}]`, ...args);
 }
@@ -28,7 +73,7 @@ function send(ws, payload) {
  * ainda deixa o servidor derrubar quem parou de responder. */
 function createSignalingServer({ port, heartbeatMs = 25000 }) {
   return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ port });
+    const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });
 
     /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null}>} */
     const peers = new Map();
@@ -86,6 +131,7 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
       wss.on('connection', (ws) => {
         const id = String(nextId++);
         let joined = false;
+        const rateLimiter = createRateLimiter({});
 
         ws.isAlive = true;
         ws.on('pong', () => {
@@ -93,6 +139,13 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
         });
 
         ws.on('message', (raw) => {
+          // Cliente em loop ou tentando afogar o processo do host: fecha o
+          // socket em vez de seguir processando frame por frame.
+          if (!rateLimiter.hit(Date.now())) {
+            ws.close(1008, 'flood');
+            return;
+          }
+
           let msg;
           try {
             msg = JSON.parse(raw.toString());
@@ -124,8 +177,13 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
             case 'ice':
             case 'view-state':
             case 'tree': {
+              // Exige destino existente E na mesma sala do remetente. Hoje
+              // todo mundo entra em 'geral', mas no dia em que salas
+              // separadas existirem isto impede vazar sinalizacao entre
+              // salas. Descartado em silencio, igual a destino inexistente.
+              const me = peers.get(id);
               const target = peers.get(String(msg.to));
-              if (!target) return;
+              if (!me || !target || me.room !== target.room) return;
               send(target.ws, { ...msg, from: id });
               break;
             }
@@ -185,4 +243,4 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
   });
 }
 
-module.exports = { createSignalingServer };
+module.exports = { createSignalingServer, createRateLimiter };

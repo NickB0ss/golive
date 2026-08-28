@@ -113,29 +113,54 @@ clica em **Criar sala** (ver "Como usar" acima).
 
 ## Configurações de qualidade
 
-Ficam no modal de Configurações (ícone de engrenagem no painel do usuário,
-canto inferior esquerdo), na aba "Transmissão". Tudo aplica ao vivo — não
-precisa reiniciar a transmissão.
+Não há aba "Transmissão" no modal de Configurações. As categorias são
+**Perfil**, **Voz e Vídeo**, **Rede** e **Estatísticas** — nenhuma delas tem
+controle de bitrate, codec ou áudio do sistema.
 
-- **Bitrate** — o botão mais importante. Suba até a imagem ficar boa, desça
-  assim que o indicador acusar `Limitado por: banda da rede insuficiente`.
-- **Codec** — H.264 usa o encoder da GPU (NVENC/AMF/QuickSync) e tem a menor
-  latência; é o padrão certo pra jogo. VP9 rende imagem melhor no mesmo
-  bitrate mas come CPU. AV1 economiza banda de verdade, e só vale se as GPUs
-  dos dois lados forem novas (RTX 40+, RX 7000+, Arc).
-- **Áudio do sistema** — captura o som que sai da placa, não o microfone.
-  Funciona no Windows via loopback. Importante: o Windows não oferece captura de
-  áudio por aplicativo (por exemplo, "só do jogo"), então a opção "áudio do
-  sistema" grava tudo que sai do dispositivo de saída padrão — o Discord, o
-  navegador, tudo. Se você quer isolar só o áudio do jogo e manter o Discord
-  privado, use a opção "um dispositivo específico" e configure via mixer de
-  volume do Windows (ou um cabo de áudio virtual) pra mandar o Discord pra uma
-  saída diferente — aí o GoLive só vai capturar a saída onde o jogo está
-  tocando.
+A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
+tela" → "O que você quer compartilhar?"), num único `select` de presets
+fechados: `720p · 30 fps` até `1440p · 60 fps`, com `1080p · 60 fps` (12 Mbps)
+como padrão. Cada preset é um pacote fechado de resolução + fps + bitrate —
+sem sliders soltos. Ao lado, uma linha mostra o upload que aquele preset
+exige por espectador.
 
-O painel de estatísticas mostra fps real, resolução, banda e latência a cada
-segundo. O campo **Limitado por** é o mais útil pra diagnóstico: ele diz se
-quem está te segurando é a rede, a CPU ou o encoder.
+- **Codec** — a tela é sempre codificada em **H.264**, normalmente no encoder
+  de hardware da GPU (NVENC/AMF/QuickSync — a escolha final é do
+  Chromium/Windows). Não há opção de VP9 nem AV1. A câmera usa VP8.
+- **Áudio** — no mesmo diálogo, a caixa "Compartilhar som" captura o som que
+  sai da placa (loopback do Windows, não o microfone). Quando o componente
+  nativo de áudio está presente, aparece também "Incluir o som do Discord
+  também". O Windows não oferece captura de áudio por aplicativo isolado, então
+  o loopback de sistema pega tudo que sai do dispositivo de saída padrão — o
+  Discord, o navegador, tudo. Pra isolar só o jogo, mande o Discord pra outra
+  saída pelo mixer de volume do Windows (ou um cabo de áudio virtual).
+
+**A qualidade se ajusta sozinha ao tamanho da sala.** A medição do próprio
+projeto mostrou 4 espectadores a 1080p60 quebrando o NVENC sem jogo nenhum
+aberto. Por isso o encode da tela desce um degrau (1080p60 → 1080p30) assim
+que a sala chega a **3 pessoas**, e volta ao preset escolhido assim que ela
+encolhe pra menos de 3. É só uma função da contagem de gente na sala — não há
+telemetria nem tempo de espera no meio. Ninguém escolhe nada.
+
+**A queda para malha degrada de propósito.** A árvore de retransmissão
+(abaixo) cai para malha direta quando não sobra nenhum relay elegível. Nesse
+modo a origem volta a pagar um encoder por espectador, então o preset desce
+**mais um degrau** e aparece um aviso ("baixei a qualidade pra sala
+aguentar") — malha em qualidade cheia derrete o encoder, o jitter derruba
+mais links e a malha se realimenta. Ao voltar a ter relay, o encode sobe
+sozinho, sem aviso.
+
+O painel de estatísticas (Configurações > **Estatísticas**) mostra fps real,
+resolução, banda e latência a cada segundo. O campo **Limitado por** é o mais
+útil pra diagnóstico: ele diz se quem está te segurando é a rede, a CPU ou o
+encoder. Nessa mesma aba fica o botão **Abrir pasta de logs** — um arquivo por
+sessão (os últimos 8 são mantidos), pra mandar pra quem for investigar um
+problema.
+
+No canto superior esquerdo, ao lado do nome do app, há um botão de **buscar
+atualizações**. O app também checa sozinho ao abrir, mas não baixa nada sem
+você mandar: quando há versão nova, um aviso no topo oferece o botão
+"Reiniciar e instalar", que aí sim baixa e reinstala.
 
 ---
 
@@ -160,10 +185,11 @@ Compartilhamento de tela em WebRTC entrega 30 fps por padrão, mesmo pedindo
 aberto: ao clicar em "Criar sala" o app sobe o servidor embutido e tenta
 liberar a porta no firewall sozinho (a porta pode cair em qualquer valor
 entre 9000 e 9010, mostrado no cabeçalho do palco). Se a liberação
-automática falhar, aparece um aviso acima da grade de vídeo com o comando
-manual pra liberar a porta — copie o texto e rode esse comando como
-administrador na máquina que criou a sala (ainda não tem botão de copiar
-pra esse comando específico, é copiar o texto mesmo).
+automática falhar, aparece um aviso acima da grade de vídeo com um botão
+**"Permitir acesso à rede"**, que re-dispara o pedido de elevação do Windows
+pra mesma porta da sala. Só se essa tentativa também falhar é que o comando
+manual do `netsh` aparece como texto, pra rodar como administrador na máquina
+que criou a sala.
 
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O
 Radmin às vezes bloqueia UDP entre peers; teste um `ping 26.x.x.x` primeiro.
@@ -180,12 +206,39 @@ em alguns players/DACs), o loopback vem mudo.
 
 ## Limites conhecidos
 
-A malha P2P é o desenho certo pra 2-4 pessoas e o desenho errado pra 8. Se a
-turma crescer, o caminho é trocar a malha por um SFU (mediasoup ou o
+### A árvore de retransmissão
+
+Desde a v0.1.5 a transmissão **não é malha pura**. Existe uma árvore de
+retransmissão, **sempre ligada** — `cfg.network.tree` é forçado em `true` no
+carregamento do config e não há interruptor na UI. Ela tem exatamente um
+nível: **origem → relay → folha**. A origem manda pra **um** relay
+(`FANOUT_ORIGEM = 1`); cada relay atende no máximo **dois** filhos
+(`FANOUT_RELAY = 2`); a profundidade não passa de **2**
+(`PROFUNDIDADE_MAX = 2`, que é o freio de latência e a garantia contra ciclo).
+
+O relay é escolhido pela **saúde de encode** do candidato (encoder em software
+é penalizado, `msPerFrame` acima do orçamento de 60 fps é penalidade), com RTT
+só como desempate — o gargalo medido é o encoder do relay, não a rede.
+
+**O teto real é ~4 pessoas** (origem + 3 espectadores, que cabem exatamente
+como 1 relay + 2 folhas). Quem sobra vira `direct` e recebe oferta direta da
+origem — ou seja, volta a custar um encoder na origem por espectador, que é
+exatamente o problema que a árvore existe pra resolver. Com 6 espectadores:
+1 relay + 2 folhas + 3 diretos = 4 encoders na origem.
+
+### Se a turma crescer além disso
+
+O caminho é trocar a árvore por um SFU (mediasoup ou o
 [MediaMTX](https://github.com/bluenviron/mediamtx), que é bem mais simples):
 quem transmite manda **uma** cópia pro SFU, e o SFU replica pros outros. O
 upload de quem transmite passa a ser fixo, independente da plateia — mas aí
 alguém precisa hospedar o SFU numa máquina com upload folgado, ou numa VPS.
+Essa decisão está registrada como adiada — ver `STATUS.md`.
 
-Vale fazer essa troca quando o teste de rede mostrar que o upload não cobre o
-número de gente que vocês querem.
+### Se o host cai, a sala morre
+
+O servidor de sinalização mora no processo de quem criou a sala. Se essa
+pessoa fecha o app, a sinalização cai. Desde o H1 (nesta branch de robustez) a
+queda de sinalização vira um estado "reconectando" — os vídeos continuam
+correndo enquanto ninguém entra nem sai — mas não há transferência de sala:
+esgotado o retry, a sessão acaba pra todo mundo.

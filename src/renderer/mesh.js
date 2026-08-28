@@ -21,6 +21,14 @@
   // auditoria de 2026-08-27, item A2.
   const DISCONNECT_GRACE_MS = 5000;
 
+  // Teto de candidatos guardados por conexao enquanto ela nao tem
+  // remoteDescription. Numa negociacao sa o buffer vive alguns
+  // milissegundos e junta poucos candidatos host; o limite existe so pra que
+  // um peer defeituoso (ou malicioso) despejando 'ice' sem nunca mandar a
+  // SDP nao faca a memoria crescer sem teto. Ao estourar, o mais ANTIGO cai:
+  // os candidatos mais recentes sao os que ainda tem chance de servir.
+  const MAX_PENDING_ICE = 64;
+
   // Payloads auxiliares (retransmissao e correcao de erro) nao sao codecs de
   // verdade -- x-google-start-bitrate neles nao faz nada.
   const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
@@ -121,6 +129,39 @@
 
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
+
+    // Candidatos ICE que chegaram ANTES de a conexao ter remoteDescription.
+    //
+    // A sinalizacao entrega 'offer' e 'ice' em sequencia, mas tratar a
+    // 'offer' passa por awaits: entre criar a RTCPeerConnection (sincrono) e
+    // terminar setRemoteDescription cabe uma mensagem 'ice' inteira. Nessa
+    // janela a conexao JA existe, entao handleIce a encontrava e chamava
+    // addIceCandidate com remoteDescription nulo -- o que a spec do WebRTC
+    // manda rejeitar com InvalidStateError. O catch engolia o erro como
+    // "candidato tardio": nao era tardio, era adiantado, e perder o
+    // candidato host da VPN significa ICE que nunca fecha (o peer aparece na
+    // lista e o video nunca vem). Ver a auditoria de 2026-08-27, item A1.
+    //
+    // WeakMap indexada pela propria pc pra que o buffer seja coletado junto
+    // com a conexao quando ela e fechada e descartada -- nada fica pendurado
+    // por peer que saiu.
+    const pendingIce = new WeakMap();
+
+    // Esvazia, na ordem de chegada, os candidatos guardados pra `pc`. Uma
+    // falha individual (candidato malformado do outro lado) nao pode
+    // impedir a entrega dos demais -- basta UM candidato bom pra rota fechar.
+    async function drainIce(pc) {
+      const queued = pendingIce.get(pc);
+      if (!queued) return;
+      pendingIce.delete(pc);
+      for (const candidate of queued) {
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch {
+          /* candidato invalido; os outros ainda podem servir */
+        }
+      }
+    }
 
     function addPeer(id, name, avatar) {
       if (!peers.has(id)) {
@@ -300,6 +341,7 @@
     async function handleOffer(fromId, sdp, kind) {
       const pc = ensureInConn(fromId, kind);
       await pc.setRemoteDescription(sdp);
+      await drainIce(pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       return pc.localDescription;
@@ -308,7 +350,9 @@
     async function handleAnswer(fromId, sdp, kind) {
       const peer = peers.get(fromId);
       if (!peer?.outConns[kind]) return;
-      await peer.outConns[kind].setRemoteDescription(sdp);
+      const pc = peer.outConns[kind];
+      await pc.setRemoteDescription(sdp);
+      await drainIce(pc);
     }
 
     async function handleIce(fromId, dir, candidate, kind) {
@@ -316,10 +360,22 @@
       if (!peer || !candidate) return;
       const target = dir === 'out' ? peer.inConns[kind] : peer.outConns[kind];
       if (!target) return;
+
+      // Adiantado: a conexao existe mas a SDP remota ainda esta a caminho
+      // (ou no meio do await). Guarda e entrega em drainIce, logo depois do
+      // setRemoteDescription -- ver o comentario de pendingIce.
+      if (!target.remoteDescription) {
+        const queued = pendingIce.get(target) || [];
+        queued.push(candidate);
+        if (queued.length > MAX_PENDING_ICE) queued.shift();
+        pendingIce.set(target, queued);
+        return;
+      }
+
       try {
         await target.addIceCandidate(candidate);
       } catch {
-        /* candidato tardio, ignorar */
+        /* candidato invalido ou conexao ja fechando; nao ha o que fazer */
       }
     }
 

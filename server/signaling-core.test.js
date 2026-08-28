@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const WebSocket = require('ws');
-const { createSignalingServer } = require('./signaling-core');
+const { createSignalingServer, createRateLimiter } = require('./signaling-core');
 
 function once(ws, type) {
   return new Promise((resolve) => {
@@ -139,6 +139,111 @@ test('encaminha view-state e tree ao destinatario, com o from carimbado', async 
 
     a.close();
     b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('createRateLimiter libera dentro do teto e corta no estouro', () => {
+  const rl = createRateLimiter({ limit: 3, windowMs: 1000 });
+  assert.equal(rl.hit(0), true);
+  assert.equal(rl.hit(100), true);
+  assert.equal(rl.hit(200), true);
+  assert.equal(rl.hit(300), false); // 4a mensagem na mesma janela
+});
+
+test('createRateLimiter zera a contagem quando a janela vira', () => {
+  const rl = createRateLimiter({ limit: 2, windowMs: 1000 });
+  assert.equal(rl.hit(0), true);
+  assert.equal(rl.hit(10), true);
+  assert.equal(rl.hit(20), false);
+  assert.equal(rl.hit(1000), true); // janela nova
+  assert.equal(rl.hit(1010), true);
+  assert.equal(rl.hit(1020), false);
+});
+
+test('createRateLimiter padrao cobre a rajada de re-oferta do welcome', () => {
+  // O teto default (MAX_MSGS_PER_SECOND = 300) tem de aguentar a rajada de
+  // reingresso: ~115 frames numa sala de 6 com tela + camera (ver a conta em
+  // signaling-core.js). 250 numa janela ainda passa; 350 nao.
+  const rl = createRateLimiter({});
+  for (let i = 0; i < 250; i += 1) assert.equal(rl.hit(i), true, `frame ${i} dentro do teto`);
+  const rl2 = createRateLimiter({});
+  let cortou = false;
+  for (let i = 0; i < 350; i += 1) if (!rl2.hit(i)) cortou = true;
+  assert.equal(cortou, true);
+});
+
+test('nao encaminha offer/ice para destino em outra sala', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'salaA', name: 'Ana' }));
+    const welcomeA = await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'salaB', name: 'Bruno' }));
+    const welcomeB = await once(b, 'welcome');
+
+    let recebeu = false;
+    b.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'offer') recebeu = true;
+    });
+    a.send(JSON.stringify({ type: 'offer', to: welcomeB.id, sdp: 'x' }));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(recebeu, false);
+    assert.equal(welcomeA.id !== welcomeB.id, true);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('encaminha offer normalmente para destino na mesma sala', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const welcomeA = await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    const welcomeB = await once(b, 'welcome');
+
+    const offerAtB = onceWithin(b, 'offer');
+    a.send(JSON.stringify({ type: 'offer', to: welcomeB.id, sdp: 'x' }));
+    const offer = await offerAtB;
+    assert.equal(offer.from, welcomeA.id);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('fecha o socket que estoura o teto de mensagens por segundo', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const closed = new Promise((r) => a.once('close', (code) => r(code)));
+    // Acima do teto de 300/s (ver MAX_MSGS_PER_SECOND): um loop de verdade
+    // ainda e cortado.
+    for (let i = 0; i < 500; i += 1) {
+      a.send(JSON.stringify({ type: 'broadcast-state', live: true }));
+    }
+    const code = await closed;
+    assert.equal(code, 1008);
   } finally {
     await server.close();
   }

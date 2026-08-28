@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -12,6 +12,25 @@
   // way a late event from a torn-down or superseded session is a no-op
   // instead of throwing on stale/null state.
   let currentSession = null; // { sig, mesh } | null
+  // Sessao orfa (H1): a sinalizacao caiu, mas as RTCPeerConnection P2P
+  // seguem vivas entregando video. A sinalizacao so e necessaria pra
+  // ESTABELECER conexao -- depois pode sumir por minutos sem consequencia.
+  // Enquanto `orphanSession` existe, `currentSession` e null (todo `mesh.send`
+  // e callback tardio vira no-op, entao a orfa e muda por construcao e nunca
+  // ha duas sessoes transmitindo), mas os tiles e o mesh dela continuam.
+  // Descartada em exatamente tres pontos: onOpen de uma reconexao que abre
+  // (teardownPeers -- preserva a captura), leaveRoom e troca de sala (ambos
+  // teardownSession completo).
+  let orphanSession = null;
+  // So pode haver UM retry de reconexao pendente por vez (o timer que
+  // dispara joinRoom da tentativa n+1 e agendado no onClose da tentativa n,
+  // que ja e sequencial). Modulo-level porque quem precisa cancela-lo --
+  // leaveRoom, um joinRoom deliberado, o onOpen de uma reconexao que abriu
+  // -- nao tem acesso ao objeto `session` que o agendou (pode ser a sessao
+  // B, C... de uma cadeia de tentativas que ninguem mais referencia). Sem
+  // cancelar, um Desconectar durante o "Reconectando…" era desfeito pelo
+  // timer, que so testa `if (currentSession)`.
+  let retryTimer = null;
   let myId = null;
 
   const KINDS = ['screen', 'camera'];
@@ -59,6 +78,22 @@
   // RELAY_FAILURE_COOLDOWN_MS e recoverFromRelayLoss.
   const recentRelayFailures = { screen: new Map(), camera: new Map() };
 
+  // Modo malha degradada, por kind (auditoria H3): true quando QUERIAMOS
+  // arvore (cfg.network.tree ligado) e computeTree so devolveu 'direct' por
+  // falta de relay elegivel. `qualityFor` consulta isto pra somar UM degrau
+  // ao que a Task 3 ja degrada -- sem isso a malha volta em qualidade cheia,
+  // os N encoders da origem derrubam o NVENC pra software, o jitter veta
+  // mais relays e a malha se realimenta. So muda de valor pela transicao
+  // (ver setMeshFallback): ligar-desligar-ligar a cada recalculo viraria
+  // spam de toast e de setParameters.
+  const meshFallback = { screen: false, camera: false };
+
+  // Histerese da re-eleicao, por kind (Parte B): instante da ultima
+  // re-eleicao aplicada e o handle de um recalculo comum que caiu dentro da
+  // janela e foi adiado. Ver REELECTION_HYSTERESIS_MS e recomputeTree.
+  const reelectionAt = { screen: 0, camera: 0 };
+  const deferredRecompute = { screen: null, camera: null };
+
   // Todo o estado de arvore morre com a sessao. Sem isto, o epoch guardado
   // de uma sala anterior (digamos, 7) descarta pra sempre os 'tree' de uma
   // origem nova numa sala nova, cujo contador comeca em 1 -- este no nunca
@@ -69,6 +104,17 @@
       originTree[kind].epoch = 0;
       originTree[kind].assignments = new Map();
       recentRelayFailures[kind].clear();
+      // Estado degradado e histerese morrem com a sessao pelo mesmo motivo
+      // que o resto: carregados pra sala seguinte, aplicariam um preset
+      // baixo (ou adiariam o primeiro recalculo) sem causa nenhuma. Zera
+      // direto, sem setMeshFallback: nao ha conexao pra retunar nem toast a
+      // dar num teardown.
+      meshFallback[kind] = false;
+      reelectionAt[kind] = 0;
+      if (deferredRecompute[kind]) {
+        clearTimeout(deferredRecompute[kind]);
+        deferredRecompute[kind] = null;
+      }
     }
     // myId so tem sentido dentro de UMA sessao (e o id que o servidor nos
     // deu no 'welcome' daquela sala). Zerar aqui junto com o resto do
@@ -99,6 +145,12 @@
   // Aviso derivado das estatisticas (encoder em software). Fica separado do
   // aviso de host porque os dois dividem o mesmo #stage-warning.
   let encoderWarning = '';
+  // Resumo da NOSSA saude de encode ({ softwareEncoder, msPerFrame }), o
+  // ultimo derivado por updateStats. Sobe junto do 'view-state' pra que a
+  // origem nao eleja relay quem ja esta com o encoder afogado (H2). null
+  // enquanto nao estivermos codificando nada -- reportar valor inventado e
+  // pior que reportar ausencia.
+  let myEncodeHealth = null;
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
@@ -166,14 +218,91 @@
     return KINDS.includes(parseKind(kind).baseKind);
   }
 
+  /** Quantas pessoas ha na sala alem de nos.
+   *
+   * E o tamanho da SALA, nao a contagem de out-conns: com a arvore de
+   * retransmissao ligada a origem tem so 1-2 out-conns por kind, entao
+   * contar conexoes faria a degradacao nunca disparar. O custo que importa
+   * e o total de encoders na sala -- os nossos mais os 2 de cada relay --
+   * e esse escala com o tamanho da sala, nao com os nossos vizinhos. */
+  function audienceSize() {
+    return currentSession?.mesh.peers.size ?? 0;
+  }
+
   /** Qualidade de encode daquele kind. Usa o kind BASE, pra que uma
-   * conexao de repasse ('camera@<origem>') nao caia no preset de tela. */
+   * conexao de repasse ('camera@<origem>') nao caia no preset de tela.
+   *
+   * A tela degrada com o tamanho da sala (H4): 1080p60 e o preset certo pra
+   * 1 espectador e o preset errado pra 3 -- a medicao do projeto mostrou 4
+   * espectadores a 1080p60 quebrando o NVENC sem jogo nenhum aberto.
+   * Ninguem escolhe nada, a sala so nao entra no regime onde quebra. O
+   * relay tambem re-codifica com esta funcao, entao os 2 encoders dele
+   * herdam o preset degradado de graca.
+   *
+   * A camera fica como esta: 720p30 a 2 Mbps ja e o piso, degradar nao
+   * resolve nada. */
   function qualityFor(kind) {
-    return parseKind(kind).baseKind === 'camera' ? { ...cfg.camera, codec: 'video/VP8' } : cfg.quality;
+    const baseKind = parseKind(kind).baseKind;
+    if (baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
+    const effective = config.qualityForAudience(cfg.quality.preset, audienceSize());
+    // Modo malha degradada (H3): a origem paga N encoders em vez de 1, entao
+    // desce UM degrau alem do que o tamanho da sala ja pediu. degradePreset
+    // para no piso e nunca lanca, entao isto e seguro no caminho de encode.
+    if (meshFallback[baseKind]) return config.qualityFromPreset(config.degradePreset(effective.preset, 1));
+    return effective;
+  }
+
+  /** Reaplica o teto de encode nas conexoes JA ABERTAS daquele kind --
+   * `applyEncoding` mexe em maxBitrate/maxFramerate via setParameters, sem
+   * renegociacao e sem tela preta. Chamado quando a sala muda de tamanho;
+   * sem isto, so quem entrasse depois pegaria o preset novo.
+   *
+   * Limitacao consciente: o preset de CAPTURA (getDisplayMedia) nao muda no
+   * meio da transmissao -- mexer nele exigiria recapturar a tela. So o
+   * encode se ajusta. */
+  function reapplyAudienceQuality() {
+    if (!currentSession) return;
+    if (localStream) currentSession.mesh.applyEncoding(qualityFor('screen'), 'screen');
+    if (cameraStream) currentSession.mesh.applyEncoding(qualityFor('camera'), 'camera');
+  }
+
+  /** Liga/desliga o modo malha degradada de um kind. So faz algo na
+   * TRANSICAO: fora dela seria um setParameters e um toast a cada recalculo
+   * da arvore (varios por evento de sala). Na transicao: retune das conexoes
+   * ja abertas pra seguirem o preset novo, e -- so quando ENTRA no modo
+   * degradado -- um toast. Sair do modo nao interrompe ninguem: e boa
+   * noticia e o encode ja subiu sozinho via applyEncoding. */
+  function setMeshFallback(kind, value) {
+    if (meshFallback[kind] === value) return;
+    meshFallback[kind] = value;
+    // qualityFor le meshFallback[kind], entao ja devolve o preset certo aqui.
+    currentSession?.mesh?.applyEncoding(qualityFor(kind), kind);
+    if (value && kind === 'screen') {
+      // So a tela tem cadeia de degradacao; a camera ja esta no piso, entao
+      // avisar que "baixei a qualidade" dela seria mentira.
+      showToast('Sem ninguém pra retransmitir: baixei a qualidade pra sala aguentar.');
+    }
+  }
+
+  // Sessao "efetiva" pra UI (painel de membros, mensagem de grade vazia): a
+  // que tem tiles na tela agora. Numa reconexao automatica `currentSession`
+  // ja existe (e criada antes de o socket abrir) mas ainda esta com zero
+  // peers, enquanto a orfa da queda anterior segue com video na tela.
+  // Preferir a que abriu de verdade -- e so cair na nova quando ela abrir --
+  // evita um "so voce por aqui" desenhado sob uma tela cheia de video durante
+  // a janela do retry.
+  function displaySession() {
+    if (currentSession?.opened) return currentSession;
+    return orphanSession || currentSession;
   }
 
   function emptyMessage() {
-    return currentSession ? 'Ninguém transmitindo ainda.' : 'Entre ou crie uma sala pra começar.';
+    // Sessao efetiva: com a orfa viva (sinalizacao caida, video P2P
+    // rodando) os tiles dos peers continuam na tela -- a mensagem de grade
+    // vazia tem de dizer "ainda estou vendo gente", nao "entre numa sala".
+    return displaySession()
+      ? 'Ninguém transmitindo ainda.'
+      : 'Entre ou crie uma sala pra começar.';
   }
 
   // ---------- Painel do usuario (so exibicao -- edicao mora em Configuracoes > Perfil) ----------
@@ -287,7 +416,11 @@
     if (track) {
       await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
     }
-    currentSession?.mesh?.applyEncoding(cfg.quality, 'screen');
+    // A captura vai no preset que a pessoa escolheu, mas o encode passa por
+    // qualityFor -- senao trocar de preset no meio de uma sala cheia
+    // escaparia da degradacao por tamanho da sala ate o proximo
+    // peer-joined/peer-left.
+    currentSession?.mesh?.applyEncoding(qualityFor('screen'), 'screen');
   }
 
   // Escolhida no dialogo de compartilhar (ver ui.picker.open, no clique de
@@ -571,9 +704,11 @@
   // Limpa o estado de UI/mesh associado a uma sessao especifica. Chamada so
   // depois que `currentSession` ja deixou de apontar pra ela, entao qualquer
   // callback tardio dessa sessao ja vai ter parado de agir sozinho.
-  function teardownSession(session) {
-    stopStatsLoop();
-    resetTreeState();
+  // Derruba SO a captura local (tela + camera). Separada de teardownSession
+  // por causa do A3: a reconexao automatica precisa desmontar a sessao morta
+  // sem matar o que a pessoa estava transmitindo -- so a saida deliberada e a
+  // desistencia do retry chamam isto.
+  function teardownMedia() {
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
@@ -587,6 +722,12 @@
       ui.grid.removeTile('cam-me', emptyMessage());
       $('btn-toggle-camera').classList.remove('active');
     }
+    $('btn-toggle-share').classList.remove('active');
+  }
+
+  // Derruba as conexoes P2P e o estado de tiles dos peers dessa sessao. A
+  // captura local NAO e tocada aqui.
+  function teardownPeers(session) {
     if (session?.mesh) {
       for (const peerId of Array.from(session.mesh.peers.keys())) {
         session.mesh.removePeer(peerId);
@@ -595,7 +736,13 @@
       }
     }
     tileSource.clear();
-    $('btn-toggle-share').classList.remove('active');
+  }
+
+  function teardownSession(session) {
+    stopStatsLoop();
+    resetTreeState();
+    teardownMedia();
+    teardownPeers(session);
     renderMembersPanel();
   }
 
@@ -606,12 +753,16 @@
   // -- sem isso a coluna direita fica em branco enquanto o handshake nao
   // termina, e ele nunca aparece pra si mesmo mesmo depois.
   function currentSelfInfo() {
-    if (!currentSession) return null;
+    // currentSession || orphanSession: enquanto a sinalizacao esta caida e o
+    // video P2P continua, o painel segue mostrando voce e a sala -- some so
+    // quando nao ha nem sessao viva nem orfa.
+    if (!currentSession && !orphanSession) return null;
     return { name: cfg.name || 'anônimo', avatar: cfg.avatar || null, live: !!localStream };
   }
 
   function renderMembersPanel() {
-    ui.members.render(currentSession ? currentSession.mesh.peers : new Map(), currentSelfInfo());
+    const session = displaySession();
+    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo());
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -645,6 +796,14 @@
 
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0) {
     if (!reconnectAttempt) $('setup-error').textContent = '';
+    // Join deliberado do usuario: qualquer retry pendente de uma queda
+    // anterior morre aqui (esta chamada e por si so a nova intencao). O
+    // retry automatico (reconnectAttempt > 0) e a propria continuacao do
+    // timer -- ele nao se cancela.
+    if (!reconnectAttempt) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
     const url = normalizeRoomUrl(rawUrl);
     const roomAddress = publicAddress || canonicalAddress(url);
 
@@ -657,13 +816,30 @@
       teardownSession(oldSession);
     }
 
+    // H1, descarte da orfa gatilho 3: entrar noutra sala e saida deliberada
+    // da anterior -- teardownSession completo (mesh, PCs, captura, arvore).
+    // So numa chamada do usuario (reconnectAttempt 0): a reconexao automatica
+    // tambem passa por aqui com a orfa viva, e nesse caso ela e desmontada
+    // no onOpen (teardownPeers, que preserva a captura), nao agora.
+    if (orphanSession && !reconnectAttempt) {
+      teardownSession(orphanSession);
+      orphanSession = null;
+    }
+
     // Sessao nova, arvore nova: nenhum epoch, papel ou atribuicao da sala
     // anterior pode sobreviver ate aqui (teardownSession ja limpa quando
     // havia sessao; isto cobre a primeira entrada e o caminho em que a
     // conexao anterior nunca chegou a abrir).
-    resetTreeState();
+    //
+    // EXCETO com uma orfa viva (reconexao automatica): o epoch/papel dela
+    // ainda descreve peers reais recebendo video agora, e onPeerState segue
+    // ativo pra orfa. Zera so quando a orfa for desmontada -- no onOpen desta
+    // sessao, logo antes do 'welcome' reconstruir tudo.
+    if (!orphanSession) resetTreeState();
 
-    const session = { sig: null, mesh: null };
+    // A fila de sinalizacao e da SESSAO: morre com ela, entao nenhuma
+    // mensagem de uma sala anterior fica encadeada na frente das novas.
+    const session = { sig: null, mesh: null, signalQueue: queue.createSerialQueue() };
 
     // Contador de reconexoes que sobrevive entre as chamadas de joinRoom
     // (o parametro reseta a cada chamada); zera quando a conexao fica de
@@ -677,6 +853,26 @@
         onOpen: () => {
           if (currentSession !== session) return;
           session.opened = true;
+
+          // H1, descarte da orfa gatilho 1: a reconexao abriu DE VERDADE.
+          // Do outro lado as conexoes P2P antigas ja estao mortas (o
+          // servidor nos deu um id novo, os outros nos viram sair e entrar),
+          // entao fecha os peers da orfa -- mas NAO a captura local
+          // (teardownPeers, nao teardownMedia: a Task 5 preserva a captura
+          // pro 'welcome' re-ofertar). resetTreeState roda AGORA, nao antes:
+          // enquanto a orfa vivia, seu epoch/papel ainda descrevia peers
+          // reais, e zera-lo cedo deixaria onPeerState sem como fechar
+          // repasses. Aqui a orfa ja saiu e o 'welcome' ainda nao chegou.
+          // Esta reconexao abriu: nao ha mais retry a disparar.
+          clearTimeout(retryTimer);
+          retryTimer = null;
+          if (orphanSession) {
+            teardownPeers(orphanSession);
+            resetTreeState();
+            orphanSession = null;
+            renderMembersPanel();
+          }
+
           activeRoomAddress = roomAddress;
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
@@ -688,7 +884,13 @@
           sound.playJoinSound();
           onSettled?.();
         },
-        onMessage: (msg) => handleSignal(session, msg),
+        // handleSignal e async e ninguem aguardava seu retorno: duas
+        // mensagens seguidas do WebSocket rodavam concorrentes, e uma 'ice'
+        // atropelava o `await setRemoteDescription` da 'offer' anterior --
+        // candidato descartado, ICE que nunca fecha. A fila serial devolve
+        // ao tratamento a mesma ordem total em que o WebSocket entregou.
+        // Ver a auditoria de 2026-08-27, item A1.
+        onMessage: (msg) => session.signalQueue.push(() => handleSignal(session, msg)),
         onError: () => {
           if (currentSession === session && attempts === 0) {
             $('setup-error').textContent =
@@ -711,18 +913,52 @@
           currentSession = null;
           activeRoomAddress = null;
 
+          // H1: perder a sinalizacao NAO pode matar a midia. A sinalizacao so
+          // e necessaria pra ESTABELECER conexao; as RTCPeerConnection P2P ja
+          // abertas continuam entregando video sem ela. Antes, este onClose
+          // chamava teardownPeers/teardownSession e fechava todas as conexoes
+          // -- o host fechando o app derrubava o video de todo mundo com os
+          // links P2P intactos. Agora a sessao vira ORFA: mesh e conexoes
+          // preservados, tiles ficam na tela. `currentSession` ja foi pra
+          // null acima, entao `mesh.send` e todo callback tardio viram no-op
+          // -- a orfa e muda por construcao, nunca ha duas sessoes mandando
+          // coisa. Vale tanto pro retry quanto pra desistencia: o retry
+          // desistiu da SINALIZACAO, nao da midia.
+          //
+          // resetTreeState NAO roda aqui: enquanto a orfa vive, seu
+          // epoch/papel ainda descreve peers reais recebendo video, e
+          // onPeerState (que segue ativo pra orfa) precisa deles pra fechar
+          // repasses de um peer que morra. Ele roda no descarte da orfa.
+          //
+          // Loop de stats: PARA. updateStats ja e guardado por
+          // currentSession === session e viraria no-op de qualquer forma;
+          // manter o timer vivo so queima ciclo. Levar a telemetria pra orfa
+          // esta fora do escopo do H1 (manter o VIDEO no ar, nao as metricas).
+          //
+          // Se ESTA conexao nunca abriu (session.opened falso, ex: tentativa
+          // de reconexao com o servidor ainda fora do ar), nao ha nada a
+          // orfanizar -- e uma orfa ANTERIOR, se houver, fica de pe (a
+          // cadeia de retry continua tentando por ela). So uma sessao que
+          // chegou a abrir vira orfa.
+          if (session.opened) {
+            orphanSession = session;
+            stopStatsLoop();
+          }
+
           if (canRetry) {
             // Queda anormal, nao saida deliberada (leaveRoom zera
             // currentSession antes de fechar, entao nunca chega aqui):
-            // volta pra mesma sala sozinho, com backoff. Desmonta a
-            // sessao morta -- a reconexao reconstroi mesh/arvore do zero,
-            // que e o estado seguro depois de perder a sinalizacao.
+            // volta pra mesma sala sozinho, com backoff. `retryTimer` e
+            // modulo-level: e o UNICO retry pendente (o proximo so e agendado
+            // no onClose da tentativa seguinte), e leaveRoom / um join
+            // deliberado / o onOpen de uma reconexao que abriu o cancelam.
             const next = attempts + 1;
-            $('setup-error').textContent = `Conexão caiu. Reconectando… (${next}/${MAX_RECONNECT})`;
-            teardownSession(session);
+            $('setup-error').textContent =
+              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`;
             renderMembersPanel();
             renderRoomList();
-            setTimeout(() => {
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
               if (currentSession) return; // usuario ja entrou noutra sala/saiu
               joinRoom(rawUrl, name, publicAddress, undefined, next);
             }, 1000 * 2 ** attempts);
@@ -731,16 +967,23 @@
 
           if (abnormal && attempts >= MAX_RECONNECT) {
             $('setup-error').textContent =
-              'Perdi a conexão com a sala e não consegui reconectar. Tente entrar de novo.';
+              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
+          } else if (session.opened && !abnormal) {
+            // Fecho limpo (1000/1001) -- o proprio host fechando o app, que e
+            // o cenario tipico do H1. Sem retry, mas a sessao virou orfa
+            // acima: o video segue e o usuario precisa saber disso e que o
+            // botao Desconectar e a saida.
+            $('setup-error').textContent =
+              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
           }
 
-          ui.stageHeader.clear();
-          // Se a conexao nunca chegou a abrir (ex: sala propria cujo host
-          // morreu junto com o app anterior), nao ha sessao pra desmontar --
-          // so teardownSession() ja limpava o painel de membros pra "só você
-          // por aqui" mesmo sem ter entrado em lugar nenhum, mascarando o
-          // erro de conexao que o onError acima acabou de mostrar.
-          if (session.opened) teardownSession(session);
+          // Cabecalho da sala: limpa SO quando nao sobrou orfa nenhuma. Se
+          // esta sessao virou orfa (retry ou desistencia), ou se uma orfa
+          // ANTERIOR segue viva (esta tentativa fechou sem abrir mas a queda
+          // de antes ainda tem video na tela), o cabecalho fica -- peers e
+          // video continuam visiveis. So limpa quando esta e uma tentativa
+          // que nunca abriu E nao ha orfa anterior: ai nao ha sala nenhuma.
+          if (!orphanSession) ui.stageHeader.clear();
           renderMembersPanel();
           renderRoomList();
         },
@@ -765,7 +1008,11 @@
       // mostraria a tela da origem com o nome e o avatar do relay, e ainda
       // brigaria pelo mesmo tile com o compartilhamento proprio do relay.
       onTrack: (peerId, peerName, stream, kind) => {
-        if (currentSession !== session) return;
+        // Orfa incluida (H1): os tiles vivem do P2P direto enquanto a
+        // sinalizacao esta caida, e uma stream nova/substituida ainda
+        // precisa pintar. mesh.send segue mudo (guardado por
+        // currentSession === session), entao nenhum sinal vaza daqui.
+        if (session !== currentSession && session !== orphanSession) return;
         const { baseKind, sourceId } = parseKind(kind);
         const ownerId = sourceId || peerId;
         const owner = session.mesh.peers.get(ownerId);
@@ -783,10 +1030,20 @@
         // verdade, um repasse que perdeu a corrida nao teria segunda
         // chance. flushPendingRelay ignora quem nao e relay e nao repassa
         // duas vezes pro mesmo filho.
-        if (!sourceId) flushPendingRelay(session, baseKind, peerId).catch(() => {});
+        //
+        // Numa orfa nao ha repasse a fazer: sem sinalizacao o relayTo nunca
+        // negocia. Deixa a sub-arvore como esta -- so a sessao viva repassa.
+        if (!sourceId && currentSession === session) {
+          flushPendingRelay(session, baseKind, peerId).catch(() => {});
+        }
       },
       onPeerState: (peerId, { removedTile, kind, dir, failed }) => {
-        if (currentSession !== session) return;
+        // Orfa incluida (H1): e ESTE callback que tira da tela um peer cujo
+        // connectionstatechange disse que morreu de verdade (mesh.js reporta
+        // com failed:true apos a carencia de 5s de A2) -- o unico gatilho que
+        // derruba peer numa sessao orfa. Sem isto, um peer que some de
+        // verdade ficaria congelado na tela pra sempre.
+        if (session !== currentSession && session !== orphanSession) return;
         const { baseKind, sourceId } = parseKind(kind);
         if (removedTile) {
           // So apaga se o tile ainda for DESTA conexao: um caminho novo pro
@@ -804,9 +1061,39 @@
         // So a conexao DIRETA origem->relay sinaliza perda de relay. Uma
         // out-conn de repasse que falha e a nossa ponta com um filho, nao
         // com o relay -- e nesse caso nem somos a origem.
-        if (failed && dir === 'out' && !sourceId
+        //
+        // `session === currentSession`: recoverFromRelayLoss faz
+        // `const session = currentSession` e opera na sessao VIVA. Numa orfa
+        // (currentSession ja e a sessao NOVA da reconexao), isso rodaria
+        // closeOut/offerTo contra a mesh nova pra ids que ela nunca ouviu --
+        // offerTo -> ensureOutConn -> addPeer fabricaria peers fantasma e
+        // abriria RTCPeerConnection de verdade. So a sessao viva recupera
+        // relay; a orfa nao tem sinalizacao pra reeleger nada.
+        if (failed && dir === 'out' && !sourceId && session === currentSession
             && originTree[baseKind]?.assignments.get(peerId)?.role === 'relay') {
           recoverFromRelayLoss(baseKind, peerId);
+        }
+        // Sem sinalizacao (orfa) nunca chega um 'peer-left'. Uma falha de
+        // conexao direta (base kind, passada a carencia de 5s de A2) e o
+        // unico aviso possivel de que um peer se foi -- mas so conta como
+        // "saiu da sala" se NENHUMA outra conexao com ele ainda estiver de
+        // pe. Durante a orfa um peer pode ter a tela (out) caindo enquanto a
+        // camera (in) segue entregando video; remove-lo ali fecharia a
+        // conexao boa e mataria video vivo -- o oposto do que o H1 protege.
+        // Com conexao sobrevivente, o `removedTile` acima ja cuida do tile
+        // do kind que caiu e o peer fica. Sem o removePeer num peer que
+        // sumiu de vez, o cadaver ficaria no painel de membros pra sempre.
+        if (failed && !sourceId && session === orphanSession) {
+          const peer = session.mesh.peers.get(peerId);
+          const stillConnected = peer && [
+            ...Object.values(peer.inConns),
+            ...Object.values(peer.outConns),
+          ].some((pc) => pc && pc.connectionState === 'connected');
+          if (!stillConnected) {
+            session.mesh.removePeer(peerId);
+            dropTile(peerId);
+            dropTile(`cam-${peerId}`);
+          }
         }
         renderMembersPanel();
       },
@@ -840,8 +1127,45 @@
   // ---------- Desconectar ----------
 
   function leaveRoom() {
+    // Desconectar e a intencao final do usuario: qualquer retry de
+    // reconexao pendente (o "Reconectando… (n/4)") morre aqui, seja qual for
+    // a sessao que o agendou. Sem isto o timer dispararia depois, passaria
+    // pelo seu unico guard `if (currentSession)` (null apos o teardown) e
+    // re-entraria a sala que o usuario acabou de deixar.
+    clearTimeout(retryTimer);
+    retryTimer = null;
+
+    // H1, descarte da orfa gatilho 2: a sinalizacao caiu, sobrou uma sessao
+    // orfa com video no ar e `currentSession` e null -- o botao Desconectar
+    // ainda tem de encerrar tudo. teardownSession completo (mesh, PCs,
+    // captura, arvore): agora sim e o fim de verdade.
+    if (!currentSession && orphanSession) {
+      const orphan = orphanSession;
+      orphanSession = null;
+      sound.playLeaveSound();
+      const wasHosting = !!hostInfo;
+      hostInfo = null;
+      orphan.sig?.close();
+      if (wasHosting) window.golive.stopHosting?.().catch(() => {});
+      ui.stageHeader.clear();
+      $('setup-error').textContent = '';
+      renderHostWarning();
+      teardownSession(orphan);
+      // Sem markCooldown: `activeRoomAddress` ja e null na orfa (o onClose
+      // zerou), nao ha endereco pra marcar -- e sair de um estado quebrado
+      // nao deve ficar em cooldown.
+      renderRoomList();
+      return;
+    }
     if (!currentSession) return;
     if (cooldownRemaining(activeRoomAddress) > 0) return;
+    // Reconexao ja em curso (currentSession e a sessao NOVA, ainda
+    // conectando) mas a orfa da queda anterior segue viva: Desconectar
+    // encerra as duas.
+    if (orphanSession) {
+      teardownSession(orphanSession);
+      orphanSession = null;
+    }
     sound.playLeaveSound();
     const session = currentSession;
     const leavingAddress = activeRoomAddress;
@@ -875,19 +1199,76 @@
         myId = msg.id;
         for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
         renderMembersPanel();
+        // A3: numa reconexao automatica a captura local sobreviveu (o retry
+        // do onClose nao chama mais teardownMedia), mas as conexoes P2P foram
+        // refeitas do zero. Sem re-ofertar aqui, quem reconectou fica "ao
+        // vivo" pra si mesmo e mudo pra sala inteira. Espelha o 'peer-joined',
+        // so que pra cada peer do welcome. Numa entrada normal localStream e
+        // cameraStream sao nulos e nada disto roda.
+        if (localStream) {
+          for (const p of msg.peers) {
+            if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
+            try {
+              await mesh.offerTo(p.id, localStream, qualityFor('screen'), 'screen');
+            } catch (err) {
+              // uma oferta isolada que falha (peer que ja sumiu, glare) nao
+              // pode abortar as demais nem o resto do handshake do welcome
+              console.error(`[reconexao] re-oferta de tela para ${p.id} falhou:`, err);
+            }
+          }
+          broadcastWatchers('screen');
+          recomputeTree('screen');
+        }
+        if (cameraStream) {
+          for (const p of msg.peers) {
+            if (currentSession !== session) return;
+            try {
+              await mesh.offerTo(p.id, cameraStream, qualityFor('camera'), 'camera');
+            } catch (err) {
+              console.error(`[reconexao] re-oferta de camera para ${p.id} falhou:`, err);
+            }
+          }
+          broadcastWatchers('camera');
+          recomputeTree('camera');
+        }
+        // Reconexao automatica: startStatsLoop so e chamado por startShare. Aqui
+        // a captura sobreviveu ao retry (Task 5) e os blocos acima re-ofertaram
+        // -- estamos transmitindo de novo -- mas o loop de stats foi parado no
+        // onClose que orfanou a sessao anterior. Sem religa-lo: myEncodeHealth
+        // fica null (todo view-state passa a carregar encodeHealth null e a
+        // eleicao de relay da origem degenera pra este no), peer.rtt para de ser
+        // escrito (a ordenacao por RTT some), a aba Estatisticas fica vazia e
+        // updateEncoderWarning nunca mais dispara. startStatsLoop chama
+        // stopStatsLoop antes, entao e seguro chamar mesmo ja parado.
+        if (localStream || cameraStream) startStatsLoop();
         break;
       }
       case 'peer-joined': {
         mesh.addPeer(msg.id, msg.name, msg.avatar);
         renderMembersPanel();
         sound.playJoinSound();
+        // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
+        // oferta abaixo ja sai com ele (qualityFor le o tamanho da sala,
+        // que o addPeer acima acabou de atualizar).
+        reapplyAudienceQuality();
         if (localStream) {
-          await mesh.offerTo(msg.id, localStream, cfg.quality, 'screen');
+          try {
+            await mesh.offerTo(msg.id, localStream, qualityFor('screen'), 'screen');
+          } catch (err) {
+            // uma oferta de tela que rejeita (peer que ja saiu, glare) nao pode
+            // pular a oferta de camera, o broadcastWatchers nem o recomputeTree
+            // -- mesmo racional do try/catch por-peer do welcome (Task 5).
+            console.error(`[peer-joined] oferta de tela para ${msg.id} falhou:`, err);
+          }
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
         if (cameraStream) {
-          await mesh.offerTo(msg.id, cameraStream, { ...cfg.camera, codec: 'video/VP8' }, 'camera');
+          try {
+            await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
+          } catch (err) {
+            console.error(`[peer-joined] oferta de camera para ${msg.id} falhou:`, err);
+          }
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
@@ -901,6 +1282,8 @@
         sound.playLeaveSound();
         broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
         broadcastWatchers('camera');
+        // A sala encolheu: quem ficou pode voltar pro preset de cima.
+        reapplyAudienceQuality();
         for (const kind of KINDS) {
           // Quem saiu nao e mais origem de nada: descarta o papel que ele
           // nos deu, junto com o epoch dele. Sem isto o mapa por-origem so
@@ -927,7 +1310,7 @@
         // "assistindo" por padrao, entao precisa ser corrigido na hora --
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
-        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false });
+        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth });
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -956,6 +1339,11 @@
       // Ver a spec de 2026-08-23, F1.3.
       case 'view-state': {
         if (!isKnownKind(msg.kind)) break;
+        // H2: guarda a saude de encode que o peer anexou (ausente ==> null,
+        // o caso neutro de tree.js). E por-peer, nao por-kind: e a maquina
+        // dele que codifica. recomputeTree le isto ao montar os candidatos.
+        const vsPeer = mesh.peers.get(msg.from);
+        if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
         const track = trackForKind(msg.kind);
         if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
           renderMembersPanel();
@@ -1365,8 +1753,15 @@
 
       ui.grid.showTile('me', 'Você (prévia)', localStream, { muted: true, avatar: cfg.avatar || null, kind: 'screen', displayName: cfg.name || 'anônimo' });
 
+      // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
+      // voce entra numa sala que ja tem 4 pessoas e clica "Compartilhar
+      // tela". Corrigir depois com applyEncoding nao basta, porque offerTo
+      // grava o x-google-start-bitrate no SDP (ver withStartBitrate em
+      // mesh.js) e setParameters nao reescreve SDP: o alvo de ramp-up
+      // ficaria nos 12 Mbps nao degradados pelo resto da conexao.
+      const quality = qualityFor('screen');
       for (const peerId of session.mesh.peers.keys()) {
-        await session.mesh.offerTo(peerId, localStream, cfg.quality, 'screen');
+        await session.mesh.offerTo(peerId, localStream, quality, 'screen');
       }
       if (currentSession !== session) return;
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
@@ -1388,6 +1783,12 @@
     stopNativeAudioFns.forEach((stop) => stop());
     stopNativeAudioFns = [];
     currentSession?.mesh?.closeAllOut('screen');
+    // Alcancavel durante uma orfa: o check de localStream la em cima vem antes
+    // do de !currentSession, e o listener 'ended' da track dispara sem checar
+    // sessao. Nesse caso currentSession e null e o closeAllOut acima e no-op,
+    // deixando as out-conns da orfa abertas com senders mortos -- fecha as dela
+    // tambem.
+    orphanSession?.mesh?.closeAllOut('screen');
     forgetOriginTree('screen');
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
@@ -1431,7 +1832,11 @@
       $('btn-toggle-camera').classList.add('active');
 
       if (currentSession) {
-        const quality = { ...cfg.camera, codec: 'video/VP8' };
+        // Hoje isto e identico a `{ ...cfg.camera, codec: 'video/VP8' }`,
+        // mas nada bruto de `cfg` deve chegar na mesh: qualityFor e a unica
+        // porta. Foi passando por fora dela que o startShare acima ficou
+        // sem degradacao.
+        const quality = qualityFor('camera');
         for (const peerId of currentSession.mesh.peers.keys()) {
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera');
         }
@@ -1549,7 +1954,10 @@
       const anyFolhaWatching = state?.role === 'relay'
         && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
       const watching = isAppVisible() || Boolean(anyFolhaWatching);
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching });
+      // H2: carona no canal que ja existe -- a origem daquele kind usa isto
+      // pra eleger relay por saude de encode, nao so por RTT. null quando
+      // nao estamos codificando nada.
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth });
     }
   }
 
@@ -1659,6 +2067,16 @@
     return false;
   }
 
+  // Janela de histerese da re-eleicao (Parte B). Precisa ser MAIOR que a
+  // carencia de 'disconnected' do mesh (DISCONNECT_GRACE_MS = 5000, mesh.js):
+  // dentro dessa carencia um soluco de ICE ainda pode se resolver sozinho
+  // sem virar falha, entao re-eleger antes disso troca de relay por causa de
+  // uma queda que ia passar -- e cada troca custa uma renegociacao nas
+  // folhas. 8s da folga sobre os 5s sem deixar a topologia velha no ar tempo
+  // demais. So freia o recalculo COMUM; `force` (recoverFromRelayLoss)
+  // passa reto -- ver abaixo.
+  const REELECTION_HYSTERESIS_MS = 8000;
+
   // `force` pula a comparacao com a topologia anterior: usado na
   // recuperacao de falha, onde a conexao morta precisa ser re-ofertada
   // mesmo que o resultado do calculo tenha dado igual.
@@ -1667,6 +2085,25 @@
     if (!session?.mesh) return;
     const stream = kind === 'camera' ? cameraStream : localStream;
     if (!stream) return;
+
+    // Histerese: um recalculo comum dentro da janela da ultima re-eleicao
+    // nao roda agora -- agenda UM recalculo pro fim da janela (adiar, nao
+    // descartar: descartar perderia a ultima mudanca de topologia, que e a
+    // que vale). O guard do handle impede empilhar um segundo timer. `force`
+    // nunca cai aqui: e o caminho que reconecta orfas, atrasa-lo deixa gente
+    // sem video.
+    if (!force) {
+      const since = Date.now() - reelectionAt[kind];
+      if (since < REELECTION_HYSTERESIS_MS) {
+        if (!deferredRecompute[kind]) {
+          deferredRecompute[kind] = setTimeout(() => {
+            deferredRecompute[kind] = null;
+            recomputeTree(kind);
+          }, REELECTION_HYSTERESIS_MS - since);
+        }
+        return;
+      }
+    }
     // Com o interruptor desligado nao ha nada a calcular -- EXCETO quando
     // ele acabou de ser desligado com uma arvore no ar: ai precisamos
     // dissolve-la (todo mundo 'direct'), senao as folhas ficam cortadas da
@@ -1694,6 +2131,10 @@
         transmitting: Boolean(peer.live),
         suspended: session.mesh.isPeerSuspended(id, kind),
         relayIneligible: isRelayOnCooldown(kind, id),
+        // H2: ultimo resumo de encode que o peer subiu no 'view-state'.
+        // Ausente ate ele reportar -- tree.js trata undefined/null como
+        // neutro (nem veto, nem favorecimento).
+        encodeHealth: peer.encodeHealth ?? null,
       });
     }
     if (!candidates.length) return;
@@ -1702,6 +2143,23 @@
       ? tree.computeTree(myId, candidates)
       : tree.allDirect(myId, candidates);
 
+    // H3: a malha degenerada e o modo de FALHA, nao um estado neutro. So
+    // conta como fallback quando QUERIAMOS arvore (cfg.network.tree) e mesmo
+    // assim todo mundo saiu 'direct' -- malha por escolha (interruptor
+    // desligado) nao degrada nada. Roda ANTES do short-circuit de
+    // sameAssignments: o estado precisa seguir o ultimo calculo mesmo quando
+    // a topologia em si nao mudou. setMeshFallback so age na transicao.
+    //
+    // Guarda de espectadores: all-direct so e o modo de FALHA quando uma
+    // arvore PODERIA ter ajudado, e ela so ajuda com 2+ espectadores reais --
+    // a origem pagaria N encoders em vez de 1. Com 0 ou 1 espectador (ex: um
+    // compartilhamento 1-a-1) nenhum relay pouparia encoder nenhum: ali
+    // all-direct e o estado normal, nao degradacao, e baixar o preset +
+    // mostrar toast seria mentira. `transmitting` marca quem ja e origem
+    // (nao codificariamos pra ele); o resto e espectador daquele kind.
+    const espectadores = candidates.filter((c) => !c.transmitting).length;
+    setMeshFallback(kind, cfg.network.tree && espectadores >= 2 && tree.isAllDirect(assignments));
+
     // Topologia identica a que ja esta no ar: nao mexe em nada. Antes o
     // epoch subia de qualquer jeito e o 'tree' resultante mandava cada
     // relay repassar de novo pros MESMOS filhos -- um transceiver (um
@@ -1709,6 +2167,11 @@
     // em cada folha a cada entra-e-sai que nao tinha nada a ver com ela.
     if (!force && tree.sameAssignments(assignments, originTree[kind].assignments)) return;
 
+    // Aplicamos uma topologia nova: e ISTO uma re-eleicao. Marca o instante
+    // pra que os recalculos comuns dos proximos REELECTION_HYSTERESIS_MS
+    // sejam adiados em vez de trocarem o relay de novo. `force` tambem marca:
+    // recoverFromRelayLoss ja elegeu, nao faz sentido reeleger logo atras.
+    reelectionAt[kind] = Date.now();
     const epoch = ++originTree[kind].epoch;
     originTree[kind].assignments = assignments;
     applyOriginAssignments(session, kind, assignments, epoch);
@@ -1793,6 +2256,30 @@
     return SOFTWARE_ENCODERS.some((needle) => name.includes(needle));
   }
 
+  // Deriva o resumo de saude de encode das linhas que updateStats ja
+  // montou. Soma ms/frame (nao media) porque todo sender local disputa o
+  // MESMO encoder -- mesmo racional do resumo do painel. rows so tem quem
+  // esta de fato codificando (updateStats descarta sender sem frames nem
+  // bytes), entao lista vazia === "nao estamos codificando" === null.
+  function summarizeOwnEncodeHealth(rows) {
+    if (!rows.length) return null;
+    const comMs = rows.filter((r) => r.msPerFrame != null);
+    return {
+      softwareEncoder: rows.some((r) => isSoftwareEncoder(r.encoder)),
+      msPerFrame: comMs.length ? comMs.reduce((sum, r) => sum + r.msPerFrame, 0) : null,
+    };
+  }
+
+  // 'view-state' de cliente antigo nao traz encodeHealth: ausencia (ou lixo)
+  // vira null -- o caso NEUTRO de tree.js -- nunca zero nem "saudavel".
+  function normalizeEncodeHealth(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const ms = typeof raw.msPerFrame === 'number' && Number.isFinite(raw.msPerFrame) && raw.msPerFrame >= 0
+      ? raw.msPerFrame
+      : null;
+    return { softwareEncoder: raw.softwareEncoder === true, msPerFrame: ms };
+  }
+
   // Com a janela oculta o painel de estatisticas nao esta na tela de
   // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
   // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
@@ -1814,6 +2301,7 @@
     clearInterval(statsTimer);
     statsTimer = null;
     statsPrev.clear();
+    myEncodeHealth = null; // paramos de medir: nao ha saude a reportar
     if (encoderWarning) {
       encoderWarning = '';
       renderHostWarning();
@@ -1935,6 +2423,10 @@
     }
 
     if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
+
+    // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
+    // acima porque some todos os senders num numero so.
+    myEncodeHealth = summarizeOwnEncodeHealth(rows);
 
     renderStats(rows);
     updateEncoderWarning(rows);
