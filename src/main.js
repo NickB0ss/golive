@@ -235,8 +235,16 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
-  closeEmbeddedServer().catch(() => {});
+app.on('window-all-closed', async () => {
+  // Fecha o servidor embutido ANTES de sair: o close() dele avisa os
+  // clientes ('room-closed' + close limpo) pra que voltem pro lobby em vez
+  // de ficar presos numa sala fantasma. `await` garante que os frames saiam
+  // antes do processo morrer; se travar, o quit abaixo encerra mesmo assim.
+  try {
+    await closeEmbeddedServer();
+  } catch {
+    /* best-effort: seguimos com o encerramento */
+  }
   discovery.stop();
   discoveryStarted = false;
   for (const capture of activeCaptures.values()) {

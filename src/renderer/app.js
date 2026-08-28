@@ -901,6 +901,37 @@
         onClose: (detail) => {
           if (currentSession !== session) return; // conexao antiga, ja substituida
           clearTimeout(stableTimer);
+
+          // A sala acabou (o host saiu): nao ha reconexao possivel nem video
+          // a preservar de forma util -- teardown completo e de volta pro
+          // lobby, em vez do modo orfao do H1 (que e pra queda da NOSSA
+          // conexao numa sala que segue viva). Reconhecido tanto pela
+          // mensagem 'room-closed' ja processada quanto pelo close limpo
+          // 1001 'host-left', caso o socket caia antes da fila drenar.
+          const roomClosed = session.roomClosed
+            || (detail?.code === 1001 && detail?.reason === 'host-left');
+          if (roomClosed) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            currentSession = null;
+            activeRoomAddress = null;
+            const wasHostingRoom = !!hostInfo;
+            hostInfo = null;
+            if (orphanSession) {
+              teardownSession(orphanSession);
+              orphanSession = null;
+            }
+            if (wasHostingRoom) window.golive.stopHosting?.().catch(() => {});
+            teardownSession(session);
+            stopStatsLoop();
+            ui.stageHeader.clear();
+            renderHostWarning();
+            $('setup-error').textContent = 'O host encerrou a sala.';
+            renderMembersPanel();
+            renderRoomList();
+            onSettled?.();
+            return;
+          }
           // O code/reason do WebSocket diz se foi um close limpo (1000/1001,
           // ex: o proprio host fechando o app) ou uma queda anormal de
           // rede/processo (1006, sem handshake de close) -- tipico de NAT de
@@ -1272,6 +1303,12 @@
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
+        // A sala cresceu com a tela ja no ar: o 'broadcast-state {live:true}'
+        // so foi mandado uma vez, la no startShare. Quem acabou de entrar
+        // recebeu o 'welcome' com peer.live=false pra todos -- sem reenviar
+        // aqui, o "AO VIVO" nunca acende ao nosso lado pra ele. Idempotente
+        // pra quem ja sabia (broadcast-state so regrava peer.live).
+        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true });
         break;
       }
       case 'peer-left': {
@@ -1325,6 +1362,18 @@
       }
       case 'ice': {
         await mesh.handleIce(msg.from, msg.dir, msg.candidate, msg.kind);
+        break;
+      }
+      // O host encerrou a sala (fechou o app ou clicou em Desconectar). O
+      // servidor de sinalizacao morre com o processo dele: nao ha pra onde
+      // reconectar nem como entrar mais ninguem. Diferente de uma queda da
+      // NOSSA conexao (H1, que preserva o video P2P e tenta reconectar) --
+      // aqui a sala acabou. Marca a sessao pra que o onClose faca teardown
+      // completo e volte pro lobby, em vez de orfanizar. O onClose tambem
+      // reconhece o close limpo (1001 'host-left') caso ele chegue antes
+      // desta mensagem ser processada pela fila.
+      case 'room-closed': {
+        session.roomClosed = true;
         break;
       }
       case 'broadcast-state': {

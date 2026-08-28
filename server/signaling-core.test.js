@@ -99,6 +99,31 @@ test('avatar e repassado em welcome e peer-joined', async () => {
   }
 });
 
+test('close() avisa os clientes com room-closed antes de derrubar o socket', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+  await new Promise((r) => a.once('open', r));
+  a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+  await once(a, 'welcome');
+
+  const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+  await new Promise((r) => b.once('open', r));
+  b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+  await once(b, 'welcome');
+
+  const gotClosedA = once(a, 'room-closed');
+  const gotClosedB = once(b, 'room-closed');
+  const closedCodeA = new Promise((res) => a.once('close', (code, reason) => res({ code, reason: reason.toString() })));
+
+  await server.close();
+
+  await gotClosedA;
+  await gotClosedB;
+  const { code, reason } = await closedCodeA;
+  assert.equal(code, 1001);
+  assert.equal(reason, 'host-left');
+});
+
 // Versao com prazo: sem isto, uma regressao no encaminhamento faz o teste
 // pendurar pra sempre em vez de falhar.
 function onceWithin(ws, type, ms = 2000) {
