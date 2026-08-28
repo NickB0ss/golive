@@ -236,7 +236,25 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
       resolve({
         wss,
         port: wss.address().port,
-        close: () => new Promise((res) => wss.close(() => res())),
+        // O servidor roda no processo de quem hospeda. Quando o host sai da
+        // sala (Desconectar) ou fecha o app, `close()` e chamado -- e a sala
+        // deixa de existir: nao ha pra onde reconectar nem como entrar mais
+        // ninguem. Sem avisar, cada cliente so ve o socket cair (code 1006) e,
+        // pela logica de resiliencia do renderer (H1), fica "orfao" com a
+        // sala fantasma na tela ate desconectar na mao. O 'room-closed'
+        // explicito (+ close limpo 1001) deixa o cliente distinguir "a sala
+        // acabou" de "a MINHA conexao caiu" e voltar pro lobby na hora.
+        close: () => new Promise((res) => {
+          for (const client of wss.clients) {
+            send(client, { type: 'room-closed' });
+            try {
+              client.close(1001, 'host-left');
+            } catch {
+              /* socket ja fechando */
+            }
+          }
+          wss.close(() => res());
+        }),
         getPeerCount: () => peers.size,
       });
     });
