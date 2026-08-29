@@ -155,6 +155,15 @@
   // enquanto nao estivermos codificando nada -- reportar valor inventado e
   // pior que reportar ausencia.
   let myEncodeHealth = null;
+  // receiveHealth mais recente que CADA peer reportou sobre o stream que
+  // mandamos pra ele. Chave 'peerId:kind'. Alimenta a escada por-peer
+  // (Task 5). Espelha o papel de peer.encodeHealth, mas por-conexao porque
+  // um peer pode receber tela e camera com saudes diferentes.
+  const rxHealthByPeer = new Map();
+  // Amostra anterior de readReceiverReport por 'peerId:kind', pra derivar a
+  // taxa da janela (freezeCount e cumulativo).
+  const rxPrevSample = new Map();
+  let rxPrevAtMs = 0;
   // Escada de degradacao automatica da TELA, alimentada pela telemetria de
   // encode em updateStats. Zerada ao parar de compartilhar: os degraus
   // descrevem uma transmissao especifica, nao a maquina.
@@ -1378,6 +1387,8 @@
       }
       case 'peer-left': {
         mesh.removePeer(msg.id);
+        for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
+        for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
         dropTile(msg.id);
         dropTile(`cam-${msg.id}`);
         renderMembersPanel();
@@ -1412,7 +1423,7 @@
         // "assistindo" por padrao, entao precisa ser corrigido na hora --
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
-        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth });
+        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${msg.from}:${msg.kind}`) || null });
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -1458,6 +1469,7 @@
         // dele que codifica. recomputeTree le isto ao montar os candidatos.
         const vsPeer = mesh.peers.get(msg.from);
         if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
+        if (vsPeer) vsPeer.receiveHealth = normalizeReceiveHealth(msg.receiveHealth);
         const track = trackForKind(msg.kind);
         // Pausa manual manda mais que a demanda do espectador: enquanto
         // pausado, 'watching: true' nao pode religar o encode da tela.
@@ -1929,6 +1941,8 @@
     sharePaused = false;
     $('btn-pause-share').classList.remove('active');
     $('btn-pause-share').classList.add('hidden');
+    rxHealthByPeer.clear();
+    rxPrevSample.clear();
   }
 
   /** Pausa manual so suspende os senders que existiam no instante do clique.
@@ -2119,7 +2133,7 @@
       // H2: carona no canal que ja existe -- a origem daquele kind usa isto
       // pra eleger relay por saude de encode, nao so por RTT. null quando
       // nao estamos codificando nada.
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth });
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null });
     }
   }
 
@@ -2442,6 +2456,18 @@
     return { softwareEncoder: raw.softwareEncoder === true, msPerFrame: ms };
   }
 
+  // 'view-state' de cliente antigo nao traz receiveHealth: ausencia (ou
+  // lixo) vira null -- o caso neutro da escada por-peer, nunca "saudavel".
+  function normalizeReceiveHealth(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+    return {
+      lossPct: num(raw.lossPct),
+      freezeRate: num(raw.freezeRate),
+      softwareDecoder: raw.softwareDecoder === true,
+    };
+  }
+
   // Com a janela oculta o painel de estatisticas nao esta na tela de
   // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
   // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
@@ -2620,6 +2646,11 @@
       if (!report) continue;
       const sample = rxstats.readReceiverReport(report);
       if (!sample.framesDecoded) continue;
+      const rxKey = `${peerId}:${kind}`;
+      const dt = rxPrevAtMs ? now - rxPrevAtMs : 0;
+      const health = rxstats.receiveHealth(sample, rxPrevSample.get(rxKey), dt);
+      rxPrevSample.set(rxKey, sample);
+      if (health) rxHealthByPeer.set(rxKey, health);
       rxRows.push({
         peerId,
         kind,
@@ -2630,6 +2661,7 @@
       });
     }
 
+    rxPrevAtMs = now;
     renderStats(rows, rxRows);
     updateEncoderWarning(rows);
     renderRoomStatus();
