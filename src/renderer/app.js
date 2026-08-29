@@ -2850,6 +2850,10 @@
           // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
           // tem baseKind 'screen'), entao le o sub-slot 'screen'.
           receiveHealth: peer?.receiveHealth?.screen || null,
+          // Encoder do relay afogado: a saude de encode que ELE reportou no
+          // 'view-state' (peer.encodeHealth, por-maquina) na mesma escala do
+          // autoquality. null (nao reportou) nao e ruim.
+          peerEncodeSaturated: autoquality.isBad(peer?.encodeHealth, autoquality.LIMITS.BUDGET_MS_60),
         });
         if (nextSt.steps !== st.steps) {
           anyPeerChanged = true;

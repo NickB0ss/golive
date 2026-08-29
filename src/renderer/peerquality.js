@@ -25,11 +25,16 @@
 
   const LIMITS = { MAX_PEER_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, FREEZE_PER_MIN, LOSS_PCT_MAX };
 
-  /** Ruim = qualquer um dos tres: link limitado por banda, decoder em
-   * software do espectador, ou travar muito sem que a rede explique. */
+  /** Ruim = qualquer um: link limitado por banda, encoder do peer saturado
+   * (relay afogado), decoder em software do espectador, ou travar muito sem
+   * que a rede explique. */
   function isBad(signals, opts) {
     if (!signals) return false;
     if (signals.senderBandwidthLimited === true) return true;
+    // Relay afogando o proprio encoder (Task 5 faz myEncodeHealth subir dele):
+    // degrada a conexao origem->relay que servimos, mesmo que ele decodifique
+    // em hardware e a receiveHealth pareca limpa.
+    if (signals.peerEncodeSaturated === true) return true;
     const rh = signals.receiveHealth;
     if (!rh || typeof rh !== 'object') return false;
     if (rh.softwareDecoder === true) return true;

@@ -40,6 +40,17 @@ test('isBad: receiveHealth ausente nao e ruim', () => {
   assert.equal(isBad({ ...OK, receiveHealth: null }, {}), false);
 });
 
+test('isBad: encoder saturado do peer (relay afogado) e ruim', () => {
+  assert.equal(isBad({ ...OK, peerEncodeSaturated: true }, {}), true);
+});
+
+test('peerEncodeSaturated continuo desce um degrau', () => {
+  let s = initialState();
+  s = next(s, { atMs: 0, peerEncodeSaturated: true });
+  s = next(s, { atMs: LIMITS.BAD_MS_TO_DEGRADE + 1, peerEncodeSaturated: true });
+  assert.equal(s.steps, 1);
+});
+
 test('uma amostra ruim isolada nao degrada', () => {
   assert.equal(run(initialState(), [BW]).steps, 0);
 });
