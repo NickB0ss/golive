@@ -2642,6 +2642,13 @@
       // medida e ainda faria a eleicao de relay cair no desempate por
       // joinedAt em vez de usar o melhor RTT que existe.
       rtt: null,
+      // "sem amostra" != "0 bits disponiveis" -- e o numero que separa
+      // gargalo de banda de gargalo de encode.
+      availableBps: null,
+      // Perda REAL da rede (remote-inbound-rtp), distinta dos quadros
+      // descartados no encode que a tabela ja mostra.
+      packetsLostNet: null,
+      fractionLost: null,
     };
 
     report.forEach((stat) => {
@@ -2669,6 +2676,15 @@
       }
       if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
         sample.rtt = Math.max(sample.rtt ?? 0, stat.currentRoundTripTime * 1000);
+      }
+      if (stat.type === 'candidate-pair' && stat.nominated && stat.availableOutgoingBitrate != null) {
+        sample.availableBps = Math.max(sample.availableBps ?? 0, stat.availableOutgoingBitrate);
+      }
+      // remote-inbound-rtp e o eco RTCP do outro lado -- pode faltar num
+      // intervalo isolado sem significar "sem perda".
+      if (stat.type === 'remote-inbound-rtp' && stat.kind === 'video') {
+        if (stat.packetsLost != null) sample.packetsLostNet = stat.packetsLost;
+        if (stat.fractionLost != null) sample.fractionLost = stat.fractionLost;
       }
     });
 
@@ -2908,6 +2924,10 @@
     const budget = rows[0].fps >= 50 ? 16.6 : 33.3;
     const first = rows[0];
 
+    const bwRows = rows.filter((r) => r.availableBps != null);
+    const minAvailableBps = bwRows.length ? Math.min(...bwRows.map((r) => r.availableBps)) : null;
+    const targetBitrate = qualityFor(rows[0].kind).bitrate;
+
     const summary = `
       <div class="stat"><span>enviando pra</span><b>${rows.length} sender(s)</b></div>
       <div class="stat"><span>resolução</span><b>${first.width}x${first.height}</b></div>
@@ -2918,7 +2938,10 @@
       }</b></div>
       <div class="stat"><span>encode somado</span><b class="${
         encodeMsRows.length && totalEncodeMs > budget ? 'warn-text' : 'good'
-      }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>`;
+      }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>
+      <div class="stat"><span>banda disponível</span><b class="${
+        minAvailableBps != null && minAvailableBps < targetBitrate ? 'warn-text' : ''
+      }">${minAvailableBps != null ? `${(minAvailableBps / 1_000_000).toFixed(1)} Mbps` : '-'}</b></div>`;
 
     const body = rows
       .map((r) => {
@@ -2937,6 +2960,9 @@
           }</td>
           <td>${r.mbps.toFixed(1)}</td>
           <td>${r.rtt != null ? `${Math.round(r.rtt)} ms` : '-'}</td>
+          <td class="${r.fractionLost != null && r.fractionLost > 0.01 ? 'warn-text' : ''}">${
+            r.fractionLost != null ? `${(r.fractionLost * 100).toFixed(2)}%` : '-'
+          }</td>
           <td class="${dropped ? 'warn-text' : ''}">${dropped || '-'}</td>
         </tr>`;
       })
@@ -2951,7 +2977,7 @@
 
     ui.settings.setStatsHtml(`${summary}
       <table class="stats-table">
-        <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perdidos</th></tr></thead>
+        <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perda rede</th><th>perdidos</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       ${limitWarn}
