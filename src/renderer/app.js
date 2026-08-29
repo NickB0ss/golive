@@ -304,12 +304,14 @@
    * custar um solavanco de imagem a toa. */
   let lastCaptureKey = '';
 
-  /** Somos relay de tela pra alguem agora? Um relay puro tem localStream
-   * null mas ainda paga encode por filho -- entao ainda precisa adaptar
-   * por filho. */
-  function isRelayingScreen() {
-    for (const state of myRole.screen.values()) {
-      if (state.role === 'relay' && state.filhosIds.length) return true;
+  /** Estamos repassando video pra alguem agora? Um relay paga 2 encodes e
+   * um decode sem necessariamente transmitir nada proprio -- entao ainda
+   * precisa do loop de estatisticas ligado. */
+  function isRelaying() {
+    for (const kind of KINDS) {
+      for (const state of myRole[kind].values()) {
+        if (state.role === 'relay' && state.filhosIds.length) return true;
+      }
     }
     return false;
   }
@@ -858,7 +860,7 @@
     const tags = new Map();
     // Vale tambem pro relay puro (localStream null): ele degrada os filhos
     // e a tag e o unico sinal disso no painel dele.
-    if (session && (localStream || isRelayingScreen())) {
+    if (session && (localStream || isRelaying())) {
       // Espectadores diretos: so quem tem out-conn de tela nossa (quem
       // servimos via relay nao tem escada nossa -- a tag seria mentira).
       if (localStream) {
@@ -1622,6 +1624,10 @@
           ? 'relay'
           : msg.paiId === origem ? 'direct' : 'folha';
 
+        // Virar (ou deixar de ser) relay muda se ha algo nosso codificando
+        // -- o loop de estatisticas e quem mede isso.
+        syncStatsLoop();
+
         if (state.role === 'relay') await flushPendingRelay(session, kind, origem);
         break;
       }
@@ -2007,7 +2013,9 @@
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
     renderMembersPanel();
-    stopStatsLoop();
+    // syncStatsLoop, nao stopStatsLoop: parar de compartilhar nao quer dizer
+    // parar de codificar -- este no pode seguir sendo relay de outra pessoa.
+    syncStatsLoop();
     resetShareState();
   }
 
@@ -2579,6 +2587,22 @@
     ui.settings.setStatsHtml('');
   }
 
+  /** Liga o loop de estatisticas se ele ja nao estiver rodando, e desliga
+   * quando nao ha mais nada nosso sendo codificado (nem transmissao propria,
+   * nem repasse de relay).
+   *
+   * Ate aqui o loop so subia com localStream/cameraStream -- quem era SO
+   * relay nunca media nada: nao reportava saude de encode (a eleicao do H2
+   * recebia null), nao rodava a escada por-filho (Task 5.5), nao mandava
+   * cadencia de view-state. startStatsLoop chama stopStatsLoop antes (zera
+   * statsPrev), entao a guarda por statsTimer evita apagar a amostra
+   * anterior a cada 'tree' recebida. */
+  function syncStatsLoop() {
+    const precisa = Boolean(localStream) || Boolean(cameraStream) || isRelaying();
+    if (precisa && !statsTimer) startStatsLoop();
+    else if (!precisa && statsTimer) stopStatsLoop();
+  }
+
   // Le um relatorio de getStats de UM sender e devolve os campos que
   // interessam pro diagnostico de encode. Ver a spec de 2026-08-23 (F1.1):
   // o campo decisivo e encoderImplementation -- o Chromium cai pro encoder
@@ -2723,7 +2747,7 @@
     // Escada POR CONEXAO -- vale pra quem origina E pra relay puro. Um relay
     // sem tela propria (localStream null) ainda paga encode por filho, entao
     // ainda precisa da escada por filho movida pela receiveHealth deles.
-    if (localStream || isRelayingScreen()) {
+    if (localStream || isRelaying()) {
       // Sinais: banda (das nossas proprias stats de envio) e a receiveHealth
       // que o peer reportou.
       const limByPeer = new Map();
