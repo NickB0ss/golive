@@ -6,16 +6,19 @@
   const REASON_LABELS = {
     encoder: 'encoder em software',
     malha: 'sem retransmissor',
+    auto: 'máquina no limite',
     sala: 'sala cheia',
   };
 
   // Precedencia: encoder em software e a causa mais grave (a imagem esta
   // sendo codificada pela CPU agora); malha degradada vem antes do tamanho
   // da sala porque ela JA embute o degrau do tamanho da sala -- ver
-  // qualityFor em app.js.
+  // qualityFor em app.js. 'auto' fica entre malha e sala: a telemetria de
+  // encode pediu o degrau; pode ser a nossa CPU ou a de um relay.
   function degradeReason(state) {
     if (state.softwareEncoder) return 'encoder';
     if (state.meshFallback) return 'malha';
+    if (state.autoDegraded) return 'auto';
     if (state.presetDegraded) return 'sala';
     return null;
   }
@@ -26,6 +29,7 @@
    *   'offline'      -- sem sessao nenhuma
    *   'reconnecting' -- sinalizacao caida com a midia viva (H1)
    *   'degraded'     -- NOS estamos transmitindo abaixo do preset escolhido
+   *   'paused'       -- NOS estamos transmitindo mas com a saida suspensa (Task 7)
    *   'live'         -- alguem esta ao vivo, sem degradacao conhecida
    *   'idle'         -- na sala, ninguem transmitindo
    *
@@ -40,6 +44,7 @@
     const s = state || {};
     if (!s.inRoom) return { level: 'offline', label: '' };
     if (s.reconnecting) return { level: 'reconnecting', label: 'reconectando…' };
+    if (s.weAreLive && s.paused) return { level: 'paused', label: 'transmissão pausada' };
     if (!s.anyoneLive) return { level: 'idle', label: '' };
 
     const reason = s.weAreLive ? degradeReason(s) : null;

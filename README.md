@@ -151,9 +151,9 @@ e volta a subir quando sobra folga — um degrau de cada vez. Dois gatilhos:
 
 - **tamanho da sala** — o encode desce um degrau (1080p60 → 1080p30) assim que
   a sala chega a **3 pessoas** e volta ao preset quando ela encolhe;
-- **telemetria de encode** — o laço fechado lê o tempo por quadro e se o
-  encoder está em software e, se ele está apertado, desce mais um degrau,
-  baixando também a **captura** (`applyConstraints`), não só o teto do bitrate.
+- **telemetria de encode** — o laço fechado olha o tempo por quadro e se o
+  encoder caiu pra software; quando aperta, desce mais um degrau, baixando
+  também a **captura** (`applyConstraints`), não só o teto do bitrate.
 
 Ninguém escolhe nada e não há botão pra isso.
 

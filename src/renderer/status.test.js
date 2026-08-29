@@ -59,3 +59,33 @@ test('transmitindo sem degradacao nenhuma nao inventa rotulo', () => {
 test('entrada indefinida nao lanca -- isto roda no caminho de render', () => {
   assert.equal(roomStatus(undefined).level, 'offline');
 });
+
+test('transmitindo mas pausado: nivel paused, selo diz pausado', () => {
+  const s = roomStatus({ ...BASE, anyoneLive: true, weAreLive: true, paused: true });
+  assert.equal(s.level, 'paused');
+  assert.match(s.label, /pausad/i);
+});
+
+test('pausado vence degradacao -- pausado e o fato mais importante', () => {
+  const s = roomStatus({ ...BASE, anyoneLive: true, weAreLive: true, paused: true, presetDegraded: true, effectivePreset: '1080p30' });
+  assert.equal(s.level, 'paused');
+});
+
+test('pausado so conta pra quem transmite -- assistir alguem pausado nao existe', () => {
+  const s = roomStatus({ ...BASE, anyoneLive: true, weAreLive: false, paused: true });
+  assert.equal(s.level, 'live');
+});
+
+test('degrade automatico tem rotulo proprio, nao "sala cheia"', () => {
+  const s = roomStatus({ ...BASE, anyoneLive: true, weAreLive: true, autoDegraded: true, presetDegraded: true, effectivePreset: '720p30' });
+  assert.equal(s.level, 'degraded');
+  assert.match(s.label, /limite/i);
+  assert.doesNotMatch(s.label, /sala cheia/);
+});
+
+test('precedencia com auto: encoder e malha vencem auto, auto vence sala', () => {
+  const base = { ...BASE, anyoneLive: true, weAreLive: true, effectivePreset: '720p30', autoDegraded: true, presetDegraded: true };
+  assert.match(roomStatus({ ...base, softwareEncoder: true }).label, /encoder/);
+  assert.match(roomStatus({ ...base, meshFallback: true }).label, /retransmissor/);
+  assert.match(roomStatus(base).label, /limite/);
+});

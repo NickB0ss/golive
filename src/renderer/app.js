@@ -755,6 +755,7 @@
       $('btn-toggle-camera').classList.remove('active');
     }
     $('btn-toggle-share').classList.remove('active');
+    resetShareState();
   }
 
   // Derruba as conexoes P2P e o estado de tiles dos peers dessa sessao. A
@@ -813,7 +814,9 @@
       reconnecting: Boolean(orphanSession),
       weAreLive: Boolean(localStream),
       anyoneLive: live,
+      paused: sharePaused,
       presetDegraded: effective.preset !== cfg.quality.preset,
+      autoDegraded: autoQuality.steps > 0,
       meshFallback: Boolean(meshFallback.screen),
       softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
       effectivePreset: effective.preset,
@@ -1306,6 +1309,7 @@
               // pode abortar as demais nem o resto do handshake do welcome
               console.error(`[reconexao] re-oferta de tela para ${p.id} falhou:`, err);
             }
+            enforceSharePauseFor(mesh, p.id);
           }
           broadcastWatchers('screen');
           recomputeTree('screen');
@@ -1351,6 +1355,7 @@
             // -- mesmo racional do try/catch por-peer do welcome (Task 5).
             console.error(`[peer-joined] oferta de tela para ${msg.id} falhou:`, err);
           }
+          enforceSharePauseFor(mesh, msg.id);
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
@@ -1456,8 +1461,10 @@
         const track = trackForKind(msg.kind);
         // Pausa manual manda mais que a demanda do espectador: enquanto
         // pausado, 'watching: true' nao pode religar o encode da tela.
-        const wanted = Boolean(msg.watching)
-          && !(sharePaused && parseKind(msg.kind).baseKind === 'screen');
+        // So a NOSSA tela (kind 'screen' exato) -- nao os kinds compostos
+        // 'screen@<origem>' que retransmitimos pra outro: pausar a propria
+        // transmissao nao pode congelar o que a gente so repassa.
+        const wanted = Boolean(msg.watching) && !(sharePaused && msg.kind === 'screen');
         if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
           renderMembersPanel();
           // A lista de "quem esta assistindo" e da ORIGEM. Num kind
@@ -1910,12 +1917,27 @@
     $('btn-toggle-share').classList.remove('active');
     renderMembersPanel();
     stopStatsLoop();
-    // Os degraus descrevem uma transmissao especifica, nao a maquina.
+    resetShareState();
+  }
+
+  /** Estado da transmissao que tem de zerar em QUALQUER fim de captura --
+   * saida deliberada (teardownMedia) ou parar de compartilhar (stopShare).
+   * Ficava so no stopShare e vazava pela outra porta. */
+  function resetShareState() {
     autoQuality = autoquality.initialState();
     lastCaptureKey = '';
     sharePaused = false;
     $('btn-pause-share').classList.remove('active');
     $('btn-pause-share').classList.add('hidden');
+  }
+
+  /** Pausa manual so suspende os senders que existiam no instante do clique.
+   * Quem entra depois (peer-joined) ou reconecta (welcome) recebe uma oferta
+   * nova com a track viva -- sem reimpor aqui, a tela "pausada" volta a
+   * sair, e no reconnect pra sala inteira de uma vez. */
+  function enforceSharePauseFor(m, peerId) {
+    if (!sharePaused || !localStream) return;
+    m.setPeerDemand(peerId, 'screen', false, localStream.getVideoTracks()[0] || null);
   }
 
   function setSharePaused(paused) {
@@ -1935,7 +1957,7 @@
   }
 
   $('btn-pause-share').addEventListener('click', () => setSharePaused(!sharePaused));
-  window.golive.onShortcut(() => setSharePaused(!sharePaused));
+  window.golive.onShortcut?.(() => setSharePaused(!sharePaused));
 
   // ---------- Câmera ----------
 
