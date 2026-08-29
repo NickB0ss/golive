@@ -18,7 +18,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   fanout 1/2, profundidade 2). Teto prático ~4 pessoas.
 - Qualidade em preset fechado, escolhida no diálogo de compartilhar, que é
   só um **teto**: o app desce sozinho pelo tamanho da sala **e** pela
-  telemetria de encode (fps/tempo por quadro), degradando a própria captura
+  telemetria de encode (tempo por quadro, encoder em software), degradando a própria captura
   via `applyConstraints`, não só o teto do encode — e volta a subir quando
   sobra folga. Um degrau extra quando cai pra malha.
 - Áudio negociado em **estéreo** (Opus, bitrate declarado no SDP dos dois
