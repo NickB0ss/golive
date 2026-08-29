@@ -185,6 +185,26 @@
     return toConstraints(camera);
   }
 
+  // Degraus "redondos" pro scaleResolutionDownBy. O Chromium aceita
+  // fracionario, mas valores redondos evitam artefato de reamostragem. O
+  // encode escala DEPOIS da captura, entao a captura continua paga inteira
+  // -- quem controla a captura e o piso global (via applyConstraints).
+  const SCALE_STEPS = [1, 1.5, 2, 3, 4];
+
+  function scaleFactorFor(captureWidth, targetWidth) {
+    const cap = Number(captureWidth);
+    const tgt = Number(targetWidth);
+    if (!(cap > 0) || !(tgt > 0) || tgt >= cap) return 1;
+    const raw = cap / tgt;
+    let chosen = SCALE_STEPS[0];
+    let best = Infinity;
+    for (const s of SCALE_STEPS) {
+      const d = Math.abs(s - raw);
+      if (d < best) { best = d; chosen = s; }
+    }
+    return chosen;
+  }
+
   const api = {
     DEFAULTS,
     QUALITY_PRESETS,
@@ -198,6 +218,7 @@
     serialize,
     videoConstraints,
     cameraConstraints,
+    scaleFactorFor,
   };
 
   root.GoLive = root.GoLive || {};

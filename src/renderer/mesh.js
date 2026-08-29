@@ -493,6 +493,27 @@
       }
     }
 
+    /** Igual a applyEncoding, mas resolve UMA conexao (peerId + kind) e
+     * tambem empurra a resolucao pra baixo no encoder via
+     * scaleResolutionDownBy -- o piso global controla a captura, esta
+     * funcao afina por-espectador a partir dele. `scaleDownBy` vem pronto
+     * de quem chama (config.scaleFactorFor), pra este modulo nao depender
+     * do config. */
+    function applyEncodingToPeer(peerId, quality, kind, scaleDownBy) {
+      const pc = peers.get(peerId)?.outConns[kind];
+      if (!pc) return;
+      for (const sender of pc.getSenders()) {
+        if (!sender.track || sender.track.kind !== 'video') continue;
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = quality.bitrate;
+        params.encodings[0].maxFramerate = quality.fps;
+        params.encodings[0].scaleResolutionDownBy = Number(scaleDownBy) > 0 ? Number(scaleDownBy) : 1;
+        params.degradationPreference = 'maintain-framerate';
+        sender.setParameters(params).catch(() => {});
+      }
+    }
+
     // Remove uma track especifica (ex: camera) da outConn daquele kind sem
     // mexer na outConn de outro kind do mesmo peer (ex: tela, que agora vive
     // numa RTCPeerConnection separada -- ver comentario acima de
@@ -664,6 +685,7 @@
       offerTo,
       removeTrack,
       applyEncoding,
+      applyEncodingToPeer,
       closeAllOut,
       closeOut,
       relayTo,

@@ -162,3 +162,32 @@ test('qualityForAudience no piso e com preset invalido nao explode', () => {
   assert.equal(qualityForAudience('inexistente', 3).preset, '1080p30');
   assert.equal(qualityForAudience(undefined, 0).preset, '1080p60');
 });
+
+// ---------- scaleFactorFor ----------
+const { scaleFactorFor } = require('./config');
+
+test('scaleFactorFor: alvo igual a captura nao escala', () => {
+  assert.equal(scaleFactorFor(1920, 1920), 1);
+});
+
+test('scaleFactorFor: alvo maior que a captura nao escala (nunca aumenta)', () => {
+  assert.equal(scaleFactorFor(1280, 1920), 1);
+});
+
+test('scaleFactorFor: 1920 -> 1280 e 1.5', () => {
+  assert.equal(scaleFactorFor(1920, 1280), 1.5);
+});
+
+test('scaleFactorFor: 1920 -> 720 arredonda pro degrau mais proximo (3 -> 2.67)', () => {
+  assert.equal(scaleFactorFor(1920, 720), 3);
+});
+
+test('scaleFactorFor: nunca passa de 4', () => {
+  assert.equal(scaleFactorFor(4000, 200), 4);
+});
+
+test('scaleFactorFor: entrada invalida devolve 1, nao lanca', () => {
+  for (const [c, t] of [[0, 100], [100, 0], [-1, 100], [NaN, 100], ['x', 'y']]) {
+    assert.equal(scaleFactorFor(c, t), 1);
+  }
+});
