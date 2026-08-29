@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -151,6 +151,10 @@
   // enquanto nao estivermos codificando nada -- reportar valor inventado e
   // pior que reportar ausencia.
   let myEncodeHealth = null;
+  // Escada de degradacao automatica da TELA, alimentada pela telemetria de
+  // encode em updateStats. Zerada ao parar de compartilhar: os degraus
+  // descrevem uma transmissao especifica, nao a maquina.
+  let autoQuality = autoquality.initialState();
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
@@ -245,11 +249,14 @@
     const baseKind = parseKind(kind).baseKind;
     if (baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
     const effective = config.qualityForAudience(cfg.quality.preset, audienceSize());
-    // Modo malha degradada (H3): a origem paga N encoders em vez de 1, entao
-    // desce UM degrau alem do que o tamanho da sala ja pediu. degradePreset
-    // para no piso e nunca lanca, entao isto e seguro no caminho de encode.
-    if (meshFallback[baseKind]) return config.qualityFromPreset(config.degradePreset(effective.preset, 1));
-    return effective;
+    // Dois degraus somam sobre o que o tamanho da sala ja pediu:
+    //  - malha degradada (H3): a origem paga N encoders em vez de 1;
+    //  - escada automatica: a telemetria disse que nao esta dando conta.
+    // degradePreset para no piso e nunca lanca, entao isto e seguro no
+    // caminho de encode.
+    const extraSteps = (meshFallback[baseKind] ? 1 : 0) + autoQuality.steps;
+    if (!extraSteps) return effective;
+    return config.qualityFromPreset(config.degradePreset(effective.preset, extraSteps));
   }
 
   /** Reaplica o teto de encode nas conexoes JA ABERTAS daquele kind --
@@ -1873,6 +1880,8 @@
     $('btn-toggle-share').classList.remove('active');
     renderMembersPanel();
     stopStatsLoop();
+    // Os degraus descrevem uma transmissao especifica, nao a maquina.
+    autoQuality = autoquality.initialState();
   }
 
   // ---------- Câmera ----------
@@ -2505,6 +2514,27 @@
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
     // acima porque some todos os senders num numero so.
     myEncodeHealth = summarizeOwnEncodeHealth(rows);
+
+    // Laco fechado (a metade do H4 que faltava). O gatilho e a PIOR saude
+    // entre a nossa e a dos relays: com a arvore ligada a origem roda 1
+    // encoder e parece saudavel enquanto o relay, que roda 2, derrete.
+    if (localStream) {
+      const relayHealths = [];
+      for (const [peerId, assignment] of originTree.screen.assignments) {
+        if (assignment.role !== 'relay') continue;
+        const health = activeMesh.peers.get(peerId)?.encodeHealth;
+        if (health) relayHealths.push(health);
+      }
+      const before = autoQuality.steps;
+      autoQuality = autoquality.next(autoQuality, {
+        atMs: now,
+        health: autoquality.worstHealth([myEncodeHealth, ...relayHealths]),
+      });
+      if (autoQuality.steps !== before) {
+        console.log(`[qualidade] escada automatica: ${before} -> ${autoQuality.steps} degraus`);
+        reapplyAudienceQuality();
+      }
+    }
 
     renderStats(rows);
     updateEncoderWarning(rows);
