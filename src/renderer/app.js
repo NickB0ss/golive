@@ -155,6 +155,10 @@
   // enquanto nao estivermos codificando nada -- reportar valor inventado e
   // pior que reportar ausencia.
   let myEncodeHealth = null;
+  // Menor availableOutgoingBitrate visto entre os nossos senders, em bits/s
+  // (null enquanto nao ha amostra). E o orcamento de UPLINK deste no --
+  // usado pra limitar o preset de repasse (config.qualityForRelay).
+  let myAvailableBps = null;
   // receiveHealth mais recente que CADA peer reportou sobre o stream que
   // mandamos pra ele. Chave 'peerId:kind'. Alimenta a escada por-peer
   // (Task 5). Espelha o papel de peer.encodeHealth, mas por-conexao porque
@@ -277,14 +281,24 @@
     return config.qualityFromPreset(config.degradePreset(effective.preset, extraSteps));
   }
 
-  /** Qualidade efetiva para UM destinatario: o piso global (tamanho da
-   * sala + malha degradada + escada automatica global) menos os degraus
-   * que a conexao DELE pediu. Nunca sobe acima do piso. `kind` pode ser
-   * composto ('screen@<origem>') quando somos relay -- a chave usa o
-   * baseKind, porque um filho e um filho independente de quem origina. */
+  /** Qualidade efetiva para UM destinatario: o piso menos os degraus que a
+   * conexao DELE pediu. Pra um FILHO de relay, o piso e o MENOR entre o piso
+   * global e o teto de uplink do relay (config.qualityForRelay) -- o relay
+   * sobe uma copia por filho e nao pode passar do proprio orcamento. */
   function qualityForPeer(peerId, kind) {
-    const floor = qualityFor(kind);
-    const st = peerQuality.get(`${peerId}:${parseKind(kind).baseKind}`);
+    const { baseKind, sourceId } = parseKind(kind);
+    let floor = qualityFor(kind);
+
+    if (sourceId) {
+      // kind composto -> somos relay desta origem. Limita pelo uplink.
+      const state = myRole[baseKind].get(sourceId);
+      const filhos = state?.filhosIds.length || 1;
+      const relayCap = config.qualityForRelay(floor.preset, filhos, myAvailableBps);
+      // menor preset entre os dois (comparar pelo bitrate da cadeia)
+      if (relayCap.bitrate < floor.bitrate) floor = relayCap;
+    }
+
+    const st = peerQuality.get(`${peerId}:${baseKind}`);
     const steps = st?.steps || 0;
     if (!steps) return floor;
     return config.qualityFromPreset(config.degradePreset(floor.preset, steps));
@@ -2743,6 +2757,11 @@
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
     // acima porque some todos os senders num numero so.
     myEncodeHealth = summarizeOwnEncodeHealth(rows);
+
+    // Menor availableBps entre os senders: todos dividem o mesmo uplink,
+    // entao a estimativa mais apertada e a que descreve o que sobra.
+    const bws = rows.filter((r) => r.availableBps != null).map((r) => r.availableBps);
+    myAvailableBps = bws.length ? Math.min(...bws) : null;
 
     if (localStream) {
       // M3: a escada GLOBAL reage so a NOSSA saude de encode. Antes ela
