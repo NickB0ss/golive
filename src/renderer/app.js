@@ -362,7 +362,9 @@
     if (meshFallback[kind] === value) return;
     meshFallback[kind] = value;
     // qualityFor le meshFallback[kind], entao ja devolve o preset certo aqui.
-    currentSession?.mesh?.applyEncoding(qualityFor(kind), kind);
+    // Unico ponto de retune: preserva bitrate/fps/scale por-peer em vez de
+    // varrer todos os senders com o piso global.
+    reapplyAudienceQuality();
     if (value && kind === 'screen') {
       // So a tela tem cadeia de degradacao; a camera ja esta no piso, entao
       // avisar que "baixei a qualidade" dela seria mentira.
@@ -506,8 +508,8 @@
     // A captura vai no preset que a pessoa escolheu, mas o encode passa por
     // qualityFor -- senao trocar de preset no meio de uma sala cheia
     // escaparia da degradacao por tamanho da sala ate o proximo
-    // peer-joined/peer-left.
-    currentSession?.mesh?.applyEncoding(qualityFor('screen'), 'screen');
+    // peer-joined/peer-left. Retune por-peer: nao orfana o scaleResolutionDownBy.
+    reapplyAudienceQuality();
   }
 
   // Escolhida no dialogo de compartilhar (ver ui.picker.open, no clique de
@@ -854,10 +856,27 @@
     // degradado (steps > 0). Sem isso a degradacao por-peer nao tem sinal
     // nenhum no lado de quem transmite.
     const tags = new Map();
-    if (session && localStream) {
-      for (const peerId of session.mesh.peers.keys()) {
-        const st = peerQuality.get(`${peerId}:screen`);
-        if (st?.steps > 0) tags.set(peerId, qualityForPeer(peerId, 'screen').preset);
+    // Vale tambem pro relay puro (localStream null): ele degrada os filhos
+    // e a tag e o unico sinal disso no painel dele.
+    if (session && (localStream || isRelayingScreen())) {
+      // Espectadores diretos: so quem tem out-conn de tela nossa (quem
+      // servimos via relay nao tem escada nossa -- a tag seria mentira).
+      if (localStream) {
+        for (const [peerId, peer] of session.mesh.peers) {
+          if (!peer.outConns?.screen) continue;
+          if (peerQuality.get(`${peerId}:screen`)?.steps > 0) {
+            tags.set(peerId, qualityForPeer(peerId, 'screen').preset);
+          }
+        }
+      }
+      // Filhos de relay: sempre que retransmitimos, com ou sem tela propria.
+      for (const [sourceId, state] of myRole.screen) {
+        if (state.role !== 'relay') continue;
+        for (const childId of state.filhosIds) {
+          if (peerQuality.get(`${childId}:screen`)?.steps > 0) {
+            tags.set(childId, qualityForPeer(childId, relayKindFor('screen', sourceId)).preset);
+          }
+        }
       }
     }
     ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo(), tags);
@@ -1490,7 +1509,8 @@
         if (!isKnownKind(msg.kind)) break;
         await mesh.handleAnswer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return;
-        mesh.applyEncoding(qualityFor(msg.kind), msg.kind);
+        // Retune por-peer (tela e camera): nao orfana o scaleResolutionDownBy.
+        reapplyAudienceQuality();
         break;
       }
       case 'ice': {
@@ -1526,7 +1546,9 @@
         // dele que codifica. recomputeTree le isto ao montar os candidatos.
         const vsPeer = mesh.peers.get(msg.from);
         if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
-        if (vsPeer) vsPeer.receiveHealth = normalizeReceiveHealth(msg.receiveHealth);
+        // Slot por baseKind: um viewer que recebe tela E camera nao pode
+        // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
+        if (vsPeer) (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] = normalizeReceiveHealth(msg.receiveHealth);
         const track = trackForKind(msg.kind);
         // Pausa manual manda mais que a demanda do espectador: enquanto
         // pausado, 'watching: true' nao pode religar o encode da tela.
@@ -2676,16 +2698,17 @@
     // acima porque some todos os senders num numero so.
     myEncodeHealth = summarizeOwnEncodeHealth(rows);
 
-    // Laco fechado (a metade do H4 que faltava). O gatilho e a PIOR saude
-    // entre a nossa e a dos relays: com a arvore ligada a origem roda 1
-    // encoder e parece saudavel enquanto o relay, que roda 2, derrete.
     if (localStream) {
       // M3: a escada GLOBAL reage so a NOSSA saude de encode. Antes ela
       // fundia a saude dos relays -- mas isso derrubava os espectadores
       // DIRETOS da origem quando era o relay que sofria. Agora a saude
-      // ruim de um relay chega como receiveHealth/encodeHealth no
-      // view-state DELE e degrada so a conexao origem->relay, pela escada
-      // por-peer abaixo.
+      // ruim de um relay chega como receiveHealth no view-state DELE e
+      // degrada so a conexao origem->relay, pela escada por-peer abaixo.
+      // Um relay saturando o encoder mas decodificando em hardware nao move
+      // a escada por-peer hoje -- peerquality.isBad le so
+      // senderBandwidthLimited e receiveHealth, nao encodeHealth; esse lever
+      // fica coberto so pela eleicao de relay (tree.js). Fechar isso fica
+      // pra depois.
       const before = autoQuality.steps;
       autoQuality = autoquality.next(autoQuality, {
         atMs: now,
@@ -2710,7 +2733,12 @@
       const targets = new Set();
       // Diretos: so quando originamos (um relay puro nao manda 'screen' cru
       // pra ninguem). Filhos de relay: sempre.
-      if (localStream) for (const peerId of activeMesh.peers.keys()) targets.add(`${peerId}:screen`);
+      // So peers com uma out-conn de tela DIRETA nossa: quem servimos via
+      // relay nao tem escada nossa (applyEncodingToPeer seria no-op) e nao
+      // pode ganhar a tag de "preset menor" no painel.
+      if (localStream) for (const [peerId, peer] of activeMesh.peers) {
+        if (peer.outConns?.screen) targets.add(`${peerId}:screen`);
+      }
       for (const [sourceId, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
         for (const childId of state.filhosIds) targets.add(`${childId}:screen`);
@@ -2730,7 +2758,10 @@
           // do filho de relay exige o laco de stats de relay da branch
           // parqueada feat/orcamento-banda-relay; ate la, isto e o que da.
           senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth',
-          receiveHealth: peer?.receiveHealth || null,
+          // receiveHealth agora e por baseKind; a chave do tick e sempre
+          // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
+          // tem baseKind 'screen'), entao le o sub-slot 'screen'.
+          receiveHealth: peer?.receiveHealth?.screen || null,
         });
         if (nextSt.steps !== st.steps) {
           anyPeerChanged = true;
@@ -2767,6 +2798,11 @@
 
     rxPrevAtMs = now;
     renderStats(rows, rxRows);
+    // Cadencia que fecha a escada por-peer: sem isto o 'view-state' so sai
+    // em mudanca de visibilidade e a receiveHealth computada a cada segundo
+    // nunca sai da maquina. updateStats ja roda 1s visivel / 5s oculto --
+    // a mesma janela de amostragem. Auto-guarda em !session.mesh.
+    broadcastViewState();
     updateEncoderWarning(rows);
     renderRoomStatus();
   }
