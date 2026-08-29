@@ -1017,6 +1017,179 @@ git commit -m "feat(qualidade): laco fechado por espectador, e a escada global p
 
 ---
 
+## Task 5.5: a escada por-filho também num relay puro
+
+**Problema.** A Task 5 colocou os dois laços por-filho (o de aplicar em
+`reapplyAudienceQuality` e o de tickar em `updateStats`) **dentro de
+`if (localStream)`**. Um relay que **não compartilha a própria tela** —
+o caso comum numa sala de 4 (A compartilha, B é relay puro pra C e D) — tem
+`localStream === null` e nunca adapta pros filhos. Um C fraco atrás do B não
+recebe alívio nenhum. O M3 removeu a fusão da saúde de relay na escada global
+justamente na premissa de que "o relay roda o mesmo laço por-peer pros
+filhos" — falta cumprir essa parte pro relay puro.
+
+O sinal de **banda** (`senderBandwidthLimited`) continua indisponível pros
+filhos de relay (depende do laço de stats de relay da branch parqueada
+`feat/orcamento-banda-relay`) — mas `receiveHealth` (CPU + travas do filho,
+que chega no `view-state` dele pra nós) já cobre os casos 1 e parte do 3.
+
+**Files:**
+- Modify: `src/renderer/app.js` (`reapplyAudienceQuality`, `updateStats`, novo
+  helper `isRelayingScreen`)
+
+**Interfaces:**
+- Consumes: tudo que a Task 5 produziu. Sem interface nova.
+
+- [ ] **Passo 1: helper `isRelayingScreen`**
+
+Junto de `qualityForPeer` (ou perto dos outros helpers de árvore):
+
+```js
+  /** Somos relay de tela pra alguem agora? Um relay puro tem localStream
+   * null mas ainda paga encode por filho -- entao ainda precisa adaptar
+   * por filho. */
+  function isRelayingScreen() {
+    for (const state of myRole.screen.values()) {
+      if (state.role === 'relay' && state.filhosIds.length) return true;
+    }
+    return false;
+  }
+```
+
+- [ ] **Passo 2: `reapplyAudienceQuality` — laço de filhos fora do `if (localStream)`**
+
+**Substituir** o corpo da função por:
+
+```js
+  function reapplyAudienceQuality() {
+    if (!currentSession) return;
+    const mesh = currentSession.mesh;
+    const floor = qualityFor('screen'); // piso global -- nao depende de localStream
+
+    if (localStream) {
+      // Espectadores diretos: uma escada por conexao.
+      for (const peerId of mesh.peers.keys()) {
+        const q = qualityForPeer(peerId, 'screen');
+        mesh.applyEncodingToPeer(peerId, q, 'screen', config.scaleFactorFor(floor.width, q.width));
+      }
+
+      // A CAPTURA continua guiada pelo piso global -- ela e comum a todas as
+      // conexoes, entao segue o denominador comum.
+      const key = `${floor.width}x${floor.height}@${floor.fps}`;
+      const track = localStream.getVideoTracks()[0];
+      if (track && track.readyState === 'live' && key !== lastCaptureKey) {
+        lastCaptureKey = key;
+        track.applyConstraints(config.videoConstraints(floor)).catch((err) => {
+          console.error('[qualidade] applyConstraints na captura falhou:', err);
+        });
+      }
+    }
+
+    // Filhos de relay: valem MESMO sem localStream (relay puro). Os filhos
+    // vivem sob kind composto e o encode deles e pago aqui de qualquer jeito.
+    for (const [sourceId, state] of myRole.screen) {
+      if (state.role !== 'relay') continue;
+      const ck = relayKindFor('screen', sourceId);
+      for (const childId of state.filhosIds) {
+        const q = qualityForPeer(childId, ck);
+        mesh.applyEncodingToPeer(childId, q, ck, config.scaleFactorFor(floor.width, q.width));
+      }
+    }
+
+    if (cameraStream) mesh.applyEncoding(qualityFor('camera'), 'camera');
+  }
+```
+
+- [ ] **Passo 3: `updateStats` — tick por-peer fora do `if (localStream)`**
+
+No `updateStats`, o bloco que a Task 5 deixou. A escada GLOBAL (`autoQuality`)
+**fica** dentro de `if (localStream)` — ela é sobre o NOSSO encode, só importa
+se originamos. O tick POR-PEER sai pra fora. **Substituir** todo o bloco
+`if (localStream) { … escada global … escada por conexao … }` por:
+
+```js
+    if (localStream) {
+      // M3: a escada GLOBAL reage so a NOSSA saude de encode.
+      const before = autoQuality.steps;
+      autoQuality = autoquality.next(autoQuality, {
+        atMs: now,
+        health: autoquality.worstHealth([myEncodeHealth]),
+      });
+      if (autoQuality.steps !== before) {
+        console.log(`[qualidade] escada global: ${before} -> ${autoQuality.steps} degraus`);
+        reapplyAudienceQuality();
+      }
+    }
+
+    // Escada POR CONEXAO -- vale pra quem origina E pra relay puro.
+    if (localStream || isRelayingScreen()) {
+      const limByPeer = new Map();
+      for (const r of rows) limByPeer.set(`${r.peerId}:${r.kind}`, r.limitation);
+
+      const targets = new Set();
+      // Diretos: so quando originamos (um relay puro nao manda 'screen' cru
+      // pra ninguem). Filhos de relay: sempre.
+      if (localStream) for (const peerId of activeMesh.peers.keys()) targets.add(`${peerId}:screen`);
+      for (const [sourceId, state] of myRole.screen) {
+        if (state.role !== 'relay') continue;
+        for (const childId of state.filhosIds) targets.add(`${childId}:screen`);
+      }
+
+      let anyPeerChanged = false;
+      for (const key of targets) {
+        const [peerId] = key.split(':');
+        const peer = activeMesh.peers.get(peerId);
+        const st = peerQuality.get(key) || peerquality.initialState();
+        const nextSt = peerquality.next(st, {
+          atMs: now,
+          // senderBandwidthLimited so existe pros kinds crus ('screen'). Pra
+          // filho de relay fica sempre false ate a branch parqueada
+          // feat/orcamento-banda-relay trazer o laco de stats de relay --
+          // ate la, receiveHealth (CPU + travas) e o que move a escada dele.
+          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth',
+          receiveHealth: peer?.receiveHealth || null,
+        });
+        if (nextSt.steps !== st.steps) {
+          anyPeerChanged = true;
+          console.log(`[qualidade] escada de ${peer?.name || peerId}: ${st.steps} -> ${nextSt.steps} degraus`);
+        }
+        peerQuality.set(key, nextSt);
+      }
+      if (anyPeerChanged) reapplyAudienceQuality();
+    }
+```
+
+- [ ] **Passo 4: verificação**
+
+```bash
+npm test
+```
+
+Esperado: **202 testes passando, sem mudança** — fiação.
+
+```bash
+node --check src/renderer/app.js
+```
+
+Verificação manual (sala de 4): A compartilha, B é relay puro pra C e D.
+Estrangular **só o C** (throttle de CPU no DevTools do C):
+
+1. Em ~3 s: `[qualidade] escada de C: 0 -> 1 degraus` no console **do B** (não
+   do A).
+2. A `resolução` que **C** recebe cai; a de **D** não muda.
+3. A `resolução` que **A** manda pro **B** não muda (a saúde do C não sobe pra
+   origem).
+4. Soltar: sobe de volta em ~20 s.
+
+- [ ] **Passo 5: commit**
+
+```bash
+git add src/renderer/app.js
+git commit -m "feat(qualidade): a escada por filho vale tambem num relay puro"
+```
+
+---
+
 ## Task 6: a tag de preset no painel de membros
 
 **Problema.** Quando estamos mandando um preset menor pra alguém, não há sinal
@@ -1130,13 +1303,14 @@ git commit -m "feat(ui): tag de preset por espectador no painel de membros"
 
 ```
 Task 1 (receiveHealth)  ─┐
-Task 2 (peerquality.js) ─┼─> Task 4 (view-state) ─> Task 5 (laco fechado) ─> Task 6 (tag)
-Task 3 (scaleFactor +    ┘                                   ^
-        applyEncodingToPeer) ──────────────────────────────────┘
+Task 2 (peerquality.js) ─┼─> Task 4 (view-state) ─> Task 5 ─> Task 5.5 (relay puro) ─> Task 6 (tag)
+Task 3 (scaleFactor +    ┘                                        ^
+        applyEncodingToPeer) ───────────────────────────────────────┘
 ```
 
 Tasks 1, 2 e 3 são independentes entre si (podem ir em paralelo). A verificação
-manual só vale a partir da Task 5. A Task 6 é cosmética.
+manual só vale a partir da Task 5. A Task 5.5 fecha o buraco do relay puro que
+o review da Task 5 achou. A Task 6 é cosmética.
 
 ## Contagem de testes esperada
 
