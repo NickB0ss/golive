@@ -33,6 +33,12 @@
   // verdade -- x-google-start-bitrate neles nao faz nada.
   const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
 
+  // Alvo de buffer de jitter dos receptores, em ms. O padrao do Chromium e
+  // dimensionado pra internet aberta e custa ~100-200ms por hop -- com a
+  // arvore, a folha paga isso DUAS vezes (origem->relay->folha). Isto e um
+  // ALVO, nao um teto: se a rede exigir, o Chromium sobe sozinho.
+  const JITTER_BUFFER_TARGET_MS = 50;
+
   // ---------- Chave de conexao de retransmissao (F2) ----------
   //
   // Toda RTCPeerConnection e indexada por (peerId, kind). Quando um RELAY
@@ -198,6 +204,15 @@
         pc.addEventListener('track', (event) => {
           const peer = peers.get(peerId);
           if (peer) (peer.inStreams ||= {})[kind] = event.streams[0];
+          // Nem toda versao do Chromium expoe isto; sem a propriedade, o
+          // padrao continua valendo e nada quebra.
+          try {
+            if (event.receiver && 'jitterBufferTarget' in event.receiver) {
+              event.receiver.jitterBufferTarget = JITTER_BUFFER_TARGET_MS;
+            }
+          } catch {
+            /* receptor ja fechado, ou propriedade somente-leitura nesta versao */
+          }
           onTrack(peerId, peer ? peer.name : peerId, event.streams[0], kind);
         });
       }
