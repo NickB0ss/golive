@@ -559,6 +559,14 @@
       return pc.getStats();
     }
 
+    /** Igual a statsFor, mas da conexao de ENTRADA daquele kind -- e por
+     * onde o espectador enxerga a propria recepcao. */
+    async function inStatsFor(peerId, kind = 'screen') {
+      const pc = peers.get(peerId)?.inConns[kind];
+      if (!pc || pc.connectionState !== 'connected') return null;
+      return pc.getStats();
+    }
+
     return {
       peers,
       addPeer,
@@ -573,6 +581,7 @@
       closeOut,
       relayTo,
       statsFor,
+      inStatsFor,
       setPeerDemand,
       isPeerSuspended,
       receivingFrom,

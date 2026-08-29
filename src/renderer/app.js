@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -2558,7 +2558,26 @@
       }
     }
 
-    renderStats(rows);
+    // Do outro lado do fio: o que estamos RECEBENDO. receivingFrom ja
+    // enumera os pares (peerId, kind) das conexoes de entrada.
+    const rxRows = [];
+    for (const { peerId, kind } of activeMesh.receivingFrom()) {
+      if (currentSession !== session) return;
+      const report = await activeMesh.inStatsFor(peerId, kind);
+      if (!report) continue;
+      const sample = rxstats.readReceiverReport(report);
+      if (!sample.framesDecoded) continue;
+      rxRows.push({
+        peerId,
+        kind,
+        name: activeMesh.peers.get(peerId)?.name || `#${peerId}`,
+        ...sample,
+        loss: rxstats.lossPercent(sample),
+        bufferMs: rxstats.jitterBufferMs(sample),
+      });
+    }
+
+    renderStats(rows, rxRows);
     updateEncoderWarning(rows);
     renderRoomStatus();
   }
@@ -2566,13 +2585,33 @@
   // O orcamento de encode a 60 fps e 16,6 ms POR QUADRO, somando todos os
   // senders -- eles disputam o mesmo encoder. Por isso o resumo soma
   // ms/frame em vez de tirar media.
-  function renderStats(rows) {
+  function renderStats(rows, rxRows = []) {
+    const esc = ui.escapeHtml;
+
+    // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador
+    // puro tem rows vazio e e justamente quem precisa deste painel.
+    const rxHtml = !rxRows.length ? '' : `
+      <h4>Recebendo</h4>
+      <table class="stats-table">
+        <tr><th>de</th><th>fps</th><th>resolução</th><th>perda</th><th>travadas</th><th>buffer</th></tr>
+        ${rxRows.map((r) => `
+          <tr>
+            <td>${esc(r.name)}</td>
+            <td>${r.fps}</td>
+            <td>${r.width}x${r.height}</td>
+            <td class="${r.loss != null && r.loss > 1 ? 'warn-text' : ''}">${r.loss != null ? `${r.loss.toFixed(2)}%` : '-'}</td>
+            <td class="${r.freezeCount > 0 ? 'warn-text' : ''}">${r.freezeCount}</td>
+            <td>${r.bufferMs != null ? `${r.bufferMs.toFixed(0)} ms` : '-'}</td>
+          </tr>`).join('')}
+      </table>`;
+
     if (!rows.length) {
-      ui.settings.setStatsHtml('<div class="stat"><span>enviando pra</span><b>0 peer(s)</b></div>');
+      ui.settings.setStatsHtml(
+        rxHtml || '<div class="stat"><span>enviando pra</span><b>0 peer(s)</b></div>'
+      );
       return;
     }
 
-    const esc = ui.escapeHtml;
     const totalMbps = rows.reduce((sum, r) => sum + r.mbps, 0);
     const encodeMsRows = rows.filter((r) => r.msPerFrame != null);
     const totalEncodeMs = encodeMsRows.reduce((sum, r) => sum + r.msPerFrame, 0);
@@ -2626,7 +2665,8 @@
         <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perdidos</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
-      ${limitWarn}`);
+      ${limitWarn}
+      ${rxHtml}`);
   }
 
   // O aviso so aparece com mais de um sender ativo: com um sender so, encoder
