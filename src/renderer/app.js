@@ -2716,6 +2716,28 @@
       }
     }
 
+    // Repasses. As conexoes de relay usam kind COMPOSTO ('screen@<origem>'),
+    // que o laco acima -- fixo em ['screen','camera'] -- nunca consultava.
+    // Sem isto o painel de um relay puro fica vazio, myEncodeHealth sobe
+    // null pra origem, e o senderBandwidthLimited do filho de relay nunca
+    // dispara.
+    for (const kind of KINDS) {
+      for (const [sourceId, state] of myRole[kind]) {
+        if (state.role !== 'relay') continue;
+        const childKind = relayKindFor(kind, sourceId);
+        for (const childId of state.filhosIds) {
+          if (currentSession !== session) return;
+          const report = await activeMesh.statsFor(childId, childKind);
+          if (!report) continue;
+          const sample = readSenderReport(report);
+          if (!sample.framesEncoded && !sample.bytesSent) continue;
+          const rates = deriveRates(`${childId}:${childKind}`, sample, now);
+          const childName = activeMesh.peers.get(childId)?.name || `#${childId}`;
+          rows.push({ peerId: childId, kind: childKind, name: childName, ...sample, ...rates });
+        }
+      }
+    }
+
     if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
 
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
@@ -2774,14 +2796,13 @@
         const st = peerQuality.get(key) || peerquality.initialState();
         const nextSt = peerquality.next(st, {
           atMs: now,
-          // `limByPeer` so tem chaves 'peerId:screen' e 'peerId:camera' --
-          // o laco de senders do updateStats itera ['screen','camera'], nao
-          // os kinds compostos de relay. Consequencia: pra um FILHO de
-          // relay, senderBandwidthLimited nunca dispara e a adaptacao dele
-          // depende so da receiveHealth (CPU + travas). Cobertura completa
-          // do filho de relay exige o laco de stats de relay da branch
-          // parqueada feat/orcamento-banda-relay; ate la, isto e o que da.
-          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth',
+          // O laco de repasses acima ja empurra linhas com kind composto
+          // ('screen@<origem>') pro `rows`, entao `limByPeer` tem tanto
+          // 'peerId:screen' (envio direto) quanto 'peerId:screen@x' (filho
+          // de relay). Olhamos os dois pra que o filho de relay tambem
+          // receba o sinal de banda, nao so a receiveHealth.
+          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth'
+            || [...limByPeer].some(([k, v]) => k.startsWith(`${peerId}:screen@`) && v === 'bandwidth'),
           // receiveHealth agora e por baseKind; a chave do tick e sempre
           // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
           // tem baseKind 'screen'), entao le o sub-slot 'screen'.
