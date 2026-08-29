@@ -259,17 +259,37 @@
     return config.qualityFromPreset(config.degradePreset(effective.preset, extraSteps));
   }
 
-  /** Reaplica o teto de encode nas conexoes JA ABERTAS daquele kind --
-   * `applyEncoding` mexe em maxBitrate/maxFramerate via setParameters, sem
-   * renegociacao e sem tela preta. Chamado quando a sala muda de tamanho;
-   * sem isto, so quem entrasse depois pegaria o preset novo.
+  /** Reaplica o teto de encode E o formato da captura nas conexoes abertas
+   * daquele kind. `applyEncoding` mexe em maxBitrate/maxFramerate via
+   * setParameters; `applyConstraints` reconfigura o proprio capturador --
+   * os dois sem renegociacao e sem tela preta.
    *
-   * Limitacao consciente: o preset de CAPTURA (getDisplayMedia) nao muda no
-   * meio da transmissao -- mexer nele exigiria recapturar a tela. So o
-   * encode se ajusta. */
+   * Sem a parte da captura, degradar so fazia o encoder DESCARTAR quadros
+   * que a captura continuava produzindo a 1080p60: o custo de capturar e
+   * escalar ficava pago inteiro, na maquina que ja nao esta dando conta.
+   *
+   * lastCaptureKey existe porque recomputeTree chama isto varias vezes por
+   * evento de sala, e reconfigurar o capturador com o MESMO formato pode
+   * custar um solavanco de imagem a toa. */
+  let lastCaptureKey = '';
+
   function reapplyAudienceQuality() {
     if (!currentSession) return;
-    if (localStream) currentSession.mesh.applyEncoding(qualityFor('screen'), 'screen');
+    if (localStream) {
+      const quality = qualityFor('screen');
+      currentSession.mesh.applyEncoding(quality, 'screen');
+
+      const key = `${quality.width}x${quality.height}@${quality.fps}`;
+      const track = localStream.getVideoTracks()[0];
+      if (track && track.readyState === 'live' && key !== lastCaptureKey) {
+        lastCaptureKey = key;
+        track.applyConstraints(config.videoConstraints(quality)).catch((err) => {
+          // Falhar aqui nao e fatal: o teto de encode ja foi aplicado acima
+          // e a transmissao segue -- so nao economizamos a captura.
+          console.error('[qualidade] applyConstraints na captura falhou:', err);
+        });
+      }
+    }
     if (cameraStream) currentSession.mesh.applyEncoding(qualityFor('camera'), 'camera');
   }
 
@@ -1826,6 +1846,7 @@
       }
 
       localStream = stream;
+      lastCaptureKey = `${cfg.quality.width}x${cfg.quality.height}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
       const track = localStream.getVideoTracks()[0];
       if (track) {
@@ -1882,6 +1903,7 @@
     stopStatsLoop();
     // Os degraus descrevem uma transmissao especifica, nao a maquina.
     autoQuality = autoquality.initialState();
+    lastCaptureKey = '';
   }
 
   // ---------- Câmera ----------
