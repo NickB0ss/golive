@@ -2779,7 +2779,10 @@
     const bws = rows.filter((r) => r.availableBps != null).map((r) => r.availableBps);
     myAvailableBps = bws.length ? Math.min(...bws) : null;
 
-    if (localStream) {
+    if (localStream && !sharePaused) {
+      // Pausado nao codifica nada: myEncodeHealth e null e cada tick contaria
+      // como folga observada, "recuperando" um degrau de graca. Pular o tick
+      // enquanto pausado preserva o estado da escada.
       // M3: a escada GLOBAL reage so a NOSSA saude de encode. Antes ela
       // fundia a saude dos relays -- mas isso derrubava os espectadores
       // DIRETOS da origem quando era o relay que sofria. Agora a saude
@@ -2828,6 +2831,11 @@
       for (const key of targets) {
         const [peerId] = key.split(':');
         const peer = activeMesh.peers.get(peerId);
+        // Pausado ou sem nenhuma linha de sender pra este peer: nao ha
+        // encode acontecendo, entao nao ha "folga observada" -- pular o
+        // tick preserva o estado (nem sobe nem desce).
+        const hasSenderRow = rows.some((r) => r.peerId === peerId);
+        if (sharePaused || !hasSenderRow) continue;
         const st = peerQuality.get(key) || peerquality.initialState();
         const nextSt = peerquality.next(st, {
           atMs: now,
