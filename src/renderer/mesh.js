@@ -133,6 +133,76 @@
     return out.join(eol);
   }
 
+  // Bitrate medio de audio, em bits/s. 160 kbps e transparente o bastante
+  // pra som de jogo e musica em estereo, e e ruido perto dos 12 Mbps de
+  // video do preset de topo.
+  const OPUS_MAX_AVERAGE_BITRATE = 160000;
+
+  // O Chromium so manda Opus em estereo se o fmtp declarar -- e declarar
+  // vale pros DOIS lados: `stereo` diz o que aceitamos receber,
+  // `sprop-stereo` diz o que vamos mandar. Sem isto o audio sai mono no
+  // padrao, mesmo com a captura nativa entregando estereo de verdade
+  // (ver pcm-injector-worklet.js). Como relayTo repassa a stream inteira,
+  // a folha paga o mono duas vezes: ha um transcode Opus->Opus no relay.
+  //
+  // Idempotente de proposito: a mesma SDP pode passar por aqui duas vezes
+  // e nao pode acumular parametro.
+  function withOpusParams(sdp, opts) {
+    if (!sdp) return sdp;
+    const maxAverageBitrate = opts?.maxAverageBitrate ?? OPUS_MAX_AVERAGE_BITRATE;
+    const wanted = [
+      ['stereo', '1'],
+      ['sprop-stereo', '1'],
+      ['maxaveragebitrate', String(maxAverageBitrate)],
+    ];
+
+    const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+    const lines = sdp.split(/\r?\n/);
+
+    // Primeira passada: quais payloads sao opus, e quais ja tem a=fmtp.
+    const opusPts = new Set();
+    const withFmtp = new Set();
+    let inAudio = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inAudio = line.startsWith('m=audio');
+      if (!inAudio) continue;
+      const rtpmap = /^a=rtpmap:(\d+) opus\//i.exec(line);
+      if (rtpmap) opusPts.add(rtpmap[1]);
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp) withFmtp.add(fmtp[1]);
+    }
+    if (!opusPts.size) return sdp;
+
+    const out = [];
+    inAudio = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inAudio = line.startsWith('m=audio');
+      if (!inAudio) {
+        out.push(line);
+        continue;
+      }
+
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp && opusPts.has(fmtp[1])) {
+        let updated = line;
+        for (const [key, value] of wanted) {
+          if (!new RegExp(`[; ]${key}=`, 'i').test(updated)) updated += `;${key}=${value}`;
+        }
+        out.push(updated);
+        continue;
+      }
+
+      out.push(line);
+
+      const rtpmap = /^a=rtpmap:(\d+) opus\//i.exec(line);
+      if (rtpmap && !withFmtp.has(rtpmap[1])) {
+        out.push(`a=fmtp:${rtpmap[1]} ${wanted.map(([k, v]) => `${k}=${v}`).join(';')}`);
+      }
+    }
+
+    return out.join(eol);
+  }
+
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
 
@@ -348,7 +418,7 @@
       const offer = await pc.createOffer();
       await pc.setLocalDescription({
         type: offer.type,
-        sdp: withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate)),
+        sdp: withOpusParams(withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate))),
       });
       send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
     }
@@ -358,7 +428,9 @@
       await pc.setRemoteDescription(sdp);
       await drainIce(pc);
       const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+      // Estereo se negocia dos dois lados: sem declarar aqui tambem, o par
+      // cai pra mono mesmo com a oferta pedindo estereo.
+      await pc.setLocalDescription({ type: answer.type, sdp: withOpusParams(answer.sdp) });
       return pc.localDescription;
     }
 
@@ -604,7 +676,7 @@
     };
   }
 
-  const api = { createMesh, withStartBitrate, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG };
+  const api = { createMesh, withStartBitrate, withOpusParams, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.mesh = api;
