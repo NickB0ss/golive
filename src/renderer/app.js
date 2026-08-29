@@ -2660,10 +2660,14 @@
   }
 
   // Le um relatorio de getStats de UM sender e devolve os campos que
-  // interessam pro diagnostico de encode. Ver a spec de 2026-08-23 (F1.1):
-  // o campo decisivo e encoderImplementation -- o Chromium cai pro encoder
-  // de software sem emitir erro nenhum quando estoura o limite de sessoes
-  // do NVENC, e ate agora o app nao tinha como perceber isso.
+  // interessam pro diagnostico de encode. encoderImplementation e
+  // INFORMATIVO (aparece no painel e no log [diag]); o gatilho da escada e
+  // totalEncodeTime/framesEncoded -> msPerFrame. O Chromium cai pro encoder
+  // de software sem erro nenhum quando o NVENC afoga -- e nesse caso o
+  // msPerFrame estoura o orcamento, que e o que a escada le. Ver o log de
+  // 2026-08-29: OpenH264 a 1,7 ms numa RTX 3060 sem aceleracao de GPU nao
+  // e sofrimento, e degradar por causa dele so prendia a transmissao em
+  // 720p sem volta.
   function readSenderReport(report) {
     const sample = {
       fps: 0,
