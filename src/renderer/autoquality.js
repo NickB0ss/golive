@@ -7,10 +7,11 @@
   // e o problema passou a ser outro -- maquina que nao aguenta transmitir.
   const MAX_AUTO_STEPS = 2;
 
-  // Amostras ruins SEGUIDAS antes de descer. updateStats roda a cada 1s com
-  // a janela visivel: sao ~3s de sofrimento continuo, nao um pico isolado
-  // (um alt-tab ou uma tela de carregamento produzem picos o tempo todo).
-  const BAD_SAMPLES_TO_DEGRADE = 3;
+  // Tempo CONTINUO de sofrimento antes de descer -- nao contagem de
+  // amostras. updateStats roda a cada 1s visivel mas 5s escondido (jogando
+  // em fullscreen), entao contar amostras dava 15s de reacao no caso que
+  // mais importa. Simetrico com GOOD_MS_TO_RECOVER.
+  const BAD_MS_TO_DEGRADE = 3000;
 
   // Folga CONTINUA antes de subir de volta. Assimetrico de proposito:
   // descer e barato e reversivel; subir cedo demais recria o regime que
@@ -21,7 +22,7 @@
   // mesmo numero que a aba Estatisticas ja usa como limiar.
   const BUDGET_MS_60 = 16.6;
 
-  const LIMITS = { MAX_AUTO_STEPS, BAD_SAMPLES_TO_DEGRADE, GOOD_MS_TO_RECOVER, BUDGET_MS_60 };
+  const LIMITS = { MAX_AUTO_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, BUDGET_MS_60 };
 
   /** Saude ausente NAO e ruim: quem nao reportou nada nao esta acusado.
    * Mesmo criterio neutro que tree.js usa pra eleger relay. */
@@ -50,7 +51,7 @@
   }
 
   function initialState() {
-    return { steps: 0, badRun: 0, goodSinceMs: null };
+    return { steps: 0, badSinceMs: null, goodSinceMs: null };
   }
 
   /** Avanca a escada com UMA amostra. Puro: mesma entrada, mesma saida --
@@ -59,28 +60,31 @@
     const o = opts || {};
     const budgetMs = o.budgetMs ?? BUDGET_MS_60;
     const maxSteps = o.maxSteps ?? MAX_AUTO_STEPS;
-    const badToDegrade = o.badSamplesToDegrade ?? BAD_SAMPLES_TO_DEGRADE;
+    const badMsToDegrade = o.badMsToDegrade ?? BAD_MS_TO_DEGRADE;
     const goodMsToRecover = o.goodMsToRecover ?? GOOD_MS_TO_RECOVER;
 
     const prev = state || initialState();
     const atMs = Number(sample?.atMs) || 0;
 
     if (isBad(sample?.health, budgetMs)) {
-      const badRun = prev.badRun + 1;
-      // goodSinceMs zera: a folga tem de ser CONTINUA pra valer.
-      if (badRun >= badToDegrade && prev.steps < maxSteps) {
-        return { steps: prev.steps + 1, badRun: 0, goodSinceMs: null };
+      // badSinceMs marca o inicio da corrida ruim atual; a primeira amostra
+      // ruim ancora o relogio. goodSinceMs zera: a folga tem de ser CONTINUA.
+      const badSinceMs = prev.badSinceMs ?? atMs;
+      if (prev.steps < maxSteps && atMs - badSinceMs >= badMsToDegrade) {
+        // Desce um degrau e reinicia o relogio de sofrimento -- descer dois
+        // degraus leva dois periodos.
+        return { steps: prev.steps + 1, badSinceMs: atMs, goodSinceMs: null };
       }
-      return { steps: prev.steps, badRun, goodSinceMs: null };
+      return { steps: prev.steps, badSinceMs, goodSinceMs: null };
     }
 
     const goodSinceMs = prev.goodSinceMs ?? atMs;
     if (prev.steps > 0 && atMs - goodSinceMs >= goodMsToRecover) {
       // Sobe UM degrau e reinicia a contagem: recuperar dois degraus leva
       // dois periodos de folga, pelo mesmo motivo de nao subir com pressa.
-      return { steps: prev.steps - 1, badRun: 0, goodSinceMs: atMs };
+      return { steps: prev.steps - 1, badSinceMs: null, goodSinceMs: atMs };
     }
-    return { steps: prev.steps, badRun: 0, goodSinceMs };
+    return { steps: prev.steps, badSinceMs: null, goodSinceMs };
   }
 
   const api = { initialState, next, worstHealth, isBad, LIMITS };

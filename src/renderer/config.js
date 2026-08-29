@@ -94,6 +94,44 @@
     return qualityFromPreset(degradePreset(base, audienceSteps(viewers)));
   }
 
+  // Folga sobre a banda medida. Mirar 100% do que o congestion control diz
+  // que cabe e pedir pra saturar: sobra zero pro audio, pro RTCP, pro
+  // trafego do resto da maquina e pra qualquer variacao do link -- e link
+  // saturado vira fila, que vira atraso, que faz o proprio GCC desabar.
+  const RELAY_BANDWIDTH_HEADROOM = 0.8;
+
+  /** Qualidade que um RELAY deve usar pra re-codificar pra CADA filho.
+   *
+   * Duas regras, nesta ordem:
+   *  - com banda medida (availableBps, do availableOutgoingBitrate), o
+   *    orcamento por filho e a banda com folga dividida pelo numero de
+   *    filhos;
+   *  - sem medida (primeiro repasse, antes de existir amostra), o orcamento
+   *    e o bitrate do proprio preset dividido pelos filhos: "ninguem na
+   *    arvore sobe, no total, mais do que a origem sobe".
+   *
+   * Nunca devolve preset ACIMA do que a origem mandou, e para no piso da
+   * cadeia mesmo quando nem o piso cabe (abaixo dele quem trata e o
+   * congestion control). */
+  function qualityForRelay(preset, childCount, availableBps) {
+    const base = qualityFromPreset(preset);
+    const filhos = Number(childCount) || 0;
+    if (filhos <= 0) return base;
+
+    const medida = typeof availableBps === 'number' && Number.isFinite(availableBps) && availableBps > 0
+      ? availableBps * RELAY_BANDWIDTH_HEADROOM
+      : null;
+    const orcamento = (medida ?? base.bitrate) / filhos;
+
+    let atual = base.preset;
+    while (qualityFromPreset(atual).bitrate > orcamento) {
+      const proximo = degradePreset(atual, 1);
+      if (proximo === atual) break; // piso da cadeia
+      atual = proximo;
+    }
+    return qualityFromPreset(atual);
+  }
+
   const DEFAULTS = {
     v: 1,
     name: '',
@@ -214,6 +252,7 @@
     degradePreset,
     audienceSteps,
     qualityForAudience,
+    qualityForRelay,
     load,
     serialize,
     videoConstraints,

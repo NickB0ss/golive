@@ -155,6 +155,10 @@
   // enquanto nao estivermos codificando nada -- reportar valor inventado e
   // pior que reportar ausencia.
   let myEncodeHealth = null;
+  // Menor availableOutgoingBitrate visto entre os nossos senders, em bits/s
+  // (null enquanto nao ha amostra). E o orcamento de UPLINK deste no --
+  // usado pra limitar o preset de repasse (config.qualityForRelay).
+  let myAvailableBps = null;
   // receiveHealth mais recente que CADA peer reportou sobre o stream que
   // mandamos pra ele. Chave 'peerId:kind'. Alimenta a escada por-peer
   // (Task 5). Espelha o papel de peer.encodeHealth, mas por-conexao porque
@@ -169,6 +173,16 @@
   // taxa da janela (freezeCount e cumulativo).
   const rxPrevSample = new Map();
   let rxPrevAtMs = 0;
+  const RX_HEALTH_TTL_MS = 6000;
+  /** receiveHealth do peer pra um baseKind, ou null se velha demais -- um
+   * stream congelado para de reportar, e o valor velho faria a escada
+   * "recuperar" um peer travado. */
+  function freshReceiveHealth(peer, baseKind) {
+    const e = peer?.receiveHealth?.[baseKind];
+    if (!e || Date.now() - e.atMs > RX_HEALTH_TTL_MS) return null;
+    const { atMs, ...rh } = e;
+    return rh;
+  }
   // Escada de degradacao automatica da TELA, alimentada pela telemetria de
   // encode em updateStats. Zerada ao parar de compartilhar: os degraus
   // descrevem uma transmissao especifica, nao a maquina.
@@ -277,14 +291,24 @@
     return config.qualityFromPreset(config.degradePreset(effective.preset, extraSteps));
   }
 
-  /** Qualidade efetiva para UM destinatario: o piso global (tamanho da
-   * sala + malha degradada + escada automatica global) menos os degraus
-   * que a conexao DELE pediu. Nunca sobe acima do piso. `kind` pode ser
-   * composto ('screen@<origem>') quando somos relay -- a chave usa o
-   * baseKind, porque um filho e um filho independente de quem origina. */
+  /** Qualidade efetiva para UM destinatario: o piso menos os degraus que a
+   * conexao DELE pediu. Pra um FILHO de relay, o piso e o MENOR entre o piso
+   * global e o teto de uplink do relay (config.qualityForRelay) -- o relay
+   * sobe uma copia por filho e nao pode passar do proprio orcamento. */
   function qualityForPeer(peerId, kind) {
-    const floor = qualityFor(kind);
-    const st = peerQuality.get(`${peerId}:${parseKind(kind).baseKind}`);
+    const { baseKind, sourceId } = parseKind(kind);
+    let floor = qualityFor(kind);
+
+    if (sourceId) {
+      // kind composto -> somos relay desta origem. Limita pelo uplink.
+      const state = myRole[baseKind].get(sourceId);
+      const filhos = state?.filhosIds.length || 1;
+      const relayCap = config.qualityForRelay(floor.preset, filhos, myAvailableBps);
+      // menor preset entre os dois (comparar pelo bitrate da cadeia)
+      if (relayCap.bitrate < floor.bitrate) floor = relayCap;
+    }
+
+    const st = peerQuality.get(`${peerId}:${baseKind}`);
     const steps = st?.steps || 0;
     if (!steps) return floor;
     return config.qualityFromPreset(config.degradePreset(floor.preset, steps));
@@ -304,12 +328,14 @@
    * custar um solavanco de imagem a toa. */
   let lastCaptureKey = '';
 
-  /** Somos relay de tela pra alguem agora? Um relay puro tem localStream
-   * null mas ainda paga encode por filho -- entao ainda precisa adaptar
-   * por filho. */
-  function isRelayingScreen() {
-    for (const state of myRole.screen.values()) {
-      if (state.role === 'relay' && state.filhosIds.length) return true;
+  /** Estamos repassando video pra alguem agora? Um relay paga 2 encodes e
+   * um decode sem necessariamente transmitir nada proprio -- entao ainda
+   * precisa do loop de estatisticas ligado. */
+  function isRelaying() {
+    for (const kind of KINDS) {
+      for (const state of myRole[kind].values()) {
+        if (state.role === 'relay' && state.filhosIds.length) return true;
+      }
     }
     return false;
   }
@@ -856,9 +882,11 @@
     // degradado (steps > 0). Sem isso a degradacao por-peer nao tem sinal
     // nenhum no lado de quem transmite.
     const tags = new Map();
-    // Vale tambem pro relay puro (localStream null): ele degrada os filhos
-    // e a tag e o unico sinal disso no painel dele.
-    if (session && (localStream || isRelayingScreen())) {
+    // Vale tambem pro relay puro (sem tela nossa): ele degrada os filhos e a
+    // tag e o unico sinal disso no painel dele. isRelaying() cobre TODOS os
+    // kinds, entao pode abrir o bloco pra quem so repassa camera -- nesse
+    // caso os dois lacos abaixo simplesmente nao acham nada de tela.
+    if (session && (localStream || isRelaying())) {
       // Espectadores diretos: so quem tem out-conn de tela nossa (quem
       // servimos via relay nao tem escada nossa -- a tag seria mentira).
       if (localStream) {
@@ -1548,7 +1576,11 @@
         if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
         // Slot por baseKind: um viewer que recebe tela E camera nao pode
         // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
-        if (vsPeer) (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] = normalizeReceiveHealth(msg.receiveHealth);
+        if (vsPeer) {
+          const rh = normalizeReceiveHealth(msg.receiveHealth);
+          (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
+            rh ? { ...rh, atMs: Date.now() } : null;
+        }
         const track = trackForKind(msg.kind);
         // Pausa manual manda mais que a demanda do espectador: enquanto
         // pausado, 'watching: true' nao pode religar o encode da tela.
@@ -1621,6 +1653,10 @@
         state.role = filhosIds.length
           ? 'relay'
           : msg.paiId === origem ? 'direct' : 'folha';
+
+        // Virar (ou deixar de ser) relay muda se ha algo nosso codificando
+        // -- o loop de estatisticas e quem mede isso.
+        syncStatsLoop();
 
         if (state.role === 'relay') await flushPendingRelay(session, kind, origem);
         break;
@@ -2007,7 +2043,9 @@
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     $('btn-toggle-share').classList.remove('active');
     renderMembersPanel();
-    stopStatsLoop();
+    // syncStatsLoop, nao stopStatsLoop: parar de compartilhar nao quer dizer
+    // parar de codificar -- este no pode seguir sendo relay de outra pessoa.
+    syncStatsLoop();
     resetShareState();
   }
 
@@ -2022,6 +2060,7 @@
     $('btn-pause-share').classList.add('hidden');
     rxHealthByPeer.clear();
     rxPrevSample.clear();
+    rxPrevAtMs = 0;
     peerQuality.clear();
   }
 
@@ -2268,12 +2307,16 @@
     // origem como pai -- profundidade maxima 2).
     const state = myRole[kind].get(sourcePeerId);
     if (!state || state.role !== 'relay') return;
-    // TODO: quando feat/orcamento-banda-relay entrar, o preset por filho
-    // passa a ser o MENOR entre qualityForPeer(childId, kind) e
-    // config.qualityForRelay(...) -- o orcamento de banda do relay.
+    // Kind COMPOSTO no qualityForPeer, nao o cru: e o sourceId dele que faz
+    // qualityForPeer aplicar o teto de uplink do relay (config.qualityForRelay).
+    // Com o kind cru, parseKind devolve sourceId null, o teto nao entra, e o
+    // encoder do filho novo ja nasce no preset cheio da origem -- exatamente
+    // a rajada de sobre-assinatura que o orcamento existe pra evitar. A chave
+    // da escada por-peer nao muda: ela usa baseKind.
+    const childKind = relayKindFor(kind, sourcePeerId);
     for (const childId of state.filhosIds) {
       if (state.relayed.has(childId)) continue;
-      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, kind));
+      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, childKind));
       if (ok) state.relayed.add(childId);
     }
   }
@@ -2559,6 +2602,7 @@
   function startStatsLoop() {
     stopStatsLoop();
     statsPrev.clear();
+    rxPrevAtMs = 0;
     scheduleStatsLoop();
   }
 
@@ -2572,11 +2616,30 @@
     statsTimer = null;
     statsPrev.clear();
     myEncodeHealth = null; // paramos de medir: nao ha saude a reportar
+    // Mesmo motivo: uma estimativa de uplink de uma sessao anterior limitaria
+    // (ou afrouxaria) o teto de repasse da proxima sem ter medido nada dela.
+    myAvailableBps = null;
     if (encoderWarning) {
       encoderWarning = '';
       renderHostWarning();
     }
     ui.settings.setStatsHtml('');
+  }
+
+  /** Liga o loop de estatisticas se ele ja nao estiver rodando, e desliga
+   * quando nao ha mais nada nosso sendo codificado (nem transmissao propria,
+   * nem repasse de relay).
+   *
+   * Ate aqui o loop so subia com localStream/cameraStream -- quem era SO
+   * relay nunca media nada: nao reportava saude de encode (a eleicao do H2
+   * recebia null), nao rodava a escada por-filho (Task 5.5), nao mandava
+   * cadencia de view-state. startStatsLoop chama stopStatsLoop antes (zera
+   * statsPrev), entao a guarda por statsTimer evita apagar a amostra
+   * anterior a cada 'tree' recebida. */
+  function syncStatsLoop() {
+    const precisa = Boolean(localStream) || Boolean(cameraStream) || isRelaying();
+    if (precisa && !statsTimer) startStatsLoop();
+    else if (!precisa && statsTimer) stopStatsLoop();
   }
 
   // Le um relatorio de getStats de UM sender e devolve os campos que
@@ -2604,6 +2667,13 @@
       // medida e ainda faria a eleicao de relay cair no desempate por
       // joinedAt em vez de usar o melhor RTT que existe.
       rtt: null,
+      // "sem amostra" != "0 bits disponiveis" -- e o numero que separa
+      // gargalo de banda de gargalo de encode.
+      availableBps: null,
+      // Perda REAL da rede (remote-inbound-rtp), distinta dos quadros
+      // descartados no encode que a tabela ja mostra.
+      packetsLostNet: null,
+      fractionLost: null,
     };
 
     report.forEach((stat) => {
@@ -2631,6 +2701,15 @@
       }
       if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
         sample.rtt = Math.max(sample.rtt ?? 0, stat.currentRoundTripTime * 1000);
+      }
+      if (stat.type === 'candidate-pair' && stat.nominated && stat.availableOutgoingBitrate != null) {
+        sample.availableBps = Math.max(sample.availableBps ?? 0, stat.availableOutgoingBitrate);
+      }
+      // remote-inbound-rtp e o eco RTCP do outro lado -- pode faltar num
+      // intervalo isolado sem significar "sem perda".
+      if (stat.type === 'remote-inbound-rtp' && stat.kind === 'video') {
+        if (stat.packetsLost != null) sample.packetsLostNet = stat.packetsLost;
+        if (stat.fractionLost != null) sample.fractionLost = stat.fractionLost;
       }
     });
 
@@ -2692,23 +2771,62 @@
       }
     }
 
+    // Repasses. As conexoes de relay usam kind COMPOSTO ('screen@<origem>'),
+    // que o laco acima -- fixo em ['screen','camera'] -- nunca consultava.
+    // Sem isto o painel de um relay puro fica vazio, myEncodeHealth sobe
+    // null pra origem, e o senderBandwidthLimited do filho de relay nunca
+    // dispara.
+    for (const kind of KINDS) {
+      for (const [sourceId, state] of myRole[kind]) {
+        if (state.role !== 'relay') continue;
+        const childKind = relayKindFor(kind, sourceId);
+        for (const childId of state.filhosIds) {
+          if (currentSession !== session) return;
+          const report = await activeMesh.statsFor(childId, childKind);
+          if (!report) continue;
+          const sample = readSenderReport(report);
+          if (!sample.framesEncoded && !sample.bytesSent) continue;
+          const rates = deriveRates(`${childId}:${childKind}`, sample, now);
+          const childName = activeMesh.peers.get(childId)?.name || `#${childId}`;
+          rows.push({ peerId: childId, kind: childKind, name: childName, ...sample, ...rates });
+        }
+      }
+    }
+
     if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
 
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
     // acima porque some todos os senders num numero so.
     myEncodeHealth = summarizeOwnEncodeHealth(rows);
 
-    if (localStream) {
+    // Menor availableBps entre os senders: todos dividem o mesmo uplink,
+    // entao a estimativa mais apertada e a que descreve o que sobra.
+    //
+    // Este caminho e OPORTUNISTA de proposito: ninguem chama
+    // reapplyAudienceQuality quando este numero muda, entao a metade "banda
+    // medida" do config.qualityForRelay so entra em vigor no proximo evento
+    // que ja provoca um reapply (escada mexeu, arvore mudou, novo filho).
+    // Quem de fato garante o orcamento e a regra DETERMINISTICA do
+    // qualityForRelay (bitrate do preset / nº de filhos), que nao depende de
+    // medida nenhuma; myAvailableBps so aperta mais o teto quando ha reapply.
+    // Reagir a cada variacao exigiria histerese propria (senao vira troca de
+    // preset a cada segundo) -- decisao de design, fora deste conserto.
+    const bws = rows.filter((r) => r.availableBps != null).map((r) => r.availableBps);
+    myAvailableBps = bws.length ? Math.min(...bws) : null;
+
+    if (localStream && !sharePaused) {
+      // Pausado nao codifica nada: myEncodeHealth e null e cada tick contaria
+      // como folga observada, "recuperando" um degrau de graca. Pular o tick
+      // enquanto pausado preserva o estado da escada.
+      //
       // M3: a escada GLOBAL reage so a NOSSA saude de encode. Antes ela
       // fundia a saude dos relays -- mas isso derrubava os espectadores
-      // DIRETOS da origem quando era o relay que sofria. Agora a saude
-      // ruim de um relay chega como receiveHealth no view-state DELE e
-      // degrada so a conexao origem->relay, pela escada por-peer abaixo.
-      // Um relay saturando o encoder mas decodificando em hardware nao move
-      // a escada por-peer hoje -- peerquality.isBad le so
-      // senderBandwidthLimited e receiveHealth, nao encodeHealth; esse lever
-      // fica coberto so pela eleicao de relay (tree.js). Fechar isso fica
-      // pra depois.
+      // DIRETOS da origem quando era o relay que sofria. A saude ruim de um
+      // relay chega pela escada POR-PEER abaixo e degrada so a conexao
+      // origem->relay: como receiveHealth do view-state dele e, desde a
+      // Task 9, tambem como peerEncodeSaturated (encodeHealth reportado no
+      // view-state), que cobre o relay que afoga o encoder mas decodifica em
+      // hardware -- caso que antes so a eleicao de relay (tree.js) via.
       const before = autoQuality.steps;
       autoQuality = autoquality.next(autoQuality, {
         atMs: now,
@@ -2721,9 +2839,11 @@
     }
 
     // Escada POR CONEXAO -- vale pra quem origina E pra relay puro. Um relay
-    // sem tela propria (localStream null) ainda paga encode por filho, entao
-    // ainda precisa da escada por filho movida pela receiveHealth deles.
-    if (localStream || isRelayingScreen()) {
+    // sem tela propria ainda paga encode por filho, entao ainda precisa da
+    // escada por filho movida pela receiveHealth deles. isRelaying() cobre
+    // TODOS os kinds: quem so repassa camera tambem entra e nao acha alvo de
+    // tela nenhum -- o bloco inteiro roda em vazio, sem custo.
+    if (localStream || isRelaying()) {
       // Sinais: banda (das nossas proprias stats de envio) e a receiveHealth
       // que o peer reportou.
       const limByPeer = new Map();
@@ -2739,29 +2859,61 @@
       if (localStream) for (const [peerId, peer] of activeMesh.peers) {
         if (peer.outConns?.screen) targets.add(`${peerId}:screen`);
       }
+      // Filhos que servimos como RELAY. A chave do alvo e igual a do direto
+      // ('peerId:screen'), entao guardamos o conjunto pra distinguir os dois
+      // adiante -- pausar a NOSSA tela nao para o repasse.
+      const relayChildIds = new Set();
       for (const [sourceId, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
-        for (const childId of state.filhosIds) targets.add(`${childId}:screen`);
+        for (const childId of state.filhosIds) {
+          targets.add(`${childId}:screen`);
+          relayChildIds.add(String(childId));
+        }
       }
 
       for (const key of targets) {
         const [peerId] = key.split(':');
         const peer = activeMesh.peers.get(peerId);
+        const isRelayChild = relayChildIds.has(peerId);
+        // Sem nenhuma linha de sender de TELA pra este peer nao ha encode
+        // acontecendo, entao nao ha "folga observada" -- pular o tick
+        // preserva o estado (nem sobe nem desce). So linhas de baseKind
+        // 'screen' (direta ou 'screen@origem') contam: uma linha de camera
+        // nao diz nada sobre a tela que esta escada regula.
+        //
+        // sharePaused so silencia o alvo DIRETO: pausar a propria tela nao
+        // interrompe o repasse (ver a carve-out no 'view-state'), entao o
+        // filho de relay segue recebendo encode nosso e tem de continuar
+        // adaptando.
+        const hasSenderRow = rows.some((r) => r.peerId === peerId && parseKind(r.kind).baseKind === 'screen');
+        if ((sharePaused && !isRelayChild) || !hasSenderRow) continue;
         const st = peerQuality.get(key) || peerquality.initialState();
         const nextSt = peerquality.next(st, {
           atMs: now,
-          // `limByPeer` so tem chaves 'peerId:screen' e 'peerId:camera' --
-          // o laco de senders do updateStats itera ['screen','camera'], nao
-          // os kinds compostos de relay. Consequencia: pra um FILHO de
-          // relay, senderBandwidthLimited nunca dispara e a adaptacao dele
-          // depende so da receiveHealth (CPU + travas). Cobertura completa
-          // do filho de relay exige o laco de stats de relay da branch
-          // parqueada feat/orcamento-banda-relay; ate la, isto e o que da.
-          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth',
+          // O laco de repasses acima ja empurra linhas com kind composto
+          // ('screen@<origem>') pro `rows`, entao `limByPeer` tem tanto
+          // 'peerId:screen' (envio direto) quanto 'peerId:screen@x' (filho
+          // de relay). Olhamos os dois pra que o filho de relay tambem
+          // receba o sinal de banda, nao so a receiveHealth.
+          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth'
+            || [...limByPeer].some(([k, v]) => k.startsWith(`${peerId}:screen@`) && v === 'bandwidth'),
           // receiveHealth agora e por baseKind; a chave do tick e sempre
           // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
           // tem baseKind 'screen'), entao le o sub-slot 'screen'.
-          receiveHealth: peer?.receiveHealth?.screen || null,
+          receiveHealth: freshReceiveHealth(peer, 'screen'),
+          // Encoder do relay afogado: a saude de encode que ELE reportou no
+          // 'view-state', na mesma escala do autoquality. null (nao
+          // reportou) nao e ruim.
+          //
+          // Vale SO pra quem e relay na NOSSA arvore. peer.encodeHealth e
+          // por-MAQUINA, nao por-conexao: um espectador comum com a webcam
+          // ligada ja reporta softwareEncoder (camera VP8 -> libvpx, que o
+          // resumo classifica como software), entao autoquality.isBad daria
+          // true pra sempre e a escada de tela dele desceria ate o piso sem
+          // nunca voltar. Encode saturado so e problema NOSSO quando aquele
+          // peer re-codifica o que mandamos pra ele.
+          peerEncodeSaturated: originTree.screen.assignments.get(peerId)?.role === 'relay'
+            && autoquality.isBad(peer?.encodeHealth, autoquality.LIMITS.BUDGET_MS_60),
         });
         if (nextSt.steps !== st.steps) {
           anyPeerChanged = true;
@@ -2785,7 +2937,14 @@
       const dt = rxPrevAtMs ? now - rxPrevAtMs : 0;
       const health = rxstats.receiveHealth(sample, rxPrevSample.get(rxKey), dt);
       rxPrevSample.set(rxKey, sample);
+      // Sem medida nesta janela (framesDelta <= 0: o stream congelou de vez)
+      // o valor VELHO tem de sair. Guardado, broadcastViewState o reenviaria
+      // a cada tick com carimbo novo -- e o freshReceiveHealth do outro lado,
+      // que so expira quando o view-state PARA de chegar, nunca veria nada
+      // vencer: a origem "recuperaria" um peer travado achando que ele vai
+      // bem. Ausencia e a informacao correta aqui.
       if (health) rxHealthByPeer.set(rxKey, health);
+      else rxHealthByPeer.delete(rxKey);
       rxRows.push({
         peerId,
         kind,
@@ -2816,7 +2975,7 @@
     // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador
     // puro tem rows vazio e e justamente quem precisa deste painel.
     const rxHtml = !rxRows.length ? '' : `
-      <h4>Recebendo</h4>
+      <h4 class="stats-subtitle">Recebendo</h4>
       <table class="stats-table">
         <tr><th>de</th><th>fps</th><th>resolução</th><th>perda</th><th>travadas</th><th>buffer</th></tr>
         ${rxRows.map((r) => `
@@ -2844,6 +3003,10 @@
     const budget = rows[0].fps >= 50 ? 16.6 : 33.3;
     const first = rows[0];
 
+    const bwRows = rows.filter((r) => r.availableBps != null);
+    const minAvailableBps = bwRows.length ? Math.min(...bwRows.map((r) => r.availableBps)) : null;
+    const targetBitrate = qualityFor(rows[0].kind).bitrate;
+
     const summary = `
       <div class="stat"><span>enviando pra</span><b>${rows.length} sender(s)</b></div>
       <div class="stat"><span>resolução</span><b>${first.width}x${first.height}</b></div>
@@ -2854,7 +3017,10 @@
       }</b></div>
       <div class="stat"><span>encode somado</span><b class="${
         encodeMsRows.length && totalEncodeMs > budget ? 'warn-text' : 'good'
-      }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>`;
+      }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>
+      <div class="stat"><span>banda disponível</span><b class="${
+        minAvailableBps != null && minAvailableBps < targetBitrate ? 'warn-text' : ''
+      }">${minAvailableBps != null ? `${(minAvailableBps / 1_000_000).toFixed(1)} Mbps` : '-'}</b></div>`;
 
     const body = rows
       .map((r) => {
@@ -2873,6 +3039,9 @@
           }</td>
           <td>${r.mbps.toFixed(1)}</td>
           <td>${r.rtt != null ? `${Math.round(r.rtt)} ms` : '-'}</td>
+          <td class="${r.fractionLost != null && r.fractionLost > 0.01 ? 'warn-text' : ''}">${
+            r.fractionLost != null ? `${(r.fractionLost * 100).toFixed(2)}%` : '-'
+          }</td>
           <td class="${dropped ? 'warn-text' : ''}">${dropped || '-'}</td>
         </tr>`;
       })
@@ -2887,7 +3056,7 @@
 
     ui.settings.setStatsHtml(`${summary}
       <table class="stats-table">
-        <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perdidos</th></tr></thead>
+        <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perda rede</th><th>perdidos</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       ${limitWarn}

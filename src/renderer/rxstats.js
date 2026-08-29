@@ -49,9 +49,10 @@
   /** Perda sobre o total OFERECIDO (recebidos + perdidos). null quando nada
    * chegou: dizer "0% de perda" pra uma conexao muda seria mentira. */
   function lossPercent(sample) {
-    const offered = (sample?.packetsReceived || 0) + (sample?.packetsLost || 0);
+    const lost = Math.max(0, sample?.packetsLost || 0);
+    const offered = (sample?.packetsReceived || 0) + lost;
     if (!offered) return null;
-    return ((sample.packetsLost || 0) / offered) * 100;
+    return (lost / offered) * 100;
   }
 
   /** Quanto tempo o quadro medio esperou no buffer, em ms. E a latencia que

@@ -1192,6 +1192,14 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   text-overflow: ellipsis;
   max-width: 130px;
 }
+/* Subtitulo "Recebendo" da segunda tabela do painel. Neutro -- e um
+   rotulo, nao um alerta. */
+.stats-subtitle {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-2);
+  margin: var(--s-3) 0 var(--s-1);
+}
 .stats-table td.good { color: var(--good); }
 .stats-table td.warn-text { color: var(--warn); }
 .stats-kind { display: block; color: var(--muted); font-size: 10px; }

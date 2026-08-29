@@ -17,23 +17,44 @@ function run(state, healths, startMs = 0) {
   return s;
 }
 
+// Quantas amostras a 1s de cadencia sao precisas pra cruzar o tempo de
+// sofrimento -- so pra montar cenarios de "ja degradado" sem depender de
+// uma contagem magica.
+const AMOSTRAS_ATE_DEGRADAR = Math.ceil(LIMITS.BAD_MS_TO_DEGRADE / 1000) + 1;
+
 test('uma amostra ruim isolada nao degrada -- picos acontecem', () => {
   assert.equal(run(initialState(), [RUIM]).steps, 0);
 });
 
-test('amostras ruins seguidas o bastante descem um degrau e zeram a corrida', () => {
-  const s = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(RUIM));
+test('sofrimento continuo por BAD_MS_TO_DEGRADE desce um degrau', () => {
+  let s = initialState();
+  s = next(s, { atMs: 0, health: RUIM });
+  s = next(s, { atMs: LIMITS.BAD_MS_TO_DEGRADE - 1, health: RUIM });
+  assert.equal(s.steps, 0, 'antes de completar o tempo, nao desce');
+  s = next(s, { atMs: LIMITS.BAD_MS_TO_DEGRADE + 1, health: RUIM });
   assert.equal(s.steps, 1);
-  assert.equal(s.badRun, 0);
+  assert.equal(s.badSinceMs, LIMITS.BAD_MS_TO_DEGRADE + 1, 'relogio de sofrimento reinicia no degrau');
 });
 
-test('uma amostra boa no meio zera a corrida de ruins', () => {
-  const s = run(initialState(), [RUIM, RUIM, OK, RUIM, RUIM]);
+test('uma amostra boa no meio reinicia o relogio de sofrimento', () => {
+  let s = initialState();
+  s = next(s, { atMs: 0, health: RUIM });
+  s = next(s, { atMs: 2000, health: OK });          // zera badSinceMs
+  s = next(s, { atMs: 3000, health: RUIM });        // recomeca
+  s = next(s, { atMs: 3000 + LIMITS.BAD_MS_TO_DEGRADE - 1, health: RUIM });
   assert.equal(s.steps, 0);
 });
 
+test('poll lento (5s escondido) ainda desce em ~BAD_MS_TO_DEGRADE, nao em 3 amostras', () => {
+  let s = initialState();
+  s = next(s, { atMs: 0, health: RUIM });
+  s = next(s, { atMs: 5000, health: RUIM }); // so 2 amostras, mas 5s > 3s
+  assert.equal(s.steps, 1);
+});
+
 test('encoder em software e ruim mesmo com msPerFrame baixo', () => {
-  assert.equal(run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(SOFTWARE)).steps, 1);
+  const s = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(SOFTWARE));
+  assert.equal(s.steps, 1);
 });
 
 test('saude ausente nao conta como ruim -- ausencia nao e diagnostico', () => {
@@ -41,13 +62,16 @@ test('saude ausente nao conta como ruim -- ausencia nao e diagnostico', () => {
 });
 
 test('a escada tem teto', () => {
-  const muitas = Array(LIMITS.BAD_SAMPLES_TO_DEGRADE * (LIMITS.MAX_AUTO_STEPS + 3)).fill(RUIM);
+  // Sofrimento longo o bastante pra pedir mais degraus do que o teto: cada
+  // degrau reinicia o relogio, entao sao BAD_MS_TO_DEGRADE por degrau.
+  const muitas = Array(AMOSTRAS_ATE_DEGRADAR * (LIMITS.MAX_AUTO_STEPS + 3)).fill(RUIM);
   assert.equal(run(initialState(), muitas).steps, LIMITS.MAX_AUTO_STEPS);
 });
 
 test('so sobe de volta depois da folga continua inteira', () => {
-  const degradado = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(RUIM));
-  const t0 = LIMITS.BAD_SAMPLES_TO_DEGRADE * 1000;
+  const degradado = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(RUIM));
+  assert.equal(degradado.steps, 1);
+  const t0 = AMOSTRAS_ATE_DEGRADAR * 1000;
 
   // A primeira amostra boa ancora o relogio da folga: a contagem e de
   // telemetria boa OBSERVADA, nao do instante do degrau.
@@ -62,8 +86,8 @@ test('so sobe de volta depois da folga continua inteira', () => {
 });
 
 test('uma amostra ruim durante a espera cancela a recuperacao', () => {
-  const degradado = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(RUIM));
-  const t0 = LIMITS.BAD_SAMPLES_TO_DEGRADE * 1000;
+  const degradado = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(RUIM));
+  const t0 = AMOSTRAS_ATE_DEGRADAR * 1000;
 
   let s = next(degradado, { atMs: t0 + 1000, health: OK });
   s = next(s, { atMs: t0 + 2000, health: RUIM });

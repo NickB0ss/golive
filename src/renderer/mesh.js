@@ -74,15 +74,18 @@
     return { baseKind: raw.slice(0, at), sourceId: raw.slice(at + 1) || null };
   }
 
-  // Metade do teto, dentro de limites sensatos. O padrao do Chromium e comecar
-  // em ~300 kbps e subir conforme o congestion control ganha confianca, o que
-  // deixa os primeiros segundos de qualquer compartilhamento borrados mesmo
-  // com banda de sobra. Comecar direto no maximo tambem nao serve: se a rede
-  // nao aguentar, a rajada vira perda e o GCC derruba tudo. Metade e um
-  // palpite inicial -- ele continua livre pra subir ate maxBitrate ou descer.
+  // Um quarto do teto, dentro de limites sensatos. Comecar em ~300 kbps
+  // (padrao do Chromium) deixa os primeiros segundos borrados; comecar no
+  // maximo faz a rajada inicial virar perda e derrubar o GCC. O custo dos
+  // dois lados NAO e simetrico: subir a estimativa e rapido, um colapso de
+  // congestion control por rajada inicial demora muito mais -- e em VPN de
+  // LAN virtual (Radmin/Tailscale) o teto de banda real fica bem abaixo do
+  // preset escolhido. Por isso 1/4, e o teto superior caiu de 10000 pra
+  // 2500: mesmo com presets de topo (12 Mbps) a rajada fica pequena o
+  // bastante pra nao afogar um tunel de VPN.
   function startBitrateKbps(maxBitrateBps) {
-    const half = Math.round((maxBitrateBps || 0) / 2000);
-    return Math.min(Math.max(half, 300), 10000);
+    const quarter = Math.round((maxBitrateBps || 0) / 4000);
+    return Math.min(Math.max(quarter, 300), 2500);
   }
 
   // x-google-start-bitrate e uma extensao do Chromium (a unica engine que roda
@@ -408,10 +411,11 @@
           preferCodec(transceiver, quality.codec);
           // degradationPreference nao existe no RTCRtpTransceiverInit, so em
           // setParameters -- sem isto a conexao nasce em 'balanced' e so vira
-          // 'maintain-framerate' se o usuario mexer na qualidade (o que chama
-          // applyEncoding). Pra tela em movimento, derrubar resolucao e menos
-          // ruim do que engasgar os frames.
-          setDegradationPreference(transceiver.sender);
+          // outra coisa se o usuario mexer na qualidade (o que chama
+          // applyEncoding). A preferencia agora depende do kind (tela em
+          // 'balanced', camera em 'maintain-framerate') -- ver
+          // setDegradationPreference.
+          setDegradationPreference(transceiver.sender, kind);
         }
       }
 
@@ -466,8 +470,13 @@
       }
     }
 
-    function setDegradationPreference(sender, pref = 'maintain-framerate') {
+    function setDegradationPreference(sender, kind) {
       if (!sender) return;
+      // Tela em 'balanced': sob banda severamente restrita (VPN saturada)
+      // 'maintain-framerate' so obedece destruindo a resolucao. Camera fica
+      // 'maintain-framerate' -- rosto travando incomoda mais que perder
+      // nitidez. parseKind cobre o kind de repasse (screen@<origem>).
+      const pref = parseKind(kind).baseKind === 'screen' ? 'balanced' : 'maintain-framerate';
       try {
         const params = sender.getParameters();
         params.degradationPreference = pref;
@@ -487,7 +496,11 @@
           if (!params.encodings || !params.encodings.length) params.encodings = [{}];
           params.encodings[0].maxBitrate = quality.bitrate;
           params.encodings[0].maxFramerate = quality.fps;
-          params.degradationPreference = 'maintain-framerate';
+          // Mesma regra do setDegradationPreference: tela em 'balanced'
+          // (banda restrita nao deve destruir a resolucao), camera em
+          // 'maintain-framerate'. parseKind cobre o kind de repasse.
+          params.degradationPreference =
+            parseKind(kind).baseKind === 'screen' ? 'balanced' : 'maintain-framerate';
           sender.setParameters(params).catch(() => {});
         }
       }
@@ -509,7 +522,9 @@
         params.encodings[0].maxBitrate = quality.bitrate;
         params.encodings[0].maxFramerate = quality.fps;
         params.encodings[0].scaleResolutionDownBy = Number(scaleDownBy) > 0 ? Number(scaleDownBy) : 1;
-        params.degradationPreference = 'maintain-framerate';
+        // Ver applyEncoding: tela em 'balanced', camera em 'maintain-framerate'.
+        params.degradationPreference =
+          parseKind(kind).baseKind === 'screen' ? 'balanced' : 'maintain-framerate';
         sender.setParameters(params).catch(() => {});
       }
     }

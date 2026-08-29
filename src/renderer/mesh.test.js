@@ -55,12 +55,17 @@ test('sdp vazio ou bitrate zero passam intactos', () => {
   assert.equal(withStartBitrate(SDP, 0), SDP);
 });
 
-test('start bitrate e metade do teto, preso entre 300 kbps e 10 Mbps', () => {
-  assert.equal(startBitrateKbps(12_000_000), 6000);
-  assert.equal(startBitrateKbps(2_000_000), 1000);
-  assert.equal(startBitrateKbps(40_000_000), 10000); // teto
+test('start bitrate e um quarto do teto, preso entre 300 kbps e 2500 kbps', () => {
+  assert.equal(startBitrateKbps(12_000_000), 2500); // 3000 estourado pro teto
+  assert.equal(startBitrateKbps(2_000_000), 500);
+  assert.equal(startBitrateKbps(40_000_000), 2500); // teto
   assert.equal(startBitrateKbps(100_000), 300); // piso
   assert.equal(startBitrateKbps(undefined), 300);
+});
+
+test('start bitrate nunca fura 2500 kbps mesmo com preset de topo (12 Mbps)', () => {
+  // Rajada inicial grande em tunel de VPN vira perda e derruba o GCC.
+  assert.ok(startBitrateKbps(12_000_000) <= 2500);
 });
 
 test('RTC_CONFIG tem STUN pra tentar rota direta antes de cair pra VPN', () => {

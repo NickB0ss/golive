@@ -191,3 +191,38 @@ test('scaleFactorFor: entrada invalida devolve 1, nao lanca', () => {
     assert.equal(scaleFactorFor(c, t), 1);
   }
 });
+
+// ---------- qualityForRelay ----------
+const { qualityForRelay } = require('./config');
+
+test('qualityForRelay: sem filhos devolve o preset da origem', () => {
+  assert.equal(qualityForRelay('1080p60', 0).preset, '1080p60');
+});
+
+test('qualityForRelay: sem banda medida, divide o bitrate do preset pelos filhos', () => {
+  // 1080p60 = 12 Mbps; 2 filhos -> orcamento 6 Mbps/filho -> 1080p30 (6 Mbps)
+  assert.equal(qualityForRelay('1080p60', 2).preset, '1080p30');
+  // 3 filhos -> 4 Mbps/filho -> nao cabe 1080p30, desce a cadeia -> 720p30
+  assert.equal(qualityForRelay('1080p60', 3).preset, '720p30');
+});
+
+test('qualityForRelay: com banda medida, usa 80% dela dividida pelos filhos', () => {
+  // 10 Mbps medidos * 0.8 = 8 Mbps; 2 filhos -> 4 Mbps/filho -> 720p30 (2.5 Mbps cabe, 1080p30 nao)
+  assert.equal(qualityForRelay('1080p60', 2, 10_000_000).preset, '720p30');
+  // banda de sobra: 100 Mbps, 2 filhos -> 40 Mbps/filho -> nao passa do preset da origem
+  assert.equal(qualityForRelay('1080p60', 2, 100_000_000).preset, '1080p60');
+});
+
+test('qualityForRelay: nunca sobe acima do preset da origem', () => {
+  assert.equal(qualityForRelay('720p30', 1, 100_000_000).preset, '720p30');
+});
+
+test('qualityForRelay: banda invalida cai na regra deterministica', () => {
+  for (const bad of [0, -1, NaN, Infinity, 'x', null, undefined]) {
+    assert.equal(qualityForRelay('1080p60', 2, bad).preset, '1080p30');
+  }
+});
+
+test('qualityForRelay: para no piso da cadeia mesmo com orcamento minusculo', () => {
+  assert.equal(qualityForRelay('1080p60', 2, 1000).preset, '720p30');
+});
