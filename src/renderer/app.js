@@ -173,6 +173,16 @@
   // taxa da janela (freezeCount e cumulativo).
   const rxPrevSample = new Map();
   let rxPrevAtMs = 0;
+  const RX_HEALTH_TTL_MS = 6000;
+  /** receiveHealth do peer pra um baseKind, ou null se velha demais -- um
+   * stream congelado para de reportar, e o valor velho faria a escada
+   * "recuperar" um peer travado. */
+  function freshReceiveHealth(peer, baseKind) {
+    const e = peer?.receiveHealth?.[baseKind];
+    if (!e || Date.now() - e.atMs > RX_HEALTH_TTL_MS) return null;
+    const { atMs, ...rh } = e;
+    return rh;
+  }
   // Escada de degradacao automatica da TELA, alimentada pela telemetria de
   // encode em updateStats. Zerada ao parar de compartilhar: os degraus
   // descrevem uma transmissao especifica, nao a maquina.
@@ -1564,7 +1574,11 @@
         if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
         // Slot por baseKind: um viewer que recebe tela E camera nao pode
         // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
-        if (vsPeer) (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] = normalizeReceiveHealth(msg.receiveHealth);
+        if (vsPeer) {
+          const rh = normalizeReceiveHealth(msg.receiveHealth);
+          (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
+            rh ? { ...rh, atMs: Date.now() } : null;
+        }
         const track = trackForKind(msg.kind);
         // Pausa manual manda mais que a demanda do espectador: enquanto
         // pausado, 'watching: true' nao pode religar o encode da tela.
@@ -2044,6 +2058,7 @@
     $('btn-pause-share').classList.add('hidden');
     rxHealthByPeer.clear();
     rxPrevSample.clear();
+    rxPrevAtMs = 0;
     peerQuality.clear();
   }
 
@@ -2581,6 +2596,7 @@
   function startStatsLoop() {
     stopStatsLoop();
     statsPrev.clear();
+    rxPrevAtMs = 0;
     scheduleStatsLoop();
   }
 
@@ -2849,7 +2865,7 @@
           // receiveHealth agora e por baseKind; a chave do tick e sempre
           // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
           // tem baseKind 'screen'), entao le o sub-slot 'screen'.
-          receiveHealth: peer?.receiveHealth?.screen || null,
+          receiveHealth: freshReceiveHealth(peer, 'screen'),
           // Encoder do relay afogado: a saude de encode que ELE reportou no
           // 'view-state' (peer.encodeHealth, por-maquina) na mesma escala do
           // autoquality. null (nao reportou) nao e ruim.
@@ -2908,7 +2924,7 @@
     // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador
     // puro tem rows vazio e e justamente quem precisa deste painel.
     const rxHtml = !rxRows.length ? '' : `
-      <h4>Recebendo</h4>
+      <h4 class="stats-subtitle">Recebendo</h4>
       <table class="stats-table">
         <tr><th>de</th><th>fps</th><th>resolução</th><th>perda</th><th>travadas</th><th>buffer</th></tr>
         ${rxRows.map((r) => `

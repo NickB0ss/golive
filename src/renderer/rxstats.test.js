@@ -37,6 +37,10 @@ test('perda e null quando nada chegou -- zero por cento seria mentira', () => {
   assert.equal(lossPercent(readReceiverReport([])), null);
 });
 
+test('lossPercent: packetsLost negativo (reordem/duplicata) nao vira porcentagem negativa', () => {
+  assert.equal(lossPercent({ packetsReceived: 100, packetsLost: -5 }), 0);
+});
+
 test('buffer de jitter em ms por quadro emitido', () => {
   // 6.4s / 3400 quadros = ~1.88ms
   assert.ok(Math.abs(jitterBufferMs(readReceiverReport(REPORT)) - 1.882) < 0.01);
