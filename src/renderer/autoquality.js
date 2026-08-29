@@ -69,9 +69,7 @@
       const badRun = prev.badRun + 1;
       // goodSinceMs zera: a folga tem de ser CONTINUA pra valer.
       if (badRun >= badToDegrade && prev.steps < maxSteps) {
-        // goodSinceMs comeca a contar do instante do degrau: a folga
-        // exigida pra subir e sempre medida a partir de quando descemos.
-        return { steps: prev.steps + 1, badRun: 0, goodSinceMs: atMs };
+        return { steps: prev.steps + 1, badRun: 0, goodSinceMs: null };
       }
       return { steps: prev.steps, badRun, goodSinceMs: null };
     }

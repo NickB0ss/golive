@@ -9,7 +9,7 @@ const SOFTWARE = { softwareEncoder: true, msPerFrame: 2 };
 
 // Aplica varias amostras em sequencia, 1s entre elas (a cadencia real do
 // updateStats com a janela visivel).
-function run(state, healths, startMs = 1000) {
+function run(state, healths, startMs = 0) {
   let s = state;
   healths.forEach((health, i) => {
     s = next(s, { atMs: startMs + i * 1000, health });
@@ -49,7 +49,12 @@ test('so sobe de volta depois da folga continua inteira', () => {
   const degradado = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(RUIM));
   const t0 = LIMITS.BAD_SAMPLES_TO_DEGRADE * 1000;
 
-  const cedo = next(degradado, { atMs: t0 + LIMITS.GOOD_MS_TO_RECOVER - 1, health: OK });
+  // A primeira amostra boa ancora o relogio da folga: a contagem e de
+  // telemetria boa OBSERVADA, nao do instante do degrau.
+  const inicio = next(degradado, { atMs: t0, health: OK });
+  assert.equal(inicio.steps, 1);
+
+  const cedo = next(inicio, { atMs: t0 + LIMITS.GOOD_MS_TO_RECOVER - 1, health: OK });
   assert.equal(cedo.steps, 1, 'nao pode subir antes da folga completa');
 
   const naHora = next(cedo, { atMs: t0 + LIMITS.GOOD_MS_TO_RECOVER + 1, health: OK });
