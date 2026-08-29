@@ -192,6 +192,27 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Diagnostico de "encoder em software / fps baixo": se video_encode nao
+  // vier 'enabled', o Chromium nao tem encoder de hardware nesta maquina
+  // (GPU na blocklist, driver velho, ou Optimus rodando na iGPU) e a tela
+  // vai SEMPRE cair pro OpenH264. Uma linha, no start.
+  try {
+    logger.log(`GPU feature status: ${JSON.stringify(app.getGPUFeatureStatus())}`);
+  } catch (err) {
+    logger.error('getGPUFeatureStatus falhou:', err?.message || err);
+  }
+  app.getGPUInfo('complete').then(
+    (info) => {
+      const dev = (info?.gpuDevice || []).find((d) => d.active) || (info?.gpuDevice || [])[0] || {};
+      logger.log(
+        `GPU ativa: vendorId=${dev.vendorId} deviceId=${dev.deviceId}`
+        + ` driver=${dev.driverVersion || info?.auxAttributes?.driverVersion || info?.driverVersion || '?'}`
+        + ` gl=${info?.auxAttributes?.glRenderer || '?'}`
+      );
+    },
+    (err) => logger.error('getGPUInfo falhou:', err?.message || err)
+  );
+
   // Intercepta getDisplayMedia. O Electron nao tem seletor nativo, entao
   // devolvemos a fonte que o usuario ja escolheu na nossa UI.
   session.defaultSession.setDisplayMediaRequestHandler(
