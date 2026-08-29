@@ -850,7 +850,17 @@
 
   function renderMembersPanel() {
     const session = displaySession();
-    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo());
+    // Mapa peerId -> preset efetivo, so pra quem esta recebendo um preset
+    // degradado (steps > 0). Sem isso a degradacao por-peer nao tem sinal
+    // nenhum no lado de quem transmite.
+    const tags = new Map();
+    if (session && localStream) {
+      for (const peerId of session.mesh.peers.keys()) {
+        const st = peerQuality.get(`${peerId}:screen`);
+        if (st?.steps > 0) tags.set(peerId, qualityForPeer(peerId, 'screen').preset);
+      }
+    }
+    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo(), tags);
     renderRoomStatus();
   }
 
