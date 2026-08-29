@@ -304,27 +304,26 @@
    * custar um solavanco de imagem a toa. */
   let lastCaptureKey = '';
 
+  /** Somos relay de tela pra alguem agora? Um relay puro tem localStream
+   * null mas ainda paga encode por filho -- entao ainda precisa adaptar
+   * por filho. */
+  function isRelayingScreen() {
+    for (const state of myRole.screen.values()) {
+      if (state.role === 'relay' && state.filhosIds.length) return true;
+    }
+    return false;
+  }
+
   function reapplyAudienceQuality() {
     if (!currentSession) return;
     const mesh = currentSession.mesh;
+    const floor = qualityFor('screen'); // piso global -- nao depende de localStream
 
     if (localStream) {
-      const floor = qualityFor('screen');
-
       // Espectadores diretos: uma escada por conexao.
       for (const peerId of mesh.peers.keys()) {
         const q = qualityForPeer(peerId, 'screen');
         mesh.applyEncodingToPeer(peerId, q, 'screen', config.scaleFactorFor(floor.width, q.width));
-      }
-
-      // Se formos relay de alguem: os filhos vivem sob kind composto.
-      for (const [sourceId, state] of myRole.screen) {
-        if (state.role !== 'relay') continue;
-        const ck = relayKindFor('screen', sourceId);
-        for (const childId of state.filhosIds) {
-          const q = qualityForPeer(childId, ck);
-          mesh.applyEncodingToPeer(childId, q, ck, config.scaleFactorFor(floor.width, q.width));
-        }
       }
 
       // A CAPTURA continua guiada pelo piso global -- ela e comum a todas as
@@ -336,6 +335,17 @@
         track.applyConstraints(config.videoConstraints(floor)).catch((err) => {
           console.error('[qualidade] applyConstraints na captura falhou:', err);
         });
+      }
+    }
+
+    // Filhos de relay: valem MESMO sem localStream (relay puro). Os filhos
+    // vivem sob kind composto e o encode deles e pago aqui de qualquer jeito.
+    for (const [sourceId, state] of myRole.screen) {
+      if (state.role !== 'relay') continue;
+      const ck = relayKindFor('screen', sourceId);
+      for (const childId of state.filhosIds) {
+        const q = qualityForPeer(childId, ck);
+        mesh.applyEncodingToPeer(childId, q, ck, config.scaleFactorFor(floor.width, q.width));
       }
     }
 
@@ -2675,15 +2685,22 @@
         console.log(`[qualidade] escada global: ${before} -> ${autoQuality.steps} degraus`);
         reapplyAudienceQuality();
       }
+    }
 
-      // Escada POR CONEXAO. Sinais: banda (das nossas proprias stats de
-      // envio) e a receiveHealth que o peer reportou.
+    // Escada POR CONEXAO -- vale pra quem origina E pra relay puro. Um relay
+    // sem tela propria (localStream null) ainda paga encode por filho, entao
+    // ainda precisa da escada por filho movida pela receiveHealth deles.
+    if (localStream || isRelayingScreen()) {
+      // Sinais: banda (das nossas proprias stats de envio) e a receiveHealth
+      // que o peer reportou.
       const limByPeer = new Map();
       for (const r of rows) limByPeer.set(`${r.peerId}:${r.kind}`, r.limitation);
 
       let anyPeerChanged = false;
       const targets = new Set();
-      for (const peerId of activeMesh.peers.keys()) targets.add(`${peerId}:screen`);
+      // Diretos: so quando originamos (um relay puro nao manda 'screen' cru
+      // pra ninguem). Filhos de relay: sempre.
+      if (localStream) for (const peerId of activeMesh.peers.keys()) targets.add(`${peerId}:screen`);
       for (const [sourceId, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
         for (const childId of state.filhosIds) targets.add(`${childId}:screen`);
