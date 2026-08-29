@@ -16,6 +16,10 @@ function run(state, signals, startMs = 0) {
   return s;
 }
 
+// Amostras a 1s de cadencia pra cruzar o tempo de sofrimento -- so pra
+// montar cenarios de "ja degradado" sem depender de contagem magica.
+const AMOSTRAS_ATE_DEGRADAR = Math.ceil(LIMITS.BAD_MS_TO_DEGRADE / 1000) + 1;
+
 test('isBad: link limitado por banda e ruim', () => {
   assert.equal(isBad(BW, {}), true);
 });
@@ -40,25 +44,41 @@ test('uma amostra ruim isolada nao degrada', () => {
   assert.equal(run(initialState(), [BW]).steps, 0);
 });
 
-test('amostras ruins seguidas o bastante descem um degrau e zeram a corrida', () => {
-  const s = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(BW));
+test('sofrimento continuo por BAD_MS_TO_DEGRADE desce um degrau', () => {
+  let s = initialState();
+  s = next(s, { ...BW, atMs: 0 });
+  s = next(s, { ...BW, atMs: LIMITS.BAD_MS_TO_DEGRADE - 1 });
+  assert.equal(s.steps, 0);
+  s = next(s, { ...BW, atMs: LIMITS.BAD_MS_TO_DEGRADE + 1 });
   assert.equal(s.steps, 1);
-  assert.equal(s.badRun, 0);
+  assert.equal(s.badSinceMs, LIMITS.BAD_MS_TO_DEGRADE + 1, 'relogio de sofrimento reinicia no degrau');
 });
 
-test('uma amostra boa no meio zera a corrida de ruins', () => {
-  const s = run(initialState(), [BW, BW, OK, BW, BW]);
+test('uma amostra boa no meio reinicia o relogio de sofrimento', () => {
+  let s = initialState();
+  s = next(s, { ...BW, atMs: 0 });
+  s = next(s, { ...OK, atMs: 2000 });
+  s = next(s, { ...BW, atMs: 3000 });
+  s = next(s, { ...BW, atMs: 3000 + LIMITS.BAD_MS_TO_DEGRADE - 1 });
   assert.equal(s.steps, 0);
 });
 
+test('poll lento (5s) ainda desce em ~BAD_MS_TO_DEGRADE, nao em 3 amostras', () => {
+  let s = initialState();
+  s = next(s, { ...BW, atMs: 0 });
+  s = next(s, { ...BW, atMs: 5000 });
+  assert.equal(s.steps, 1);
+});
+
 test('a escada por peer tem teto', () => {
-  const muitas = Array(LIMITS.BAD_SAMPLES_TO_DEGRADE * (LIMITS.MAX_PEER_STEPS + 3)).fill(SW);
+  const muitas = Array(AMOSTRAS_ATE_DEGRADAR * (LIMITS.MAX_PEER_STEPS + 3)).fill(SW);
   assert.equal(run(initialState(), muitas).steps, LIMITS.MAX_PEER_STEPS);
 });
 
 test('so sobe de volta depois da folga continua observada', () => {
-  const degradado = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(BW));
-  const t0 = LIMITS.BAD_SAMPLES_TO_DEGRADE * 1000;
+  const degradado = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(BW));
+  assert.equal(degradado.steps, 1);
+  const t0 = AMOSTRAS_ATE_DEGRADAR * 1000;
   // primeira boa ancora o relogio
   const inicio = next(degradado, { ...OK, atMs: t0 });
   assert.equal(inicio.steps, 1);
@@ -69,8 +89,8 @@ test('so sobe de volta depois da folga continua observada', () => {
 });
 
 test('uma ruim durante a espera cancela a recuperacao', () => {
-  const degradado = run(initialState(), Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(BW));
-  const t0 = LIMITS.BAD_SAMPLES_TO_DEGRADE * 1000;
+  const degradado = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(BW));
+  const t0 = AMOSTRAS_ATE_DEGRADAR * 1000;
   let s = next(degradado, { ...OK, atMs: t0 });
   s = next(s, { ...BW, atMs: t0 + 1000 });
   s = next(s, { ...OK, atMs: t0 + 2000 });
@@ -81,7 +101,7 @@ test('uma ruim durante a espera cancela a recuperacao', () => {
 test('dois peers com estados separados nao se contaminam', () => {
   let a = initialState();
   let b = initialState();
-  a = run(a, Array(LIMITS.BAD_SAMPLES_TO_DEGRADE).fill(BW));
+  a = run(a, Array(AMOSTRAS_ATE_DEGRADAR).fill(BW));
   b = run(b, [OK, OK, OK]);
   assert.equal(a.steps, 1);
   assert.equal(b.steps, 0);

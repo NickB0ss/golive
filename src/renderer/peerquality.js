@@ -7,9 +7,10 @@
   // e outro (a maquina/link dela nao aguenta nem o minimo).
   const MAX_PEER_STEPS = 2;
 
-  // Amostras ruins SEGUIDAS antes de descer -- ~3s continuos com a janela
-  // visivel, um pico isolado nao conta.
-  const BAD_SAMPLES_TO_DEGRADE = 3;
+  // Tempo CONTINUO de sofrimento antes de descer -- nao contagem de
+  // amostras (updateStats roda a cada 1s visivel mas 5s escondido).
+  // Simetrico com GOOD_MS_TO_RECOVER.
+  const BAD_MS_TO_DEGRADE = 3000;
 
   // Folga CONTINUA OBSERVADA antes de subir. Menor que os 30s do autoquality
   // global (20s): a recuperacao por-peer nao afeta a sala, entao arriscar
@@ -22,7 +23,7 @@
   const FREEZE_PER_MIN = 6;
   const LOSS_PCT_MAX = 2;
 
-  const LIMITS = { MAX_PEER_STEPS, BAD_SAMPLES_TO_DEGRADE, GOOD_MS_TO_RECOVER, FREEZE_PER_MIN, LOSS_PCT_MAX };
+  const LIMITS = { MAX_PEER_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, FREEZE_PER_MIN, LOSS_PCT_MAX };
 
   /** Ruim = qualquer um dos tres: link limitado por banda, decoder em
    * software do espectador, ou travar muito sem que a rede explique. */
@@ -40,34 +41,36 @@
   }
 
   function initialState() {
-    return { steps: 0, badRun: 0, goodSinceMs: null };
+    return { steps: 0, badSinceMs: null, goodSinceMs: null };
   }
 
   /** Avanca a escada de UM peer com UMA amostra. Puro: relogio via
    * signals.atMs. Mesma semantica de recuperacao do autoquality (Opcao B):
-   * goodSinceMs zera no degrau, a primeira amostra boa ancora o relogio. */
+   * goodSinceMs zera no degrau, a primeira amostra boa ancora o relogio.
+   * Descer tambem e por tempo continuo: badSinceMs marca o inicio da
+   * corrida ruim atual. */
   function next(state, signals, opts) {
     const o = opts || {};
     const maxSteps = o.maxSteps ?? MAX_PEER_STEPS;
-    const badToDegrade = o.badSamplesToDegrade ?? BAD_SAMPLES_TO_DEGRADE;
+    const badMsToDegrade = o.badMsToDegrade ?? BAD_MS_TO_DEGRADE;
     const goodMsToRecover = o.goodMsToRecover ?? GOOD_MS_TO_RECOVER;
 
     const prev = state || initialState();
     const atMs = Number(signals?.atMs) || 0;
 
     if (isBad(signals, o)) {
-      const badRun = prev.badRun + 1;
-      if (badRun >= badToDegrade && prev.steps < maxSteps) {
-        return { steps: prev.steps + 1, badRun: 0, goodSinceMs: null };
+      const badSinceMs = prev.badSinceMs ?? atMs;
+      if (prev.steps < maxSteps && atMs - badSinceMs >= badMsToDegrade) {
+        return { steps: prev.steps + 1, badSinceMs: atMs, goodSinceMs: null };
       }
-      return { steps: prev.steps, badRun, goodSinceMs: null };
+      return { steps: prev.steps, badSinceMs, goodSinceMs: null };
     }
 
     const goodSinceMs = prev.goodSinceMs ?? atMs;
     if (prev.steps > 0 && atMs - goodSinceMs >= goodMsToRecover) {
-      return { steps: prev.steps - 1, badRun: 0, goodSinceMs: atMs };
+      return { steps: prev.steps - 1, badSinceMs: null, goodSinceMs: atMs };
     }
-    return { steps: prev.steps, badRun: 0, goodSinceMs };
+    return { steps: prev.steps, badSinceMs: null, goodSinceMs };
   }
 
   const api = { initialState, next, isBad, LIMITS };
