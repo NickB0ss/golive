@@ -91,6 +91,11 @@ mesma sala.
 
 Duplo clique em qualquer vídeo expande pra tela cheia.
 
+**Pra pausar a transmissão** sem parar de compartilhar, use o botão de pausa
+no palco ou o atalho global **`Ctrl+Alt+P`** — ele funciona mesmo com o jogo
+em tela cheia por cima, sem precisar dar alt-tab. Os espectadores veem o
+último quadro congelado com um aviso de pausa; o mesmo atalho retoma.
+
 **Se você fechar o GoLive no PC que criou a sala, a sala cai pra todo
 mundo** — não há como transferir a sala pra outra máquina no meio da
 sessão.
@@ -133,14 +138,23 @@ exige por espectador.
   também". O Windows não oferece captura de áudio por aplicativo isolado, então
   o loopback de sistema pega tudo que sai do dispositivo de saída padrão — o
   Discord, o navegador, tudo. Pra isolar só o jogo, mande o Discord pra outra
-  saída pelo mixer de volume do Windows (ou um cabo de áudio virtual).
+  saída pelo mixer de volume do Windows (ou um cabo de áudio virtual). O áudio
+  vai **em estéreo**: o SDP é reescrito nos dois lados pra declarar
+  `stereo=1` e um bitrate Opus explícito, senão o WebRTC entrega mono a
+  ~32 kbps por padrão.
 
-**A qualidade se ajusta sozinha ao tamanho da sala.** A medição do próprio
+**O preset que você marca é um teto, não uma promessa.** A medição do próprio
 projeto mostrou 4 espectadores a 1080p60 quebrando o NVENC sem jogo nenhum
-aberto. Por isso o encode da tela desce um degrau (1080p60 → 1080p30) assim
-que a sala chega a **3 pessoas**, e volta ao preset escolhido assim que ela
-encolhe pra menos de 3. É só uma função da contagem de gente na sala — não há
-telemetria nem tempo de espera no meio. Ninguém escolhe nada.
+aberto. Por isso o app desce sozinho quando a sala ou a máquina não aguentam,
+e volta a subir quando sobra folga — um degrau de cada vez. Dois gatilhos:
+
+- **tamanho da sala** — o encode desce um degrau (1080p60 → 1080p30) assim que
+  a sala chega a **3 pessoas** e volta ao preset quando ela encolhe;
+- **telemetria de encode** — o laço fechado lê o fps real e o tempo por quadro
+  do encoder e, se ele está apertado, desce mais um degrau, baixando também a
+  **captura** (`applyConstraints`), não só o teto do bitrate.
+
+Ninguém escolhe nada e não há botão pra isso.
 
 **A queda para malha degrada de propósito.** A árvore de retransmissão
 (abaixo) cai para malha direta quando não sobra nenhum relay elegível. Nesse
@@ -176,6 +190,13 @@ Compartilhamento de tela em WebRTC entrega 30 fps por padrão, mesmo pedindo
 - `maxFramerate` e `maxBitrate` explícitos no `sendEncodings`, mais um
   `applyConstraints` de reforço na track, porque alguns caminhos de captura
   ignoram as constraints iniciais e entregam 30 fps caladamente.
+
+E quando mesmo assim não segura: o app tem uma **escada automática de
+qualidade em laço fechado**. Ele lê a telemetria do encoder (fps real, tempo
+por quadro) e, se o encoder está apertado, desce um degrau — baixando também a
+própria **captura** via `applyConstraints`, não só o teto do bitrate. Quando a
+folga volta, ele sobe de novo, um degrau de cada vez. Ninguém escolhe nada, e
+não há botão pra isso: o preset que você marcou é só o ponto de partida.
 
 ---
 

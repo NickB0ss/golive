@@ -475,6 +475,17 @@ A nota `Decisões/golive - acento reservado a ao vivo, sem blur no redesign`
 está com `status: em aberto` e diz "a spec está escrita, nada foi
 implementado". Continua verdade: o CSS atual ainda é o tema clone do Discord.
 
+> **Correção (2026-08-28):** este item está errado. O redesign foi
+> implementado e mesclado em 2026-08-23, commit `51fc1f7`, **quatro dias
+> antes** desta auditoria — `src/renderer/style.css` abre declarando a
+> direção "Superfície e sinal" e usa os tokens dela em 63 lugares. O erro
+> veio de provar o item citando a nota do vault em vez de abrir o arquivo,
+> que foi o método usado nos outros 41 achados. O que **de fato** faltava
+> era menor e mais específico: o `#stage-status-dot` gastava o acento sem
+> significar transmissão, e não havia estado visível pra transmissão
+> degradada — os dois tratados na Task 1 de
+> `docs/superpowers/plans/2026-08-28-transmissao-honesta.md`.
+
 ---
 
 ## G. Desempenho e arquitetura
