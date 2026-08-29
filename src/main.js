@@ -8,7 +8,7 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut } = require('electron');
 const path = require('path');
 
 // TODAS as features do Chromium tem que sair daqui, numa lista so:
@@ -230,9 +230,23 @@ app.whenReady().then(() => {
   });
   updater.checkForUpdates(false); // check no boot, mas sem baixar nada
 
+  // Quem transmite passa a maior parte do tempo com o jogo em fullscreen por
+  // cima: sem atalho global nao existe como pausar a transmissao sem
+  // alt-tab, que em fullscreen exclusivo custa um engasgo. Falha de registro
+  // (outro app ja tomou a combinacao) nao pode derrubar a inicializacao --
+  // so vira log, e o botao da UI continua valendo.
+  const atalhoOk = globalShortcut.register('Control+Alt+P', () => {
+    if (win && !win.isDestroyed()) win.webContents.send('shortcut:toggle-pause');
+  });
+  if (!atalhoOk) logger.error('atalho global Control+Alt+P nao pode ser registrado');
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', async () => {

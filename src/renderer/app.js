@@ -124,6 +124,10 @@
     myId = null;
   }
   let localStream = null;
+  // Pausa da transmissao: a tela continua capturada e as conexoes de pe, so
+  // param de receber quadro. Diferente de parar de compartilhar, que fecha
+  // tudo e obriga a escolher a fonte de novo.
+  let sharePaused = false;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
   let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
@@ -1450,7 +1454,11 @@
         const vsPeer = mesh.peers.get(msg.from);
         if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
         const track = trackForKind(msg.kind);
-        if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
+        // Pausa manual manda mais que a demanda do espectador: enquanto
+        // pausado, 'watching: true' nao pode religar o encode da tela.
+        const wanted = Boolean(msg.watching)
+          && !(sharePaused && parseKind(msg.kind).baseKind === 'screen');
+        if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
           renderMembersPanel();
           // A lista de "quem esta assistindo" e da ORIGEM. Num kind
           // composto quem suspendeu foi um filho NOSSO, e nos somos relay,
@@ -1875,6 +1883,7 @@
 
       session.sig.send({ type: 'broadcast-state', live: true });
       $('btn-toggle-share').classList.add('active');
+      $('btn-pause-share').classList.remove('hidden');
       renderMembersPanel();
       startStatsLoop();
     } finally {
@@ -1904,7 +1913,29 @@
     // Os degraus descrevem uma transmissao especifica, nao a maquina.
     autoQuality = autoquality.initialState();
     lastCaptureKey = '';
+    sharePaused = false;
+    $('btn-pause-share').classList.remove('active');
+    $('btn-pause-share').classList.add('hidden');
   }
+
+  function setSharePaused(paused) {
+    if (!localStream || sharePaused === paused) return;
+    sharePaused = paused;
+    const track = localStream.getVideoTracks()[0] || null;
+    const session = currentSession || orphanSession;
+    for (const peerId of session?.mesh.peers.keys() ?? []) {
+      // `!paused` como demanda: religar entrega a track de volta pros
+      // MESMOS senders que foram suspensos (ver setPeerDemand).
+      session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
+    }
+    $('btn-pause-share').classList.toggle('active', paused);
+    showToast(paused ? 'Transmissão pausada — ninguém está vendo sua tela.' : 'Transmissão retomada.');
+    renderMembersPanel();
+    renderRoomStatus();
+  }
+
+  $('btn-pause-share').addEventListener('click', () => setSharePaused(!sharePaused));
+  window.golive.onShortcut(() => setSharePaused(!sharePaused));
 
   // ---------- Câmera ----------
 

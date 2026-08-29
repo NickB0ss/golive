@@ -438,6 +438,10 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .icon-btn:hover { background: var(--surface-3); }
 /* Ativo se distingue por elevacao, nao por cor. */
 .icon-btn.active { background: var(--surface-4); box-shadow: inset 0 0 0 1px var(--line-strong); }
+/* Pausado nao e so "ativo": e um estado que esconde a tela dos outros e
+   precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
+   elevacao neutra do .active. */
+#btn-pause-share.active { background: var(--warn); color: var(--surface-1); box-shadow: none; }
 /* Camera abrindo: pulsa ate o primeiro frame chegar (o driver decide quanto
    tempo isso leva) pra deixar claro que o clique foi registrado. */
 .icon-btn.loading { background: var(--surface-3); animation: icon-btn-pulse 900ms ease-in-out infinite; }
