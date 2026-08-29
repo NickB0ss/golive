@@ -62,6 +62,11 @@ contextBridge.exposeInMainWorld('golive', {
   onWindowVisibilityChange: (callback) =>
     ipcRenderer.on('window:visibility-changed', (_event, visible) => callback(visible)),
 
+  /** Atalhos globais disparados pelo processo principal (funcionam com a
+   * janela atras do jogo). Hoje so 'toggle-pause'. */
+  onShortcut: (callback) =>
+    ipcRenderer.on('shortcut:toggle-pause', () => callback('toggle-pause')),
+
   /** PID "raiz" do Discord rodando agora, ou 0 se nao estiver rodando ou o
    * addon nativo nao estiver disponivel (so existe no Windows). */
   findDiscordPid: () => ipcRenderer.invoke('audio:findDiscordPid'),

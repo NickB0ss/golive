@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -124,6 +124,10 @@
     myId = null;
   }
   let localStream = null;
+  // Pausa da transmissao: a tela continua capturada e as conexoes de pe, so
+  // param de receber quadro. Diferente de parar de compartilhar, que fecha
+  // tudo e obriga a escolher a fonte de novo.
+  let sharePaused = false;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
   let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
@@ -151,6 +155,24 @@
   // enquanto nao estivermos codificando nada -- reportar valor inventado e
   // pior que reportar ausencia.
   let myEncodeHealth = null;
+  // receiveHealth mais recente que CADA peer reportou sobre o stream que
+  // mandamos pra ele. Chave 'peerId:kind'. Alimenta a escada por-peer
+  // (Task 5). Espelha o papel de peer.encodeHealth, mas por-conexao porque
+  // um peer pode receber tela e camera com saudes diferentes.
+  const rxHealthByPeer = new Map();
+  // Escada de degradacao POR CONEXAO. Chave 'peerId:baseKind'. Parte do
+  // piso global (qualityFor) e desce mais para quem esta sofrendo sozinho.
+  // Zerada ao parar de compartilhar: os degraus descrevem uma conexao, nao
+  // a nossa maquina.
+  const peerQuality = new Map();
+  // Amostra anterior de readReceiverReport por 'peerId:kind', pra derivar a
+  // taxa da janela (freezeCount e cumulativo).
+  const rxPrevSample = new Map();
+  let rxPrevAtMs = 0;
+  // Escada de degradacao automatica da TELA, alimentada pela telemetria de
+  // encode em updateStats. Zerada ao parar de compartilhar: os degraus
+  // descrevem uma transmissao especifica, nao a maquina.
+  let autoQuality = autoquality.initialState();
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
@@ -245,25 +267,89 @@
     const baseKind = parseKind(kind).baseKind;
     if (baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
     const effective = config.qualityForAudience(cfg.quality.preset, audienceSize());
-    // Modo malha degradada (H3): a origem paga N encoders em vez de 1, entao
-    // desce UM degrau alem do que o tamanho da sala ja pediu. degradePreset
-    // para no piso e nunca lanca, entao isto e seguro no caminho de encode.
-    if (meshFallback[baseKind]) return config.qualityFromPreset(config.degradePreset(effective.preset, 1));
-    return effective;
+    // Dois degraus somam sobre o que o tamanho da sala ja pediu:
+    //  - malha degradada (H3): a origem paga N encoders em vez de 1;
+    //  - escada automatica: a telemetria disse que nao esta dando conta.
+    // degradePreset para no piso e nunca lanca, entao isto e seguro no
+    // caminho de encode.
+    const extraSteps = (meshFallback[baseKind] ? 1 : 0) + autoQuality.steps;
+    if (!extraSteps) return effective;
+    return config.qualityFromPreset(config.degradePreset(effective.preset, extraSteps));
   }
 
-  /** Reaplica o teto de encode nas conexoes JA ABERTAS daquele kind --
-   * `applyEncoding` mexe em maxBitrate/maxFramerate via setParameters, sem
-   * renegociacao e sem tela preta. Chamado quando a sala muda de tamanho;
-   * sem isto, so quem entrasse depois pegaria o preset novo.
+  /** Qualidade efetiva para UM destinatario: o piso global (tamanho da
+   * sala + malha degradada + escada automatica global) menos os degraus
+   * que a conexao DELE pediu. Nunca sobe acima do piso. `kind` pode ser
+   * composto ('screen@<origem>') quando somos relay -- a chave usa o
+   * baseKind, porque um filho e um filho independente de quem origina. */
+  function qualityForPeer(peerId, kind) {
+    const floor = qualityFor(kind);
+    const st = peerQuality.get(`${peerId}:${parseKind(kind).baseKind}`);
+    const steps = st?.steps || 0;
+    if (!steps) return floor;
+    return config.qualityFromPreset(config.degradePreset(floor.preset, steps));
+  }
+
+  /** Reaplica o teto de encode E o formato da captura nas conexoes abertas
+   * daquele kind. `applyEncoding` mexe em maxBitrate/maxFramerate via
+   * setParameters; `applyConstraints` reconfigura o proprio capturador --
+   * os dois sem renegociacao e sem tela preta.
    *
-   * Limitacao consciente: o preset de CAPTURA (getDisplayMedia) nao muda no
-   * meio da transmissao -- mexer nele exigiria recapturar a tela. So o
-   * encode se ajusta. */
+   * Sem a parte da captura, degradar so fazia o encoder DESCARTAR quadros
+   * que a captura continuava produzindo a 1080p60: o custo de capturar e
+   * escalar ficava pago inteiro, na maquina que ja nao esta dando conta.
+   *
+   * lastCaptureKey existe porque recomputeTree chama isto varias vezes por
+   * evento de sala, e reconfigurar o capturador com o MESMO formato pode
+   * custar um solavanco de imagem a toa. */
+  let lastCaptureKey = '';
+
+  /** Somos relay de tela pra alguem agora? Um relay puro tem localStream
+   * null mas ainda paga encode por filho -- entao ainda precisa adaptar
+   * por filho. */
+  function isRelayingScreen() {
+    for (const state of myRole.screen.values()) {
+      if (state.role === 'relay' && state.filhosIds.length) return true;
+    }
+    return false;
+  }
+
   function reapplyAudienceQuality() {
     if (!currentSession) return;
-    if (localStream) currentSession.mesh.applyEncoding(qualityFor('screen'), 'screen');
-    if (cameraStream) currentSession.mesh.applyEncoding(qualityFor('camera'), 'camera');
+    const mesh = currentSession.mesh;
+    const floor = qualityFor('screen'); // piso global -- nao depende de localStream
+
+    if (localStream) {
+      // Espectadores diretos: uma escada por conexao.
+      for (const peerId of mesh.peers.keys()) {
+        const q = qualityForPeer(peerId, 'screen');
+        mesh.applyEncodingToPeer(peerId, q, 'screen', config.scaleFactorFor(floor.width, q.width));
+      }
+
+      // A CAPTURA continua guiada pelo piso global -- ela e comum a todas as
+      // conexoes, entao segue o denominador comum.
+      const key = `${floor.width}x${floor.height}@${floor.fps}`;
+      const track = localStream.getVideoTracks()[0];
+      if (track && track.readyState === 'live' && key !== lastCaptureKey) {
+        lastCaptureKey = key;
+        track.applyConstraints(config.videoConstraints(floor)).catch((err) => {
+          console.error('[qualidade] applyConstraints na captura falhou:', err);
+        });
+      }
+    }
+
+    // Filhos de relay: valem MESMO sem localStream (relay puro). Os filhos
+    // vivem sob kind composto e o encode deles e pago aqui de qualquer jeito.
+    for (const [sourceId, state] of myRole.screen) {
+      if (state.role !== 'relay') continue;
+      const ck = relayKindFor('screen', sourceId);
+      for (const childId of state.filhosIds) {
+        const q = qualityForPeer(childId, ck);
+        mesh.applyEncodingToPeer(childId, q, ck, config.scaleFactorFor(floor.width, q.width));
+      }
+    }
+
+    if (cameraStream) mesh.applyEncoding(qualityFor('camera'), 'camera');
   }
 
   /** Liga/desliga o modo malha degradada de um kind. So faz algo na
@@ -276,12 +362,15 @@
     if (meshFallback[kind] === value) return;
     meshFallback[kind] = value;
     // qualityFor le meshFallback[kind], entao ja devolve o preset certo aqui.
-    currentSession?.mesh?.applyEncoding(qualityFor(kind), kind);
+    // Unico ponto de retune: preserva bitrate/fps/scale por-peer em vez de
+    // varrer todos os senders com o piso global.
+    reapplyAudienceQuality();
     if (value && kind === 'screen') {
       // So a tela tem cadeia de degradacao; a camera ja esta no piso, entao
       // avisar que "baixei a qualidade" dela seria mentira.
       showToast('Sem ninguém pra retransmitir: baixei a qualidade pra sala aguentar.');
     }
+    renderRoomStatus();
   }
 
   // Sessao "efetiva" pra UI (painel de membros, mensagem de grade vazia): a
@@ -419,8 +508,8 @@
     // A captura vai no preset que a pessoa escolheu, mas o encode passa por
     // qualityFor -- senao trocar de preset no meio de uma sala cheia
     // escaparia da degradacao por tamanho da sala ate o proximo
-    // peer-joined/peer-left.
-    currentSession?.mesh?.applyEncoding(qualityFor('screen'), 'screen');
+    // peer-joined/peer-left. Retune por-peer: nao orfana o scaleResolutionDownBy.
+    reapplyAudienceQuality();
   }
 
   // Escolhida no dialogo de compartilhar (ver ui.picker.open, no clique de
@@ -723,6 +812,7 @@
       $('btn-toggle-camera').classList.remove('active');
     }
     $('btn-toggle-share').classList.remove('active');
+    resetShareState();
   }
 
   // Derruba as conexoes P2P e o estado de tiles dos peers dessa sessao. A
@@ -762,7 +852,59 @@
 
   function renderMembersPanel() {
     const session = displaySession();
-    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo());
+    // Mapa peerId -> preset efetivo, so pra quem esta recebendo um preset
+    // degradado (steps > 0). Sem isso a degradacao por-peer nao tem sinal
+    // nenhum no lado de quem transmite.
+    const tags = new Map();
+    // Vale tambem pro relay puro (localStream null): ele degrada os filhos
+    // e a tag e o unico sinal disso no painel dele.
+    if (session && (localStream || isRelayingScreen())) {
+      // Espectadores diretos: so quem tem out-conn de tela nossa (quem
+      // servimos via relay nao tem escada nossa -- a tag seria mentira).
+      if (localStream) {
+        for (const [peerId, peer] of session.mesh.peers) {
+          if (!peer.outConns?.screen) continue;
+          if (peerQuality.get(`${peerId}:screen`)?.steps > 0) {
+            tags.set(peerId, qualityForPeer(peerId, 'screen').preset);
+          }
+        }
+      }
+      // Filhos de relay: sempre que retransmitimos, com ou sem tela propria.
+      for (const [sourceId, state] of myRole.screen) {
+        if (state.role !== 'relay') continue;
+        for (const childId of state.filhosIds) {
+          if (peerQuality.get(`${childId}:screen`)?.steps > 0) {
+            tags.set(childId, qualityForPeer(childId, relayKindFor('screen', sourceId)).preset);
+          }
+        }
+      }
+    }
+    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo(), tags);
+    renderRoomStatus();
+  }
+
+  /** Traduz o estado espalhado do app pro { level, label } do cabecalho.
+   * Ponto unico: qualquer coisa que mude transmissao, sala ou qualidade
+   * termina chamando isto. */
+  function renderRoomStatus() {
+    const session = displaySession();
+    const live = Boolean(localStream)
+      || Array.from(session?.mesh.peers.values() ?? []).some((p) => p.live);
+    const effective = qualityFor('screen');
+    ui.stageHeader.setStatus(status.roomStatus({
+      inRoom: Boolean(session),
+      // orphanSession so existe quando a sinalizacao caiu com a midia
+      // viva -- e exatamente o estado "reconectando" (H1).
+      reconnecting: Boolean(orphanSession),
+      weAreLive: Boolean(localStream),
+      anyoneLive: live,
+      paused: sharePaused,
+      presetDegraded: effective.preset !== cfg.quality.preset,
+      autoDegraded: autoQuality.steps > 0,
+      meshFallback: Boolean(meshFallback.screen),
+      softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
+      effectivePreset: effective.preset,
+    }));
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -824,6 +966,7 @@
     if (orphanSession && !reconnectAttempt) {
       teardownSession(orphanSession);
       orphanSession = null;
+      renderRoomStatus();
     }
 
     // Sessao nova, arvore nova: nenhum epoch, papel ou atribuicao da sala
@@ -921,6 +1064,7 @@
               teardownSession(orphanSession);
               orphanSession = null;
             }
+            renderRoomStatus();
             if (wasHostingRoom) window.golive.stopHosting?.().catch(() => {});
             teardownSession(session);
             stopStatsLoop();
@@ -974,6 +1118,7 @@
           if (session.opened) {
             orphanSession = session;
             stopStatsLoop();
+            renderRoomStatus();
           }
 
           if (canRetry) {
@@ -1173,6 +1318,7 @@
     if (!currentSession && orphanSession) {
       const orphan = orphanSession;
       orphanSession = null;
+      renderRoomStatus();
       sound.playLeaveSound();
       const wasHosting = !!hostInfo;
       hostInfo = null;
@@ -1196,6 +1342,7 @@
     if (orphanSession) {
       teardownSession(orphanSession);
       orphanSession = null;
+      renderRoomStatus();
     }
     sound.playLeaveSound();
     const session = currentSession;
@@ -1246,6 +1393,7 @@
               // pode abortar as demais nem o resto do handshake do welcome
               console.error(`[reconexao] re-oferta de tela para ${p.id} falhou:`, err);
             }
+            enforceSharePauseFor(mesh, p.id);
           }
           broadcastWatchers('screen');
           recomputeTree('screen');
@@ -1291,6 +1439,7 @@
             // -- mesmo racional do try/catch por-peer do welcome (Task 5).
             console.error(`[peer-joined] oferta de tela para ${msg.id} falhou:`, err);
           }
+          enforceSharePauseFor(mesh, msg.id);
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
@@ -1313,6 +1462,9 @@
       }
       case 'peer-left': {
         mesh.removePeer(msg.id);
+        for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
+        for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
+        for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
         dropTile(msg.id);
         dropTile(`cam-${msg.id}`);
         renderMembersPanel();
@@ -1347,7 +1499,7 @@
         // "assistindo" por padrao, entao precisa ser corrigido na hora --
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
-        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth });
+        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${msg.from}:${msg.kind}`) || null });
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -1357,7 +1509,8 @@
         if (!isKnownKind(msg.kind)) break;
         await mesh.handleAnswer(msg.from, msg.sdp, msg.kind);
         if (currentSession !== session) return;
-        mesh.applyEncoding(qualityFor(msg.kind), msg.kind);
+        // Retune por-peer (tela e camera): nao orfana o scaleResolutionDownBy.
+        reapplyAudienceQuality();
         break;
       }
       case 'ice': {
@@ -1393,8 +1546,17 @@
         // dele que codifica. recomputeTree le isto ao montar os candidatos.
         const vsPeer = mesh.peers.get(msg.from);
         if (vsPeer) vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
+        // Slot por baseKind: um viewer que recebe tela E camera nao pode
+        // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
+        if (vsPeer) (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] = normalizeReceiveHealth(msg.receiveHealth);
         const track = trackForKind(msg.kind);
-        if (mesh.setPeerDemand(msg.from, msg.kind, Boolean(msg.watching), track)) {
+        // Pausa manual manda mais que a demanda do espectador: enquanto
+        // pausado, 'watching: true' nao pode religar o encode da tela.
+        // So a NOSSA tela (kind 'screen' exato) -- nao os kinds compostos
+        // 'screen@<origem>' que retransmitimos pra outro: pausar a propria
+        // transmissao nao pode congelar o que a gente so repassa.
+        const wanted = Boolean(msg.watching) && !(sharePaused && msg.kind === 'screen');
+        if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
           renderMembersPanel();
           // A lista de "quem esta assistindo" e da ORIGEM. Num kind
           // composto quem suspendeu foi um filho NOSSO, e nos somos relay,
@@ -1790,6 +1952,7 @@
       }
 
       localStream = stream;
+      lastCaptureKey = `${cfg.quality.width}x${cfg.quality.height}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
       const track = localStream.getVideoTracks()[0];
       if (track) {
@@ -1818,6 +1981,7 @@
 
       session.sig.send({ type: 'broadcast-state', live: true });
       $('btn-toggle-share').classList.add('active');
+      $('btn-pause-share').classList.remove('hidden');
       renderMembersPanel();
       startStatsLoop();
     } finally {
@@ -1844,7 +2008,50 @@
     $('btn-toggle-share').classList.remove('active');
     renderMembersPanel();
     stopStatsLoop();
+    resetShareState();
   }
+
+  /** Estado da transmissao que tem de zerar em QUALQUER fim de captura --
+   * saida deliberada (teardownMedia) ou parar de compartilhar (stopShare).
+   * Ficava so no stopShare e vazava pela outra porta. */
+  function resetShareState() {
+    autoQuality = autoquality.initialState();
+    lastCaptureKey = '';
+    sharePaused = false;
+    $('btn-pause-share').classList.remove('active');
+    $('btn-pause-share').classList.add('hidden');
+    rxHealthByPeer.clear();
+    rxPrevSample.clear();
+    peerQuality.clear();
+  }
+
+  /** Pausa manual so suspende os senders que existiam no instante do clique.
+   * Quem entra depois (peer-joined) ou reconecta (welcome) recebe uma oferta
+   * nova com a track viva -- sem reimpor aqui, a tela "pausada" volta a
+   * sair, e no reconnect pra sala inteira de uma vez. */
+  function enforceSharePauseFor(m, peerId) {
+    if (!sharePaused || !localStream) return;
+    m.setPeerDemand(peerId, 'screen', false, localStream.getVideoTracks()[0] || null);
+  }
+
+  function setSharePaused(paused) {
+    if (!localStream || sharePaused === paused) return;
+    sharePaused = paused;
+    const track = localStream.getVideoTracks()[0] || null;
+    const session = currentSession || orphanSession;
+    for (const peerId of session?.mesh.peers.keys() ?? []) {
+      // `!paused` como demanda: religar entrega a track de volta pros
+      // MESMOS senders que foram suspensos (ver setPeerDemand).
+      session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
+    }
+    $('btn-pause-share').classList.toggle('active', paused);
+    showToast(paused ? 'Transmissão pausada — ninguém está vendo sua tela.' : 'Transmissão retomada.');
+    renderMembersPanel();
+    renderRoomStatus();
+  }
+
+  $('btn-pause-share').addEventListener('click', () => setSharePaused(!sharePaused));
+  window.golive.onShortcut?.(() => setSharePaused(!sharePaused));
 
   // ---------- Câmera ----------
 
@@ -2006,7 +2213,7 @@
       // H2: carona no canal que ja existe -- a origem daquele kind usa isto
       // pra eleger relay por saude de encode, nao so por RTT. null quando
       // nao estamos codificando nada.
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth });
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null });
     }
   }
 
@@ -2061,10 +2268,12 @@
     // origem como pai -- profundidade maxima 2).
     const state = myRole[kind].get(sourcePeerId);
     if (!state || state.role !== 'relay') return;
-    const quality = qualityFor(kind);
+    // TODO: quando feat/orcamento-banda-relay entrar, o preset por filho
+    // passa a ser o MENOR entre qualityForPeer(childId, kind) e
+    // config.qualityForRelay(...) -- o orcamento de banda do relay.
     for (const childId of state.filhosIds) {
       if (state.relayed.has(childId)) continue;
-      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, quality);
+      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, kind));
       if (ok) state.relayed.add(childId);
     }
   }
@@ -2329,6 +2538,18 @@
     return { softwareEncoder: raw.softwareEncoder === true, msPerFrame: ms };
   }
 
+  // 'view-state' de cliente antigo nao traz receiveHealth: ausencia (ou
+  // lixo) vira null -- o caso neutro da escada por-peer, nunca "saudavel".
+  function normalizeReceiveHealth(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+    return {
+      lossPct: num(raw.lossPct),
+      freezeRate: num(raw.freezeRate),
+      softwareDecoder: raw.softwareDecoder === true,
+    };
+  }
+
   // Com a janela oculta o painel de estatisticas nao esta na tela de
   // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
   // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
@@ -2477,20 +2698,145 @@
     // acima porque some todos os senders num numero so.
     myEncodeHealth = summarizeOwnEncodeHealth(rows);
 
-    renderStats(rows);
+    if (localStream) {
+      // M3: a escada GLOBAL reage so a NOSSA saude de encode. Antes ela
+      // fundia a saude dos relays -- mas isso derrubava os espectadores
+      // DIRETOS da origem quando era o relay que sofria. Agora a saude
+      // ruim de um relay chega como receiveHealth no view-state DELE e
+      // degrada so a conexao origem->relay, pela escada por-peer abaixo.
+      // Um relay saturando o encoder mas decodificando em hardware nao move
+      // a escada por-peer hoje -- peerquality.isBad le so
+      // senderBandwidthLimited e receiveHealth, nao encodeHealth; esse lever
+      // fica coberto so pela eleicao de relay (tree.js). Fechar isso fica
+      // pra depois.
+      const before = autoQuality.steps;
+      autoQuality = autoquality.next(autoQuality, {
+        atMs: now,
+        health: autoquality.worstHealth([myEncodeHealth]),
+      });
+      if (autoQuality.steps !== before) {
+        console.log(`[qualidade] escada global: ${before} -> ${autoQuality.steps} degraus`);
+        reapplyAudienceQuality();
+      }
+    }
+
+    // Escada POR CONEXAO -- vale pra quem origina E pra relay puro. Um relay
+    // sem tela propria (localStream null) ainda paga encode por filho, entao
+    // ainda precisa da escada por filho movida pela receiveHealth deles.
+    if (localStream || isRelayingScreen()) {
+      // Sinais: banda (das nossas proprias stats de envio) e a receiveHealth
+      // que o peer reportou.
+      const limByPeer = new Map();
+      for (const r of rows) limByPeer.set(`${r.peerId}:${r.kind}`, r.limitation);
+
+      let anyPeerChanged = false;
+      const targets = new Set();
+      // Diretos: so quando originamos (um relay puro nao manda 'screen' cru
+      // pra ninguem). Filhos de relay: sempre.
+      // So peers com uma out-conn de tela DIRETA nossa: quem servimos via
+      // relay nao tem escada nossa (applyEncodingToPeer seria no-op) e nao
+      // pode ganhar a tag de "preset menor" no painel.
+      if (localStream) for (const [peerId, peer] of activeMesh.peers) {
+        if (peer.outConns?.screen) targets.add(`${peerId}:screen`);
+      }
+      for (const [sourceId, state] of myRole.screen) {
+        if (state.role !== 'relay') continue;
+        for (const childId of state.filhosIds) targets.add(`${childId}:screen`);
+      }
+
+      for (const key of targets) {
+        const [peerId] = key.split(':');
+        const peer = activeMesh.peers.get(peerId);
+        const st = peerQuality.get(key) || peerquality.initialState();
+        const nextSt = peerquality.next(st, {
+          atMs: now,
+          // `limByPeer` so tem chaves 'peerId:screen' e 'peerId:camera' --
+          // o laco de senders do updateStats itera ['screen','camera'], nao
+          // os kinds compostos de relay. Consequencia: pra um FILHO de
+          // relay, senderBandwidthLimited nunca dispara e a adaptacao dele
+          // depende so da receiveHealth (CPU + travas). Cobertura completa
+          // do filho de relay exige o laco de stats de relay da branch
+          // parqueada feat/orcamento-banda-relay; ate la, isto e o que da.
+          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth',
+          // receiveHealth agora e por baseKind; a chave do tick e sempre
+          // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
+          // tem baseKind 'screen'), entao le o sub-slot 'screen'.
+          receiveHealth: peer?.receiveHealth?.screen || null,
+        });
+        if (nextSt.steps !== st.steps) {
+          anyPeerChanged = true;
+          console.log(`[qualidade] escada de ${peer?.name || peerId}: ${st.steps} -> ${nextSt.steps} degraus`);
+        }
+        peerQuality.set(key, nextSt);
+      }
+      if (anyPeerChanged) reapplyAudienceQuality();
+    }
+
+    // Do outro lado do fio: o que estamos RECEBENDO. receivingFrom ja
+    // enumera os pares (peerId, kind) das conexoes de entrada.
+    const rxRows = [];
+    for (const { peerId, kind } of activeMesh.receivingFrom()) {
+      if (currentSession !== session) return;
+      const report = await activeMesh.inStatsFor(peerId, kind);
+      if (!report) continue;
+      const sample = rxstats.readReceiverReport(report);
+      if (!sample.framesDecoded) continue;
+      const rxKey = `${peerId}:${kind}`;
+      const dt = rxPrevAtMs ? now - rxPrevAtMs : 0;
+      const health = rxstats.receiveHealth(sample, rxPrevSample.get(rxKey), dt);
+      rxPrevSample.set(rxKey, sample);
+      if (health) rxHealthByPeer.set(rxKey, health);
+      rxRows.push({
+        peerId,
+        kind,
+        name: activeMesh.peers.get(peerId)?.name || `#${peerId}`,
+        ...sample,
+        loss: rxstats.lossPercent(sample),
+        bufferMs: rxstats.jitterBufferMs(sample),
+      });
+    }
+
+    rxPrevAtMs = now;
+    renderStats(rows, rxRows);
+    // Cadencia que fecha a escada por-peer: sem isto o 'view-state' so sai
+    // em mudanca de visibilidade e a receiveHealth computada a cada segundo
+    // nunca sai da maquina. updateStats ja roda 1s visivel / 5s oculto --
+    // a mesma janela de amostragem. Auto-guarda em !session.mesh.
+    broadcastViewState();
     updateEncoderWarning(rows);
+    renderRoomStatus();
   }
 
   // O orcamento de encode a 60 fps e 16,6 ms POR QUADRO, somando todos os
   // senders -- eles disputam o mesmo encoder. Por isso o resumo soma
   // ms/frame em vez de tirar media.
-  function renderStats(rows) {
+  function renderStats(rows, rxRows = []) {
+    const esc = ui.escapeHtml;
+
+    // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador
+    // puro tem rows vazio e e justamente quem precisa deste painel.
+    const rxHtml = !rxRows.length ? '' : `
+      <h4>Recebendo</h4>
+      <table class="stats-table">
+        <tr><th>de</th><th>fps</th><th>resolução</th><th>perda</th><th>travadas</th><th>buffer</th></tr>
+        ${rxRows.map((r) => `
+          <tr>
+            <td>${esc(r.name)}</td>
+            <td>${r.fps}</td>
+            <td>${r.width}x${r.height}</td>
+            <td class="${r.loss != null && r.loss > 1 ? 'warn-text' : ''}">${r.loss != null ? `${r.loss.toFixed(2)}%` : '-'}</td>
+            <td class="${r.freezeCount > 0 ? 'warn-text' : ''}">${r.freezeCount}</td>
+            <td>${r.bufferMs != null ? `${r.bufferMs.toFixed(0)} ms` : '-'}</td>
+          </tr>`).join('')}
+      </table>`;
+
     if (!rows.length) {
-      ui.settings.setStatsHtml('<div class="stat"><span>enviando pra</span><b>0 peer(s)</b></div>');
+      ui.settings.setStatsHtml(
+        rxHtml || '<div class="stat"><span>enviando pra</span><b>0 peer(s)</b></div>'
+      );
       return;
     }
 
-    const esc = ui.escapeHtml;
     const totalMbps = rows.reduce((sum, r) => sum + r.mbps, 0);
     const encodeMsRows = rows.filter((r) => r.msPerFrame != null);
     const totalEncodeMs = encodeMsRows.reduce((sum, r) => sum + r.msPerFrame, 0);
@@ -2544,7 +2890,8 @@
         <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perdidos</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
-      ${limitWarn}`);
+      ${limitWarn}
+      ${rxHtml}`);
   }
 
   // O aviso so aparece com mais de um sender ativo: com um sender so, encoder

@@ -63,6 +63,9 @@
         <button id="btn-toggle-camera" class="icon-btn" title="Câmera" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         </button>
+        <button id="btn-pause-share" class="icon-btn hidden" title="Pausar transmissão (Ctrl+Alt+P)" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5" width="4" height="14" rx="1"/><rect x="13" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
         <button id="btn-toggle-share" class="icon-btn" title="Compartilhar tela" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         </button>
@@ -79,6 +82,7 @@
       <span id="stage-status-dot" class="stage-status-dot"></span>
       <span id="stage-room-name" class="stage-room-name"></span>
       <span id="stage-room-address" class="stage-room-address"></span>
+      <span id="stage-status-badge" class="stage-status-badge hidden"></span>
       <button id="btn-copy-address" class="ghost small">Copiar</button>
       <button id="btn-disconnect" class="danger small" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
@@ -162,6 +166,10 @@
 <script src="ui.js"></script>
 <script src="sound.js"></script>
 <script src="queue.js"></script>
+<script src="status.js"></script>
+<script src="autoquality.js"></script>
+<script src="rxstats.js"></script>
+<script src="peerquality.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

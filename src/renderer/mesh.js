@@ -33,6 +33,12 @@
   // verdade -- x-google-start-bitrate neles nao faz nada.
   const NON_CODEC_ENCODINGS = new Set(['rtx', 'red', 'ulpfec', 'flexfec-03']);
 
+  // Alvo de buffer de jitter dos receptores, em ms. O padrao do Chromium e
+  // dimensionado pra internet aberta e custa ~100-200ms por hop -- com a
+  // arvore, a folha paga isso DUAS vezes (origem->relay->folha). Isto e um
+  // ALVO, nao um teto: se a rede exigir, o Chromium sobe sozinho.
+  const JITTER_BUFFER_TARGET_MS = 50;
+
   // ---------- Chave de conexao de retransmissao (F2) ----------
   //
   // Toda RTCPeerConnection e indexada por (peerId, kind). Quando um RELAY
@@ -127,6 +133,76 @@
     return out.join(eol);
   }
 
+  // Bitrate medio de audio, em bits/s. 160 kbps e transparente o bastante
+  // pra som de jogo e musica em estereo, e e ruido perto dos 12 Mbps de
+  // video do preset de topo.
+  const OPUS_MAX_AVERAGE_BITRATE = 160000;
+
+  // O Chromium so manda Opus em estereo se o fmtp declarar -- e declarar
+  // vale pros DOIS lados: `stereo` diz o que aceitamos receber,
+  // `sprop-stereo` diz o que vamos mandar. Sem isto o audio sai mono no
+  // padrao, mesmo com a captura nativa entregando estereo de verdade
+  // (ver pcm-injector-worklet.js). Como relayTo repassa a stream inteira,
+  // a folha paga o mono duas vezes: ha um transcode Opus->Opus no relay.
+  //
+  // Idempotente de proposito: a mesma SDP pode passar por aqui duas vezes
+  // e nao pode acumular parametro.
+  function withOpusParams(sdp, opts) {
+    if (!sdp) return sdp;
+    const maxAverageBitrate = opts?.maxAverageBitrate ?? OPUS_MAX_AVERAGE_BITRATE;
+    const wanted = [
+      ['stereo', '1'],
+      ['sprop-stereo', '1'],
+      ['maxaveragebitrate', String(maxAverageBitrate)],
+    ];
+
+    const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+    const lines = sdp.split(/\r?\n/);
+
+    // Primeira passada: quais payloads sao opus, e quais ja tem a=fmtp.
+    const opusPts = new Set();
+    const withFmtp = new Set();
+    let inAudio = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inAudio = line.startsWith('m=audio');
+      if (!inAudio) continue;
+      const rtpmap = /^a=rtpmap:(\d+) opus\//i.exec(line);
+      if (rtpmap) opusPts.add(rtpmap[1]);
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp) withFmtp.add(fmtp[1]);
+    }
+    if (!opusPts.size) return sdp;
+
+    const out = [];
+    inAudio = false;
+    for (const line of lines) {
+      if (line.startsWith('m=')) inAudio = line.startsWith('m=audio');
+      if (!inAudio) {
+        out.push(line);
+        continue;
+      }
+
+      const fmtp = /^a=fmtp:(\d+) /.exec(line);
+      if (fmtp && opusPts.has(fmtp[1])) {
+        let updated = line;
+        for (const [key, value] of wanted) {
+          if (!new RegExp(`[; ]${key}=`, 'i').test(updated)) updated += `;${key}=${value}`;
+        }
+        out.push(updated);
+        continue;
+      }
+
+      out.push(line);
+
+      const rtpmap = /^a=rtpmap:(\d+) opus\//i.exec(line);
+      if (rtpmap && !withFmtp.has(rtpmap[1])) {
+        out.push(`a=fmtp:${rtpmap[1]} ${wanted.map(([k, v]) => `${k}=${v}`).join(';')}`);
+      }
+    }
+
+    return out.join(eol);
+  }
+
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
 
@@ -198,6 +274,15 @@
         pc.addEventListener('track', (event) => {
           const peer = peers.get(peerId);
           if (peer) (peer.inStreams ||= {})[kind] = event.streams[0];
+          // Nem toda versao do Chromium expoe isto; sem a propriedade, o
+          // padrao continua valendo e nada quebra.
+          try {
+            if (event.receiver && 'jitterBufferTarget' in event.receiver) {
+              event.receiver.jitterBufferTarget = JITTER_BUFFER_TARGET_MS;
+            }
+          } catch {
+            /* receptor ja fechado, ou propriedade somente-leitura nesta versao */
+          }
           onTrack(peerId, peer ? peer.name : peerId, event.streams[0], kind);
         });
       }
@@ -333,7 +418,7 @@
       const offer = await pc.createOffer();
       await pc.setLocalDescription({
         type: offer.type,
-        sdp: withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate)),
+        sdp: withOpusParams(withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate))),
       });
       send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
     }
@@ -343,7 +428,9 @@
       await pc.setRemoteDescription(sdp);
       await drainIce(pc);
       const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+      // Estereo se negocia dos dois lados: sem declarar aqui tambem, o par
+      // cai pra mono mesmo com a oferta pedindo estereo.
+      await pc.setLocalDescription({ type: answer.type, sdp: withOpusParams(answer.sdp) });
       return pc.localDescription;
     }
 
@@ -403,6 +490,27 @@
           params.degradationPreference = 'maintain-framerate';
           sender.setParameters(params).catch(() => {});
         }
+      }
+    }
+
+    /** Igual a applyEncoding, mas resolve UMA conexao (peerId + kind) e
+     * tambem empurra a resolucao pra baixo no encoder via
+     * scaleResolutionDownBy -- o piso global controla a captura, esta
+     * funcao afina por-espectador a partir dele. `scaleDownBy` vem pronto
+     * de quem chama (config.scaleFactorFor), pra este modulo nao depender
+     * do config. */
+    function applyEncodingToPeer(peerId, quality, kind, scaleDownBy) {
+      const pc = peers.get(peerId)?.outConns[kind];
+      if (!pc) return;
+      for (const sender of pc.getSenders()) {
+        if (!sender.track || sender.track.kind !== 'video') continue;
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = quality.bitrate;
+        params.encodings[0].maxFramerate = quality.fps;
+        params.encodings[0].scaleResolutionDownBy = Number(scaleDownBy) > 0 ? Number(scaleDownBy) : 1;
+        params.degradationPreference = 'maintain-framerate';
+        sender.setParameters(params).catch(() => {});
       }
     }
 
@@ -559,6 +667,14 @@
       return pc.getStats();
     }
 
+    /** Igual a statsFor, mas da conexao de ENTRADA daquele kind -- e por
+     * onde o espectador enxerga a propria recepcao. */
+    async function inStatsFor(peerId, kind = 'screen') {
+      const pc = peers.get(peerId)?.inConns[kind];
+      if (!pc || pc.connectionState !== 'connected') return null;
+      return pc.getStats();
+    }
+
     return {
       peers,
       addPeer,
@@ -569,10 +685,12 @@
       offerTo,
       removeTrack,
       applyEncoding,
+      applyEncodingToPeer,
       closeAllOut,
       closeOut,
       relayTo,
       statsFor,
+      inStatsFor,
       setPeerDemand,
       isPeerSuspended,
       receivingFrom,
@@ -580,7 +698,7 @@
     };
   }
 
-  const api = { createMesh, withStartBitrate, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG };
+  const api = { createMesh, withStartBitrate, withOpusParams, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.mesh = api;

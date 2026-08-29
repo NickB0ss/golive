@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  createMesh, withStartBitrate, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG,
+  createMesh, withStartBitrate, withOpusParams, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG,
 } = require('./mesh');
 
 // SDP reduzido, mas com as armadilhas reais: secao de audio antes da de video
@@ -607,4 +607,53 @@ test('handleAnswer tambem drena os candidatos guardados da outConn (#A1)', async
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
+});
+
+// Opus sem linha a=fmtp: o Chromium normalmente manda uma, mas nada na
+// spec obriga -- e o caminho de CRIAR a linha precisa de teste igual.
+const SDP_SEM_FMTP_OPUS = [
+  'v=0',
+  'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+  'a=rtpmap:111 opus/48000/2',
+  'm=video 9 UDP/TLS/RTP/SAVPF 96',
+  'a=rtpmap:96 VP8/90000',
+].join('\r\n');
+
+test('opus: estereo e bitrate entram no fmtp existente', () => {
+  const out = withOpusParams(SDP, { maxAverageBitrate: 160000 });
+  assert.match(out, /a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=160000/);
+});
+
+test('opus: cria o fmtp logo depois do rtpmap quando nao existe', () => {
+  const out = withOpusParams(SDP_SEM_FMTP_OPUS, { maxAverageBitrate: 160000 }).split('\r\n');
+  const i = out.indexOf('a=rtpmap:111 opus/48000/2');
+  assert.equal(out[i + 1], 'a=fmtp:111 stereo=1;sprop-stereo=1;maxaveragebitrate=160000');
+});
+
+test('opus: nao toca na secao de video', () => {
+  const out = withOpusParams(SDP, { maxAverageBitrate: 160000 });
+  assert.match(out, /a=fmtp:98 level-asymmetry-allowed=1;profile-level-id=42e01f(\r\n|$)/);
+  assert.doesNotMatch(out, /a=fmtp:9[68] .*stereo/);
+});
+
+test('opus: idempotente -- duas passadas nao duplicam parametro', () => {
+  const uma = withOpusParams(SDP, { maxAverageBitrate: 160000 });
+  const duas = withOpusParams(uma, { maxAverageBitrate: 160000 });
+  assert.equal(uma, duas);
+});
+
+test('opus: sdp sem opus volta identico', () => {
+  const semOpus = SDP.replace('a=rtpmap:111 opus/48000/2', 'a=rtpmap:111 PCMU/8000');
+  assert.equal(withOpusParams(semOpus, { maxAverageBitrate: 160000 }), semOpus);
+});
+
+test('opus: preserva a quebra de linha do sdp original', () => {
+  assert.ok(withOpusParams(SDP, {}).includes('\r\n'));
+  assert.ok(!withOpusParams(SDP.replace(/\r\n/g, '\n'), {}).includes('\r'));
+});
+
+test('opus: convive com o start bitrate de video na mesma sdp', () => {
+  const out = withOpusParams(withStartBitrate(SDP, 6000), {});
+  assert.match(out, /a=fmtp:98 .*x-google-start-bitrate=6000/);
+  assert.match(out, /a=fmtp:111 .*stereo=1/);
 });
