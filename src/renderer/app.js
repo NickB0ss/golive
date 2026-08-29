@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -35,6 +35,7 @@
 
   const KINDS = ['screen', 'camera'];
   const { relayKindFor, parseKind } = meshModule;
+  const { isSoftwareEncoder, summarizeScreenEncodeHealth } = encodehealth;
 
   // Topologia da arvore de retransmissao (F2), por kind -- so significativa
   // quando ESTA sessao e a origem daquele kind (localStream/cameraStream
@@ -2545,31 +2546,9 @@
 
   // ---------- Estatisticas ----------
 
-  // Nomes que o Chromium usa quando quem codifica e a CPU. Qualquer outro
-  // valor ('ExternalEncoder', 'NvCodec...', 'MediaFoundationVideo...') e
-  // hardware. A comparacao e por substring porque com simulcast o nome vem
-  // embrulhado: 'SimulcastEncoderAdapter (libvpx, libvpx)'.
-  const SOFTWARE_ENCODERS = ['openh264', 'libvpx', 'libaom', 'ffmpeg', 'x264'];
-
-  function isSoftwareEncoder(impl) {
-    if (!impl) return false;
-    const name = String(impl).toLowerCase();
-    return SOFTWARE_ENCODERS.some((needle) => name.includes(needle));
-  }
-
-  // Deriva o resumo de saude de encode das linhas que updateStats ja
-  // montou. Soma ms/frame (nao media) porque todo sender local disputa o
-  // MESMO encoder -- mesmo racional do resumo do painel. rows so tem quem
-  // esta de fato codificando (updateStats descarta sender sem frames nem
-  // bytes), entao lista vazia === "nao estamos codificando" === null.
-  function summarizeOwnEncodeHealth(rows) {
-    if (!rows.length) return null;
-    const comMs = rows.filter((r) => r.msPerFrame != null);
-    return {
-      softwareEncoder: rows.some((r) => isSoftwareEncoder(r.encoder)),
-      msPerFrame: comMs.length ? comMs.reduce((sum, r) => sum + r.msPerFrame, 0) : null,
-    };
-  }
+  // isSoftwareEncoder e summarizeScreenEncodeHealth vivem em encodehealth.js
+  // (com testes). O resumo e SO da tela: a camera e sempre VP8/libvpx e
+  // contaminava a escada global e a eleicao de relay -- ver o comentario la.
 
   // 'view-state' de cliente antigo nao traz encodeHealth: ausencia (ou lixo)
   // vira null -- o caso NEUTRO de tree.js -- nunca zero nem "saudavel".
@@ -2797,7 +2776,7 @@
 
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
     // acima porque some todos os senders num numero so.
-    myEncodeHealth = summarizeOwnEncodeHealth(rows);
+    myEncodeHealth = summarizeScreenEncodeHealth(rows);
 
     // Menor availableBps entre os senders: todos dividem o mesmo uplink,
     // entao a estimativa mais apertada e a que descreve o que sobra.
@@ -3063,13 +3042,17 @@
       ${rxHtml}`);
   }
 
-  // O aviso so aparece com mais de um sender ativo: com um sender so, encoder
-  // de software e desconfortavel mas nao e o problema que a spec persegue --
-  // e a queda silenciosa por estouro do limite de sessoes do NVENC.
+  // O aviso so aparece com mais de um sender de TELA ativo: com um sender so,
+  // encoder de software e desconfortavel mas nao e o problema que a spec
+  // persegue -- e a queda silenciosa por estouro do limite de sessoes do
+  // NVENC. Linhas de camera ficam de fora: a camera e sempre VP8/libvpx,
+  // entao conta-la faria o aviso aparecer pra qualquer um com a webcam
+  // ligada e um espectador so.
   function updateEncoderWarning(rows) {
-    const software = rows.filter((r) => isSoftwareEncoder(r.encoder));
+    const screen = rows.filter((r) => parseKind(r.kind).baseKind === 'screen');
+    const software = screen.filter((r) => isSoftwareEncoder(r.encoder));
     const next =
-      software.length && rows.length > 1
+      software.length && screen.length > 1
         ? 'Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de espectadores.'
         : '';
     if (next === encoderWarning) return;
