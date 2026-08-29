@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   // `currentSession` is the single source of truth for "the session that is
@@ -282,6 +282,7 @@
       // avisar que "baixei a qualidade" dela seria mentira.
       showToast('Sem ninguém pra retransmitir: baixei a qualidade pra sala aguentar.');
     }
+    renderRoomStatus();
   }
 
   // Sessao "efetiva" pra UI (painel de membros, mensagem de grade vazia): a
@@ -763,6 +764,29 @@
   function renderMembersPanel() {
     const session = displaySession();
     ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo());
+    renderRoomStatus();
+  }
+
+  /** Traduz o estado espalhado do app pro { level, label } do cabecalho.
+   * Ponto unico: qualquer coisa que mude transmissao, sala ou qualidade
+   * termina chamando isto. */
+  function renderRoomStatus() {
+    const session = displaySession();
+    const live = Boolean(localStream)
+      || Array.from(session?.mesh.peers.values() ?? []).some((p) => p.live);
+    const effective = qualityFor('screen');
+    ui.stageHeader.setStatus(status.roomStatus({
+      inRoom: Boolean(session),
+      // orphanSession so existe quando a sinalizacao caiu com a midia
+      // viva -- e exatamente o estado "reconectando" (H1).
+      reconnecting: Boolean(orphanSession),
+      weAreLive: Boolean(localStream),
+      anyoneLive: live,
+      presetDegraded: effective.preset !== cfg.quality.preset,
+      meshFallback: Boolean(meshFallback.screen),
+      softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
+      effectivePreset: effective.preset,
+    }));
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -824,6 +848,7 @@
     if (orphanSession && !reconnectAttempt) {
       teardownSession(orphanSession);
       orphanSession = null;
+      renderRoomStatus();
     }
 
     // Sessao nova, arvore nova: nenhum epoch, papel ou atribuicao da sala
@@ -921,6 +946,7 @@
               teardownSession(orphanSession);
               orphanSession = null;
             }
+            renderRoomStatus();
             if (wasHostingRoom) window.golive.stopHosting?.().catch(() => {});
             teardownSession(session);
             stopStatsLoop();
@@ -974,6 +1000,7 @@
           if (session.opened) {
             orphanSession = session;
             stopStatsLoop();
+            renderRoomStatus();
           }
 
           if (canRetry) {
@@ -1173,6 +1200,7 @@
     if (!currentSession && orphanSession) {
       const orphan = orphanSession;
       orphanSession = null;
+      renderRoomStatus();
       sound.playLeaveSound();
       const wasHosting = !!hostInfo;
       hostInfo = null;
@@ -1196,6 +1224,7 @@
     if (orphanSession) {
       teardownSession(orphanSession);
       orphanSession = null;
+      renderRoomStatus();
     }
     sound.playLeaveSound();
     const session = currentSession;
@@ -2479,6 +2508,7 @@
 
     renderStats(rows);
     updateEncoderWarning(rows);
+    renderRoomStatus();
   }
 
   // O orcamento de encode a 60 fps e 16,6 ms POR QUADRO, somando todos os

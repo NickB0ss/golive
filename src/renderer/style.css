@@ -538,7 +538,38 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   padding: var(--s-4) var(--s-5);
   border-bottom: 1px solid var(--line-subtle);
 }
-.stage-status-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--live); flex: none; }
+/* O ponto e um indicador de ESTADO, nao decoracao: ele so recebe o acento
+   quando alguem esta de fato ao vivo. Ver a regra do tema no topo do
+   arquivo -- antes disto ele era pintado de --live fixo e ficava aceso por
+   voce estar numa sala. */
+.stage-status-dot {
+  width: 8px; height: 8px; border-radius: var(--r-full);
+  background: var(--text-3); flex: none;
+  transition: background var(--t-tint) var(--ease-move);
+}
+.stage-status-dot[data-level="live"] { background: var(--live); }
+.stage-status-dot[data-level="degraded"] { background: var(--warn); }
+.stage-status-dot[data-level="reconnecting"] {
+  background: var(--warn);
+  animation: status-dot-pulse 1.4s var(--ease-move) infinite;
+}
+
+/* prefers-reduced-motion ja e tratado pelo bloco global do topo do arquivo
+   (animation-duration e iteration-count forcados), entao nao ha regra extra
+   aqui. */
+@keyframes status-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.stage-status-badge {
+  font-size: 12px;
+  color: var(--warn);
+  background: var(--warn-dim);
+  border-radius: var(--r-full);
+  padding: 2px var(--s-2);
+  white-space: nowrap;
+}
 .stage-room-name { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
 .stage-room-address {
   color: var(--text-2);

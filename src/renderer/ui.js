@@ -790,6 +790,16 @@
   const stageHeaderEl = $('stage-header');
   const stageRoomNameEl = $('stage-room-name');
   const stageRoomAddressEl = $('stage-room-address');
+  const stageStatusDotEl = $('stage-status-dot');
+  const stageStatusBadgeEl = $('stage-status-badge');
+
+  // Recebe o { level, label } ja derivado por status.js -- esta funcao nao
+  // decide nada, so pinta. data-level e o que o CSS le.
+  function setStageStatus({ level, label }) {
+    stageStatusDotEl.dataset.level = level || 'offline';
+    stageStatusBadgeEl.textContent = label || '';
+    stageStatusBadgeEl.classList.toggle('hidden', !label);
+  }
 
   function setStageHeader({ name, address }) {
     stageRoomNameEl.textContent = name || '';
@@ -1243,7 +1253,7 @@
     grid: { showTile, removeTile, setPainting, setWatchers },
     members: { render: renderMembers },
     rooms: { render: renderRooms },
-    stageHeader: { set: setStageHeader, clear: clearStageHeader },
+    stageHeader: { set: setStageHeader, clear: clearStageHeader, setStatus: setStageStatus },
     settings: { open: openSettings, close: closeSettings, setStatsHtml },
     picker: { open: openPicker },
   };
