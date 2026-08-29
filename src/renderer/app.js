@@ -36,6 +36,7 @@
   const KINDS = ['screen', 'camera'];
   const { relayKindFor, parseKind } = meshModule;
   const { isSoftwareEncoder, summarizeScreenEncodeHealth } = encodehealth;
+  const { encodediag } = window.GoLive;
 
   // Topologia da arvore de retransmissao (F2), por kind -- so significativa
   // quando ESTA sessao e a origem daquele kind (localStream/cameraStream
@@ -188,6 +189,9 @@
   // encode em updateStats. Zerada ao parar de compartilhar: os degraus
   // descrevem uma transmissao especifica, nao a maquina.
   let autoQuality = autoquality.initialState();
+  // Ultima linha [diag] emitida por sender de tela ({ sig, atMs }), pra nao
+  // repetir a mesma no log a 1 linha/s. Zerada junto do loop de stats.
+  const diagPrev = new Map();
   // Salas descobertas agora mesmo via broadcast UDP na LAN (main process,
   // src/main/discovery.js) -- nao ha historico local salvo em disco.
   let discoveredRooms = [];
@@ -1996,6 +2000,13 @@
         track.contentHint = 'motion';
         track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
         track.addEventListener('ended', stopShare);
+        // Diagnostico: uma track de captura que entra em 'mute' para de
+        // entregar quadros (fonte sumiu, GPU perdeu o contexto, WGC
+        // engasgou) -- o encoder fica em 0 fps sem erro nenhum.
+        const s = track.getSettings();
+        console.log(`[diag] captura de tela: ${s.width || '?'}x${s.height || '?'}@${s.frameRate ? Math.round(s.frameRate) : '?'} surface=${s.displaySurface || '?'}`);
+        track.addEventListener('mute', () => console.warn('[diag] captura de tela: MUTE -- parou de entregar quadros'));
+        track.addEventListener('unmute', () => console.log('[diag] captura de tela: UNMUTE -- voltou a entregar quadros'));
       }
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) audioTrack.contentHint = 'music';
@@ -2572,6 +2583,32 @@
     };
   }
 
+  // Joga uma linha compacta por sender de TELA no log em arquivo (via
+  // console -> main.js console-message). So quando algo categorico muda
+  // (encoder, eficiencia, limitacao, degraus) ou a cada ~15s -- ver
+  // encodediag.js. E o artefato que a gente pede pra quem esta com
+  // "fps baixo / encoder em software" e nao da pra reproduzir aqui.
+  function logEncodeDiag(rows, nowMs) {
+    for (const r of rows) {
+      if (parseKind(r.kind).baseKind !== 'screen') continue;
+      const ctx = {
+        software: isSoftwareEncoder(r.encoder),
+        targetBitrate: qualityFor(r.kind).bitrate,
+        steps: {
+          global: autoQuality.steps,
+          peer: peerQuality.get(`${r.peerId}:screen`)?.steps || 0,
+        },
+      };
+      const key = `${r.peerId}:${r.kind}`;
+      const sig = encodediag.signature(r, ctx);
+      const prev = diagPrev.get(key);
+      if (!encodediag.shouldLog(prev, sig, nowMs)) continue;
+      ctx.changed = Boolean(prev) && prev.sig !== sig;
+      diagPrev.set(key, { sig, atMs: nowMs });
+      (ctx.software ? console.warn : console.log)(encodediag.line(r, ctx));
+    }
+  }
+
   // Com a janela oculta o painel de estatisticas nao esta na tela de
   // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
   // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
@@ -2581,6 +2618,7 @@
   function startStatsLoop() {
     stopStatsLoop();
     statsPrev.clear();
+    diagPrev.clear();
     rxPrevAtMs = 0;
     scheduleStatsLoop();
   }
@@ -2935,6 +2973,7 @@
     }
 
     rxPrevAtMs = now;
+    logEncodeDiag(rows, now);
     renderStats(rows, rxRows);
     // Cadencia que fecha a escada por-peer: sem isto o 'view-state' so sai
     // em mudanca de visibilidade e a receiveHealth computada a cada segundo
