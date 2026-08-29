@@ -882,8 +882,10 @@
     // degradado (steps > 0). Sem isso a degradacao por-peer nao tem sinal
     // nenhum no lado de quem transmite.
     const tags = new Map();
-    // Vale tambem pro relay puro (localStream null): ele degrada os filhos
-    // e a tag e o unico sinal disso no painel dele.
+    // Vale tambem pro relay puro (sem tela nossa): ele degrada os filhos e a
+    // tag e o unico sinal disso no painel dele. isRelaying() cobre TODOS os
+    // kinds, entao pode abrir o bloco pra quem so repassa camera -- nesse
+    // caso os dois lacos abaixo simplesmente nao acham nada de tela.
     if (session && (localStream || isRelaying())) {
       // Espectadores diretos: so quem tem out-conn de tela nossa (quem
       // servimos via relay nao tem escada nossa -- a tag seria mentira).
@@ -2305,12 +2307,16 @@
     // origem como pai -- profundidade maxima 2).
     const state = myRole[kind].get(sourcePeerId);
     if (!state || state.role !== 'relay') return;
-    // TODO: quando feat/orcamento-banda-relay entrar, o preset por filho
-    // passa a ser o MENOR entre qualityForPeer(childId, kind) e
-    // config.qualityForRelay(...) -- o orcamento de banda do relay.
+    // Kind COMPOSTO no qualityForPeer, nao o cru: e o sourceId dele que faz
+    // qualityForPeer aplicar o teto de uplink do relay (config.qualityForRelay).
+    // Com o kind cru, parseKind devolve sourceId null, o teto nao entra, e o
+    // encoder do filho novo ja nasce no preset cheio da origem -- exatamente
+    // a rajada de sobre-assinatura que o orcamento existe pra evitar. A chave
+    // da escada por-peer nao muda: ela usa baseKind.
+    const childKind = relayKindFor(kind, sourcePeerId);
     for (const childId of state.filhosIds) {
       if (state.relayed.has(childId)) continue;
-      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, kind));
+      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, childKind));
       if (ok) state.relayed.add(childId);
     }
   }
@@ -2610,6 +2616,9 @@
     statsTimer = null;
     statsPrev.clear();
     myEncodeHealth = null; // paramos de medir: nao ha saude a reportar
+    // Mesmo motivo: uma estimativa de uplink de uma sessao anterior limitaria
+    // (ou afrouxaria) o teto de repasse da proxima sem ter medido nada dela.
+    myAvailableBps = null;
     if (encoderWarning) {
       encoderWarning = '';
       renderHostWarning();
@@ -2792,6 +2801,16 @@
 
     // Menor availableBps entre os senders: todos dividem o mesmo uplink,
     // entao a estimativa mais apertada e a que descreve o que sobra.
+    //
+    // Este caminho e OPORTUNISTA de proposito: ninguem chama
+    // reapplyAudienceQuality quando este numero muda, entao a metade "banda
+    // medida" do config.qualityForRelay so entra em vigor no proximo evento
+    // que ja provoca um reapply (escada mexeu, arvore mudou, novo filho).
+    // Quem de fato garante o orcamento e a regra DETERMINISTICA do
+    // qualityForRelay (bitrate do preset / nº de filhos), que nao depende de
+    // medida nenhuma; myAvailableBps so aperta mais o teto quando ha reapply.
+    // Reagir a cada variacao exigiria histerese propria (senao vira troca de
+    // preset a cada segundo) -- decisao de design, fora deste conserto.
     const bws = rows.filter((r) => r.availableBps != null).map((r) => r.availableBps);
     myAvailableBps = bws.length ? Math.min(...bws) : null;
 
@@ -2799,16 +2818,15 @@
       // Pausado nao codifica nada: myEncodeHealth e null e cada tick contaria
       // como folga observada, "recuperando" um degrau de graca. Pular o tick
       // enquanto pausado preserva o estado da escada.
+      //
       // M3: a escada GLOBAL reage so a NOSSA saude de encode. Antes ela
       // fundia a saude dos relays -- mas isso derrubava os espectadores
-      // DIRETOS da origem quando era o relay que sofria. Agora a saude
-      // ruim de um relay chega como receiveHealth no view-state DELE e
-      // degrada so a conexao origem->relay, pela escada por-peer abaixo.
-      // Um relay saturando o encoder mas decodificando em hardware nao move
-      // a escada por-peer hoje -- peerquality.isBad le so
-      // senderBandwidthLimited e receiveHealth, nao encodeHealth; esse lever
-      // fica coberto so pela eleicao de relay (tree.js). Fechar isso fica
-      // pra depois.
+      // DIRETOS da origem quando era o relay que sofria. A saude ruim de um
+      // relay chega pela escada POR-PEER abaixo e degrada so a conexao
+      // origem->relay: como receiveHealth do view-state dele e, desde a
+      // Task 9, tambem como peerEncodeSaturated (encodeHealth reportado no
+      // view-state), que cobre o relay que afoga o encoder mas decodifica em
+      // hardware -- caso que antes so a eleicao de relay (tree.js) via.
       const before = autoQuality.steps;
       autoQuality = autoquality.next(autoQuality, {
         atMs: now,
@@ -2821,8 +2839,10 @@
     }
 
     // Escada POR CONEXAO -- vale pra quem origina E pra relay puro. Um relay
-    // sem tela propria (localStream null) ainda paga encode por filho, entao
-    // ainda precisa da escada por filho movida pela receiveHealth deles.
+    // sem tela propria ainda paga encode por filho, entao ainda precisa da
+    // escada por filho movida pela receiveHealth deles. isRelaying() cobre
+    // TODOS os kinds: quem so repassa camera tambem entra e nao acha alvo de
+    // tela nenhum -- o bloco inteiro roda em vazio, sem custo.
     if (localStream || isRelaying()) {
       // Sinais: banda (das nossas proprias stats de envio) e a receiveHealth
       // que o peer reportou.
@@ -2839,19 +2859,34 @@
       if (localStream) for (const [peerId, peer] of activeMesh.peers) {
         if (peer.outConns?.screen) targets.add(`${peerId}:screen`);
       }
+      // Filhos que servimos como RELAY. A chave do alvo e igual a do direto
+      // ('peerId:screen'), entao guardamos o conjunto pra distinguir os dois
+      // adiante -- pausar a NOSSA tela nao para o repasse.
+      const relayChildIds = new Set();
       for (const [sourceId, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
-        for (const childId of state.filhosIds) targets.add(`${childId}:screen`);
+        for (const childId of state.filhosIds) {
+          targets.add(`${childId}:screen`);
+          relayChildIds.add(String(childId));
+        }
       }
 
       for (const key of targets) {
         const [peerId] = key.split(':');
         const peer = activeMesh.peers.get(peerId);
-        // Pausado ou sem nenhuma linha de sender pra este peer: nao ha
-        // encode acontecendo, entao nao ha "folga observada" -- pular o
-        // tick preserva o estado (nem sobe nem desce).
-        const hasSenderRow = rows.some((r) => r.peerId === peerId);
-        if (sharePaused || !hasSenderRow) continue;
+        const isRelayChild = relayChildIds.has(peerId);
+        // Sem nenhuma linha de sender de TELA pra este peer nao ha encode
+        // acontecendo, entao nao ha "folga observada" -- pular o tick
+        // preserva o estado (nem sobe nem desce). So linhas de baseKind
+        // 'screen' (direta ou 'screen@origem') contam: uma linha de camera
+        // nao diz nada sobre a tela que esta escada regula.
+        //
+        // sharePaused so silencia o alvo DIRETO: pausar a propria tela nao
+        // interrompe o repasse (ver a carve-out no 'view-state'), entao o
+        // filho de relay segue recebendo encode nosso e tem de continuar
+        // adaptando.
+        const hasSenderRow = rows.some((r) => r.peerId === peerId && parseKind(r.kind).baseKind === 'screen');
+        if ((sharePaused && !isRelayChild) || !hasSenderRow) continue;
         const st = peerQuality.get(key) || peerquality.initialState();
         const nextSt = peerquality.next(st, {
           atMs: now,
@@ -2867,9 +2902,18 @@
           // tem baseKind 'screen'), entao le o sub-slot 'screen'.
           receiveHealth: freshReceiveHealth(peer, 'screen'),
           // Encoder do relay afogado: a saude de encode que ELE reportou no
-          // 'view-state' (peer.encodeHealth, por-maquina) na mesma escala do
-          // autoquality. null (nao reportou) nao e ruim.
-          peerEncodeSaturated: autoquality.isBad(peer?.encodeHealth, autoquality.LIMITS.BUDGET_MS_60),
+          // 'view-state', na mesma escala do autoquality. null (nao
+          // reportou) nao e ruim.
+          //
+          // Vale SO pra quem e relay na NOSSA arvore. peer.encodeHealth e
+          // por-MAQUINA, nao por-conexao: um espectador comum com a webcam
+          // ligada ja reporta softwareEncoder (camera VP8 -> libvpx, que o
+          // resumo classifica como software), entao autoquality.isBad daria
+          // true pra sempre e a escada de tela dele desceria ate o piso sem
+          // nunca voltar. Encode saturado so e problema NOSSO quando aquele
+          // peer re-codifica o que mandamos pra ele.
+          peerEncodeSaturated: originTree.screen.assignments.get(peerId)?.role === 'relay'
+            && autoquality.isBad(peer?.encodeHealth, autoquality.LIMITS.BUDGET_MS_60),
         });
         if (nextSt.steps !== st.steps) {
           anyPeerChanged = true;
@@ -2893,7 +2937,14 @@
       const dt = rxPrevAtMs ? now - rxPrevAtMs : 0;
       const health = rxstats.receiveHealth(sample, rxPrevSample.get(rxKey), dt);
       rxPrevSample.set(rxKey, sample);
+      // Sem medida nesta janela (framesDelta <= 0: o stream congelou de vez)
+      // o valor VELHO tem de sair. Guardado, broadcastViewState o reenviaria
+      // a cada tick com carimbo novo -- e o freshReceiveHealth do outro lado,
+      // que so expira quando o view-state PARA de chegar, nunca veria nada
+      // vencer: a origem "recuperaria" um peer travado achando que ele vai
+      // bem. Ausencia e a informacao correta aqui.
       if (health) rxHealthByPeer.set(rxKey, health);
+      else rxHealthByPeer.delete(rxKey);
       rxRows.push({
         peerId,
         kind,
