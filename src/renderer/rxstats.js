@@ -61,7 +61,42 @@
     return (sample.jitterBufferDelay / sample.jitterBufferEmittedCount) * 1000;
   }
 
-  const api = { readReceiverReport, lossPercent, jitterBufferMs };
+  // Nomes de decoder de software que o Chromium reporta em
+  // decoderImplementation. Hardware costuma ser "DXVA...", "D3D11...",
+  // "VideoToolbox", "MediaCodec..." -- a lista de software e mais curta e
+  // mais estavel, entao o teste e por inclusao dela.
+  const SOFTWARE_DECODERS = ['ffmpeg', 'libvpx', 'dav1d', 'openh264', 'vpxvideodecoder', 'dav1dvideodecoder'];
+
+  function isSoftwareDecoder(impl) {
+    const s = String(impl || '').toLowerCase();
+    return SOFTWARE_DECODERS.some((n) => s.includes(n));
+  }
+
+  /** Deriva a SAUDE DE RECEPCAO da janela entre duas amostras da mesma
+   * conexao de entrada. `cur`/`prev` sao retornos de readReceiverReport;
+   * `dtMs` o intervalo entre eles.
+   *
+   * null quando prev e ausente ou nenhum quadro foi decodificado na janela:
+   * ausencia nao e diagnostico -- mesmo criterio do autoquality e do
+   * tree.js. Os contadores da spec do WebRTC podem andar pra tras (reordem,
+   * duplicata), entao todo delta e preso em >= 0. */
+  function receiveHealth(cur, prev, dtMs) {
+    if (!cur || !prev || !(Number(dtMs) > 0)) return null;
+    const framesDelta = (cur.framesDecoded || 0) - (prev.framesDecoded || 0);
+    if (framesDelta <= 0) return null;
+
+    const lostDelta = Math.max(0, (cur.packetsLost || 0) - (prev.packetsLost || 0));
+    const recvDelta = Math.max(0, (cur.packetsReceived || 0) - (prev.packetsReceived || 0));
+    const offered = lostDelta + recvDelta;
+    const lossPct = offered ? (lostDelta / offered) * 100 : 0;
+
+    const freezeDelta = Math.max(0, (cur.freezeCount || 0) - (prev.freezeCount || 0));
+    const freezeRate = (freezeDelta / dtMs) * 60000;
+
+    return { lossPct, freezeRate, softwareDecoder: isSoftwareDecoder(cur.decoder) };
+  }
+
+  const api = { readReceiverReport, lossPercent, jitterBufferMs, receiveHealth };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.rxstats = api;
