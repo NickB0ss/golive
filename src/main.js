@@ -38,6 +38,14 @@ const ENABLED_FEATURES = [
 app.commandLine.appendSwitch('enable-features', ENABLED_FEATURES.join(','));
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 app.commandLine.appendSwitch('force_high_performance_gpu');
+// Log de 2026-08-29: duas maquinas NVIDIA (RTX 3060, GTX 1650) com driver
+// recente, e getGPUFeatureStatus devolve video_encode/video_decode/
+// gpu_compositing todos "disabled_software" -- a GPU nao esta sendo usada
+// pra nada, entao a tela codifica sempre em OpenH264. Sem essa flag o
+// Chromium respeita a propria blocklist de driver; com ela, tenta o
+// caminho de hardware assim mesmo. Se a maquina realmente nao aguentar, o
+// pior caso e o que ja acontece hoje (cai pro software).
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
 // Sem isso o Chromium derruba o framerate quando a janela nao esta em foco.
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -100,6 +108,18 @@ if (audioAddonLoadError) {
 }
 process.on('uncaughtException', (err) => logger.error('uncaughtException no main:', err?.stack || err));
 process.on('unhandledRejection', (err) => logger.error('unhandledRejection no main:', err?.stack || err));
+
+// Processo de GPU caindo repetidamente e o Chromium desligando a
+// aceleracao em silencio depois -- exatamente o quadro do log de
+// 2026-08-29 (tudo "disabled_software" numa RTX 3060). `render-process-gone`
+// nao pega isto: e outro processo filho.
+app.on('child-process-gone', (_event, details) => {
+  const grave = details.type === 'GPU' || details.reason !== 'clean-exit';
+  logger[grave ? 'error' : 'log'](
+    `processo filho encerrou: type=${details.type} name=${details.name || details.serviceName || '-'}`
+    + ` reason=${details.reason} exitCode=${details.exitCode}`
+  );
+});
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;

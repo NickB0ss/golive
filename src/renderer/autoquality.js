@@ -25,15 +25,25 @@
   const LIMITS = { MAX_AUTO_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, BUDGET_MS_60 };
 
   /** Saude ausente NAO e ruim: quem nao reportou nada nao esta acusado.
-   * Mesmo criterio neutro que tree.js usa pra eleger relay. */
+   * Mesmo criterio neutro que tree.js usa pra eleger relay.
+   *
+   * O sinal e o TEMPO de encode por quadro, nao o encoder em si. Encoder em
+   * software so e problema quando nao acompanha -- e ai o msPerFrame estoura
+   * o orcamento de qualquer jeito. Uma maquina sem NVENC que codifica em
+   * OpenH264 a ~2 ms/quadro esta bem; degradar ela era punir a ausencia de
+   * hardware, e a escada nunca voltava porque softwareEncoder fica true pra
+   * sempre. O caso que a regra antiga mirava (NVENC afogado caindo pro
+   * software sob carga) continua coberto: 1080p60 em software passa MUITO
+   * dos 16,6 ms. Ver o log de 2026-08-29 (RTX 3060 sem aceleracao de GPU,
+   * OpenH264 a 1,7 ms, escada presa em g2). */
   function isBad(health, budgetMs) {
     if (!health) return false;
-    if (health.softwareEncoder === true) return true;
     return typeof health.msPerFrame === 'number' && health.msPerFrame > budgetMs;
   }
 
-  /** Pior saude de uma lista (a nossa + a dos relays). Encoder em software e
-   * pior que qualquer msPerFrame: e um degrau de categoria, nao de grau. */
+  /** Pior saude de uma lista (a nossa + a dos relays). Carrega softwareEncoder
+   * adiante pra quem quiser exibir ("encoder em software" no cabecalho), mas
+   * o gatilho da escada e so o msPerFrame -- ver isBad. */
   function worstHealth(list) {
     let worst = null;
     for (const h of list || []) {

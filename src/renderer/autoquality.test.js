@@ -5,7 +5,10 @@ const { initialState, next, worstHealth, LIMITS } = require('./autoquality');
 
 const OK = { softwareEncoder: false, msPerFrame: 4 };
 const RUIM = { softwareEncoder: false, msPerFrame: 40 };
+// Encoder em software mas RAPIDO (maquina sem NVENC, OpenH264 a 2 ms/quadro).
 const SOFTWARE = { softwareEncoder: true, msPerFrame: 2 };
+// Encoder em software e LENTO (NVENC afogado caiu pro software sob carga).
+const SOFTWARE_LENTO = { softwareEncoder: true, msPerFrame: 40 };
 
 // Aplica varias amostras em sequencia, 1s entre elas (a cadencia real do
 // updateStats com a janela visivel).
@@ -52,8 +55,13 @@ test('poll lento (5s escondido) ainda desce em ~BAD_MS_TO_DEGRADE, nao em 3 amos
   assert.equal(s.steps, 1);
 });
 
-test('encoder em software e ruim mesmo com msPerFrame baixo', () => {
+test('encoder em software RAPIDO nao degrada -- ausencia de NVENC nao e sofrimento', () => {
   const s = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(SOFTWARE));
+  assert.equal(s.steps, 0);
+});
+
+test('encoder em software LENTO degrada -- NVENC afogado caindo pro software sob carga', () => {
+  const s = run(initialState(), Array(AMOSTRAS_ATE_DEGRADAR).fill(SOFTWARE_LENTO));
   assert.equal(s.steps, 1);
 });
 
