@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const { isSoftwareEncoder, summarizeScreenEncodeHealth } = require('./encodehealth');
 
 // Uma linha de sender como updateStats monta: peer x kind + amostra + taxas.
-function row(kind, encoder, msPerFrame) {
-  return { peerId: '2', kind, name: '#2', encoder, msPerFrame };
+function row(kind, encoder, msPerFrame, limitation) {
+  return { peerId: '2', kind, name: '#2', encoder, msPerFrame, limitation: limitation || '' };
 }
 
 test('isSoftwareEncoder: nomes de CPU do Chromium', () => {
@@ -46,13 +46,22 @@ test('conexao de repasse (screen@origem) conta como tela', () => {
   assert.equal(health.msPerFrame, 20);
 });
 
-test('msPerFrame e somado entre os senders de tela (mesmo encoder)', () => {
+test('msPerFrame e o MAX entre os senders de tela, nao a soma', () => {
   const health = summarizeScreenEncodeHealth([
-    row('screen', 'NvCodecH264Encoder', 6),
-    row('screen@9', 'NvCodecH264Encoder', 5),
+    row('screen', 'openh264', 9),
+    row('screen', 'openh264', 8),
+    row('screen@9', 'openh264', 10),
     row('camera', 'libvpx', 99),
   ]);
-  assert.equal(health.msPerFrame, 11);
+  assert.equal(health.msPerFrame, 10);
+});
+
+test('cpuLimited quando algum sender de tela tem qualityLimitationReason=cpu', () => {
+  assert.equal(summarizeScreenEncodeHealth([row('screen', 'openh264', 9, 'bandwidth')]).cpuLimited, false);
+  assert.equal(summarizeScreenEncodeHealth([
+    row('screen', 'openh264', 9, 'bandwidth'),
+    row('screen@9', 'openh264', 30, 'cpu'),
+  ]).cpuLimited, true);
 });
 
 test('linha de tela sem msPerFrame -> msPerFrame null, mas ainda classifica encoder', () => {

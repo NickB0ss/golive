@@ -26,8 +26,15 @@
   const LIMITS = { MAX_PEER_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, FREEZE_PER_MIN, LOSS_PCT_MAX };
 
   /** Ruim = qualquer um: link limitado por banda, encoder do peer saturado
-   * (relay afogado), decoder em software do espectador, ou travar muito sem
-   * que a rede explique. */
+   * (relay afogado), ou travar muito sem que a rede explique.
+   *
+   * Decoder em software NAO conta sozinho. Espelha a decisao do lado do
+   * encoder (ver autoquality.isBad): decodificar na CPU so e problema quando
+   * nao acompanha -- e ai o stream TRAVA, que o teste de freeze abaixo ja
+   * pega. Log de 2026-08-29: a GPU do espectador (GTX 1650) tambem estava
+   * desativada no Chromium, entao softwareDecoder ficava true pra sempre e
+   * prendia a escada por-peer no piso mesmo com o decode dando conta
+   * (fps de saida colado no alvo, sem travar). */
   function isBad(signals, opts) {
     if (!signals) return false;
     if (signals.senderBandwidthLimited === true) return true;
@@ -37,7 +44,6 @@
     if (signals.peerEncodeSaturated === true) return true;
     const rh = signals.receiveHealth;
     if (!rh || typeof rh !== 'object') return false;
-    if (rh.softwareDecoder === true) return true;
     const o = opts || {};
     const freezeMax = o.freezePerMin ?? FREEZE_PER_MIN;
     const lossMax = o.lossPctMax ?? LOSS_PCT_MAX;

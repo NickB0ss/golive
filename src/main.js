@@ -211,6 +211,54 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
+/** Abre chrome://gpu numa janela escondida, extrai o "Problems Detected" e
+ * o resumo de status, joga no log e fecha. Envolto em try/catch por todo
+ * lado: e diagnostico, nao pode atrapalhar nada. */
+function logGpuProblems() {
+  let w;
+  try {
+    w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+  } catch (err) {
+    logger.error('diag GPU: nao abriu janela:', err?.message || err);
+    return;
+  }
+  const fechar = () => { try { if (w && !w.isDestroyed()) w.destroy(); } catch { /* ja fechou */ } };
+  const timer = setTimeout(fechar, 15000); // trava de seguranca
+  w.webContents.once('did-finish-load', async () => {
+    try {
+      const texto = await w.webContents.executeJavaScript(
+        `(() => {
+          const t = (document.body && document.body.innerText) || '';
+          const i = t.indexOf('Problems Detected');
+          const j = t.indexOf('Graphics Feature Status');
+          const ini = j >= 0 && (i < 0 || j < i) ? j : (i >= 0 ? i : 0);
+          return t.slice(ini, ini + 2500);
+        })()`
+      );
+      String(texto)
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .forEach((l) => logger.log(`[gpu] ${l}`));
+    } catch (err) {
+      logger.error('diag GPU: leitura de chrome://gpu falhou:', err?.message || err);
+    } finally {
+      clearTimeout(timer);
+      fechar();
+    }
+  });
+  w.webContents.once('did-fail-load', (_e, code, desc) => {
+    logger.error(`diag GPU: chrome://gpu nao carregou (${code} ${desc})`);
+    clearTimeout(timer);
+    fechar();
+  });
+  w.loadURL('chrome://gpu').catch((err) => {
+    logger.error('diag GPU: loadURL falhou:', err?.message || err);
+    clearTimeout(timer);
+    fechar();
+  });
+}
+
 app.whenReady().then(() => {
   // Diagnostico de "encoder em software / fps baixo": se video_encode nao
   // vier 'enabled', o Chromium nao tem encoder de hardware nesta maquina
@@ -232,6 +280,13 @@ app.whenReady().then(() => {
     },
     (err) => logger.error('getGPUInfo falhou:', err?.message || err)
   );
+  // getGPUFeatureStatus diz O QUE esta desligado, nao POR QUE. O
+  // "Problems Detected" do chrome://gpu tem o motivo (blocklist, flag,
+  // crash do processo de GPU). Log de 2026-08-29: video_encode
+  // "disabled_software" numa RTX 3060 com --ignore-gpu-blocklist e sem
+  // crash de processo -- o motivo esta aqui. Best-effort, atrasado pro
+  // processo de GPU subir, e nunca derruba o start.
+  setTimeout(logGpuProblems, 5000);
 
   // Intercepta getDisplayMedia. O Electron nao tem seletor nativo, entao
   // devolvemos a fonte que o usuario ja escolheu na nossa UI.
