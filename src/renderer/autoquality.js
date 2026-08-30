@@ -38,21 +38,28 @@
    * OpenH264 a 1,7 ms, escada presa em g2). */
   function isBad(health, budgetMs) {
     if (!health) return false;
+    // Sinal autoritativo: o Chromium marcou o encode como limitado por CPU.
+    if (health.cpuLimited === true) return true;
     return typeof health.msPerFrame === 'number' && health.msPerFrame > budgetMs;
   }
 
   /** Pior saude de uma lista (a nossa + a dos relays). Carrega softwareEncoder
    * adiante pra quem quiser exibir ("encoder em software" no cabecalho), mas
-   * o gatilho da escada e so o msPerFrame -- ver isBad. */
+   * o gatilho da escada e cpuLimited ou o msPerFrame -- ver isBad. */
   function worstHealth(list) {
     let worst = null;
     for (const h of list || []) {
       if (!h || typeof h !== 'object') continue;
       if (!worst) {
-        worst = { softwareEncoder: h.softwareEncoder === true, msPerFrame: h.msPerFrame ?? null };
+        worst = {
+          softwareEncoder: h.softwareEncoder === true,
+          cpuLimited: h.cpuLimited === true,
+          msPerFrame: h.msPerFrame ?? null,
+        };
         continue;
       }
       worst.softwareEncoder = worst.softwareEncoder || h.softwareEncoder === true;
+      worst.cpuLimited = worst.cpuLimited || h.cpuLimited === true;
       if (typeof h.msPerFrame === 'number' && (worst.msPerFrame == null || h.msPerFrame > worst.msPerFrame)) {
         worst.msPerFrame = h.msPerFrame;
       }

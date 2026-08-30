@@ -5,6 +5,8 @@ const { initialState, next, isBad, LIMITS } = require('./peerquality');
 
 const OK = { atMs: 0, senderBandwidthLimited: false, receiveHealth: { lossPct: 0, freezeRate: 0, softwareDecoder: false } };
 const BW = { ...OK, senderBandwidthLimited: true };
+// Decoder em software mas SEM travar -- decode dando conta (GPU do
+// espectador desativada no Chromium, mas a CPU acompanha).
 const SW = { ...OK, receiveHealth: { lossPct: 0, freezeRate: 0, softwareDecoder: true } };
 const FREEZE = { ...OK, receiveHealth: { lossPct: 0.5, freezeRate: 30, softwareDecoder: false } };
 const FREEZE_BY_LOSS = { ...OK, receiveHealth: { lossPct: 8, freezeRate: 30, softwareDecoder: false } };
@@ -24,8 +26,12 @@ test('isBad: link limitado por banda e ruim', () => {
   assert.equal(isBad(BW, {}), true);
 });
 
-test('isBad: decoder em software do espectador e ruim', () => {
-  assert.equal(isBad(SW, {}), true);
+test('isBad: decoder em software que NAO trava nao e ruim sozinho', () => {
+  assert.equal(isBad(SW, {}), false);
+});
+
+test('isBad: decoder em software QUE TRAVA e ruim -- pelo teste de freeze', () => {
+  assert.equal(isBad({ ...OK, receiveHealth: { lossPct: 0.5, freezeRate: 30, softwareDecoder: true } }, {}), true);
 });
 
 test('isBad: travar MUITO com perda baixa e ruim (decode nao acompanha)', () => {
@@ -82,7 +88,7 @@ test('poll lento (5s) ainda desce em ~BAD_MS_TO_DEGRADE, nao em 3 amostras', () 
 });
 
 test('a escada por peer tem teto', () => {
-  const muitas = Array(AMOSTRAS_ATE_DEGRADAR * (LIMITS.MAX_PEER_STEPS + 3)).fill(SW);
+  const muitas = Array(AMOSTRAS_ATE_DEGRADAR * (LIMITS.MAX_PEER_STEPS + 3)).fill(FREEZE);
   assert.equal(run(initialState(), muitas).steps, LIMITS.MAX_PEER_STEPS);
 });
 

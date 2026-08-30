@@ -28,17 +28,23 @@
   // encoder de software). Um relay re-codifica a TELA que repassamos; a
   // camera dele nao diz nada sobre isso.
   //
-  // Soma ms/frame (nao media) porque todo sender de tela local disputa o
-  // MESMO encoder. Lista de tela vazia === "nao estamos codificando tela"
-  // === null (o caso NEUTRO de tree.js/autoquality, nunca zero nem
-  // "saudavel").
+  // `cpuLimited` = o proprio Chromium marcou qualityLimitationReason='cpu'
+  // em algum sender: e o sinal AUTORITATIVO de "o encode nao acompanha".
+  // `msPerFrame` e o MAX entre os senders, NAO a soma: com N espectadores
+  // em encoder de software cada encode roda no proprio thread (paralelo),
+  // entao somar dava ~Nx o custo real e derrubava a qualidade de uma
+  // maquina que estava dando conta -- ver o log de 2026-08-29 (4 senders a
+  // ~9 ms, fps de saida colado em 30, e a soma prendia a sala em 720p por
+  // 18 min). Lista de tela vazia === "nao estamos codificando tela" ===
+  // null (o caso NEUTRO de tree.js/autoquality).
   function summarizeScreenEncodeHealth(rows) {
     const screen = (rows || []).filter((r) => baseKindOf(r.kind) === 'screen');
     if (!screen.length) return null;
     const comMs = screen.filter((r) => r.msPerFrame != null);
     return {
       softwareEncoder: screen.some((r) => isSoftwareEncoder(r.encoder)),
-      msPerFrame: comMs.length ? comMs.reduce((sum, r) => sum + r.msPerFrame, 0) : null,
+      cpuLimited: screen.some((r) => r.limitation === 'cpu'),
+      msPerFrame: comMs.length ? Math.max(...comMs.map((r) => r.msPerFrame)) : null,
     };
   }
 
