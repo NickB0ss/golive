@@ -483,7 +483,6 @@ test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-co
   });
   mesh.addPeer('7', 'Bruno');
   mesh.peers.get('7'); // garante que o peer existe antes de abrir a conexao
-  const pc = mesh.peers.get('7').outConns.screen; // ainda nao existe -- ensureOutConn cria abaixo
 
   // ensureOutConn nao e exportado; usa offerTo indiretamente via relayTo
   // seria mais indireto -- em vez disso, cria a conexao via handleOffer

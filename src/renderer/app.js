@@ -2887,7 +2887,7 @@
       // ('peerId:screen'), entao guardamos o conjunto pra distinguir os dois
       // adiante -- pausar a NOSSA tela nao para o repasse.
       const relayChildIds = new Set();
-      for (const [sourceId, state] of myRole.screen) {
+      for (const [, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
         for (const childId of state.filhosIds) {
           targets.add(`${childId}:screen`);

@@ -51,7 +51,7 @@ test('regra na mesma porta mas com OUTRO programa nao conta como cobertura (#A4)
   // electron.exe de dentro de node_modules; o app EMPACOTADO tem um
   // execPath diferente e nao deve achar que ja esta liberado.
   const electronDevPath = 'C:\\golive\\node_modules\\electron\\dist\\electron.exe';
-  const { exec, calls } = fakeExec((cmd, callNum) => {
+  const { exec, calls } = fakeExec((cmd) => {
     if (isQuery(cmd)) return { stdout: JSON.stringify({ LocalPort: '9000', Program: electronDevPath }) };
     if (cmd.includes('Start-Process')) return { stdout: '' };
     throw new Error(`comando inesperado: ${cmd}`);

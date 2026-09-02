@@ -26,4 +26,9 @@ jobs:
       # (que ja tem try/catch, ver src/main.js).
       - run: npm ci --ignore-scripts
 
+      # Lint antes dos testes: quando o ESLint acusa (no-undef, variavel
+      # nao usada, promessa solta), o teste que quebrar depois costuma ser
+      # consequencia -- ler o erro do lint primeiro encurta a investigacao.
+      - run: npm run lint
+
       - run: npm test
