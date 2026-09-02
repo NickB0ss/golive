@@ -128,6 +128,11 @@ let embeddedServer = null;
  * anunciar e ligado depois (Configuracoes > Rede), sem precisar do renderer
  * reenviar o nome. */
 let hostedRoomName = 'anônimo';
+/** PIN da sala ativa (B3), ou null pra sala aberta. Guardado aqui pelo
+ * mesmo motivo do nome: o toggle de anunciar (Configuracoes > Rede) chama
+ * advertiseHostedRoom sem o renderer reenviar nada, e o beacon precisa
+ * saber se marca o cadeado. O PIN em si nunca vai pro beacon. */
+let hostedRoomPin = null;
 
 /** Descoberta de salas via broadcast UDP. Sempre escuta (independente de
  * estar anunciando ou nao); so publica beacons enquanto houver sala local
@@ -152,6 +157,7 @@ async function closeEmbeddedServer() {
   if (!embeddedServer) return;
   await embeddedServer.close();
   embeddedServer = null;
+  hostedRoomPin = null;
 }
 
 function createWindow() {
@@ -385,6 +391,7 @@ function advertiseHostedRoom() {
     port: embeddedServer.port,
     address,
     getPeerCount: () => embeddedServer.getPeerCount(),
+    protected: Boolean(hostedRoomPin),
   });
 }
 
@@ -426,10 +433,16 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
   return true;
 });
 
-ipcMain.handle('room:host', async (_event, { name, advertise } = {}) => {
+ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) => {
   try {
     if (embeddedServer) await closeEmbeddedServer();
-    embeddedServer = await findFreeServer((port) => createSignalingServer({ port }));
+    // PIN de 4 digitos gerado com a sala (B3). Nao e cripto -- so corta o
+    // entrar-por-acidente. `Math.random` basta: nao ha modelo de ameaca de
+    // forca bruta aqui (o servidor derruba o socket a cada tentativa, e a
+    // sala vive minutos). 1000-9999 pra sempre ter 4 casas.
+    const pin = protect ? String(1000 + Math.floor(Math.random() * 9000)) : null;
+    embeddedServer = await findFreeServer((port) => createSignalingServer({ port, pin }));
+    hostedRoomPin = pin;
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
     const picked = pickAddress();
@@ -447,6 +460,7 @@ ipcMain.handle('room:host', async (_event, { name, advertise } = {}) => {
       ok: true,
       port: embeddedServer.port,
       address,
+      pin,
       firewall,
       addressWarning: picked ? undefined : 'Radmin/Tailscale não detectado',
     };

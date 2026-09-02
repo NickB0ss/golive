@@ -71,7 +71,12 @@ function send(ws, payload) {
  * 60-120s tem o estado de NAT descartado e o cliente "cai da sala"
  * sozinho, com close code 1006. O ping periodico mantem o fluxo vivo e
  * ainda deixa o servidor derrubar quem parou de responder. */
-function createSignalingServer({ port, heartbeatMs = 25000 }) {
+function createSignalingServer({ port, heartbeatMs = 25000, pin = null }) {
+  // PIN opcional da sala (B3 da auditoria). Nao e cripto: so corta o
+  // entrar-por-acidente numa rede Radmin/Tailscale compartilhada, onde o
+  // beacon anuncia a sala pra todo mundo. `null`/'' => sala aberta, igual
+  // a sempre. Normalizado pra string pra comparar com o que vem do cliente.
+  const roomPin = pin != null && String(pin) !== '' ? String(pin) : null;
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });
 
@@ -162,6 +167,15 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
           switch (msg.type) {
             case 'join': {
               if (joined) return;
+              // Sala protegida: PIN ausente ou errado e recusa explicita
+              // (o cliente distingue "PIN errado" de "conexao caiu") seguida
+              // de close 1008. Descartar em silencio faria o cliente ficar
+              // preso em "Conectando...".
+              if (roomPin && String(msg.pin == null ? '' : msg.pin) !== roomPin) {
+                send(ws, { type: 'join-denied', reason: 'pin' });
+                ws.close(1008, 'pin');
+                return;
+              }
               const room = String(msg.room || 'geral').slice(0, 40);
               const name = String(msg.name || 'anonimo').slice(0, 40);
               const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;

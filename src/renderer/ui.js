@@ -757,7 +757,7 @@
       info.innerHTML = `
         <span class="dot ${isActive ? 'ok' : ''}"></span>
         <span class="room-item-text">
-          <span class="room-name">${escapeHtml(room.name || room.hostName || 'sala')}</span>
+          <span class="room-name">${room.protected ? '<span class="room-lock" title="Precisa de PIN">&#128274;</span> ' : ''}${escapeHtml(room.name || room.hostName || 'sala')}</span>
           <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>
         </span>`;
       li.appendChild(info);
@@ -803,14 +803,25 @@
     stageStatusBadgeEl.classList.toggle('hidden', !label);
   }
 
-  function setStageHeader({ name, address }) {
+  const stageRoomPinEl = $('stage-room-pin');
+
+  function setStageHeader({ name, address, pin }) {
     stageRoomNameEl.textContent = name || '';
     stageRoomAddressEl.textContent = address || '';
+    // So o host recebe `pin` (vem do room:host); espectador nunca ve o PIN
+    // dos outros aqui. `undefined` num re-set (reconexao) nao apaga o que ja
+    // estava -- so um valor explicito muda.
+    if (pin !== undefined) {
+      stageRoomPinEl.textContent = pin ? `PIN ${pin}` : '';
+      stageRoomPinEl.classList.toggle('hidden', !pin);
+    }
     stageHeaderEl.classList.remove('hidden');
   }
 
   function clearStageHeader() {
     stageHeaderEl.classList.add('hidden');
+    stageRoomPinEl.textContent = '';
+    stageRoomPinEl.classList.add('hidden');
   }
 
   // ---------- Modal de Configuracoes ----------

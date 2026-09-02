@@ -56,7 +56,7 @@ function listBroadcastTargets(interfaces = os.networkInterfaces()) {
 }
 
 /** Serializa o beacon que anuncia uma sala. */
-function formatBeacon({ name, port, address, peers }) {
+function formatBeacon({ name, port, address, peers, protected: isProtected }) {
   const payload = {
     type: BEACON_TYPE,
     name: typeof name === 'string' && name.trim() ? name.trim() : 'anônimo',
@@ -64,6 +64,10 @@ function formatBeacon({ name, port, address, peers }) {
     address,
   };
   if (typeof peers === 'number' && Number.isInteger(peers) && peers >= 0) payload.peers = peers;
+  // So o FATO de a sala pedir PIN viaja no beacon -- nunca o PIN. E o que
+  // deixa a lista da rede mostrar um cadeado e ja pedir o PIN antes de
+  // tentar entrar (B3). Omitido quando falso, igual a `peers`.
+  if (isProtected) payload.protected = true;
   return JSON.stringify(payload);
 }
 
@@ -88,6 +92,7 @@ function parseBeacon(raw) {
   if (typeof data.peers === 'number' && Number.isInteger(data.peers) && data.peers >= 0) {
     result.peers = data.peers;
   }
+  if (data.protected === true) result.protected = true;
   return result;
 }
 
@@ -111,9 +116,12 @@ function pruneExpiredRooms(roomsMap, now, ttl = ROOM_TTL_MS) {
 /** Formata o Map interno (chave = address) pra lista simples pro renderer. */
 function toRoomList(roomsMap) {
   return Array.from(roomsMap.values())
-    .map(({ name, address, port, peers }) =>
-      peers != null ? { name, address, port, peers } : { name, address, port }
-    )
+    .map(({ name, address, port, peers, protected: isProtected }) => {
+      const room = { name, address, port };
+      if (peers != null) room.peers = peers;
+      if (isProtected) room.protected = true;
+      return room;
+    })
     .sort((a, b) => a.address.localeCompare(b.address));
 }
 
@@ -175,7 +183,7 @@ function createDiscovery({
     });
   }
 
-  function startAdvertising({ name, port: roomPort, address, getPeerCount }) {
+  function startAdvertising({ name, port: roomPort, address, getPeerCount, protected: isProtected = false }) {
     stopAdvertising();
     advertising = true;
     const send = () => {
@@ -186,7 +194,7 @@ function createDiscovery({
       // Evita a sala ficar pendurada em "Ao vivo agora" depois que todo mundo
       // saiu. `undefined` (sem contagem) segue anunciando normalmente.
       if (peers === 0) return;
-      const payload = Buffer.from(formatBeacon({ name, port: roomPort, address, peers }));
+      const payload = Buffer.from(formatBeacon({ name, port: roomPort, address, peers, protected: isProtected }));
       for (const target of listBroadcastTargets()) {
         socket.send(payload, port, target, () => {});
       }

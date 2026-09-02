@@ -47,8 +47,13 @@
         Entrar por endereço
       </button>
     </div>
+    <label id="protect-room-row" class="protect-room-row">
+      <input id="chk-protect-room" type="checkbox" />
+      <span>Proteger a sala com um PIN</span>
+    </label>
     <div id="join-address-form" class="join-address-form hidden">
       <input id="in-server" type="text" placeholder="26.0.0.1 ou ws://26.0.0.1:9000" spellcheck="false" />
+      <input id="in-pin" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="PIN (se a sala pedir)" spellcheck="false" />
       <button id="btn-connect" class="primary small" type="button">Conectar</button>
       <p id="setup-error" class="error"></p>
     </div>
@@ -82,6 +87,7 @@
       <span id="stage-status-dot" class="stage-status-dot"></span>
       <span id="stage-room-name" class="stage-room-name"></span>
       <span id="stage-room-address" class="stage-room-address"></span>
+      <span id="stage-room-pin" class="stage-room-pin hidden"></span>
       <span id="stage-status-badge" class="stage-status-badge hidden"></span>
       <button id="btn-copy-address" class="ghost small">Copiar</button>
       <button id="btn-disconnect" class="danger small" type="button">

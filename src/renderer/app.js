@@ -207,6 +207,10 @@
     return Math.max(0, 2000 - (Date.now() - last));
   }
 
+  function clearCooldown(address) {
+    if (address) roomCooldowns.delete(address);
+  }
+
   function markCooldown(address) {
     if (!address) return;
     roomCooldowns.set(address, Date.now());
@@ -566,6 +570,17 @@
         if (cooldownRemaining(room.address) > 0) return;
         hostInfo = null;
         renderHostWarning();
+        // Sala com PIN (B3): em vez de conectar e tomar 'join-denied', abre
+        // o formulario de entrar-por-endereco ja preenchido, com o foco no
+        // campo de PIN. Quem criou a sala passa o PIN por fora (voz, chat).
+        if (room.protected) {
+          $('join-address-form').classList.remove('hidden');
+          $('in-server').value = room.address;
+          $('in-pin').value = '';
+          $('setup-error').textContent = 'Essa sala pede um PIN — peça pra quem criou.';
+          $('in-pin').focus();
+          return;
+        }
         joinRoom(room.address, cfg.name);
       },
     });
@@ -689,7 +704,7 @@
       btn.textContent = originalText;
     };
 
-    joinRoom(url, cfg.name, undefined, restoreBtn);
+    joinRoom(url, cfg.name, undefined, restoreBtn, 0, $('in-pin').value.trim() || null);
   });
 
   // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto
@@ -697,9 +712,10 @@
   // salva em "Recentes" (ver isOwn em onSelect, acima).
   async function hostRoomFlow() {
     $('setup-error').textContent = '';
+    const protect = $('chk-protect-room').checked;
     let result;
     try {
-      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise });
+      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise, protect });
     } catch {
       $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
       return;
@@ -711,9 +727,9 @@
           : `Não consegui subir a sala: ${result.error}`;
       return;
     }
-    hostInfo = { port: result.port, address: result.address, firewall: result.firewall, addressWarning: result.addressWarning };
+    hostInfo = { port: result.port, address: result.address, pin: result.pin || null, firewall: result.firewall, addressWarning: result.addressWarning };
     renderHostWarning();
-    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address);
+    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address, undefined, 0, result.pin || null);
   }
 
   $('btn-create-room').addEventListener('click', async () => {
@@ -971,7 +987,7 @@
   const MAX_RECONNECT = 4;
   const STABLE_MS = 20000;
 
-  function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0) {
+  function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null) {
     if (!reconnectAttempt) $('setup-error').textContent = '';
     // Join deliberado do usuario: qualquer retry pendente de uma queda
     // anterior morre aqui (esta chamada e por si so a nova intencao). O
@@ -1055,8 +1071,8 @@
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
           renderRoomList();
-          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null });
-          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress });
+          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null, pin: pin || undefined });
+          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           if (attempts > 0) $('setup-error').textContent = '';
           stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
           sound.playJoinSound();
@@ -1079,6 +1095,31 @@
         onClose: (detail) => {
           if (currentSession !== session) return; // conexao antiga, ja substituida
           clearTimeout(stableTimer);
+
+          // B3: a sala recusou a entrada por PIN. Nunca chegamos a entrar --
+          // sem video a preservar, sem reconexao (o PIN errado seria o mesmo
+          // na proxima). Volta pro lobby com o aviso, e libera o cooldown
+          // que o onOpen marcou pra que a pessoa possa tentar de novo na
+          // hora com o PIN certo.
+          if (session.joinDenied) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            currentSession = null;
+            activeRoomAddress = null;
+            clearCooldown(roomAddress);
+            teardownSession(session);
+            if (!orphanSession) ui.stageHeader.clear();
+            $('setup-error').textContent =
+              session.joinDenied === 'pin'
+                ? 'PIN incorreto ou ausente. Confira o PIN da sala e tente de novo.'
+                : 'A sala recusou a entrada.';
+            $('join-address-form').classList.remove('hidden');
+            $('in-pin').focus();
+            renderMembersPanel();
+            renderRoomList();
+            onSettled?.();
+            return;
+          }
 
           // A sala acabou (o host saiu): nao ha reconexao possivel nem video
           // a preservar de forma util -- teardown completo e de volta pro
@@ -1171,7 +1212,7 @@
             retryTimer = setTimeout(() => {
               retryTimer = null;
               if (currentSession) return; // usuario ja entrou noutra sala/saiu
-              joinRoom(rawUrl, name, publicAddress, undefined, next);
+              joinRoom(rawUrl, name, publicAddress, undefined, next, pin);
             }, 1000 * 2 ** attempts);
             return;
           }
@@ -1565,6 +1606,14 @@
       // desta mensagem ser processada pela fila.
       case 'room-closed': {
         session.roomClosed = true;
+        break;
+      }
+      // B3: a sala pediu PIN e o nosso nao bateu (ou nao mandamos). O
+      // servidor fecha o socket logo depois (1008 'pin'); o onClose le esta
+      // marca pra voltar pro lobby com o aviso certo, sem tentar reconectar
+      // e sem orfanizar -- nunca chegamos a entrar.
+      case 'join-denied': {
+        session.joinDenied = msg.reason || 'pin';
         break;
       }
       case 'broadcast-state': {
