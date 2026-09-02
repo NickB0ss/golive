@@ -7,6 +7,13 @@
 > O estado atual — o que entrou, o que falta e o que ficou de fora de
 > propósito — está em `STATUS.md`, na raiz. Consulte-o antes de agir sobre
 > qualquer item daqui.
+>
+> **Nota de 2026-09-02:** mais uma leva saiu — **A8** (renegociação reusa a
+> conexão), **D2** (teste ponta a ponta da sinalização), **G5** (thumbnail em
+> JPEG) e **C7** (ESLint com passo no CI). O **B2** foi parcialmente
+> atacado e a premissa dele mudou: com o `node-gyp` da raiz na 11.5.0, o que
+> sobra no `npm audit` vem do `electron@32` e do `electron-builder@25`, não
+> mais do node-gyp — zerar virou dependente do **B1**.
 
 Leitura completa do código na `main` em `c06d8b6` (v0.1.8). Os 97 testes
 automatizados passam; nada aqui é regressão do que já está coberto. O que
