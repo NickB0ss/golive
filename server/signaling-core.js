@@ -152,6 +152,12 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
           } catch {
             return;
           }
+          // JSON valido mas que nao e um objeto (`null`, `42`, `"x"`,
+          // `[...]`, `true`): `msg.type` num `null` LANCA, e a excecao sobe
+          // como uncaught e derruba o processo de quem hospeda a sala. Um
+          // unico frame `null` de qualquer um que alcance a porta bastava.
+          // Descarta em silencio, igual a frame malformado.
+          if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return;
 
           switch (msg.type) {
             case 'join': {
@@ -211,8 +217,12 @@ function createSignalingServer({ port, heartbeatMs = 25000 }) {
               broadcastToRoom(me.room, id, {
                 type: 'watchers',
                 from: id,
-                kind: msg.kind,
-                watchers: Array.isArray(msg.watchers) ? msg.watchers : [],
+                // Rebroadcast pra sala inteira: um cliente com bug (ou
+                // hostil) que manda um `kind` gigante ou uma lista de
+                // milhares de watchers veria isso amplificado por N. A
+                // sala real nao passa de ~6; 64 e teto folgado.
+                kind: String(msg.kind == null ? '' : msg.kind).slice(0, 64),
+                watchers: Array.isArray(msg.watchers) ? msg.watchers.slice(0, 64) : [],
               });
               break;
             }

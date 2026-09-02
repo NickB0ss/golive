@@ -346,3 +346,58 @@ test('watchers e broadcast pra sala inteira, com o from carimbado', async () => 
     await server.close();
   }
 });
+
+test('JSON valido que nao e objeto nao derruba o servidor (null, numero, array, string)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    // Um unico frame `null` fazia `msg.type` lancar num null; a excecao
+    // subia como uncaught e matava o processo de quem hospeda a sala.
+    for (const frame of ['null', '42', '"oi"', '[1,2,3]', 'true']) a.send(frame);
+
+    // Se o servidor caiu, este join nunca recebe welcome.
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    const welcome = await once(b, 'welcome');
+    assert.equal(welcome.type, 'welcome');
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('watchers e kind chegam limitados no rebroadcast (anti-amplificacao)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'watchers');
+    a.send(
+      JSON.stringify({
+        type: 'watchers',
+        kind: 'x'.repeat(5000),
+        watchers: Array.from({ length: 5000 }, (_, i) => ({ id: String(i) })),
+      })
+    );
+    const msg = await atB;
+    assert.ok(msg.watchers.length <= 64, `watchers cortado, veio ${msg.watchers.length}`);
+    assert.ok(msg.kind.length <= 64, `kind cortado, veio ${msg.kind.length}`);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
