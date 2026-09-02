@@ -21,6 +21,13 @@
   // auditoria de 2026-08-27, item A2.
   const DISCONNECT_GRACE_MS = 5000;
 
+  // Estados de sinalizacao em que uma pc de ENTRADA ainda pode receber uma
+  // oferta remota: 'stable' (a negociacao anterior fechou) e
+  // 'have-remote-offer' (reenvio da mesma oferta, antes de respondermos).
+  // Em qualquer outro estado -- 'have-local-offer', 'closed' -- reusar
+  // daria InvalidStateError, e recomecar do zero e o caminho seguro.
+  const RENEGOTIABLE_STATES = new Set(['stable', 'have-remote-offer']);
+
   // Teto de candidatos guardados por conexao enquanto ela nao tem
   // remoteDescription. Numa negociacao sa o buffer vive alguns
   // milissegundos e junta poucos candidatos host; o limite existe so pra que
@@ -363,10 +370,21 @@
       if (peer?.inStreams) peer.inStreams[kind] = null;
     }
 
-    function ensureInConn(peerId, kind) {
+    // `renegotiate` vem da propria mensagem de sinalizacao: o ofertante
+    // avisou que reofertou NA MESMA pc (removeTrack ao desligar a camera, ou
+    // um offerTo numa outConn que ja existia). Trocar a conexao aqui, nesse
+    // caso, responderia com ufrag ICE e fingerprint DTLS novos -- que a pc
+    // dele nao espera como resposta da oferta que mandou -- e a renegociacao
+    // nunca fecharia. Um peer em versao antiga nao manda o flag, e um flag
+    // que chega sem conexao viva (ou com ela em estado que nao aceita
+    // oferta) nao tem o que reusar: os dois caem no caminho de sempre,
+    // recriar. Ver a auditoria de 2026-08-27, item A8.
+    function ensureInConn(peerId, kind, renegotiate) {
       const peer = addPeer(peerId, peers.get(peerId)?.name || `#${peerId}`);
-      if (peer.inConns[kind]) {
-        peer.inConns[kind].close();
+      const existing = peer.inConns[kind];
+      if (renegotiate && existing && RENEGOTIABLE_STATES.has(existing.signalingState)) return existing;
+      if (existing) {
+        existing.close();
         // A stream antiga pertence a conexao que acabou de fechar; a nova
         // so existe quando o evento 'track' da nova conexao chegar.
         clearInStream(peerId, kind);
@@ -391,6 +409,10 @@
     }
 
     async function offerTo(peerId, stream, quality, kind) {
+      // Ofertar numa outConn que JA existia e renegociacao (religar a camera
+      // logo depois de stopCamera, por exemplo): sem avisar, o outro lado
+      // derrubaria a conexao que continua de pe deste lado. Ver ensureInConn.
+      const renegotiate = Boolean(peers.get(peerId)?.outConns[kind]);
       const pc = ensureOutConn(peerId, kind);
       // Transceivers novos nascem com track: qualquer suspensao anterior
       // (F1.3) deixou de valer, e manter o registro faria o proximo
@@ -424,11 +446,11 @@
         type: offer.type,
         sdp: withOpusParams(withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate))),
       });
-      send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
+      send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate });
     }
 
-    async function handleOffer(fromId, sdp, kind) {
-      const pc = ensureInConn(fromId, kind);
+    async function handleOffer(fromId, sdp, kind, renegotiate) {
+      const pc = ensureInConn(fromId, kind, renegotiate);
       await pc.setRemoteDescription(sdp);
       await drainIce(pc);
       const answer = await pc.createAnswer();
@@ -546,7 +568,9 @@
         pc.removeTrack(sender);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind });
+        // Renegociacao pura: a pc, o ICE e o DTLS continuam de pe deste
+        // lado, so a track saiu. Ver ensureInConn.
+        send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
       } catch {
         /* conexao pode ja ter fechado (peer saiu durante a renegociacao) */
       }

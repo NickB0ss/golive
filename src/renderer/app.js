@@ -1525,7 +1525,10 @@
         // e um relay -- handleOffer usa a chave como veio, pra nao atropelar
         // o slot do compartilhamento proprio do relay.
         if (!isKnownKind(msg.kind)) break;
-        const answerSdp = await mesh.handleOffer(msg.from, msg.sdp, msg.kind);
+        // msg.renegotiate (A8): oferta na conexao que ja existe, nao uma
+        // conexao nova. Peer em versao antiga nao manda o campo, e ai
+        // handleOffer segue recriando, como sempre fez.
+        const answerSdp = await mesh.handleOffer(msg.from, msg.sdp, msg.kind, msg.renegotiate === true);
         if (currentSession !== session) return; // sessao caiu enquanto negociava
         sig.send({ type: 'answer', to: msg.from, sdp: answerSdp, kind: msg.kind });
         // Comecamos a receber com a janela ja oculta: o transmissor assume
