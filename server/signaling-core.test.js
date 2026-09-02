@@ -401,3 +401,54 @@ test('watchers e kind chegam limitados no rebroadcast (anti-amplificacao)', asyn
     await server.close();
   }
 });
+
+test('fuzz: frames aleatorios (bytes, JSON torto, tipos desconhecidos) nao derrubam o servidor', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    function mulberry32(seed) {
+      return function () {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rand = mulberry32(1234567);
+    const pool = [
+      '', '{', '}', '[]', 'null', 'true', '0', '"x"', 'NaN',
+      '{"type":42}', '{"type":{}}', '{"type":"join","room":{}}',
+      '{"type":"join","name":123}', '{"type":"offer"}', '{"type":"ice","to":null}',
+      '{"type":"ice","to":["a","b"]}', '{"type":"watchers","watchers":"nope"}',
+      '{"type":"' + 'z'.repeat(200) + '"}', '{"type":"broadcast-state","live":{}}',
+      '\u0000\u0001\u0002', '{"type":"join","avatar":42}',
+    ];
+
+    const noisy = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => noisy.once('open', r));
+    for (let i = 0; i < 200; i += 1) {
+      const s = pool[Math.floor(rand() * pool.length)];
+      noisy.send(rand() < 0.5 ? s : Buffer.from(s));
+    }
+
+    // O servidor sobreviveu se um cliente novo ainda entra e negocia.
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const wa = await once(a, 'welcome');
+    assert.equal(wa.type, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+    const introB = await once(a, 'peer-joined');
+    assert.equal(introB.name, 'Bruno');
+
+    noisy.close();
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
