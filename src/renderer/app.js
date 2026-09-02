@@ -521,7 +521,9 @@
       onCameraDeviceChange: (deviceId) => {
         cfg = { ...cfg, camera: { ...cfg.camera, deviceId } };
         persist();
-        if (cameraStream) restartCamera();
+        if (cameraStream) {
+          restartCamera().catch((err) => console.error('[camera] troca de dispositivo falhou:', err));
+        }
       },
       onNetworkChange: (network) => {
         cfg = { ...cfg, network };
@@ -549,7 +551,7 @@
   function onQualityPresetChange(quality) {
     cfg = { ...cfg, quality };
     persist();
-    if (localStream) applyLiveQuality();
+    if (localStream) applyLiveQuality().catch((err) => console.error('[qualidade] applyLiveQuality falhou:', err));
   }
 
   // ---------- Lista de salas ----------
@@ -1838,8 +1840,11 @@
       }
     }
 
-    refresh();
-    const pollTimer = setInterval(refresh, INCLUDE_LIST_POLL_MS);
+    refresh().catch((err) => console.error('[audio-incluir] varredura inicial falhou:', err));
+    const pollTimer = setInterval(
+      () => refresh().catch((err) => console.error('[audio-incluir] varredura falhou:', err)),
+      INCLUDE_LIST_POLL_MS
+    );
 
     return {
       stop: () => {
@@ -2112,7 +2117,7 @@
   $('btn-toggle-camera').addEventListener('click', () => {
     if (cameraStream) return stopCamera();
     if (cameraStarting) return; // ja tem um startCamera() em andamento, ignora o duplo clique
-    startCamera();
+    startCamera().catch((err) => console.error('[camera] startCamera falhou:', err));
   });
 
   async function startCamera() {
@@ -2528,7 +2533,8 @@
     // ser reaplicada pra que a oferta seja refeita.
     const quality = qualityFor(kind);
     Promise.all(orphans.map((id) => session.mesh.offerTo(id, stream, quality, kind).catch(() => {})))
-      .then(() => recomputeTree(kind, { force: true }));
+      .then(() => recomputeTree(kind, { force: true }))
+      .catch((err) => console.error('[arvore] reconexao das orfas do relay falhou:', err));
   }
 
   // Distribui os papeis calculados: manda 'tree' pra todo mundo (protocolo

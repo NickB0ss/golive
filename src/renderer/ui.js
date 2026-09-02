@@ -1035,7 +1035,9 @@
       if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
       cameraSelect.addEventListener('change', () => {
         deps.onCameraDeviceChange(cameraSelect.value);
-        startSettingsCameraPreview(cameraSelect.value);
+        // trata a propria rejeicao internamente (preview preto); o void e a
+        // marca de que a solta e deliberada, nao um esquecimento
+        void startSettingsCameraPreview(cameraSelect.value);
       });
     } catch {
       /* sem permissao de midia ainda, dropdowns ficam vazios */
@@ -1047,7 +1049,7 @@
     // o modal sair de display:none, dai a leitura ser aqui.
     syncSettingsIndicator(false);
     focusFirstInteractive(settingsModalEl);
-    startSettingsCameraPreview($('settings-camera-device').value);
+    void startSettingsCameraPreview($('settings-camera-device').value);
   }
 
   function setStatsHtml(html) {
@@ -1234,9 +1236,13 @@
       ? ''
       : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
 
-    btnGoLiveEl.onclick = () => {
+    btnGoLiveEl.onclick = async () => {
       closePicker();
-      onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
+      try {
+        await onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
+      } catch (err) {
+        console.error('[picker] onGoLive falhou:', err);
+      }
     };
 
     // O dialogo aparece na hora e as fontes entram conforme chegam -- antes

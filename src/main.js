@@ -319,7 +319,7 @@ app.whenReady().then(() => {
   // Escuta descoberta de salas sempre, mesmo sem hospedar nenhuma -- senao
   // quem so quer entrar em salas dos outros nunca ve a lista da rede (o
   // socket UDP de escuta so era aberto ao criar/anunciar uma sala local).
-  ensureDiscoveryStarted();
+  ensureDiscoveryStarted().catch((err) => logger.error('descoberta nao iniciou:', err?.message || err));
 
   updater = setupAutoUpdater((payload) => {
     logger.log(`update: ${payload.status}${payload.message ? ' -- ' + payload.message : ''}`);
@@ -340,7 +340,7 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+}).catch((err) => logger.error('bootstrap (app.whenReady) falhou:', err?.message || err));
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
