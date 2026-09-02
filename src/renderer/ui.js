@@ -757,7 +757,7 @@
       info.innerHTML = `
         <span class="dot ${isActive ? 'ok' : ''}"></span>
         <span class="room-item-text">
-          <span class="room-name">${escapeHtml(room.name || room.hostName || 'sala')}</span>
+          <span class="room-name">${room.protected ? '<span class="room-lock" title="Precisa de PIN">&#128274;</span> ' : ''}${escapeHtml(room.name || room.hostName || 'sala')}</span>
           <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>
         </span>`;
       li.appendChild(info);
@@ -803,14 +803,25 @@
     stageStatusBadgeEl.classList.toggle('hidden', !label);
   }
 
-  function setStageHeader({ name, address }) {
+  const stageRoomPinEl = $('stage-room-pin');
+
+  function setStageHeader({ name, address, pin }) {
     stageRoomNameEl.textContent = name || '';
     stageRoomAddressEl.textContent = address || '';
+    // So o host recebe `pin` (vem do room:host); espectador nunca ve o PIN
+    // dos outros aqui. `undefined` num re-set (reconexao) nao apaga o que ja
+    // estava -- so um valor explicito muda.
+    if (pin !== undefined) {
+      stageRoomPinEl.textContent = pin ? `PIN ${pin}` : '';
+      stageRoomPinEl.classList.toggle('hidden', !pin);
+    }
     stageHeaderEl.classList.remove('hidden');
   }
 
   function clearStageHeader() {
     stageHeaderEl.classList.add('hidden');
+    stageRoomPinEl.textContent = '';
+    stageRoomPinEl.classList.add('hidden');
   }
 
   // ---------- Modal de Configuracoes ----------
@@ -1035,7 +1046,9 @@
       if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
       cameraSelect.addEventListener('change', () => {
         deps.onCameraDeviceChange(cameraSelect.value);
-        startSettingsCameraPreview(cameraSelect.value);
+        // trata a propria rejeicao internamente (preview preto); o void e a
+        // marca de que a solta e deliberada, nao um esquecimento
+        void startSettingsCameraPreview(cameraSelect.value);
       });
     } catch {
       /* sem permissao de midia ainda, dropdowns ficam vazios */
@@ -1047,7 +1060,7 @@
     // o modal sair de display:none, dai a leitura ser aqui.
     syncSettingsIndicator(false);
     focusFirstInteractive(settingsModalEl);
-    startSettingsCameraPreview($('settings-camera-device').value);
+    void startSettingsCameraPreview($('settings-camera-device').value);
   }
 
   function setStatsHtml(html) {
@@ -1234,9 +1247,13 @@
       ? ''
       : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
 
-    btnGoLiveEl.onclick = () => {
+    btnGoLiveEl.onclick = async () => {
       closePicker();
-      onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
+      try {
+        await onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
+      } catch (err) {
+        console.error('[picker] onGoLive falhou:', err);
+      }
     };
 
     // O dialogo aparece na hora e as fontes entram conforme chegam -- antes

@@ -392,6 +392,29 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .room-action-btn svg { width: 15px; height: 15px; flex: none; }
 .join-address-form { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
 
+/* B3 -- PIN opcional da sala */
+.protect-room-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px 10px;
+  font-size: 12px; color: var(--muted);
+  cursor: pointer; user-select: none;
+}
+.protect-room-row input { accent-color: var(--accent, currentColor); }
+#in-pin {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.25em;
+}
+.room-lock { font-size: 0.85em; opacity: .8; }
+.stage-room-pin {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px; font-weight: 650;
+  color: var(--text-2);
+  background: var(--surface-3, var(--warn-dim));
+  border-radius: var(--r-full);
+  padding: 2px var(--s-2);
+  white-space: nowrap;
+}
+
 .user-panel {
   margin-top: auto;
   padding: 10px 12px;

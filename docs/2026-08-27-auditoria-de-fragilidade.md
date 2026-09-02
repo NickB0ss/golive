@@ -14,6 +14,15 @@
 > atacado e a premissa dele mudou: com o `node-gyp` da raiz na 11.5.0, o que
 > sobra no `npm audit` vem do `electron@32` e do `electron-builder@25`, não
 > mais do node-gyp — zerar virou dependente do **B1**.
+>
+> **Nota de 2026-09-02 (branch `backlog-pos-leyjak`):** **B3** ganhou o PIN
+> opcional da sala (núcleo + protocolo + wiring, tudo opt-in e coberto por
+> teste; falta a passada visual na UI). **B2** avançou: `electron-builder`
+> 25 → 26 leva o `npm audit` de 15 pra 2 (as 2 são o `electron@32`, o B1).
+> As **10 promessas soltas** do C7 foram pagas. E, além da lista original,
+> um achado novo: **um frame WebSocket que é JSON válido mas não é objeto
+> (`null`, `42`, `[...]`) derrubava o processo do host** — `msg.type` num
+> `null` lança sem catch. Corrigido, com fuzz de regressão.
 
 Leitura completa do código na `main` em `c06d8b6` (v0.1.8). Os 97 testes
 automatizados passam; nada aqui é regressão do que já está coberto. O que

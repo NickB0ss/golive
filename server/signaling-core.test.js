@@ -346,3 +346,186 @@ test('watchers e broadcast pra sala inteira, com o from carimbado', async () => 
     await server.close();
   }
 });
+
+test('JSON valido que nao e objeto nao derruba o servidor (null, numero, array, string)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    // Um unico frame `null` fazia `msg.type` lancar num null; a excecao
+    // subia como uncaught e matava o processo de quem hospeda a sala.
+    for (const frame of ['null', '42', '"oi"', '[1,2,3]', 'true']) a.send(frame);
+
+    // Se o servidor caiu, este join nunca recebe welcome.
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    const welcome = await once(b, 'welcome');
+    assert.equal(welcome.type, 'welcome');
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('watchers e kind chegam limitados no rebroadcast (anti-amplificacao)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'watchers');
+    a.send(
+      JSON.stringify({
+        type: 'watchers',
+        kind: 'x'.repeat(5000),
+        watchers: Array.from({ length: 5000 }, (_, i) => ({ id: String(i) })),
+      })
+    );
+    const msg = await atB;
+    assert.ok(msg.watchers.length <= 64, `watchers cortado, veio ${msg.watchers.length}`);
+    assert.ok(msg.kind.length <= 64, `kind cortado, veio ${msg.kind.length}`);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('fuzz: frames aleatorios (bytes, JSON torto, tipos desconhecidos) nao derrubam o servidor', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    function mulberry32(seed) {
+      return function () {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rand = mulberry32(1234567);
+    const pool = [
+      '', '{', '}', '[]', 'null', 'true', '0', '"x"', 'NaN',
+      '{"type":42}', '{"type":{}}', '{"type":"join","room":{}}',
+      '{"type":"join","name":123}', '{"type":"offer"}', '{"type":"ice","to":null}',
+      '{"type":"ice","to":["a","b"]}', '{"type":"watchers","watchers":"nope"}',
+      '{"type":"' + 'z'.repeat(200) + '"}', '{"type":"broadcast-state","live":{}}',
+      '\u0000\u0001\u0002', '{"type":"join","avatar":42}',
+    ];
+
+    const noisy = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => noisy.once('open', r));
+    for (let i = 0; i < 200; i += 1) {
+      const s = pool[Math.floor(rand() * pool.length)];
+      noisy.send(rand() < 0.5 ? s : Buffer.from(s));
+    }
+
+    // O servidor sobreviveu se um cliente novo ainda entra e negocia.
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const wa = await once(a, 'welcome');
+    assert.equal(wa.type, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+    const introB = await once(a, 'peer-joined');
+    assert.equal(introB.name, 'Bruno');
+
+    noisy.close();
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('PIN da sala: join com o PIN certo entra, com o errado ou sem PIN e negado (B3)', async () => {
+  const server = await createSignalingServer({ port: 0, pin: '4821' });
+  try {
+    // PIN certo -> welcome normal
+    const ok = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => ok.once('open', r));
+    ok.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: '4821' }));
+    const welcome = await once(ok, 'welcome');
+    assert.equal(welcome.type, 'welcome');
+
+    // PIN errado -> join-denied e o socket fecha, nao entra na sala
+    const bad = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => bad.once('open', r));
+    const deniedMsg = onceWithin(bad, 'join-denied');
+    const closed = new Promise((r) => bad.once('close', (code) => r(code)));
+    bad.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', pin: '0000' }));
+    const denied = await deniedMsg;
+    assert.equal(denied.reason, 'pin');
+    assert.equal(await closed, 1008);
+
+    // sem PIN nenhum -> tambem negado
+    const nopin = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => nopin.once('open', r));
+    const deniedMsg2 = onceWithin(nopin, 'join-denied');
+    nopin.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Distraido' }));
+    assert.equal((await deniedMsg2).reason, 'pin');
+
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(server.getPeerCount(), 1, 'so a Ana entrou');
+
+    ok.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('PIN da sala: tentativa errada de um intruso nao afeta quem ja esta dentro (B3)', async () => {
+  const server = await createSignalingServer({ port: 0, pin: '1234' });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: '1234' }));
+    await once(a, 'welcome');
+
+    const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => intruso.once('open', r));
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'X', pin: 'zzzz' }));
+    await onceWithin(intruso, 'join-denied');
+
+    // Bruno entra certo e a Ana ve o peer-joined dele -- a sala segue viva
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    const introB = once(a, 'peer-joined');
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', pin: '1234' }));
+    await once(b, 'welcome');
+    assert.equal((await introB).name, 'Bruno');
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('sem PIN configurado, join com um campo pin qualquer segue entrando (compat)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: 'ignorado' }));
+    assert.equal((await once(a, 'welcome')).type, 'welcome');
+    a.close();
+  } finally {
+    await server.close();
+  }
+});

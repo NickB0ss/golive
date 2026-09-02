@@ -202,3 +202,22 @@ test('toRoomList repassa peers quando presente', () => {
     { name: 'B', address: 'b:9000', port: 9000 },
   ]);
 });
+
+test('formatBeacon + parseBeacon carregam o flag protected (B3), nunca o PIN', () => {
+  const raw = formatBeacon({ name: 'Sala', port: 9001, address: '1.2.3.4:9001', protected: true });
+  assert.ok(!raw.includes('pin') && !/\d{4}/.test(JSON.parse(raw).pin || ''));
+  assert.equal(parseBeacon(raw).protected, true);
+});
+
+test('formatBeacon omite protected quando a sala e aberta', () => {
+  const raw = formatBeacon({ name: 'Sala', port: 9001, address: '1.2.3.4:9001' });
+  assert.equal('protected' in JSON.parse(raw), false);
+  assert.equal('protected' in parseBeacon(raw), false);
+});
+
+test('parseBeacon so aceita protected estritamente true', () => {
+  for (const v of ['true', 1, 'sim', {}]) {
+    const raw = JSON.stringify({ type: 'golive-room', port: 9000, address: '1.2.3.4:9000', protected: v });
+    assert.equal('protected' in parseBeacon(raw), false, `protected=${JSON.stringify(v)}`);
+  }
+})

@@ -10,6 +10,8 @@ VPN / Tailscale). Sem servidor na nuvem, sem conta. Quem cria a sala sobe um
 servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 - Descoberta de salas na rede por beacon UDP (opcional, ligada por padrão).
+- PIN opcional de 4 dígitos na sala (opt-in em "Criar sala"): corta o
+  entrar-por-acidente numa rede compartilhada. Não é cripto.
 - Liberação de porta no firewall do Windows automática, com botão
   "Permitir acesso à rede" quando a elevação falha.
 - Áudio de sistema por loopback; áudio por processo (incluir só o Discord)
@@ -33,35 +35,43 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.3.4` (`package.json`). Electron `^32` (fora de suporte — ver backlog).
-Testes: `npm test` → **256 passando**. `npm run lint` → 0 erros.
+`0.3.4` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`electron-builder` na `^26`.
+Testes: `npm test` → **266 passando**. `npm run lint` → 0 erros, 10 avisos
+`require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
+após `await`).
 
 ## Em andamento
 
-Branch **`claude/planejamentos-futuros-projeto-leyjak`**: pega o que sobrou
-do backlog da auditoria e que dá pra fechar sem rodar o app à mão.
+Branch **`claude/backlog-pos-leyjak`**: o que restava do backlog depois que a
+leva `leyjak` (A8/D2/G5/C7/B2, [PR #25](https://github.com/NickB0ss/golive/pull/25))
+entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
 
-- **A8** — renegociação reusa a conexão em vez de trocá-la. `ensureInConn`
-  fechava e recriava a `RTCPeerConnection` a cada oferta; numa reoferta na
-  conexão que já existe isso responde com ufrag ICE e fingerprint DTLS novos,
-  que o ofertante não espera. A oferta agora carrega `renegotiate`, e só
-  reusa quando há conexão viva num `signalingState` que aceita oferta. Peer
-  em versão antiga não manda o campo e cai no caminho antigo.
-- **D2** — teste ponta a ponta da sinalização: servidor de verdade, clientes
-  `ws` reais, `join → welcome → offer → answer → ice` inteiro pelo fio. Sete
-  casos, incluindo ordem preservada numa rajada (a garantia em que o cliente
-  se apoia, e o que teria pego o A1), isolamento de sala com controle
-  positivo, teto de payload e flood.
-- **G5** — thumbnail do seletor de fonte em JPEG, não PNG. Era um PNG
-  codificado por janela no processo principal, no clique em que a pessoa vai
-  começar a transmitir.
-- **C7** — ESLint com config flat por ambiente e passo no CI antes dos
-  testes. Inclui uma regra local que aproxima o `no-floating-promises` sem
-  type info: pega `.then()` sem catch e chamada de função `async` do próprio
-  arquivo usada como statement. **Não** pega chamada vinda de fora do
-  arquivo — é rede de segurança, não garantia.
-- **B2** — `node-gyp` 9.4.1 → 11.5.0 (o advisory cobre até a 10.3.1, então o
-  "10+" da auditoria já não bastava). Ver a ressalva no backlog.
+- **Promessas soltas (dívida do C7)** — as 10 que o ESLint acusava como aviso
+  viraram `.catch()` com log por sítio (mesmo padrão do resto do renderer),
+  ou `void` com comentário onde a função já engole o próprio erro por
+  desenho. Nenhuma virou `await` (mudaria ordem de execução — era o motivo de
+  serem aviso). Restam só os 10 avisos `require-atomic-updates`, outra regra.
+- **Sinalização — frame que não é objeto derrubava o host** — `JSON.parse('null')`
+  passava, e o `switch (msg.type)` lia `.type` de `null`: TypeError sem catch,
+  `uncaughtException`, processo do host morto. Um frame `null` de qualquer um
+  que alcançasse a porta bastava. Agora todo frame que não é objeto é
+  descartado igual a JSON malformado. `watchers`/`kind` do rebroadcast também
+  passaram a ter teto (64) — eram repassados à sala inteira sem limite.
+- **Robustez (além da auditoria)** — teste de invariantes de `computeTree`
+  sob 1000 salas aleatórias (≤1 relay, fanout ≤2, profundidade ≤2, ninguém é
+  pai de si); fuzz de 200 frames tortos na sinalização confirmando que a sala
+  segue aceitando `join`.
+- **B2 (parcial)** — `electron-builder` 25 → 26. `npm audit` cai de 15 pra 2.
+  As 15 vinham quase todas do 25 (`@electron/rebuild@3` → `node-gyp@≤10.3.1`,
+  `cacache`, `tar` velho). As 2 que sobram são o `electron@32` em si — o B1.
+  **`npm run dist` não foi rodado**: validar um build antes da próxima release.
+- **B3 — PIN opcional da sala** — o núcleo e o protocolo (servidor recusa
+  `join` sem o PIN certo com `join-denied` + close 1008; beacon carrega só o
+  flag `protected`, nunca o PIN; `main` gera o PIN de 4 dígitos quando a caixa
+  "Proteger com PIN" está marcada). Tudo opt-in — sala aberta segue idêntica.
+  **A UI (caixa, campo de PIN, cadeado na lista, selo no cabeçalho) precisa de
+  uma passada visual com o app rodando**; a lógica está coberta por teste.
 
 **Já lançado** (em release com tag):
 
@@ -80,24 +90,26 @@ do backlog da auditoria e que dá pra fechar sem rodar o app à mão.
 ## Backlog técnico
 
 Fonte única: **`docs/2026-08-27-auditoria-de-fragilidade.md`**. O que não foi
-feito e não está explicitamente fora de escopo (abaixo): **B3, C4, C5, F3,
-G6, H5, H6** — e o resto do **B2**.
+feito e não está explicitamente fora de escopo (abaixo): **C5, F3, G6, H5,
+H6**, o resto do **B2** e a UI do **B3**.
 
 Sobre o **B2**: a premissa da auditoria ("14 vulnerabilidades, todas na cadeia
-do `node-gyp@9`") não vale mais. Com o `node-gyp` da raiz na 11, as 15 que
-sobram vêm do `electron@32`, do `electron-builder@25` e de uma cópia aninhada
-do `node-gyp@9` que o `@electron/rebuild` fixa. Zerar exige subir dois majors
-(`electron 32 → 44`), o que é o item **B1** e precisa do app rodando.
-`npm audit --omit=dev` continua em **0**: nada disso alcança quem usa o app.
+do `node-gyp@9`") não vale mais. Com o `node-gyp` da raiz na 11 **e o
+`electron-builder` na 26**, `npm audit` cai a **2** — e as 2 são o
+`electron@32` (e o `extract-zip` dele). Zerar exige subir `electron 32 → 44`,
+o que é o item **B1** e precisa do app rodando. `npm audit --omit=dev`
+sempre esteve em **0**: nada disso alcança quem usa o app.
 
-**B3** (sala sem autenticação), **F3** (host cai, sala morre) e **G6** (teto de
-~4 pessoas) são "confirmado, por desenho" — limites conhecidos, não bugs.
+**F3** (host cai, sala morre) e **G6** (teto de ~4 pessoas) são "confirmado,
+por desenho" — limites conhecidos, não bugs. **B3** (sala sem autenticação)
+saiu dessa lista: o PIN opcional está feito no núcleo (ver "Em andamento"),
+falta só a passada visual na UI.
 
-Dívida nova, deixada visível de propósito: as **10 promessas soltas** que o
-ESLint acusa como aviso (`src/main.js`, `src/renderer/app.js`,
-`src/renderer/ui.js`). Não viraram erro porque transformar cada uma em `await`
-muda ordem de execução de handler de clique e do bootstrap, e um `catch` vazio
-só esconderia a falha.
+**C4** (`dist/` de 1,2 GB) e **C5** (branches obsoletas) são higiene de disco
+e de repositório local — o repo remoto já está enxuto (só `main`).
+
+A **dívida das 10 promessas soltas** foi paga nesta branch (ver "Em
+andamento").
 
 ## Fora de escopo (adiado de propósito)
 
@@ -105,7 +117,9 @@ Precisam de verificação manual rodando o app, ou de esforço de dias.
 
 | Item | O que é | Por que ficou de fora |
 |---|---|---|
-| **B1** | Subir Electron (32 → atual) | Meio dia + verificação manual; flags de WGC e assinatura do `console-message` mudam entre versões e precisam de teste no app rodando. |
+| **B1** | Subir Electron (32 → 44) | Meio dia + verificação manual; flags de WGC e assinatura do `console-message` mudam entre versões e precisam de teste no app rodando. Fecha as 2 vulnerabilidades que sobram no `npm audit`. |
+| **B3 (UI)** | Caixa "Proteger com PIN", campo de PIN, cadeado na lista, selo do PIN no cabeçalho | O núcleo e o protocolo estão feitos e cobertos por teste; falta conferir layout/foco com o app rodando. |
+| **`npm run dist` pós-`electron-builder@26`** | Rodar um build completo | O 26 muda default de scripts de pacote e nomes de artefato; não dá pra validar sem gerar o instalador. |
 | **D1** | Extrair de `app.js` um módulo puro de orquestração de sessão/árvore | 1–2 dias de refatoração; ganho a prazo, não corrige bug aberto. |
 | **G1–G3** | Áudio nativo em C++ (batching do IPC, cancelamento do `Stop()`, leak no `NonBlockingCall`) | Mexe em C++ nativo; só testável rodando o app com captura real. |
 | **B6** | Assinatura de código do instalador | Escolha consciente (app entre amigos); custa certificado e processo. |

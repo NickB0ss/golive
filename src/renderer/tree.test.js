@@ -265,3 +265,96 @@ test('sameAssignments detecta mudanca de papel, de pai, de filhos e de tamanho',
   // e o que garante que o PRIMEIRO recalculo sempre se aplica.
   assert.equal(sameAssignments(base, new Map()), false);
 });
+
+// --- Invariantes de computeTree sob entrada aleatoria -------------------
+// Nao ha fast-check no projeto; PRNG com semente fixa pra ser reproduzivel.
+function mulberry32(seed) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+test('computeTree respeita as invariantes da spec pra qualquer sala (1000 casos aleatorios)', () => {
+  const rand = mulberry32(0xC0FFEE);
+  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+
+  for (let caso = 0; caso < 1000; caso += 1) {
+    const n = Math.floor(rand() * 9); // 0..8 espectadores
+    const candidates = [];
+    for (let i = 0; i < n; i += 1) {
+      const health = pick([
+        null,
+        undefined,
+        { softwareEncoder: rand() < 0.5, msPerFrame: pick([null, 5, 12, 20, 40]) },
+      ]);
+      candidates.push({
+        id: `p${i}`,
+        joinedAt: Math.floor(rand() * 1000),
+        rtt: pick([null, 5, 20, 50, 120, 300]),
+        transmitting: rand() < 0.2,
+        suspended: rand() < 0.2,
+        relayIneligible: rand() < 0.2,
+        encodeHealth: health,
+      });
+    }
+
+    const out = computeTree('origem', candidates);
+    const ctx = `caso ${caso}, n=${n}`;
+
+    // 1. todo candidato aparece exatamente uma vez; nada alem deles.
+    assert.equal(out.size, candidates.length, `${ctx}: todo candidato atribuido`);
+    for (const c of candidates) assert.ok(out.has(c.id), `${ctx}: ${c.id} presente`);
+
+    const relays = [...out.entries()].filter(([, a]) => a.role === 'relay');
+    const folhas = [...out.entries()].filter(([, a]) => a.role === 'folha');
+
+    // 2. no maximo um relay (FANOUT_ORIGEM).
+    assert.ok(relays.length <= FANOUT_ORIGEM, `${ctx}: <=1 relay, veio ${relays.length}`);
+
+    if (relays.length === 0) {
+      // sem relay: ou sala vazia, ou todo mundo direct (malha degenerada).
+      for (const [, a] of out) {
+        assert.equal(a.role, 'direct', `${ctx}: sem relay => tudo direct`);
+        assert.equal(a.paiId, 'origem', `${ctx}: direct pendura na origem`);
+      }
+      assert.equal(folhas.length, 0, `${ctx}: sem relay => sem folha`);
+      continue;
+    }
+
+    const [relayId, relayA] = relays[0];
+    const relayCand = candidates.find((c) => c.id === relayId);
+
+    // 3. o relay eleito nao pode ser inelegivel.
+    assert.ok(
+      !relayCand.transmitting && !relayCand.suspended && !relayCand.relayIneligible,
+      `${ctx}: relay elegivel`
+    );
+
+    // 4. profundidade <= 2: relay pendura na origem, folha pendura no relay.
+    assert.equal(relayA.paiId, 'origem', `${ctx}: relay.paiId === origem`);
+    assert.ok(relayA.filhosIds.length <= FANOUT_RELAY, `${ctx}: relay com <=${FANOUT_RELAY} filhos`);
+    for (const [, a] of folhas) {
+      assert.equal(a.paiId, relayId, `${ctx}: folha pendura no relay`);
+      assert.deepEqual(a.filhosIds, [], `${ctx}: folha nao tem filho`);
+    }
+
+    // 5. filhosIds do relay === exatamente o conjunto de folhas.
+    assert.deepEqual(
+      [...relayA.filhosIds].sort(),
+      folhas.map(([id]) => id).sort(),
+      `${ctx}: filhosIds do relay casa com as folhas`
+    );
+
+    // 6. o excedente e direct pendurado na origem -- nunca folha orfa.
+    for (const [, a] of out) {
+      if (a.role === 'direct') assert.equal(a.paiId, 'origem', `${ctx}: direct na origem`);
+    }
+
+    // 7. ninguem e pai de si mesmo.
+    for (const [id, a] of out) assert.notEqual(a.paiId, id, `${ctx}: ${id} nao e pai de si`);
+  }
+});
