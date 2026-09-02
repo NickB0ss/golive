@@ -33,55 +33,71 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.1.10` (`package.json`). Electron `^32` (fora de suporte — ver backlog).
+`0.3.4` (`package.json`). Electron `^32` (fora de suporte — ver backlog).
+Testes: `npm test` → **256 passando**. `npm run lint` → 0 erros.
 
 ## Em andamento
 
-Branch **`feat/transmissao-honesta`**: torna a transmissão honesta com o que
-ela consegue entregar, seguindo o plano
-`docs/superpowers/plans/2026-08-28-transmissao-honesta.md`. Acrescenta:
+Branch **`claude/planejamentos-futuros-projeto-leyjak`**: pega o que sobrou
+do backlog da auditoria e que dá pra fechar sem rodar o app à mão.
 
-- ponto/badge de status no cabeçalho dirigido pelo estado real da sala
-  (conserta o uso do acento apontado no F4 da auditoria);
-- escada de qualidade automática em laço fechado, alimentada pela telemetria
-  de encode — desce sozinha e volta a subir quando há folga;
-- degradação da própria captura via `applyConstraints`, não só o teto do
-  encode;
-- Opus em estéreo no SDP dos dois lados, com bitrate declarado;
-- tabela "Recebendo" no painel de estatísticas (lado do receptor);
-- alvo de jitter buffer mais baixo;
-- pausar a transmissão, com atalho global `Ctrl+Alt+P`.
+- **A8** — renegociação reusa a conexão em vez de trocá-la. `ensureInConn`
+  fechava e recriava a `RTCPeerConnection` a cada oferta; numa reoferta na
+  conexão que já existe isso responde com ufrag ICE e fingerprint DTLS novos,
+  que o ofertante não espera. A oferta agora carrega `renegotiate`, e só
+  reusa quando há conexão viva num `signalingState` que aceita oferta. Peer
+  em versão antiga não manda o campo e cai no caminho antigo.
+- **D2** — teste ponta a ponta da sinalização: servidor de verdade, clientes
+  `ws` reais, `join → welcome → offer → answer → ice` inteiro pelo fio. Sete
+  casos, incluindo ordem preservada numa rajada (a garantia em que o cliente
+  se apoia, e o que teria pego o A1), isolamento de sala com controle
+  positivo, teto de payload e flood.
+- **G5** — thumbnail do seletor de fonte em JPEG, não PNG. Era um PNG
+  codificado por janela no processo principal, no clique em que a pessoa vai
+  começar a transmitir.
+- **C7** — ESLint com config flat por ambiente e passo no CI antes dos
+  testes. Inclui uma regra local que aproxima o `no-floating-promises` sem
+  type info: pega `.then()` sem catch e chamada de função `async` do próprio
+  arquivo usada como statement. **Não** pega chamada vinda de fora do
+  arquivo — é rede de segurança, não garantia.
+- **B2** — `node-gyp` 9.4.1 → 11.5.0 (o advisory cobre até a 10.3.1, então o
+  "10+" da auditoria já não bastava). Ver a ressalva no backlog.
 
 **Já lançado** (em release com tag):
 
-- **F2** — retransmissão em cadeia sempre ligada, sem interruptor na UI
-  (`cfg.network.tree` forçado) — desde a v0.1.5.
-- **C2/C3/C6** — addon nativo faz o build falhar se faltar; `asarUnpack` do
-  `.node`; metadados do `package.json`.
-- **A1** — buffer de candidato ICE adiantado + fila serial de sinalização.
-- **A2** — carência de 5s antes de tratar `disconnected` como falha.
-- **A3** — a captura de tela sobrevive à reconexão automática.
-- **A4** — checagem de firewall compara o programa, não só a porta.
-- **A5** — recusa compartilhar quando a fonte escolhida sumiu (não cai em `sources[0]`).
-- **A6/A7** — `handleSignal` com try/catch; `myId` zera com a sessão.
-- **B4/B5** — limite de payload e taxa no WebSocket; roteamento confinado à sala.
-- **C1** — CI rodando `node --test` em push e PR (`.github/workflows/test.yml`).
-- **G4** — `findFreeServer` fecha o `WebSocketServer` que falhou o bind.
-- **H1** — sinalização caída vira sessão órfã, o vídeo continua.
-- **H2** — relay eleito por saúde de encode, não só RTT.
-- **H3** — malha degradada (preset desce um degrau) quando não há relay.
-- **H4** — encode da tela degrada com o tamanho da sala.
-
-(A1–A7, B4/B5, C1, G4, H1–H4 vieram no PR #17, `chore/robustez-e-higiene`,
-mesclado e já embarcado nas tags 0.1.9 / 0.1.10.)
-
-Testes: `npm test` → **171 passando**.
+- **0.2.0** — qualidade adaptativa **por espectador**: escada de histerese por
+  conexão, `receiveHealth` do espectador viajando no view-state, e a escada
+  global parando de fundir a saúde dos relays.
+- **0.3.0** — fechamento da adaptação: orçamento de uplink do relay por filho,
+  loop de estatísticas rodando também num relay puro, banda disponível e perda
+  real no painel.
+- **0.3.1 – 0.3.4** — correções da escada: saúde de encode é só da tela (a
+  câmera não contamina mais), a escada não vai ao piso só porque o codec é de
+  software, e instrumentação do encode no log em arquivo.
+- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
+  Detalhe por item na auditoria e no histórico do git.
 
 ## Backlog técnico
 
 Fonte única: **`docs/2026-08-27-auditoria-de-fragilidade.md`**. O que não foi
-feito nesta branch e não está explicitamente fora de escopo (abaixo):
-A8, B2, B3, C4, C5, C7, D2, F3, G5, G6, H5, H6.
+feito e não está explicitamente fora de escopo (abaixo): **B3, C4, C5, F3,
+G6, H5, H6** — e o resto do **B2**.
+
+Sobre o **B2**: a premissa da auditoria ("14 vulnerabilidades, todas na cadeia
+do `node-gyp@9`") não vale mais. Com o `node-gyp` da raiz na 11, as 15 que
+sobram vêm do `electron@32`, do `electron-builder@25` e de uma cópia aninhada
+do `node-gyp@9` que o `@electron/rebuild` fixa. Zerar exige subir dois majors
+(`electron 32 → 44`), o que é o item **B1** e precisa do app rodando.
+`npm audit --omit=dev` continua em **0**: nada disso alcança quem usa o app.
+
+**B3** (sala sem autenticação), **F3** (host cai, sala morre) e **G6** (teto de
+~4 pessoas) são "confirmado, por desenho" — limites conhecidos, não bugs.
+
+Dívida nova, deixada visível de propósito: as **10 promessas soltas** que o
+ESLint acusa como aviso (`src/main.js`, `src/renderer/app.js`,
+`src/renderer/ui.js`). Não viraram erro porque transformar cada uma em `await`
+muda ordem de execução de handler de clique e do bootstrap, e um `catch` vazio
+só esconderia a falha.
 
 ## Fora de escopo (adiado de propósito)
 

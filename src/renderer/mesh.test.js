@@ -206,10 +206,17 @@ function installFakeWebRTC() {
     constructor() {
       this.senders = [];
       this.localDescription = null;
+      // Uma pc recem-criada ja esta em 'stable' -- e o estado que
+      // ensureInConn exige pra reusar a conexao numa renegociacao (#A8).
+      this.signalingState = 'stable';
     }
     addEventListener() {}
     close() {
       this.closed = true;
+      this.signalingState = 'closed';
+    }
+    removeTrack(sender) {
+      this.senders = this.senders.filter((s) => s !== sender);
     }
     addTransceiver(track) {
       const sender = { track, getParameters: () => ({}), setParameters: () => Promise.resolve() };
@@ -340,6 +347,117 @@ test('trocar a inConn de um kind descarta a inStream que era dela (#9)', async (
   delete global.RTCRtpSender;
 });
 
+// --- Renegociacao na conexao existente (#A8) ---
+
+test('oferta com renegotiate reusa a inConn em vez de recriar (#A8)', async () => {
+  installFakeWebRTC();
+  const events = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, payload) => events.push({ peerId, ...payload }),
+  });
+  mesh.addPeer('origem', 'Ana');
+
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const primeira = mesh.peers.get('origem').inConns.screen;
+  const stream = { getTracks: () => [], getVideoTracks: () => [] };
+  mesh.peers.get('origem').inStreams = { screen: stream };
+
+  // E o que removeTrack manda ao desligar a camera: mesma pc do outro lado,
+  // so as tracks mudaram.
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=1' }, 'screen', true);
+
+  assert.equal(mesh.peers.get('origem').inConns.screen, primeira, 'mesma pc');
+  assert.equal(primeira.closed, undefined, 'nao pode fechar a conexao que o ofertante mantem de pe');
+  assert.equal(primeira.remoteDescription.sdp, 'v=1', 'a sdp nova entrou na pc que ja existia');
+  // A stream continua sendo a mesma conexao: derruba-la piscaria o tile por nada.
+  assert.equal(mesh.peers.get('origem').inStreams.screen, stream);
+  assert.equal(events.filter((e) => e.removedTile).length, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('oferta nova SEM o flag continua recriando a inConn (compat com peer antigo, #A8)', async () => {
+  installFakeWebRTC();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const primeira = mesh.peers.get('origem').inConns.screen;
+
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=1' }, 'screen');
+
+  assert.notEqual(mesh.peers.get('origem').inConns.screen, primeira);
+  assert.equal(primeira.closed, true);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('flag de renegociacao sem inConn viva cai no caminho de sempre, sem lancar (#A8)', async () => {
+  installFakeWebRTC();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+
+  // Nem o peer existe ainda: e o pior caso do flag chegando fora de hora.
+  const answer = await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=0' }, 'screen', true);
+  assert.equal(answer.type, 'answer');
+  assert.ok(mesh.peers.get('origem').inConns.screen);
+
+  // Conexao viva, mas em estado que nao aceita oferta remota: recriar e o
+  // unico caminho seguro.
+  const primeira = mesh.peers.get('origem').inConns.screen;
+  primeira.signalingState = 'have-local-offer';
+  await mesh.handleOffer('origem', { type: 'offer', sdp: 'v=1' }, 'screen', true);
+  assert.notEqual(mesh.peers.get('origem').inConns.screen, primeira);
+  assert.equal(primeira.closed, true);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('removeTrack marca a oferta como renegociacao (#A8)', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  const track = { kind: 'video' };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  await mesh.offerTo('7', stream, { bitrate: 1_000_000, fps: 30, codec: 'video/VP8' }, 'camera');
+  await mesh.removeTrack('7', track, 'camera');
+
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].type, 'offer');
+  assert.equal(sent[1].renegotiate, true);
+  assert.equal(mesh.peers.get('7').outConns.camera.getSenders().length, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('offerTo so marca renegociacao quando a outConn ja existia (#A8)', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  const quality = { bitrate: 1_000_000, fps: 30, codec: 'video/VP8' };
+  const track = { kind: 'video' };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+
+  await mesh.offerTo('7', stream, quality, 'camera');
+  assert.equal(sent[0].renegotiate, false, 'conexao nova: o outro lado tem que montar a dele');
+
+  // Religar a camera depois de stopCamera: a outConn nunca foi fechada.
+  await mesh.offerTo('7', stream, quality, 'camera');
+  assert.equal(sent[1].renegotiate, true);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
 test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-conn pra relay)', () => {
   // makeConnection nao e exportado -- exercita via ensureOutConn/ensureInConn,
   // que criam RTCPeerConnection de verdade. Sem RTCPeerConnection no
@@ -365,7 +483,6 @@ test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-co
   });
   mesh.addPeer('7', 'Bruno');
   mesh.peers.get('7'); // garante que o peer existe antes de abrir a conexao
-  const pc = mesh.peers.get('7').outConns.screen; // ainda nao existe -- ensureOutConn cria abaixo
 
   // ensureOutConn nao e exportado; usa offerTo indiretamente via relayTo
   // seria mais indireto -- em vez disso, cria a conexao via handleOffer
