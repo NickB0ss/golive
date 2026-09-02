@@ -93,6 +93,7 @@ const { findFreeServer } = require('./main/ports');
 const { createDiscovery } = require('./main/discovery');
 const { setupAutoUpdater } = require('./main/updater');
 const { setupLogger } = require('./main/logger');
+const { thumbnailDataUrl } = require('./main/thumbs');
 
 // Criado cedo (antes de whenReady) pra pegar exceptions que acontecam
 // durante a inicializacao tambem. app.getPath('userData') ja funciona
@@ -391,7 +392,7 @@ function advertiseHostedRoom() {
 
 // `types` deixa o renderer pedir so as telas primeiro (rapido, sao poucas)
 // e as janelas depois -- a lista de janelas e a parte cara: cada thumbnail
-// e capturada e codificada em PNG uma a uma. O tamanho do thumbnail e o que
+// e capturada e codificada em JPEG uma a uma. O tamanho do thumbnail e o que
 // domina esse custo, entao ficamos no minimo que ainda enche o card (190px).
 ipcMain.handle('sources:list', async (_event, types) => {
   const wanted = Array.isArray(types) && types.length ? types : ['screen', 'window'];
@@ -409,7 +410,7 @@ ipcMain.handle('sources:list', async (_event, types) => {
       id: s.id,
       name: s.name,
       isScreen: s.id.startsWith('screen:'),
-      thumbnail: s.thumbnail.toDataURL(),
+      thumbnail: thumbnailDataUrl(s.thumbnail),
       resolution: display
         ? `${Math.round(display.size.width * display.scaleFactor)}x${Math.round(
             display.size.height * display.scaleFactor
