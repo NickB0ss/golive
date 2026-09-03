@@ -13,39 +13,34 @@
  */
 
 :root {
-  /* Superficies: elevacao por luminosidade, nao por sombra. 0 e o mais
-     fundo, 4 e o mais proximo do usuario. */
-  --surface-0: #0d0f13;   /* fundo da janela, atras de tudo */
-  --surface-1: #14171d;   /* colunas laterais */
-  --surface-2: #1b1f27;   /* cards, linhas de lista, campos */
-  --surface-3: #232833;   /* hover */
-  --surface-4: #2d3340;   /* pressionado, selecionado */
-  --surface-modal: #171b22;
+  /* Superficies -- elevacao por luminosidade, nunca por blur. */
+  --bg:  #0E0F13;
+  --s1:  #16181D;
+  --s2:  #1D2026;
+  --s3:  #262A32;
+  --s4:  #323742;
+  --surface-modal: var(--s1);
 
-  --text-1: #eef1f6;      /* principal */
-  --text-2: #9aa4b5;      /* secundario, rotulos */
-  --text-3: #616b7d;      /* terciario e desabilitado -- NUNCA informacao */
+  --line:  rgba(255, 255, 255, 0.08);
+  --line2: rgba(255, 255, 255, 0.14);
 
-  /* Linhas em alpha sobre a superficie, nao cor fixa: funcionam em
-     qualquer nivel de elevacao sem precisar de uma variante por nivel. */
-  --line-subtle: rgba(255, 255, 255, 0.06);
-  --line:        rgba(255, 255, 255, 0.10);
-  --line-strong: rgba(255, 255, 255, 0.16);
+  --tx:  #E8EAED;
+  --tx2: #9AA0AA;
+  --tx3: #868D9B; /* rotulo 10-11px, hora, dica -- 5.33:1 sobre --s1, 4.89:1 sobre --s2 */
 
-  /* Semantica: tres cores, e a primeira tem um significado so.
-     Ciano porque #5865f2 e Discord, #9146ff e Twitch e vermelho e YouTube
-     -- e porque convive sem ambiguidade com ambar e vermelho, que e
-     exatamente o problema que um acento verde ou coral teria. */
-  --live:   #39d8ff;   /* ao vivo. E SO ao vivo. */
-  --warn:   #f5b544;   /* degradado: encoder em software, banda insuficiente */
-  --danger: #ff5d5d;   /* quebrado, e acoes destrutivas */
+  /* Cor semantica -- tres papeis, nunca decorativo (ver a spec, secao 4.1).
+     --act e --live sao os dois unicos acentos que competem por atencao;
+     --danger so preenche o botao de confirmar banimento, nunca e acento. */
+  --act:      #4F46E5;
+  --act-hover:#6257EB;
+  --live:     #FF4D4F;
+  --warn:     #F5B544;
+  --danger:   #C92A33;
 
-  --live-dim:   rgba(57, 216, 255, 0.14);
+  --live-dim:   rgba(255, 77, 79, 0.14);
   --warn-dim:   rgba(245, 181, 68, 0.13);
-  --danger-dim: rgba(255, 93, 93, 0.13);
+  --danger-dim: rgba(201, 42, 51, 0.13);
 
-  /* Raio progressivo -- um raio unico pra pilula, card e modal achata a
-     hierarquia. */
   --r-xs: 6px;
   --r-sm: 10px;
   --r-md: 14px;
@@ -55,121 +50,144 @@
   --s-1: 4px;  --s-2: 8px;   --s-3: 12px;
   --s-4: 16px; --s-5: 24px;  --s-6: 32px;  --s-7: 48px;
 
-  /* Sombra dupla: contato curto ancora o elemento, difusao longa da a
-     maciez. Uma camada so nao constroi eixo de elevacao. */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-3: 0 1px 3px rgba(0, 0, 0, 0.40), 0 16px 48px rgba(0, 0, 0, 0.50);
 
-  /* Anel de foco duplo: o offset na cor da superficie de baixo separa o
-     anel do elemento sem depender de outline-offset. */
-  --ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--live);
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--act);
 
-  /* --- Motion ---
-     Nada de ease-in em UI: comeca lento e parece que a interface atrasou. */
-  --ease-enter:  cubic-bezier(0.22, 1, 0.36, 1);   /* entradas, hover com transform */
-  --ease-move:   cubic-bezier(0.25, 1, 0.5, 1);    /* deslizes, indicadores, paineis */
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* saidas de superficie */
+  /* Motion -- so transform/opacity sao animados em qualquer regra do
+     arquivo inteiro (a mesma razao fisica do veto ao backdrop-filter:
+     essas duas rodam no compositor sem repintar camada, e nao disputam
+     com o encoder). */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  --ease-out:    cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  --t-press: 120ms;
-  --t-hover: 140ms;
-  --t-tint:  200ms;
-  --t-pop:   180ms;
-  --t-move:  240ms;
-  --t-modal: 260ms;
-  --t-exit:  150ms;
-
-  /* Aliases dos nomes antigos. Existem pra migracao ser incremental: o
-     componente que ainda nao foi reancorado continua funcionando. Repare
-     que --accent NAO aponta pra --live -- se apontasse, o acento voltaria
-     a aparecer em toda parte, que e justamente o que este tema desfaz. */
-  --bg-app: var(--surface-0);
-  --bg-panel: var(--surface-1);
-  --bg-rail: var(--surface-0);
-  --bg-inset: var(--surface-2);
-  --text: var(--text-1);
-  --muted: var(--text-2);
-  --accent: var(--surface-4);
+  /* Aliases -- mantidos pra qualquer regra do arquivo (grade/tile/
+     fullscreen/PiP/picker/settings/stats, intactos nesta reescrita) que
+     ainda referencia os nomes antigos de superficie/texto/acento. */
+  --bg-app: var(--bg);
+  --bg-panel: var(--s1);
+  --bg-rail: var(--bg);
+  --bg-inset: var(--s2);
+  --text: var(--tx);
+  --text-1: var(--tx);
+  --text-2: var(--tx2);
+  --text-3: var(--tx3);
+  --muted: var(--tx2);
+  --accent: var(--act);
   --good: var(--live);
   --bad: var(--danger);
   --radius: var(--r-sm);
+  --surface-0: var(--bg);
+  --surface-1: var(--s1);
+  --surface-2: var(--s2);
+  --surface-3: var(--s3);
+  --surface-4: var(--s4);
+  --line-subtle: var(--line);
+  --line-strong: var(--line2);
+
+  /* Aliases de motion -- mesma razao do bloco de aliases acima: as secoes
+     nao tocadas nesta reescrita (tile, modal, indicadores deslizantes,
+     view-transition, pulse de reconexao) referenciam estes nomes. O scale
+     novo tem 3 duracoes / 2 curvas; o antigo tinha mais -- alguma nuance
+     se perde, mas todo o movimento volta. */
+  --t-press:    var(--dur-fast);
+  --t-hover:    var(--dur-fast);
+  --t-tint:     var(--dur-base);
+  --t-move:     var(--dur-slow);
+  --t-modal:    var(--dur-slow);
+  --ease-enter: var(--ease-out);
+  --ease-move:  var(--ease-out);
 }
 
-/* Zerar as duracoes NOS TOKENS faz todo componente herdar o caminho
-   reduzido sem precisar de uma regra por componente. O bloco `*` abaixo e
-   a rede de seguranca pro que escapar. */
 @media (prefers-reduced-motion: reduce) {
-  :root {
-    --t-press: 0ms; --t-hover: 0ms; --t-tint: 0ms; --t-pop: 0ms;
-    --t-move: 0ms;  --t-modal: 0ms; --t-exit: 0ms;
-  }
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
 body {
-  font-family: "Segoe UI", system-ui, sans-serif;
-  background: var(--bg-app);
-  color: var(--text);
-  height: 100vh;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
   overflow: hidden;
-  font-size: 14px;
+  user-select: none;
 }
+::selection { background: var(--act); color: #fff; }
 
 .hidden { display: none !important; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
 
-/* Botoes: tres niveis distinguidos por SUPERFICIE, nao por cor -- ver a
-   regra do acento no topo do arquivo. Hover sobe um nivel de superficie;
-   `filter: brightness` (o hover universal de antes) clareava o texto e o
-   icone junto com o fundo e derrubava o contraste. */
+/* Botoes: alvo minimo 44px (ver a spec, secao 4.4) em todos, exceto a
+   tabela de Estatisticas -- a unica excecao aos 44px do arquivo inteiro. */
 button {
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
-  padding: 10px 16px;
+  min-height: 44px;
+  padding: 0 16px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   background: transparent;
-  color: var(--text-1);
-  transition: background-color var(--t-tint) var(--ease-move),
-              border-color var(--t-tint) var(--ease-move),
-              color var(--t-tint) var(--ease-move),
-              transform var(--t-press) var(--ease-enter);
+  color: var(--tx);
+  transition: background-color var(--dur-fast) var(--ease-in-out),
+              border-color var(--dur-fast) var(--ease-in-out),
+              color var(--dur-fast) var(--ease-in-out),
+              transform var(--dur-fast) var(--ease-out);
 }
 button:disabled { opacity: 0.5; cursor: default; }
+button:active:not(:disabled) { transform: scale(0.97); transition-duration: 0ms; }
+button svg { width: 17px; height: 17px; flex: none; }
 
-/* Feedback de toque: entra em 0ms (a mao ja esta la, esperar parece
-   travamento) e volta em --t-press. */
-button:active:not(:disabled) { transform: scale(0.96); transition-duration: 0ms; }
-
-:where(button, .icon-btn, .room-row, .source-card, .picker-tab, .settings-cat, input, select, textarea):focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
+:where(button, .icon-btn, .icon-btn-inline, .room-row, .source-card, .picker-tab, .settings-cat, input, select, textarea):focus-visible {
+  outline: 2px solid var(--act);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
-.primary { background: var(--surface-4); border-color: var(--line-strong); color: var(--text-1); }
-.primary:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-strong); }
+/* Uma primaria colorida por tela, nunca duas (ver a spec, secao 4.5). */
+.primary { background: var(--act); border-color: var(--act); color: #fff; }
+.primary:hover:not(:disabled) { background: var(--act-hover); border-color: var(--act-hover); }
 
-.ghost { background: transparent; border-color: var(--line); color: var(--text-1); }
-.ghost:hover:not(:disabled) { background: var(--surface-3); }
+.secondary { background: var(--s3); border-color: var(--line2); color: var(--tx); }
+.secondary:hover:not(:disabled) { background: var(--s4); }
 
-/* Destrutivo e ghost com texto vermelho, nao fundo vermelho: e o que
-   libera o vermelho pra significar "quebrado" sem competir com um botao
-   que esta sempre visivel na tela. */
-.danger { background: transparent; border-color: var(--line); color: var(--text-1); }
-.danger:hover:not(:disabled) { background: var(--danger-dim); border-color: var(--danger); color: var(--danger); }
+.ghost { background: transparent; border-color: var(--line2); color: var(--tx2); }
+.ghost:hover:not(:disabled) { color: var(--tx); border-color: var(--tx3); background: var(--s3); }
 
-.small { padding: 6px 10px; font-size: 0.85em; }
+/* Destrutivo e fundo preenchido, nao ghost com texto vermelho -- ao
+   contrario do sistema antigo. So aparece dentro de um dialogo de
+   confirmacao (banir); nunca como acento solto na interface (ver spec 4.1
+   e 4.5 -- --live e --danger sao dois vermelhos com papeis diferentes). */
+.destructive { background: var(--danger); border-color: var(--danger); color: #fff; }
+.destructive:hover:not(:disabled) { background: #B3242D; border-color: #B3242D; }
+
+.small { min-height: 36px; padding: 0 12px; font-size: 0.85em; }
 
 .error { color: var(--danger); margin-top: 10px; font-size: 13px; line-height: 1.5; }
-.hint { color: var(--muted); font-size: 0.85em; min-height: 1.2em; }
+.hint { color: var(--tx2); font-size: 0.85em; min-height: 1.2em; }
+
+.check-inline { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 13px; cursor: pointer; }
+.check-inline input { accent-color: var(--act); width: 16px; height: 16px; }
 
 input[type="text"], select {
   width: 100%;
@@ -185,14 +203,6 @@ input[type="text"], select {
    nao muda a espessura, entao passava despercebida. */
 input[type="text"]:focus-visible, select:focus-visible { outline: none; box-shadow: var(--ring); }
 input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
-
-/* ---------- Layout raiz ---------- */
-
-.app {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 220px;
-  height: 100vh;
-}
 
 .update-banner, .toast {
   position: fixed;
@@ -254,213 +264,274 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   100% { margin-left: 100%; }
 }
 
-.rooms-col, .members-col {
-  background: var(--surface-1);
-  overflow-y: auto;
+/* ============ LOBBY ============ */
+
+.lobby {
+  height: 100vh;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--s-5) var(--s-4);
   display: flex;
   flex-direction: column;
+  gap: var(--s-5);
 }
-.rooms-col { border-right: 1px solid var(--line); }
-.members-col { border-left: 1px solid var(--line); padding: 16px; }
 
-.app-brand {
+.lobby-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
+  gap: var(--s-2);
 }
 .app-brand-badge {
-  width: 28px; height: 28px;
-  border-radius: var(--r-xs);
-  /* A marca nao e sinal -- ver a regra do acento no topo do arquivo. */
-  background: var(--surface-3);
-  color: var(--text-1);
-  display: grid; place-items: center;
-  font-weight: 700;
-  font-size: 12px;
+  width: 30px; height: 30px; border-radius: var(--r-sm);
+  background: var(--act); color: #fff; font-weight: 700; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.app-brand-name { font-weight: 700; font-size: 15px; margin-right: auto; }
+.icon-btn-inline {
+  width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: var(--r-xs);
+  color: var(--tx2); background: transparent; border: none;
+}
+.icon-btn-inline svg { width: 15px; height: 15px; }
+.icon-btn-inline:hover { background: var(--s3); color: var(--tx); }
+.icon-btn-inline.spin svg { animation: spin 600ms linear; }
+
+.lobby-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+.lobby-hero-btn { padding: 0 var(--s-4); height: 56px; font-size: 14.5px; }
+
+.lobby-rooms { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.rooms-title {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--tx3); font-weight: 700; margin: 0;
+}
+.room-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; gap: 1px; background: var(--s1);
+  border: 1px solid var(--line); border-radius: var(--r-md); }
+.room-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4); min-height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+.room-row:last-child { border-bottom: none; }
+.room-info { display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1; }
+.room-item-text { min-width: 0; flex: 1; }
+.room-name { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-meta { font-size: 12px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-lock { font-size: 0.9em; opacity: .8; flex: none; }
+.room-connect { min-height: 36px; padding: 0 14px; font-size: 12.5px; }
+.room-connect:disabled { color: var(--live); opacity: 1; cursor: default; }
+.room-connect.cooldown { opacity: .4; cursor: not-allowed; }
+.room-list .muted { color: var(--tx3); padding: var(--s-4); text-align: center; list-style: none; }
+
+.user-panel {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); background: var(--s1);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+}
+.user-avatar {
+  width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none;
+  min-height: 0; padding: 0; background: var(--s4); border: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx2); font-weight: 700;
+}
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.user-panel-name {
+  font-weight: 600; font-size: 13.5px; flex: 1; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: transparent; border: none; min-height: 0; padding: 0; color: var(--tx);
+}
+.icon-btn {
+  width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--tx2); border: none;
+}
+.icon-btn:hover { background: var(--s3); color: var(--tx); }
+.icon-btn.active { background: var(--s4); color: var(--tx); }
+
+/* ============ DIALOGOS (criar sala / entrar / banir) ============ */
+
+.dialog-box { width: min(380px, 90vw); padding: var(--s-5); }
+.dialog-box h2 { margin: 0 0 var(--s-3); font-size: 17px; }
+.dialog-hint { color: var(--tx2); font-size: 12.5px; line-height: 1.55; margin: var(--s-2) 0 0; }
+.dialog-field { margin-bottom: var(--s-3); }
+.dialog-field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.dialog-field input {
+  width: 100%; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm);
+  background: var(--s2); border: 1px solid var(--line2); color: var(--tx); font-size: 14px;
+}
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-4); }
+
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+/* ============ SALA ============ */
+
+.room { display: flex; height: 100vh; }
+.stage { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.stage-header {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line);
+  background: var(--s1);
+}
+.stage-status-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--tx3); flex: none; }
+.stage-status-dot[data-level="live"] { background: var(--live); }
+.stage-status-dot[data-level="degraded"] { background: var(--warn); }
+.stage-status-dot[data-level="paused"] { background: var(--tx3); }
+.stage-room-name { font-weight: 650; font-size: 14.5px; }
+.stage-room-address { font-size: 12px; color: var(--tx2); font-variant-numeric: tabular-nums; }
+.stage-room-pin { font-size: 12px; color: var(--warn); }
+.stage-status-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--r-full);
+  background: var(--warn-dim); color: var(--warn);
+}
+#btn-toggle-side { margin-left: auto; }
+
+.control-bar {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line); background: var(--s1);
+}
+.control-btn { min-width: 0; }
+.control-btn-end { margin-left: auto; }
+
+.room-side {
+  width: 300px; flex: none; display: flex; flex-direction: column;
+  border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
+  transition: width var(--dur-slow) var(--ease-in-out), opacity var(--dur-base) var(--ease-in-out);
+}
+/* visibility: hidden tira os filhos (input do chat, botoes de membro) da
+   ordem de tabulacao enquanto a coluna esta recolhida e invisivel -- so
+   width:0/opacity:0 os deixava focaveis e digitaveis por tras do nada. */
+.room-side.collapsed { width: 0; opacity: 0; border-left: none; visibility: hidden; }
+
+/* O chevron do botao de recolher gira pra apontar pra onde a coluna vai. */
+#btn-toggle-side svg { transition: transform var(--dur-fast) var(--ease-in-out); }
+#btn-toggle-side.collapsed svg { transform: rotate(180deg); }
+
+.room-side-section { border-bottom: 1px solid var(--line); }
+.members-title {
+  margin: 0; padding: var(--s-3) var(--s-3) var(--s-2);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--tx3); font-weight: 700;
+}
+
+.peer-list, .banned-list { list-style: none; margin: 0; padding: 0 var(--s-2) var(--s-2); max-height: 176px; overflow-y: auto; }
+.peer-list li, .banned-list li {
+  display: flex; align-items: center; gap: var(--s-2);
+  min-height: 44px; padding: 0 var(--s-2); border-radius: var(--r-sm); position: relative;
+}
+.peer-list li:hover, .banned-list li:hover { background: var(--s2); }
+.peer-list .muted { color: var(--tx3); }
+.peer-list li.self { color: var(--tx2); }
+
+.peer-avatar-wrap { position: relative; flex: none; }
+.peer-avatar {
+  width: 28px; height: 28px; border-radius: 50%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 11px;
+}
+.peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.peer-avatar.on { box-shadow: 0 0 0 2px var(--live); }
+.banned-list .peer-avatar { opacity: .5; }
+
+.peer-name { font-weight: 550; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peer-you-tag { color: var(--tx3); font-weight: 400; font-size: 10.5px; }
+.peer-crown { color: var(--warn); font-size: 12px; }
+.peer-live-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--live-dim); color: #FF8385;
+  border-radius: var(--r-xs); padding: 2px 6px; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .03em; margin-left: auto;
+}
+.peer-live-badge svg { width: 9px; height: 9px; }
+
+.member-menu-btn {
+  margin-left: auto; width: 28px; height: 28px; min-height: 0; padding: 0;
+  border-radius: var(--r-xs); background: transparent; color: var(--tx2); border: none;
   flex: none;
 }
-.app-brand-name { font-weight: 700; font-size: 14px; margin-right: auto; }
+.member-menu-btn:hover { background: var(--s3); color: var(--tx); }
 
-.rooms-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  color: var(--muted);
-  padding: 16px 16px 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.member-menu {
+  position: fixed; z-index: 50; background: var(--s2); border: 1px solid var(--line2);
+  border-radius: var(--r-md); padding: 5px; width: 210px; box-shadow: var(--shadow-3);
 }
-.icon-btn-inline {
-  /* 32x32 e o alvo minimo de toque (§5.6 da spec). O icone continua 14px --
-     cresce a area clicavel, nao o desenho. */
-  width: 32px; height: 32px;
-  padding: 0;
-  background: transparent;
-  color: var(--text-2);
-  border-radius: var(--r-xs);
-  display: grid;
-  place-items: center;
+.member-menu-item {
+  display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 9px;
+  border-radius: var(--r-xs); font-size: 12.5px; color: var(--tx); cursor: pointer;
 }
-.icon-btn-inline svg { width: 14px; height: 14px; }
-.icon-btn-inline:hover { background: var(--surface-3); color: var(--text-1); }
-.icon-btn-inline.spin svg { animation: spin 600ms linear; }
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.member-menu-item:hover { background: var(--s3); }
+.member-menu-item svg { width: 15px; height: 15px; flex: none; }
+.member-menu-item.warn { color: var(--warn); }
+.member-menu-item.danger { color: #FF8385; }
+.member-menu-sep { height: 1px; background: var(--line); margin: 5px 4px; }
+.member-menu-hint { font-size: 10px; color: var(--tx3); padding: 4px 9px 5px; line-height: 1.45; }
+
+.banned-readmit {
+  margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--act);
+  border: 1px solid var(--line2); border-radius: var(--r-xs); padding: 3px 8px;
+  background: transparent; min-height: 0;
 }
-.members-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  color: var(--muted);
-  padding: 16px 16px 8px;
+.banned-readmit:hover { background: var(--s3); }
+
+/* ---- Chat ---- */
+
+.chat-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
+
+.chat-line { display: flex; gap: 9px; padding: 3px var(--s-2); }
+.chat-line.grouped { padding-top: 0; }
+.chat-line .chat-avatar-slot { width: 28px; flex: none; }
+.chat-line .chat-avatar {
+  width: 28px; height: 28px; border-radius: 50%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 11px;
+}
+.chat-line .chat-body { min-width: 0; flex: 1; }
+.chat-line .chat-head { display: flex; align-items: baseline; gap: 7px; }
+.chat-author { font-size: 12.5px; font-weight: 650; color: var(--tx); }
+.chat-time { font-size: 10px; color: var(--tx3); }
+.chat-text { font-size: 12.5px; line-height: 1.5; color: #D3D7DD; margin-top: 1px; word-break: break-word; }
+
+.chat-sys {
+  display: flex; align-items: center; gap: 7px; padding: 4px var(--s-3);
+  font-size: 11px; line-height: 1.4; color: var(--tx3);
+}
+.chat-sys svg { width: 12px; height: 12px; flex: none; }
+.chat-sys.warn { color: var(--warn); }
+.chat-sys.danger { color: #FF8385; }
+
+.chat-compose {
+  margin: var(--s-2); background: var(--s2); border: 1px solid var(--line2);
+  border-radius: var(--r-sm); padding: 9px 11px; display: flex; align-items: flex-end; gap: 6px;
+  transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
+}
+.chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.22); }
+.chat-compose textarea {
+  flex: 1; resize: none; background: transparent; border: none; color: var(--tx);
+  font-family: inherit; font-size: 12.5px; line-height: 1.4; max-height: 88px;
+}
+.chat-compose textarea:focus { outline: none; }
+.chat-input-count { font-size: 10px; color: var(--tx3); flex: none; }
+.chat-compose.disabled { opacity: .6; pointer-events: none; }
+
+.offbar {
+  background: var(--warn-dim); color: var(--warn); font-size: 11px;
+  padding: 7px var(--s-3); border-top: 1px solid rgba(245, 181, 68, 0.2);
 }
 
-.room-list, .peer-list { list-style: none; flex: 1; overflow-y: auto; }
-.room-list { padding: 0 8px; }
-
-.rooms-subtitle {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  color: var(--muted);
-  padding: 8px 16px 4px;
-}
 /* O ::before com um bullet virou o componente de status de verdade: a
    linha ja renderiza um `.dot`, entao ele so precisa herdar a cor certa. */
 #room-list-live .dot { background: var(--live); }
-.room-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-bottom: 2px;
-  border-radius: var(--r-sm);
-  position: relative;
-  /* Alta frequencia inverte a assimetria: entra em 0ms (abaixo), sai em
-     --t-tint. Esperar pelo hover de uma lista parece travamento. */
-  transition: background-color var(--t-tint) var(--ease-move);
-}
-@media (hover: hover) and (pointer: fine) {
-  .room-row:hover { background: var(--surface-3); transition-duration: 0ms; }
-}
-.room-row.active { background: var(--surface-4); }
-/* O unico acento da coluna, e ele quer dizer "e nesta sala que voce esta". */
-.room-row.active::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 6px; bottom: 6px;
-  width: 3px;
-  border-radius: var(--r-full);
-  background: var(--live);
-}
 
-.room-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 6px 8px 10px;
-}
-.room-info .dot { flex: none; }
-.room-item-text { min-width: 0; flex: 1; }
-.room-name { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.room-connect, .room-delete {
-  flex: none;
-  width: 28px; height: 28px;
-  padding: 0;
-  background: transparent;
-  border-radius: 6px;
-  display: grid; place-items: center;
-  color: var(--muted);
-}
-.room-connect svg, .room-delete svg { width: 15px; height: 15px; }
-.room-connect:hover:not(:disabled) { background: var(--surface-4); color: var(--text-1); }
-.room-connect:disabled { color: var(--live); cursor: default; opacity: 1; }
-.room-connect.cooldown { opacity: .35; cursor: not-allowed; }
-.room-delete { opacity: 0; margin-right: 4px; }
-.room-row:hover .room-delete { opacity: 1; }
-.room-delete:hover { background: var(--surface-3); color: var(--danger); }
-
-.rooms-actions { padding: 4px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
-.room-action-btn { width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; }
-.room-action-btn svg { width: 15px; height: 15px; flex: none; }
-.join-address-form { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
-
-/* B3 -- PIN opcional da sala */
-.protect-room-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 16px 10px;
-  font-size: 12px; color: var(--muted);
-  cursor: pointer; user-select: none;
-}
-.protect-room-row input { accent-color: var(--accent, currentColor); }
 #in-pin {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.25em;
 }
-.room-lock { font-size: 0.85em; opacity: .8; }
-.stage-room-pin {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px; font-weight: 650;
-  color: var(--text-2);
-  background: var(--surface-3, var(--warn-dim));
-  border-radius: var(--r-full);
-  padding: 2px var(--s-2);
-  white-space: nowrap;
-}
 
-.user-panel {
-  margin-top: auto;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  border-top: 1px solid var(--line-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.user-avatar {
-  width: 32px; height: 32px;
-  padding: 0;
-  border-radius: 50%;
-  overflow: hidden;
-  background: var(--surface-4);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-.user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-#user-panel-avatar-fallback { font-weight: 700; font-size: 13px; color: #fff; }
-.user-panel-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#user-panel-name {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 2px 4px;
-}
-#user-panel-name:hover { background: var(--surface-3); }
-.user-panel-actions { display: flex; gap: 4px; }
-.icon-btn {
-  width: 32px; height: 32px;
-  padding: 0;
-  background: transparent;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-}
 .icon-btn svg { width: 17px; height: 17px; }
-.icon-btn:hover { background: var(--surface-3); }
-/* Ativo se distingue por elevacao, nao por cor. */
-.icon-btn.active { background: var(--surface-4); box-shadow: inset 0 0 0 1px var(--line-strong); }
 /* Pausado nao e so "ativo": e um estado que esconde a tela dos outros e
    precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
    elevacao neutra do .active. */
@@ -473,49 +544,9 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   50% { opacity: 0.45; }
 }
 
-.peer-list li {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line-subtle);
-  font-size: 14px;
-  /* O nome encolhe antes de empurrar o badge "AO VIVO" pra fora da coluna
-     -- sem isto a linha estoura 2px e a coluna inteira ganha uma barra de
-     rolagem horizontal. */
-  min-width: 0;
-  overflow: hidden;
-}
-.peer-live-group {
-  margin-left: auto;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.peer-list li em {
-  flex: none;
-  white-space: nowrap;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--live);
-  background: var(--live-dim);
-  box-shadow: inset 0 0 0 1px rgba(57, 216, 255, 0.35);
-  padding: 2px 6px;
-  border-radius: var(--r-xs);
-}
-/* O nome precisa ser um elemento pra poder truncar: um no de texto solto
-   vira item anonimo do flex e nao aceita text-overflow. */
-.peer-name {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.peer-list .muted { color: var(--muted); border: none; }
-.peer-list li.self { font-weight: 600; }
-.peer-you-tag { color: var(--muted); font-weight: 400; font-size: 12px; }
+/* O <em>AO VIVO</em> mora dentro de .peer-live-badge, que ja carrega a
+   pilula inteira -- aqui so tira o italico do <em>. */
+.peer-list li em { font-style: normal; }
 /* Preset menor que estamos mandando pra ESTE espectador porque a conexao
    dele nao esta aguentando. Neutro de proposito -- nao e um alerta nem um
    estado "ao vivo", so um dado. Ver a regra do tema no topo. */
@@ -529,66 +560,15 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   flex: none;
 }
 
-.peer-avatar-wrap { position: relative; flex: none; display: grid; place-items: center; }
-
-.peer-avatar {
-  width: 36px; height: 36px;
-  flex: none;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-}
-/* Anel do avatar: --live quando ha sinal, --warn quando degradado, sem
-   anel no estado normal. "Conectado" e "ao vivo" sao a mesma afirmacao --
-   ha sinal -- entao sao a mesma cor. */
-.peer-avatar.ok { border-color: var(--live); }
-.peer-avatar.warn { border-color: var(--warn); }
-.peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
-
-/* Vive ao lado de "AO VIVO" (dentro de .peer-live-group), nao mais
-   colado no avatar -- os dois formam um so grupo de sinal, no lado
-   direito da linha. */
-.peer-live-badge {
-  position: relative;
-  flex: none;
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  background: var(--live);
-  display: grid;
-  place-items: center;
-  color: var(--surface-0);
-}
-.peer-live-badge svg { width: 8px; height: 8px; }
 
 .dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--text-3); flex: none; }
 .dot.ok { background: var(--live); }
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--danger); }
 
-/* ---------- Palco ---------- */
-
-.stage { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-
-.stage-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: var(--s-4) var(--s-5);
-  border-bottom: 1px solid var(--line-subtle);
-}
-/* O ponto e um indicador de ESTADO, nao decoracao: ele so recebe o acento
-   quando alguem esta de fato ao vivo. Ver a regra do tema no topo do
-   arquivo -- antes disto ele era pintado de --live fixo e ficava aceso por
-   voce estar numa sala. */
-.stage-status-dot {
-  width: 8px; height: 8px; border-radius: var(--r-full);
-  background: var(--text-3); flex: none;
-  transition: background var(--t-tint) var(--ease-move);
-}
-.stage-status-dot[data-level="live"] { background: var(--live); }
-.stage-status-dot[data-level="degraded"] { background: var(--warn); }
-.stage-status-dot[data-level="paused"] { background: var(--text-3); }
+/* O ponto ganha o pulso quando esta reconectando -- as demais cores/niveis
+   ja vem do bloco SALA acima. */
 .stage-status-dot[data-level="reconnecting"] {
   background: var(--warn);
   animation: status-dot-pulse 1.4s var(--ease-move) infinite;
@@ -602,20 +582,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   50% { opacity: 0.35; }
 }
 
-.stage-status-badge {
-  font-size: 12px;
-  color: var(--warn);
-  background: var(--warn-dim);
-  border-radius: var(--r-full);
-  padding: 2px var(--s-2);
-  white-space: nowrap;
-}
-.stage-room-name { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
-.stage-room-address {
-  color: var(--text-2);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-}
 #btn-disconnect { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 #btn-disconnect svg { width: 14px; height: 14px; }
 #btn-disconnect:disabled { opacity: .5; cursor: not-allowed; }

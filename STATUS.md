@@ -73,6 +73,52 @@ entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
   **A UI (caixa, campo de PIN, cadeado na lista, selo no cabeçalho) precisa de
   uma passada visual com o app rodando**; a lógica está coberta por teste.
 
+Branch **`claude/chat-e-moderacao`**: redesign completo da interface, mais chat
+de texto e moderação pelo dono da sala. Ainda não mesclada. `npm test` → **286
+passando**, `npm run lint` → 0 erros (os mesmos 10 avisos `require-atomic-updates`).
+Exercitada com o app rodando — duas instâncias / peer de teste por CDP —, sem
+`npm run dist` (fora do escopo da spec).
+
+- **Redesign — Lobby e Sala** — a interface passou a ter dois estados
+  explícitos: o **Lobby** (fora de sala: criar, entrar por endereço, lista das
+  salas descobertas na rede, perfil no rodapé) e a **Sala** (palco à esquerda,
+  coluna de membros/banidos/chat à direita, recolhível). Diálogos próprios pra
+  criar a sala (com a opção "Proteger com PIN") e pra entrar (o campo de PIN só
+  aparece quando a sala pede). Paleta nova índigo/vermelho/âmbar (`--act:#4F46E5`
+  ação, `--live:#FF4D4F` ao vivo, `--warn:#F5B544` aviso); o PIN da sala aparece
+  num selo no cabeçalho — a "passada visual" que faltava no B3. A grade de
+  tiles, o fullscreen, o PiP arrastável e o diálogo de compartilhar foram
+  portados sem mudança de comportamento.
+- **Chat de texto** — uma mensagem por linha, agrupadas por autor (avatar só na
+  primeira de cada grupo), com linhas de sistema pra entrada, saída e cada ação
+  de moderação. O servidor de sinalização guarda as últimas 50 entradas (texto
+  e sistema no mesmo ring buffer) e entrega esse histórico a quem entra;
+  reconectar recarrega o histórico sem duplicar. Teto de 5 mensagens/s por
+  participante (não fecha o socket) e de 500 caracteres por mensagem.
+- **Moderação pelo dono** — quem cria a sala recebe um **token de dono** gerado
+  por sala (`ownerToken`), que nunca sai da máquina e volta no `join`; o
+  servidor marca esse participante como dono por igualdade estrita (string
+  vazia nunca marca). O dono tem três poderes: **parar a transmissão** de
+  alguém (é um pedido — o socket segue aberto e a pessoa pode voltar a
+  compartilhar), **expulsar** (fecha o socket com 1008; pode reentrar) e
+  **banir** (fecha o socket e barra o reingresso por `clientId` + IP, com o
+  loopback de fora pra o dono não se autobanir). Banir pede confirmação com
+  foco no Cancelar; o banido entra numa lista "Banidos" com botão "Readmitir".
+  Expulso ou banido volta pro lobby sozinho. O bloqueio é cooperativo — feito
+  pelo servidor de sinalização mais os clientes: um cliente modificado ainda
+  poderia manter um link P2P já aberto por alguns instantes, até os outros
+  processarem o `peer-left`, então "banido" não é uma garantia criptográfica.
+- **Quatro sons novos** — além de entrada/saída: mensagem no chat (o mais
+  discreto, só com a janela fora de foco e no máximo 1x a cada 2s), alguém
+  começou a transmitir, o dono parou a sua transmissão, e você foi removido da
+  sala. O interruptor "Sons do app" em Configurações › Voz e Vídeo corta todos
+  de uma vez, entrada/saída incluídas.
+
+**Pendências desta branch** (não travam a lógica, que está coberta por teste e
+verificação com o app rodando): o menu ⋮ de cada membro não é navegável por
+teclado (itens `role="menuitem"` sem `tabindex`, sem seta), alinhado ao item
+**F1** de acessibilidade que já está adiado.
+
 **Já lançado** (em release com tag):
 
 - **0.2.0** — qualidade adaptativa **por espectador**: escada de histerese por

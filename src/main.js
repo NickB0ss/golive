@@ -441,7 +441,10 @@ ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) =>
     // forca bruta aqui (o servidor derruba o socket a cada tentativa, e a
     // sala vive minutos). 1000-9999 pra sempre ter 4 casas.
     const pin = protect ? String(1000 + Math.floor(Math.random() * 9000)) : null;
-    embeddedServer = await findFreeServer((port) => createSignalingServer({ port, pin }));
+    // Token de dono (novo): gerado por sala, nunca sai desta maquina -- so
+    // volta pro renderer que criou a sala, que o reenvia no proprio 'join'.
+    const ownerToken = require('crypto').randomUUID();
+    embeddedServer = await findFreeServer((port) => createSignalingServer({ port, pin, ownerToken }));
     hostedRoomPin = pin;
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
@@ -461,6 +464,7 @@ ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) =>
       port: embeddedServer.port,
       address,
       pin,
+      ownerToken,
       firewall,
       addressWarning: picked ? undefined : 'Radmin/Tailscale não detectado',
     };

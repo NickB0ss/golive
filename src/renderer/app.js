@@ -5,6 +5,8 @@
   const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
+  localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
+  sound.setEnabled(cfg.soundsEnabled); // aplica a preferencia salva antes de qualquer som tocar
   // `currentSession` is the single source of truth for "the session that is
   // live right now". Every async callback (WS messages, WebRTC events,
   // capture promises) captures the specific `session` object it belongs to
@@ -32,6 +34,7 @@
   // timer, que so testa `if (currentSession)`.
   let retryTimer = null;
   let myId = null;
+  let ownerId = null; // 'me' quando EU sou o dono, ou o id do peer marcado owner:true
 
   const KINDS = ['screen', 'camera'];
   const { relayKindFor, parseKind } = meshModule;
@@ -124,6 +127,7 @@
     // hoje, mas deixa-lo sobreviver seria exatamente o tipo de estado
     // fantasma que esta funcao existe pra evitar.
     myId = null;
+    ownerId = null;
   }
   let localStream = null;
   // Pausa da transmissao: a tela continua capturada e as conexoes de pe, so
@@ -534,6 +538,11 @@
         persist();
         window.golive.setAdvertise(network.advertise);
       },
+      onSoundsChange: (enabled) => {
+        cfg = { ...cfg, soundsEnabled: enabled };
+        persist();
+        sound.setEnabled(enabled);
+      },
     });
   });
 
@@ -574,11 +583,8 @@
         // o formulario de entrar-por-endereco ja preenchido, com o foco no
         // campo de PIN. Quem criou a sala passa o PIN por fora (voz, chat).
         if (room.protected) {
-          $('join-address-form').classList.remove('hidden');
-          $('in-server').value = room.address;
-          $('in-pin').value = '';
+          ui.dialogs.openJoinRoom({ address: room.address, showPinField: true, onConnect: handleJoinConnect });
           $('setup-error').textContent = 'Essa sala pede um PIN — peça pra quem criou.';
-          $('in-pin').focus();
           return;
         }
         joinRoom(room.address, cfg.name);
@@ -664,6 +670,15 @@
     window.golive.checkForUpdates?.();
   });
 
+  // Erro no nivel do LOBBY (fora de qualquer dialogo). O #setup-error mora
+  // dentro do #dialog-join-room e so aparece com esse dialogo aberto -- a
+  // maioria das falhas de conexao acontece com ele ja fechado (host caiu,
+  // reconexao, endereco invalido), entao essas vao pra ca.
+  function showLobbyError(msg) {
+    const el = $('lobby-error');
+    if (el) el.textContent = msg || '';
+  }
+
   let toastTimer = null;
   function showToast(msg, ms = 4000) {
     $('toast-text').textContent = msg;
@@ -683,66 +698,67 @@
     window.golive.refreshDiscovery();
   });
 
-  $('btn-join-address').addEventListener('click', () => {
-    $('join-address-form').classList.toggle('hidden');
-  });
-
-  $('btn-connect').addEventListener('click', () => {
-    $('setup-error').textContent = '';
-    const url = $('in-server').value.trim();
-    if (!url) return ($('setup-error').textContent = 'Informe o endereço do servidor.');
-
+  // Corpo compartilhado do "Conectar" do dialogo de entrar numa sala -- usado
+  // pelo botao do lobby, pela sala protegida da lista e pela reabertura do
+  // dialogo apos um 'join-denied'. O #btn-connect do dialogo e ligado dentro
+  // de ui.js, que chama este onConnect.
+  function handleJoinConnect({ address, pin }) {
+    const addr = (address || '').trim();
+    if (!addr) {
+      $('setup-error').textContent = 'Informe o endereço do servidor.';
+      return;
+    }
     hostInfo = null;
     renderHostWarning();
+    ui.dialogs.closeJoinRoom();
+    const url = addr.startsWith('ws://') || addr.startsWith('wss://') ? addr : `ws://${addr}`;
+    joinRoom(url, cfg.name, undefined, undefined, 0, pin || null);
+  }
 
-    const btn = $('btn-connect');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Conectando…';
-    const restoreBtn = () => {
-      btn.disabled = false;
-      btn.textContent = originalText;
-    };
-
-    joinRoom(url, cfg.name, undefined, restoreBtn, 0, $('in-pin').value.trim() || null);
+  $('btn-join-address').addEventListener('click', () => {
+    ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
   });
 
   // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto
   // pelo botao "Criar sala" quanto ao reconectar numa sala propria que estava
   // salva em "Recentes" (ver isOwn em onSelect, acima).
-  async function hostRoomFlow() {
-    $('setup-error').textContent = '';
-    const protect = $('chk-protect-room').checked;
+  // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
+  // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
+  // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
+  async function hostRoomFlow(protect) {
+    showLobbyError('');
     let result;
     try {
       result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise, protect });
     } catch {
-      $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
-      return;
+      return { ok: false, error: 'Não consegui subir a sala: erro inesperado. Tente de novo.' };
     }
     if (!result.ok) {
-      $('setup-error').textContent =
-        result.error === 'PORTS_EXHAUSTED'
+      return {
+        ok: false,
+        error: result.error === 'PORTS_EXHAUSTED'
           ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
-          : `Não consegui subir a sala: ${result.error}`;
-      return;
+          : `Não consegui subir a sala: ${result.error}`,
+      };
     }
-    hostInfo = { port: result.port, address: result.address, pin: result.pin || null, firewall: result.firewall, addressWarning: result.addressWarning };
+    hostInfo = { port: result.port, address: result.address, pin: result.pin || null, ownerToken: result.ownerToken || null, firewall: result.firewall, addressWarning: result.addressWarning };
     renderHostWarning();
     joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address, undefined, 0, result.pin || null);
+    return { ok: true };
   }
 
-  $('btn-create-room').addEventListener('click', async () => {
-    const btn = $('btn-create-room');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '…';
-    try {
-      await hostRoomFlow();
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalText;
-    }
+  $('btn-create-room').addEventListener('click', () => {
+    ui.dialogs.openCreateRoom({
+      // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
+      // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
+      // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
+      onConfirm: async ({ protect }) => {
+        ui.dialogs.setCreateRoomError('');
+        const res = await hostRoomFlow(protect);
+        if (res.ok) ui.dialogs.closeCreateRoom();
+        else ui.dialogs.setCreateRoomError(res.error);
+      },
+    });
   });
 
   // ---------- Aviso de firewall/endereco do host ----------
@@ -899,6 +915,22 @@
     return { name: cfg.name || 'anônimo', avatar: cfg.avatar || null, live: !!localStream };
   }
 
+  // Chamada pelo menu de moderacao das linhas de membro (ui.js). "Silenciar"
+  // NAO passa por aqui -- e resolvido inteiramente dentro do ui.js (GainNode
+  // local). So chega 'stop-share', 'kick' ou 'ban'. 'ban' pede confirmacao;
+  // os outros dois vao direto pro servidor.
+  function sendModerate(action, targetId, targetName) {
+    if (!currentSession) return;
+    if (action === 'ban') {
+      ui.dialogs.openBan({
+        name: targetName,
+        onConfirm: () => currentSession.sig.send({ type: 'moderate', action: 'ban', target: targetId }),
+      });
+      return;
+    }
+    currentSession.sig.send({ type: 'moderate', action, target: targetId });
+  }
+
   function renderMembersPanel() {
     const session = displaySession();
     // Mapa peerId -> preset efetivo, so pra quem esta recebendo um preset
@@ -930,7 +962,11 @@
         }
       }
     }
-    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo(), tags);
+    ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo(), tags, {
+      ownerId,
+      myId: 'me',
+      onModerate: (action, targetId, targetName) => sendModerate(action, targetId, targetName),
+    });
     renderRoomStatus();
   }
 
@@ -956,6 +992,14 @@
       softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
       effectivePreset: effective.preset,
     }));
+    // Chat: o compose so aceita texto enquanto a sinalizacao esta viva. Com a
+    // sessao orfa (H1) `currentSession` e null e o `currentSession?.sig.send`
+    // do onSend vira no-op silencioso -- entao desabilita o campo e mostra a
+    // faixa ambar "Reconectando...". Este render roda em TODA troca de estado
+    // de conexao (queda: orphanSession set + renderRoomStatus logo abaixo;
+    // volta: reconexao/welcome -> renderMembersPanel -> renderRoomStatus),
+    // cobre os dois sentidos e `ui.chat.setEnabled` e idempotente.
+    ui.chat.setEnabled(!orphanSession);
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -988,7 +1032,15 @@
   const STABLE_MS = 20000;
 
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null) {
-    if (!reconnectAttempt) $('setup-error').textContent = '';
+    if (!reconnectAttempt) {
+      $('setup-error').textContent = '';
+      // Tentativa deliberada -- o dialogo de entrar ja fechou (ou nunca
+      // abriu, no caso de hospedar / clicar numa sala da lista), entao o
+      // feedback vai pro lobby (ledger T17). Limpo no onOpen; trocado pela
+      // mensagem de falha no onError/onClose. Numa reconexao automatica
+      // (reconnectAttempt > 0) o countdown fica: e ele que informa o progresso.
+      showLobbyError('Conectando…');
+    }
     // Join deliberado do usuario: qualquer retry pendente de uma queda
     // anterior morre aqui (esta chamada e por si so a nova intencao). O
     // retry automatico (reconnectAttempt > 0) e a propria continuacao do
@@ -1071,9 +1123,13 @@
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
           renderRoomList();
-          session.sig.send({ type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null, pin: pin || undefined });
+          session.sig.send({
+            type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null,
+            pin: pin || undefined, clientId: cfg.clientId, ownerToken: hostInfo?.ownerToken || undefined,
+          });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           if (attempts > 0) $('setup-error').textContent = '';
+          showLobbyError(''); // conectou -- limpa "Conectando…" / countdown de reconexao
           stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
           sound.playJoinSound();
           onSettled?.();
@@ -1087,8 +1143,11 @@
         onMessage: (msg) => session.signalQueue.push(() => handleSignal(session, msg)),
         onError: () => {
           if (currentSession === session && attempts === 0) {
-            $('setup-error').textContent =
-              'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
+            // O dialogo de entrar ja fechou antes de chamar joinRoom -- o erro
+            // vai pro lobby, nao pro #setup-error invisivel.
+            showLobbyError(
+              'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.'
+            );
           }
           onSettled?.();
         },
@@ -1109,12 +1168,19 @@
             clearCooldown(roomAddress);
             teardownSession(session);
             if (!orphanSession) ui.stageHeader.clear();
+            const reason = session.joinDenied;
+            // #dialog-join-room substituiu o #join-address-form inline (Task 8) --
+            // reabre ja preenchido com o endereco pra pessoa nao redigitar.
+            ui.dialogs.openJoinRoom({
+              address: roomAddress,
+              showPinField: reason === 'pin',
+              onConnect: handleJoinConnect,
+            });
+            showLobbyError(''); // o aviso vai pro #setup-error do dialogo reaberto
             $('setup-error').textContent =
-              session.joinDenied === 'pin'
-                ? 'PIN incorreto ou ausente. Confira o PIN da sala e tente de novo.'
-                : 'A sala recusou a entrada.';
-            $('join-address-form').classList.remove('hidden');
-            $('in-pin').focus();
+              reason === 'pin' ? 'PIN incorreto ou ausente. Confira o PIN da sala e tente de novo.'
+              : reason === 'banned' ? 'Você foi banido desta sala.'
+              : 'A sala recusou a entrada.';
             renderMembersPanel();
             renderRoomList();
             onSettled?.();
@@ -1146,12 +1212,39 @@
             stopStatsLoop();
             ui.stageHeader.clear();
             renderHostWarning();
-            $('setup-error').textContent = 'O host encerrou a sala.';
+            showLobbyError('O host encerrou a sala.');
             renderMembersPanel();
             renderRoomList();
             onSettled?.();
             return;
           }
+          // Fomos expulsos ou banidos pelo dono. O servidor manda 'moderated' e
+          // logo fecha o socket com 1008 kick/ban -- um close LIMPO, entao nem o
+          // ramo 'abnormal' (1006/wasClean:false, que tentaria reconectar) nem o
+          // 'roomClosed' (1001 host-left) pegam este caso. Sem sala a preservar
+          // pra nos: teardown completo e de volta pro lobby, espelhando o ramo
+          // roomClosed acima. O aviso ("fulano expulsou/baniu voce") ja saiu como
+          // toast no case 'moderated' (roda antes deste onClose -- mesma cadeia
+          // serial da signalQueue), entao aqui nao mexemos em setup-error.
+          const moderatedOut = detail?.code === 1008 && (detail?.reason === 'kick' || detail?.reason === 'ban');
+          if (moderatedOut) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            currentSession = null;
+            activeRoomAddress = null;
+            if (orphanSession) {
+              teardownSession(orphanSession);
+              orphanSession = null;
+            }
+            teardownSession(session);
+            stopStatsLoop();
+            ui.stageHeader.clear();
+            renderMembersPanel();
+            renderRoomList();
+            onSettled?.();
+            return;
+          }
+
           // O code/reason do WebSocket diz se foi um close limpo (1000/1001,
           // ex: o proprio host fechando o app) ou uma queda anormal de
           // rede/processo (1006, sem handshake de close) -- tipico de NAT de
@@ -1205,8 +1298,9 @@
             // no onClose da tentativa seguinte), e leaveRoom / um join
             // deliberado / o onOpen de uma reconexao que abriu o cancelam.
             const next = attempts + 1;
-            $('setup-error').textContent =
-              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`;
+            showLobbyError(
+              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`
+            );
             renderMembersPanel();
             renderRoomList();
             retryTimer = setTimeout(() => {
@@ -1218,15 +1312,17 @@
           }
 
           if (abnormal && attempts >= MAX_RECONNECT) {
-            $('setup-error').textContent =
-              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
+            showLobbyError(
+              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+            );
           } else if (session.opened && !abnormal) {
             // Fecho limpo (1000/1001) -- o proprio host fechando o app, que e
             // o cenario tipico do H1. Sem retry, mas a sessao virou orfa
             // acima: o video segue e o usuario precisa saber disso e que o
             // botao Desconectar e a saida.
-            $('setup-error').textContent =
-              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
+            showLobbyError(
+              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+            );
           }
 
           // Cabecalho da sala: limpa SO quando nao sobrou orfa nenhuma. Se
@@ -1244,7 +1340,7 @@
       // Endereco malformado (ex: porta nao numerica) faz `new WebSocket`
       // estourar de forma sincrona. Sem isso o botao que chamou joinRoom
       // ficava travado em "Conectando…" pra sempre.
-      $('setup-error').textContent = 'Não consegui conectar: endereço inválido.';
+      showLobbyError('Não consegui conectar: endereço inválido.');
       onSettled?.();
       return;
     }
@@ -1376,6 +1472,26 @@
     }, COPIED_HOLD_MS);
   });
 
+  // Compose do chat: manda 'chat' pela sessao ativa (server ecoa pra sala
+  // inteira, inclusive pra nos -- por isso nao damos append local aqui).
+  ui.chat.render({
+    onSend: (text) => currentSession?.sig.send({ type: 'chat', text }),
+  });
+
+  // Recolher a coluna direita (membros + banidos + chat). O CSS de
+  // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
+  // por teclado enquanto invisiveis); aqui a affordance do botao acompanha o
+  // estado -- title e o chevron giram.
+  $('btn-toggle-side').addEventListener('click', () => {
+    const collapsed = $('room-side').classList.toggle('collapsed');
+    const btn = $('btn-toggle-side');
+    btn.classList.toggle('collapsed', collapsed);
+    btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
+  });
+
+  // Segundo botao de configuracoes (no rodape do lobby) -- reusa o handler do primeiro.
+  $('btn-open-settings-2')?.addEventListener('click', () => $('btn-open-settings').click());
+
   // ---------- Desconectar ----------
 
   function leaveRoom() {
@@ -1402,6 +1518,7 @@
       if (wasHosting) window.golive.stopHosting?.().catch(() => {});
       ui.stageHeader.clear();
       $('setup-error').textContent = '';
+      showLobbyError(''); // saiu de vez -- limpa o aviso de "conexao encerrada"
       renderHostWarning();
       teardownSession(orphan);
       // Sem markCooldown: `activeRoomAddress` ja e null na orfa (o onClose
@@ -1433,6 +1550,7 @@
     // vazia, ate o app fechar.
     if (wasHosting) window.golive.stopHosting?.().catch(() => {});
     ui.stageHeader.clear();
+    showLobbyError(''); // pode haver um countdown de reconexao da orfa encerrada acima
     renderHostWarning();
     teardownSession(session);
     markCooldown(leavingAddress);
@@ -1451,8 +1569,19 @@
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
+        showLobbyError(''); // entrou de verdade -- nada de erro pendente no lobby
+        ownerId = msg.owner ? 'me' : (msg.peers.find((p) => p.owner)?.id ?? null);
         for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
         renderMembersPanel();
+        // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
+        ui.chat.setHistory((msg.chat || []).map((entry) => (entry.system
+          ? entry
+          : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) })));
+        if (msg.owner) {
+          ui.members.renderBanned(msg.banned || [], {
+            onUnban: (key) => currentSession?.sig.send({ type: 'moderate', action: 'unban', target: key }),
+          });
+        }
         // A3: numa reconexao automatica a captura local sobreviveu (o retry
         // do onClose nao chama mais teardownMedia), mas as conexoes P2P foram
         // refeitas do zero. Sem re-ofertar aqui, quem reconectou fica "ao
@@ -1500,6 +1629,7 @@
       }
       case 'peer-joined': {
         mesh.addPeer(msg.id, msg.name, msg.avatar);
+        if (msg.owner) ownerId = msg.id;
         renderMembersPanel();
         sound.playJoinSound();
         // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
@@ -1537,6 +1667,9 @@
         break;
       }
       case 'peer-left': {
+        // Se quem saiu era o dono, zera ownerId -- senao a coroa e o "iAmOwner"
+        // ficam presos num id que nao esta mais na sala.
+        if (msg.id === ownerId) ownerId = null;
         mesh.removePeer(msg.id);
         for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
         for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
@@ -1616,10 +1749,53 @@
         session.joinDenied = msg.reason || 'pin';
         break;
       }
+      // Chat: mensagem de texto de um peer OU linha de sistema (entrada/saida,
+      // moderacao). O servidor manda pra sala inteira, inclusive quem enviou.
+      case 'chat': {
+        if (msg.system) {
+          // Kick/ban/stop-share ja sao tratados do lado do ALVO via
+          // 'moderated' (abaixo) -- esta linha de sistema e so o registro
+          // visivel pra sala inteira, sem acao adicional aqui.
+          ui.chat.append(msg);
+          break;
+        }
+        // msg.from e o id de conexao carimbado pelo SERVIDOR -- compara com o
+        // myId de modulo, nao com a chave local fixa 'me'.
+        const isMine = msg.from === myId;
+        const chatPeer = isMine ? null : mesh.peers.get(msg.from);
+        ui.chat.append({ ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) });
+        // playChatSound() ja verifica sozinha o foco da janela e o teto de
+        // 1x/2s (Task 7) -- aqui so falta nao tocar pra propria mensagem.
+        if (!isMine) sound.playChatSound();
+        break;
+      }
+      // Chegou uma acao de moderacao contra NOS (o dono da sala agiu).
+      case 'moderated': {
+        if (msg.action === 'stop-share') {
+          if (localStream) stopShare(); // reusa o caminho que ja para de compartilhar
+          sound.playStoppedSound();
+          showToast(`${msg.by} parou sua transmissão.`);
+        } else {
+          sound.playRemovedSound();
+          // 'kick'/'ban': o servidor fecha o socket em seguida (1008) -- o
+          // onClose padrao (room-closed) cuida de voltar pro lobby.
+          showToast(msg.action === 'ban' ? `${msg.by} baniu você da sala.` : `${msg.by} expulsou você da sala.`);
+        }
+        break;
+      }
+      // Lista de banidos atualizada (so o dono recebe).
+      case 'banned-list': {
+        ui.members.renderBanned(msg.list, {
+          onUnban: (key) => currentSession?.sig.send({ type: 'moderate', action: 'unban', target: key }),
+        });
+        break;
+      }
       case 'broadcast-state': {
         const peer = mesh.peers.get(msg.id);
+        const wasLive = peer?.live;
         if (peer) peer.live = msg.live;
         if (!msg.live) ui.grid.removeTile(msg.id, emptyMessage());
+        else if (peer && !wasLive) sound.playLiveSound();
         renderMembersPanel();
         break;
       }

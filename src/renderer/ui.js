@@ -105,6 +105,21 @@
     return state;
   }
 
+  /** "Silenciar" no menu de membro e LOCAL -- mesmo mecanismo que o menu de
+   * contexto do tile ja usa hoje (getOrCreateAudioState + um GainNode por
+   * tile, sem passar pelo servidor). setMuted() e a peca que faltava pra
+   * reusar isso fora de openTileMenu: as duas UIs (tile e membro) chamam a
+   * mesma funcao sobre o mesmo `state`, entao mutar por um lugar reflete no
+   * outro. */
+  function setMuted(id, muted) {
+    const state = getOrCreateAudioState(id);
+    state.muted = muted;
+    if (state.gain) state.gain.gain.value = muted ? 0 : state.volume;
+  }
+  function isMuted(id) {
+    return getOrCreateAudioState(id).muted;
+  }
+
   // Chamada em TODA renderizacao do tile (nao so quando o srcObject muda),
   // porque mesh.js dispara um evento 'track' por track (video, depois audio,
   // separadamente) e cada um vira uma chamada a showTile com o MESMO objeto
@@ -624,8 +639,6 @@
     setTimeout(() => document.addEventListener('click', closeTileMenu), 0);
   }
 
-  const peerListEl = $('peer-list');
-
   // Tons neutros com um traco de matiz, nao as seis cores saturadas do
   // Discord que estavam aqui antes. O avatar diz QUEM, nao O QUE ESTA
   // ACONTECENDO -- e neste tema cor saturada quer dizer uma coisa so:
@@ -665,75 +678,7 @@
     return '';
   }
 
-  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, pulsing, qualityTag }) {
-    const li = document.createElement('li');
-    if (isSelf) li.classList.add('self');
-    li.innerHTML = `
-      <span class="peer-avatar-wrap">
-        <span class="peer-avatar ${borderClass || ''}">${avatarInnerHtml(id, name, avatar)}</span>
-      </span>
-      <span class="peer-name">${escapeHtml(name)}${isSelf ? ' <span class="peer-you-tag">(você)</span>' : ''}</span>
-      ${qualityTag ? `<span class="member-quality-tag" title="Enviando este preset menor porque a conexão dele não está aguentando">${escapeHtml(qualityTag)}</span>` : ''}
-      ${
-        live
-          ? `<span class="peer-live-group">
-               <span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}</span>
-               <em>AO VIVO</em>
-             </span>`
-          : ''
-      }`;
-    return li;
-  }
-
-  // `self` = { name, avatar, live } | null (null quando nao esta em nenhuma
-  // sala). `peers` nunca inclui o proprio usuario (ver mesh.js) -- por isso
-  // ele e montado e inserido separadamente, sempre no topo da lista.
-  function renderMembers(peers, self, qualityTags) {
-    peerListEl.innerHTML = '';
-    if (!self && !peers.size) {
-      peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
-      return;
-    }
-    // O anel pulsante (motion #10) vai em UM so por vez: tres pulsos
-    // dessincronizados na mesma coluna viram ruido, e o proposito dele e ser
-    // o unico movimento em laco da interface. Quem ganha e o primeiro da
-    // lista que esta ao vivo -- voce mesmo, se for o caso.
-    let pulseTaken = false;
-    const claimPulse = (live) => {
-      if (!live || pulseTaken) return false;
-      pulseTaken = true;
-      return true;
-    };
-
-    if (self) {
-      peerListEl.appendChild(
-        buildMemberRow({
-          id: 'me',
-          name: self.name || 'anônimo',
-          avatar: self.avatar,
-          live: self.live,
-          isSelf: true,
-          pulsing: claimPulse(self.live),
-        })
-      );
-    }
-    for (const peer of peers.values()) {
-      const state = peer.inConns?.screen?.connectionState || peer.outConns?.screen?.connectionState
-        || peer.inConns?.camera?.connectionState || peer.outConns?.camera?.connectionState;
-      const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
-      peerListEl.appendChild(
-        buildMemberRow({
-          id: peer.id,
-          name: peer.name,
-          avatar: peer.avatar,
-          borderClass,
-          live: peer.live,
-          pulsing: claimPulse(peer.live),
-          qualityTag: qualityTags?.get(peer.id) || '',
-        })
-      );
-    }
-  }
+  // ---------- Lobby: lista de salas ----------
 
   const roomListLiveEl = $('room-list-live');
   const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
@@ -789,39 +734,351 @@
     });
   }
 
-  const stageHeaderEl = $('stage-header');
-  const stageRoomNameEl = $('stage-room-name');
-  const stageRoomAddressEl = $('stage-room-address');
-  const stageStatusDotEl = $('stage-status-dot');
-  const stageStatusBadgeEl = $('stage-status-badge');
+  // ---------- Dialogo: Criar sala ----------
+  const dlgCreateEl = $('dialog-create-room');
+  let onCreateConfirm = null;
 
-  // Recebe o { level, label } ja derivado por status.js -- esta funcao nao
-  // decide nada, so pinta. data-level e o que o CSS le.
-  function setStageStatus({ level, label }) {
-    stageStatusDotEl.dataset.level = level || 'offline';
-    stageStatusBadgeEl.textContent = label || '';
-    stageStatusBadgeEl.classList.toggle('hidden', !label);
+  function openCreateRoom({ onConfirm }) {
+    $('create-room-error').textContent = '';
+    $('chk-protect-room').checked = false;
+    onCreateConfirm = onConfirm;
+    dlgCreateEl.classList.remove('hidden');
+    focusFirstInteractive(dlgCreateEl);
+  }
+  function closeCreateRoom() {
+    dlgCreateEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onCreateConfirm = null;
+  }
+  function setCreateRoomError(text) {
+    $('create-room-error').textContent = text || '';
+  }
+  $('btn-create-room-cancel').addEventListener('click', closeCreateRoom);
+  $('btn-create-room-confirm').addEventListener('click', () => {
+    onCreateConfirm?.({ protect: $('chk-protect-room').checked });
+  });
+  dlgCreateEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCreateRoom(); });
+
+  // ---------- Dialogo: Entrar numa sala ----------
+  const dlgJoinEl = $('dialog-join-room');
+  let onJoinConnect = null;
+
+  function openJoinRoom({ onConnect, address, showPinField = false }) {
+    $('setup-error').textContent = '';
+    $('in-server').value = address || '';
+    $('in-pin').value = '';
+    $('join-pin-field').classList.toggle('hidden', !showPinField);
+    onJoinConnect = onConnect;
+    dlgJoinEl.classList.remove('hidden');
+    focusFirstInteractive(dlgJoinEl);
+  }
+  function closeJoinRoom() {
+    dlgJoinEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onJoinConnect = null;
+  }
+  function setJoinRoomPinVisible(visible) {
+    $('join-pin-field').classList.toggle('hidden', !visible);
+  }
+  $('btn-join-room-cancel').addEventListener('click', closeJoinRoom);
+  $('btn-connect').addEventListener('click', () => {
+    onJoinConnect?.({ address: $('in-server').value.trim(), pin: $('in-pin').value.trim() || null });
+  });
+  dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJoinRoom(); });
+
+  // ---------- Lista de membros / moderacao ----------
+
+  const peerListEl = $('peer-list');
+  const memberMenuEl = $('member-menu');
+
+  function closeMemberMenu() {
+    memberMenuEl.classList.add('hidden');
+    memberMenuEl.innerHTML = '';
+  }
+  document.addEventListener('click', (e) => {
+    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn')) closeMemberMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMemberMenu(); });
+
+  const MODERATE_ICONS = {
+    mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>',
+    'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
+    kick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>',
+    ban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
+  };
+
+  /** Abre o menu do membro `id` ancorado no botao clicado. `isOwner` decide
+   * se aparecem os tres poderes de moderacao ou so "Silenciar" (ver a spec,
+   * secao 8.2 -- item desabilitado nao aparece, so ensina o que falta).
+   * `onModerate` so e chamado pras acoes que passam pelo servidor
+   * (stop-share/kick/ban); "Silenciar" nunca chega la. */
+  function openMemberMenu(btn, id, name, isOwner, onModerate) {
+    const rect = btn.getBoundingClientRect();
+    memberMenuEl.innerHTML = `
+      <div class="member-menu-item" role="menuitem" data-mute="1">${MODERATE_ICONS.mute} ${isMuted(id) ? 'Reativar som' : 'Silenciar'}</div>
+      ${isOwner ? `
+        <div class="member-menu-sep"></div>
+        <div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>
+        <div class="member-menu-item" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</div>
+        <div class="member-menu-item danger" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</div>
+        <div class="member-menu-hint">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
+      ` : ''}
+    `;
+    memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    memberMenuEl.style.top = `${rect.bottom + 4}px`;
+    memberMenuEl.classList.remove('hidden');
+    memberMenuEl.querySelector('[data-mute]').addEventListener('click', () => {
+      setMuted(id, !isMuted(id));
+      closeMemberMenu();
+    });
+    for (const item of memberMenuEl.querySelectorAll('[data-action]')) {
+      item.addEventListener('click', () => {
+        onModerate?.(item.dataset.action, id, name);
+        closeMemberMenu();
+      });
+    }
+    memberMenuEl.querySelector('[role="menuitem"]')?.focus();
   }
 
-  const stageRoomPinEl = $('stage-room-pin');
+  // `live` liga `.peer-avatar.on` (anel --live via box-shadow, o unico sinal
+  // saturado do tema). Sem anel no estado normal -- "conectado" e "ao vivo"
+  // sao a mesma afirmacao neste tema.
+  function buildMemberRow({ id, name, avatar, live, isSelf, pulsing, qualityTag, isOwner, canModerate, onModerate }) {
+    const li = document.createElement('li');
+    if (isSelf) li.classList.add('self');
+    li.innerHTML = `
+      <span class="peer-avatar-wrap">
+        <span class="peer-avatar${live ? ' on' : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
+      </span>
+      <span class="peer-name">${escapeHtml(name)}</span>
+      ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
+      ${isOwner ? '<span class="peer-crown" title="Dono da sala">♛</span>' : ''}
+      ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
+      ${live
+        ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
+        : ''
+      }
+      ${!isSelf ? `<button class="member-menu-btn" type="button" aria-label="Opções de ${escapeHtml(name)}">⋮</button>` : ''}
+    `;
+    if (!isSelf) {
+      li.querySelector('.member-menu-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openMemberMenu(e.currentTarget, id, name, canModerate, onModerate);
+      });
+    }
+    return li;
+  }
+
+  function renderMembers(peers, self, qualityTags, { ownerId, myId, onModerate } = {}) {
+    peerListEl.innerHTML = '';
+    if (!self && !peers.size) {
+      peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
+      return;
+    }
+    let pulseTaken = false;
+    const claimPulse = (live) => {
+      if (!live || pulseTaken) return false;
+      pulseTaken = true;
+      return true;
+    };
+    const iAmOwner = ownerId != null && myId != null && ownerId === myId;
+
+    if (self) {
+      peerListEl.appendChild(
+        buildMemberRow({
+          id: 'me',
+          name: self.name || 'anônimo',
+          avatar: self.avatar,
+          live: self.live,
+          isSelf: true,
+          pulsing: claimPulse(self.live),
+          isOwner: iAmOwner,
+        })
+      );
+    }
+    for (const peer of peers.values()) {
+      peerListEl.appendChild(
+        buildMemberRow({
+          id: peer.id,
+          name: peer.name,
+          avatar: peer.avatar,
+          live: peer.live,
+          pulsing: claimPulse(peer.live),
+          qualityTag: qualityTags?.get(peer.id) || '',
+          isOwner: ownerId != null && peer.id === ownerId,
+          canModerate: iAmOwner,
+          onModerate,
+        })
+      );
+    }
+  }
+
+  // ---------- Banidos ----------
+  const bannedSectionEl = $('banned-section');
+  const bannedListEl = $('banned-list');
+
+  function renderBanned(list, { onUnban } = {}) {
+    bannedSectionEl.classList.toggle('hidden', !list || !list.length);
+    bannedListEl.innerHTML = '';
+    for (const entry of list || []) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="peer-avatar" style="background:${avatarColorFor(entry.key)}">${avatarInnerHtml(entry.key, entry.name, null)}</span>
+        <span class="peer-name">${escapeHtml(entry.name)}</span>
+        <button class="banned-readmit" type="button">Readmitir</button>
+      `;
+      li.querySelector('.banned-readmit').addEventListener('click', () => onUnban?.(entry.key));
+      bannedListEl.appendChild(li);
+    }
+  }
+
+  // ---------- Chat ----------
+  const chatMessagesEl = $('chat-messages');
+  const chatComposeEl = $('chat-compose');
+  const chatInputEl = $('chat-input');
+  const chatCountEl = $('chat-input-count');
+  const chatOfflineBarEl = $('chat-offline-bar');
+  let lastChatAuthorId = null; // pra saber quando agrupar (mesmo autor em sequencia)
+  let onChatSend = null;
+
+  const SYSTEM_ICONS = {
+    join: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
+    leave: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+    'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
+    kick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>',
+    ban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
+    unban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  };
+  const SYSTEM_LABELS = {
+    join: (actor) => `${actor} entrou`,
+    leave: (actor) => `${actor} saiu`,
+    'stop-share': (actor, target) => `${actor} parou a transmissão de ${target}`,
+    kick: (actor, target) => `${actor} expulsou ${target}`,
+    ban: (actor, target) => `${actor} baniu ${target}`,
+    unban: (actor, target) => `${actor} readmitiu ${target}`,
+  };
+  const SYSTEM_TONE = { 'stop-share': 'warn', kick: 'danger', ban: 'danger' };
+
+  function formatTime(ts) {
+    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function appendSystemLine(entry) {
+    const div = document.createElement('div');
+    const tone = SYSTEM_TONE[entry.event] || '';
+    div.className = `chat-sys${tone ? ` ${tone}` : ''}`;
+    const label = SYSTEM_LABELS[entry.event]?.(entry.actor, entry.target) || entry.event;
+    div.innerHTML = `${SYSTEM_ICONS[entry.event] || ''} ${escapeHtml(label)}`;
+    chatMessagesEl.appendChild(div);
+    lastChatAuthorId = null; // proxima mensagem de texto nao agrupa com o que veio antes de uma linha de sistema
+  }
+
+  function appendMessage(entry) {
+    const grouped = lastChatAuthorId === entry.from;
+    lastChatAuthorId = entry.from;
+    const div = document.createElement('div');
+    div.className = `chat-line${grouped ? ' grouped' : ''}`;
+    div.innerHTML = `
+      <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
+      <span class="chat-body">
+        ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
+        <span class="chat-text">${escapeHtml(entry.text)}</span>
+      </span>
+    `;
+    chatMessagesEl.appendChild(div);
+  }
+
+  function appendEntry(entry) {
+    if (entry.system) appendSystemLine(entry);
+    else appendMessage(entry);
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  function append(entry) {
+    appendEntry(entry);
+  }
+
+  function setHistory(entries) {
+    chatMessagesEl.innerHTML = '';
+    lastChatAuthorId = null;
+    for (const entry of entries || []) appendEntry(entry);
+  }
+
+  function setEnabled(enabled) {
+    chatInputEl.disabled = !enabled;
+    chatComposeEl.classList.toggle('disabled', !enabled);
+    chatOfflineBarEl.classList.toggle('hidden', enabled);
+  }
+
+  function sendCurrentInput() {
+    const text = chatInputEl.value.trim();
+    if (!text) return;
+    onChatSend?.(text);
+    chatInputEl.value = '';
+    chatCountEl.classList.add('hidden');
+  }
+
+  function render({ onSend }) {
+    onChatSend = onSend;
+    // #chat-compose e um <form> sem action -- um submit acidental (Enter num
+    // futuro <input>, extensao) navegaria o renderer pra file://.../?. Corta.
+    chatComposeEl.addEventListener('submit', (e) => e.preventDefault());
+    chatInputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendCurrentInput();
+      }
+    });
+    chatInputEl.addEventListener('input', () => {
+      const len = chatInputEl.value.length;
+      chatCountEl.textContent = `${len}/500`;
+      chatCountEl.classList.toggle('hidden', len < 400);
+    });
+  }
+
+  // ---------- Cabecalho da sala ----------
+
+  const lobbyViewEl = $('lobby-view');
+  const roomViewEl = $('room-view');
+
+  function setStageStatus({ level, label }) {
+    const dot = $('stage-status-dot');
+    const badge = $('stage-status-badge');
+    dot.dataset.level = level;
+    if (label) {
+      badge.textContent = label;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+      badge.textContent = ''; // sem texto morto por tras do .hidden
+    }
+  }
 
   function setStageHeader({ name, address, pin }) {
-    stageRoomNameEl.textContent = name || '';
-    stageRoomAddressEl.textContent = address || '';
-    // So o host recebe `pin` (vem do room:host); espectador nunca ve o PIN
-    // dos outros aqui. `undefined` num re-set (reconexao) nao apaga o que ja
-    // estava -- so um valor explicito muda.
-    if (pin !== undefined) {
-      stageRoomPinEl.textContent = pin ? `PIN ${pin}` : '';
-      stageRoomPinEl.classList.toggle('hidden', !pin);
+    $('stage-header').classList.remove('hidden');
+    $('stage-room-name').textContent = name;
+    $('stage-room-address').textContent = address || '';
+    const pinEl = $('stage-room-pin');
+    if (pin) {
+      pinEl.textContent = `🔒 PIN ${pin}`;
+      pinEl.classList.remove('hidden');
+    } else {
+      pinEl.classList.add('hidden');
     }
-    stageHeaderEl.classList.remove('hidden');
+    // Troca de tela: Lobby fora, Sala dentro -- unico ponto de alternancia
+    // entre as duas (ver a spec, secao 5). clearStageHeader faz o inverso.
+    lobbyViewEl.classList.add('hidden');
+    roomViewEl.classList.remove('hidden');
   }
 
   function clearStageHeader() {
-    stageHeaderEl.classList.add('hidden');
-    stageRoomPinEl.textContent = '';
-    stageRoomPinEl.classList.add('hidden');
+    $('stage-header').classList.add('hidden');
+    $('stage-room-name').textContent = '';
+    $('stage-room-address').textContent = '';
+    $('stage-room-pin').classList.add('hidden');
+    $('stage-status-badge').classList.add('hidden');
+    roomViewEl.classList.add('hidden');
+    lobbyViewEl.classList.remove('hidden');
   }
 
   // ---------- Modal de Configuracoes ----------
@@ -997,6 +1254,11 @@
       </div>
       <div class="settings-field">
         <video id="settings-camera-preview" autoplay playsinline muted></video>
+      </div>
+      <h3>Sons</h3>
+      <div class="settings-field">
+        <label class="check-inline"><input id="settings-sounds" type="checkbox" /> Sons do app</label>
+        <small>Entrada, saída, chat, transmissão começando e avisos de moderação.</small>
       </div>`;
 
     settingsPanes.network.innerHTML = `
@@ -1014,6 +1276,7 @@
 
     renderProfilePreview(config);
     $('settings-advertise').checked = config.network.advertise;
+    $('settings-sounds').checked = config.soundsEnabled;
 
     $('settings-profile-name').addEventListener('input', (event) => {
       deps.onNameChange(event.target.value);
@@ -1033,6 +1296,10 @@
 
     $('settings-advertise').addEventListener('change', () => {
       deps.onNetworkChange({ ...config.network, advertise: $('settings-advertise').checked });
+    });
+
+    $('settings-sounds').addEventListener('change', () => {
+      deps.onSoundsChange($('settings-sounds').checked);
     });
 
     $('btn-open-logs').addEventListener('click', () => window.golive.openLogsFolder());
@@ -1266,14 +1533,43 @@
     loadPickerSources();
   }
 
+  // ---------- Dialogo: Banir ----------
+  const dlgBanEl = $('dialog-ban');
+  let onBanConfirm = null;
+
+  function openBan({ name, onConfirm }) {
+    $('dialog-ban-title').textContent = `Banir ${name} da sala?`;
+    $('dialog-ban-text').textContent = `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de membros.`;
+    onBanConfirm = onConfirm;
+    dlgBanEl.classList.remove('hidden');
+    // Guarda o foco anterior pra restaura-lo no closeBan (restoreFocusAfterModal).
+    lastFocusedBeforeModal = document.activeElement;
+    // Foco no Cancelar, nao no botao destrutivo (ver a spec, secao 8.3).
+    $('btn-ban-cancel').focus();
+  }
+  function closeBan() {
+    dlgBanEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onBanConfirm = null;
+  }
+  $('btn-ban-cancel').addEventListener('click', closeBan);
+  $('btn-ban-confirm').addEventListener('click', () => { onBanConfirm?.(); closeBan(); });
+  dlgBanEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBan(); });
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
     grid: { showTile, removeTile, setPainting, setWatchers },
-    members: { render: renderMembers },
     rooms: { render: renderRooms },
+    dialogs: {
+      openCreateRoom, closeCreateRoom, setCreateRoomError,
+      openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,
+      openBan, closeBan,
+    },
     stageHeader: { set: setStageHeader, clear: clearStageHeader, setStatus: setStageStatus },
     settings: { open: openSettings, close: closeSettings, setStatsHtml },
     picker: { open: openPicker },
+    members: { render: renderMembers, renderBanned },
+    chat: { render, append, setHistory, setEnabled },
   };
 })(window);
