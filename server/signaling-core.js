@@ -71,23 +71,27 @@ function send(ws, payload) {
  * 60-120s tem o estado de NAT descartado e o cliente "cai da sala"
  * sozinho, com close code 1006. O ping periodico mantem o fluxo vivo e
  * ainda deixa o servidor derrubar quem parou de responder. */
-function createSignalingServer({ port, heartbeatMs = 25000, pin = null }) {
+function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerToken = null }) {
   // PIN opcional da sala (B3 da auditoria). Nao e cripto: so corta o
   // entrar-por-acidente numa rede Radmin/Tailscale compartilhada, onde o
   // beacon anuncia a sala pra todo mundo. `null`/'' => sala aberta, igual
   // a sempre. Normalizado pra string pra comparar com o que vem do cliente.
   const roomPin = pin != null && String(pin) !== '' ? String(pin) : null;
+  // Token de dono (opcional). Gerado pelo main.js e devolvido so pro
+  // renderer de quem criou a sala -- nunca sai da maquina. Comparado por
+  // igualdade estrita: string vazia/null nunca marca dono.
+  const ownerTok = typeof ownerToken === 'string' && ownerToken !== '' ? ownerToken : null;
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });
 
-    /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null}>} */
+    /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null, owner: boolean}>} */
     const peers = new Map();
     let nextId = 1;
 
     function roomPeers(room, exceptId) {
       const out = [];
       for (const [id, peer] of peers) {
-        if (peer.room === room && id !== exceptId) out.push({ id, name: peer.name, avatar: peer.avatar });
+        if (peer.room === room && id !== exceptId) out.push({ id, name: peer.name, avatar: peer.avatar, owner: peer.owner });
       }
       return out;
     }
@@ -179,11 +183,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null }) {
               const room = String(msg.room || 'geral').slice(0, 40);
               const name = String(msg.name || 'anonimo').slice(0, 40);
               const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;
-              peers.set(id, { ws, name, room, avatar });
+              const owner = Boolean(ownerTok) && msg.ownerToken === ownerTok;
+              peers.set(id, { ws, name, room, avatar, owner });
               joined = true;
-              log(`+ ${name} (#${id}) entrou na sala "${room}"`);
-              send(ws, { type: 'welcome', id, peers: roomPeers(room, id) });
-              broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar });
+              log(`+ ${name} (#${id}) entrou na sala "${room}"${owner ? ' (dono)' : ''}`);
+              send(ws, { type: 'welcome', id, owner, peers: roomPeers(room, id) });
+              broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
               break;
             }
 

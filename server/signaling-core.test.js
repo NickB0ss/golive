@@ -529,3 +529,48 @@ test('sem PIN configurado, join com um campo pin qualquer segue entrando (compat
     await server.close();
   }
 });
+
+test('join com o ownerToken certo marca o peer como dono; sem token ou errado, nao marca', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo-do-dono' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo-do-dono' }));
+    const welcomeDono = await once(dono, 'welcome');
+    assert.equal(welcomeDono.owner, true);
+
+    const semToken = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => semToken.once('open', r));
+    const joinedDono = once(dono, 'peer-joined');
+    semToken.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const welcomeAna = await once(semToken, 'welcome');
+    assert.equal(welcomeAna.owner, false);
+    assert.equal((await joinedDono).owner, false);
+    // A Ana ve o Nicolas na lista de peers ja presentes, marcado como dono.
+    assert.equal(welcomeAna.peers.find((p) => p.name === 'Nicolas').owner, true);
+
+    const tokenErrado = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => tokenErrado.once('open', r));
+    tokenErrado.send(JSON.stringify({ type: 'join', room: 'geral', name: 'X', ownerToken: 'chute' }));
+    assert.equal((await once(tokenErrado, 'welcome')).owner, false);
+
+    dono.close();
+    semToken.close();
+    tokenErrado.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('sem ownerToken configurado no servidor, ninguem vira dono mesmo mandando um token', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', ownerToken: 'qualquer-coisa' }));
+    assert.equal((await once(a, 'welcome')).owner, false);
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
