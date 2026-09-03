@@ -8,13 +8,16 @@
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
-  const QUALITY_PRESET_SPLIT = {
-    '720p30': { res: '720p', fps: '30 fps', tag: 'mais leve' },
-    '720p60': { res: '720p', fps: '60 fps', tag: '' },
-    '1080p30': { res: '1080p', fps: '30 fps', tag: '' },
-    '1080p60': { res: '1080p', fps: '60 fps', tag: 'padrão' },
-    '1440p30': { res: '1440p', fps: '30 fps', tag: '' },
-    '1440p60': { res: '1440p', fps: '60 fps', tag: 'exige banda' },
+  // Nota que acompanha a linha de custo, so nas TRES pontas que merecem uma.
+  // Antes eram tags impressas dentro dos chips, uma por preset -- e ali elas
+  // nao davam pra comparar: "mais leve", "padrao" e "exige banda" sao tres
+  // escalas diferentes (custo, recomendacao, requisito) lado a lado. Na
+  // linha de resumo so aparece a nota da opcao escolhida, ao lado do numero
+  // exato dela.
+  const QUALITY_PRESET_NOTE = {
+    '720p30': 'o mais leve',
+    '1080p60': 'padrão',
+    '1440p60': 'exige bastante upload',
   };
 
   function escapeHtml(str) {
@@ -1331,7 +1334,20 @@
 
   function bandwidthLine(quality) {
     const screenMbps = quality.bitrate / 1_000_000;
-    return `≈${screenMbps.toFixed(1).replace(/\.0$/, '')} Mbps por espectador enquanto você estiver transmitindo`;
+    // Virgula: a linha inteira e em portugues, e "2.5 Mbps" no meio dela
+    // era o unico numero do app com ponto decimal.
+    const texto = screenMbps.toFixed(1).replace(/\.0$/, '').replace('.', ',');
+    return `≈${texto} Mbps por espectador enquanto você estiver transmitindo`;
+  }
+
+  /** Linha de resumo do seletor de qualidade: o custo exato da combinacao
+   * escolhida, mais a nota da ponta quando existe. E a UNICA coisa a ler
+   * pra saber o preco -- os dois controles acima so dizem o que foi
+   * escolhido. */
+  function bandwidthLineHtml(quality) {
+    const nota = QUALITY_PRESET_NOTE[quality.preset];
+    const base = escapeHtml(bandwidthLine(quality));
+    return nota ? `${base} <span class="quality-bandwidth-note">· ${escapeHtml(nota)}</span>` : base;
   }
 
   // Preview do avatar/apelido dentro do modal (aba Perfil) -- espelha o
@@ -1471,51 +1487,106 @@
   // de openPicker (o elemento e estatico, so o callback de destino muda).
   let pickerOnQualityChange = null;
 
-  // O <select> nativo era o segundo controle mais cru do app (o primeiro era
-  // o checkbox). Seis chips selecionaveis, duas linhas de tres: o preset
-  // escolhido se distingue por elevacao + contraste, nunca por cor -- mesma
-  // regra do resto do tema.
-  pickerQualityEl.innerHTML = configApi.QUALITY_PRESET_ORDER.map((preset) => {
-    const parts = QUALITY_PRESET_SPLIT[preset] || { res: preset, fps: '', tag: '' };
-    return `<button class="quality-chip" type="button" role="radio" aria-checked="false" data-preset="${preset}">
-      <span class="quality-chip-res">${escapeHtml(parts.res)}</span>
-      <span class="quality-chip-fps">${escapeHtml(parts.fps)}</span>
-      ${parts.tag ? `<span class="quality-chip-tag">${escapeHtml(parts.tag)}</span>` : ''}
-    </button>`;
+  // Os seis presets sao uma matriz 3x2 (resolucao x fps) sem celula morta,
+  // entao o controle tem dois eixos em vez de seis quadrados: a grade de
+  // tres colunas quebrava a linha no meio do 1080p e escondia justamente a
+  // ordem crescente que a pessoa precisa ver. Ver a spec
+  // docs/superpowers/specs/2026-09-03-seletor-de-qualidade-em-dois-eixos-design.md
+  //
+  // Cada trilha e um radiogroup PROPRIO: os eixos sao independentes, e seta
+  // so anda dentro do proprio eixo (Tab e quem troca de eixo).
+  const QUALITY_AXES = [
+    { axis: 'resolution', label: 'Resolução', values: configApi.QUALITY_RESOLUTIONS, text: (v) => v },
+    { axis: 'fps', label: 'Fluidez', values: configApi.QUALITY_FPS, text: (v) => `${v} fps` },
+  ];
+
+  pickerQualityEl.innerHTML = QUALITY_AXES.map(({ axis, label, values, text }) => {
+    const labelId = `quality-axis-${axis}-label`;
+    const opcoes = values.map((valor) => (
+      `<button class="quality-seg-opt" type="button" role="radio" aria-checked="false" tabindex="-1" data-value="${escapeHtml(valor)}">${escapeHtml(text(valor))}</button>`
+    )).join('');
+    return `<div class="quality-axis">
+      <span class="quality-axis-label" id="${labelId}">${escapeHtml(label)}</span>
+      <div class="quality-seg" role="radiogroup" aria-labelledby="${labelId}" data-axis="${axis}" style="--seg-count: ${values.length}">${opcoes}</div>
+    </div>`;
   }).join('');
 
-  function syncQualityChips(preset) {
-    for (const chip of pickerQualityEl.querySelectorAll('.quality-chip')) {
-      const on = chip.dataset.preset === preset;
-      chip.classList.toggle('selected', on);
-      chip.setAttribute('aria-checked', on ? 'true' : 'false');
-      // Um so chip tabulavel: dentro de um radiogroup a navegacao entre
-      // opcoes e por seta, nao por Tab.
-      chip.tabIndex = on ? 0 : -1;
+  /** Posiciona os dois polegares e o roving tabindex. O polegar desliza por
+   * `--seg-index` (indice da opcao na trilha) -- o CSS resolve a distancia
+   * sozinho, entao nao ha medicao de layout aqui. */
+  function syncQualityAxes(preset, animate = true) {
+    const eixos = configApi.presetAxes(preset);
+    for (const trilha of pickerQualityEl.querySelectorAll('.quality-seg')) {
+      if (!animate) trilha.classList.add('no-move');
+      const alvo = String(eixos[trilha.dataset.axis]);
+      const opcoes = [...trilha.querySelectorAll('.quality-seg-opt')];
+      const i = opcoes.findIndex((o) => o.dataset.value === alvo);
+      trilha.style.setProperty('--seg-index', String(Math.max(0, i)));
+      opcoes.forEach((opcao, j) => {
+        const on = j === i;
+        opcao.classList.toggle('selected', on);
+        opcao.setAttribute('aria-checked', on ? 'true' : 'false');
+        // Uma so opcao tabulavel por trilha: dentro de um radiogroup a
+        // navegacao entre opcoes e por seta, nao por Tab.
+        opcao.tabIndex = on ? 0 : -1;
+      });
+      if (!animate) {
+        void trilha.offsetWidth; // força o layout antes de devolver a transicao
+        trilha.classList.remove('no-move');
+      }
     }
+  }
+
+  /** Preset atual lido dos dois polegares -- a UI e a fonte da verdade
+   * entre um clique e outro (o config so e atualizado pelo callback). */
+  function currentQualityPreset() {
+    const escolhido = {};
+    for (const trilha of pickerQualityEl.querySelectorAll('.quality-seg')) {
+      escolhido[trilha.dataset.axis] = trilha.querySelector('.quality-seg-opt.selected')?.dataset.value;
+    }
+    return configApi.presetFor(escolhido.resolution, Number(escolhido.fps));
   }
 
   function selectQualityPreset(preset) {
     const quality = configApi.qualityFromPreset(preset);
-    syncQualityChips(quality.preset);
-    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
-    pickerOnQualityChange?.(quality);
+    const mudou = quality.preset !== currentQualityPreset();
+    syncQualityAxes(quality.preset);
+    pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
+    // Seta parada na ponta e clique no que ja estava escolhido nao sao
+    // mudanca. Sem esta guarda cada um dos dois dispararia o
+    // applyLiveQuality() do app -- renegociar o encoder pra chegar no
+    // mesmo lugar, com a transmissao no ar.
+    if (mudou) pickerOnQualityChange?.(quality);
+  }
+
+  /** Troca UM eixo e mantem o outro. */
+  function selectQualityAxis(axis, valor) {
+    const eixos = configApi.presetAxes(currentQualityPreset());
+    eixos[axis] = axis === 'fps' ? Number(valor) : valor;
+    selectQualityPreset(configApi.presetFor(eixos.resolution, eixos.fps));
   }
 
   pickerQualityEl.addEventListener('click', (event) => {
-    const chip = event.target.closest('.quality-chip');
-    if (chip) selectQualityPreset(chip.dataset.preset);
+    const opcao = event.target.closest('.quality-seg-opt');
+    if (opcao) selectQualityAxis(opcao.closest('.quality-seg').dataset.axis, opcao.dataset.value);
   });
   pickerQualityEl.addEventListener('keydown', (event) => {
+    const trilha = event.target.closest('.quality-seg');
+    if (!trilha) return;
+    const opcoes = [...trilha.querySelectorAll('.quality-seg-opt')];
+    const i = opcoes.findIndex((o) => o.classList.contains('selected'));
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-    if (!step) return;
+    // Setas PARAM nas pontas em vez de dar a volta: numa escada ordenada,
+    // "de 1440p pra direita" nao existe, e pular pro 720p desfaz exatamente
+    // a ordem que este controle existe pra mostrar.
+    let destino = null;
+    if (step) destino = Math.min(opcoes.length - 1, Math.max(0, Math.max(0, i) + step));
+    else if (event.key === 'Home') destino = 0;
+    else if (event.key === 'End') destino = opcoes.length - 1;
+    if (destino === null) return;
     event.preventDefault();
-    const order = configApi.QUALITY_PRESET_ORDER;
-    const atual = pickerQualityEl.querySelector('.quality-chip.selected')?.dataset.preset;
-    const i = order.indexOf(atual);
-    const proximo = order[(Math.max(0, i) + step + order.length) % order.length];
-    selectQualityPreset(proximo);
-    pickerQualityEl.querySelector('.quality-chip.selected')?.focus();
+    selectQualityAxis(trilha.dataset.axis, opcoes[destino].dataset.value);
+    trilha.querySelector('.quality-seg-opt.selected')?.focus();
   });
   let pickerSources = [];
   let pickerTab = 'screen';
@@ -1700,8 +1771,10 @@
     syncWindowHint();
     pickerGridEl.innerHTML = '';
     pickerOnQualityChange = onQualityChange;
-    syncQualityChips(quality.preset);
-    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
+    // Sem animar: os dois polegares aparecem ja no lugar, como o indicador
+    // das abas (ver syncPickerIndicator).
+    syncQualityAxes(quality.preset, false);
+    pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
     shareSoundEl.checked = true;
     shareDiscordEl.checked = false;
     shareDiscordRowEl.classList.remove('hidden');
