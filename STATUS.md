@@ -35,95 +35,13 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.4.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.5.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **286 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
-## Em andamento
-
-Branch **`claude/redesign-connection-page-k64yy3`**: **Lobby v2 e acabamento
-da interface** — a passada seguinte ao redesign de 0.4.0. Spec em
-`docs/superpowers/specs/2026-09-03-lobby-v2-e-acabamento-design.md`.
-
-- **Lobby refeito pra desktop**: era uma coluna de 560px centrada numa janela
-  de 1280×800 (62% da largura em fundo vazio). Virou três faixas (topbar /
-  corpo / barra do usuário) com **duas colunas** no corpo — ações à esquerda
-  (380px fixos: hero, os dois CTAs, e o **endereço desta máquina na rede
-  virtual**, IPC `network:address` novo em cima do `pickAddress` já testado),
-  salas descobertas à direita em cards de 64px com avatar por endereço,
-  cadeado SVG, contador e estado vazio explicado. Empilha abaixo de 1040px.
-- **"Anunciar na rede" saiu de Configurações** e virou opção do diálogo de
-  criar sala — é propriedade da sala, decidida quando a sala é criada. A aba
-  **Rede** de Configurações foi removida (sobraram Perfil / Voz e Vídeo /
-  Estatísticas) junto do que ficou órfão: `discovery:setAdvertise`,
-  `setAdvertise` no preload e `onNetworkChange`. O `config.network.advertise`
-  vira o padrão da caixa e é regravado a cada criação.
-- **"Criar" agora mostra progresso**: spinner + "Criando sala…", confirmar e
-  cancelar desabilitados. Subir o servidor inclui pedir liberação de firewall
-  ao Windows, que pode abrir prompt de elevação — antes o diálogo congelava.
-- **Checkbox virou componente**: caixa desenhada, título + descrição, linha
-  inteira clicável, marca entrando por `opacity`+`transform`. O `<input>`
-  continua lá (só `opacity: 0`) pro teclado e pro leitor de tela. Substitui
-  os cinco `check-inline` do app.
-- **Nome longo não estoura mais nem cria barra horizontal.** Causa raiz do
-  card de janela: a regra base de `button` traz `align-items: center`, e num
-  container coluna isso é o eixo horizontal — os filhos passavam a ser
-  dimensionados pelo conteúdo em vez de esticar até a largura do card. Nas
-  listas (membros, banidos, chat, espectadores) era `overflow-y: auto` com o
-  eixo X em `visible`, que o CSS promove a `auto` sozinho. Barra de rolagem
-  ganhou estilo global fino e escuro (antes só o `.picker-box` tinha).
-- **Diálogo de compartilhar**: tag de qualidade (`4K`/`1440p`/`1080p`/`720p`)
-  em cada tela, ícone do app em cada janela (`fetchWindowIcons`), ordenação
-  determinística (telas por nome numérico, janelas alfabéticas), contador por
-  aba, cards de altura fixa, ícone no botão "Atualizar" e os seis presets de
-  qualidade em chips no lugar do `<select>` nativo.
-- **Grade de tiles por contagem** (1 / 2 / 3–4 / 5–6 / 7+) em vez de
-  `auto-fit`, que deixava um tile órfão ocupando meia tela. Trilhas
-  `min-content` + `align-content: safe center`: com `1fr` a folga vertical
-  era dividida por linha e virava um vão entre as fileiras **e** outro
-  embaixo. Ordem estável: tela antes de câmera, por CSS (`order`).
-- **Diálogo de criar sala enxuto**: título, duas opções com uma linha de
-  apoio cada, botões. O foco abre no "Criar" — Enter cria a sala.
-
-Verificado com o renderer carregado em Chromium headless (lobby cheio/vazio,
-900×620, diálogos, sala com 1/3/5 tiles): zero `pageerror`, zero overflow
-horizontal em qualquer região.
-
----
-
-Branch **`claude/backlog-pos-leyjak`** (anterior, ainda aberta): o que restava do backlog depois que a
-leva `leyjak` (A8/D2/G5/C7/B2, [PR #25](https://github.com/NickB0ss/golive/pull/25))
-entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
-
-- **Promessas soltas (dívida do C7)** — as 10 que o ESLint acusava como aviso
-  viraram `.catch()` com log por sítio (mesmo padrão do resto do renderer),
-  ou `void` com comentário onde a função já engole o próprio erro por
-  desenho. Nenhuma virou `await` (mudaria ordem de execução — era o motivo de
-  serem aviso). Restam só os 10 avisos `require-atomic-updates`, outra regra.
-- **Sinalização — frame que não é objeto derrubava o host** — `JSON.parse('null')`
-  passava, e o `switch (msg.type)` lia `.type` de `null`: TypeError sem catch,
-  `uncaughtException`, processo do host morto. Um frame `null` de qualquer um
-  que alcançasse a porta bastava. Agora todo frame que não é objeto é
-  descartado igual a JSON malformado. `watchers`/`kind` do rebroadcast também
-  passaram a ter teto (64) — eram repassados à sala inteira sem limite.
-- **Robustez (além da auditoria)** — teste de invariantes de `computeTree`
-  sob 1000 salas aleatórias (≤1 relay, fanout ≤2, profundidade ≤2, ninguém é
-  pai de si); fuzz de 200 frames tortos na sinalização confirmando que a sala
-  segue aceitando `join`.
-- **B2 (parcial)** — `electron-builder` 25 → 26. `npm audit` cai de 15 pra 2.
-  As 15 vinham quase todas do 25 (`@electron/rebuild@3` → `node-gyp@≤10.3.1`,
-  `cacache`, `tar` velho). As 2 que sobram são o `electron@32` em si — o B1.
-  **`npm run dist` não foi rodado**: validar um build antes da próxima release.
-- **B3 — PIN opcional da sala** — o núcleo e o protocolo (servidor recusa
-  `join` sem o PIN certo com `join-denied` + close 1008; beacon carrega só o
-  flag `protected`, nunca o PIN; `main` gera o PIN de 4 dígitos quando a caixa
-  "Proteger com PIN" está marcada). Tudo opt-in — sala aberta segue idêntica.
-  **A UI (caixa, campo de PIN, cadeado na lista, selo no cabeçalho) precisa de
-  uma passada visual com o app rodando**; a lógica está coberta por teste.
-
-**Já lançado** (em release com tag):
+## Já lançado (em release com tag)
 
 - **0.2.0** — qualidade adaptativa **por espectador**: escada de histerese por
   conexão, `receiveHealth` do espectador viajando no view-state, e a escada
@@ -134,7 +52,7 @@ entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
 - **0.3.1 – 0.3.4** — correções da escada: saúde de encode é só da tela (a
   câmera não contamina mais), a escada não vai ao piso só porque o codec é de
   software, e instrumentação do encode no log em arquivo.
-- **0.4.0** ([PR #28](https://github.com/NickB0ss/golive/pull/28), **pré-release**)
+- **0.4.0** ([PR #28](https://github.com/NickB0ss/golive/pull/28))
   — redesign completo da interface: dois estados explícitos, **Lobby** (criar,
   entrar por endereço, salas da rede, perfil) e **Sala** (palco + coluna de
   membros/banidos/chat recolhível), diálogos próprios de criar/entrar/banir,
@@ -151,7 +69,38 @@ entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
   "Readmitir"). O bloqueio é cooperativo (sinalização + clientes), não é
   garantia criptográfica. **Quatro sons novos** (chat, ao vivo, transmissão
   parada, removido) + interruptor mestre em Configurações. Conhecido: o menu ⋮
-  de membro ainda não navega por teclado (item **F1**, adiado).
+  de membro ainda não navega por teclado (item **F1**, adiado). Chegou junto,
+  já mesclado antes desta versão ([PR #26](https://github.com/NickB0ss/golive/pull/26)):
+  a dívida das 10 promessas soltas do ESLint paga (viraram `.catch()` ou
+  `void` comentado, nunca `await` — mudaria ordem de execução), um frame de
+  sinalização que não é objeto (`JSON.parse('null')`) parando de derrubar o
+  host, teto de 64 em `watchers`/`kind` do rebroadcast, testes de invariantes
+  de `computeTree` sob 1000 salas aleatórias e fuzz de 200 frames tortos, e
+  `electron-builder` 25 → 26 (`npm audit` de 15 pra 2 vulnerabilidades).
+- **0.5.0** ([PR #30](https://github.com/NickB0ss/golive/pull/30)) — replaneja
+  o lobby do zero como layout de desktop: três faixas (topbar / corpo / barra
+  do usuário) com duas colunas — ações à esquerda (380px fixos: hero, os dois
+  CTAs, e o **endereço desta máquina na rede virtual**, que antes só aparecia
+  depois de criar a sala) e salas descobertas à direita em cards com avatar
+  por endereço, cadeado SVG e estado vazio explicado. Empilha abaixo de
+  1040px de janela. **"Anunciar na rede" saiu de Configurações** e virou
+  opção do diálogo de criar sala — é propriedade da sala, decidida na hora de
+  criá-la; a aba Rede de Configurações foi removida. Botão **"Criar" com
+  progresso** (spinner + "Criando sala…", confirmar/cancelar desabilitados
+  enquanto o firewall do Windows pode estar pedindo elevação). **Checkbox
+  virou componente** (caixa desenhada, título + descrição, linha inteira
+  clicável — o `<input>` real segue lá, só `opacity: 0`, pro teclado e pro
+  leitor de tela). **Nome longo não estoura mais nem cria barra horizontal**
+  — causa raiz era a regra base de `button` trazendo `align-items: center`,
+  que num container coluna é o eixo horizontal e impedia os filhos de
+  esticar até a largura do card. Diálogo de compartilhar com **tag de
+  qualidade por tela** (`4K`/`1440p`/`1080p`/`720p`), ícone do app por
+  janela, ordenação determinística, contador por aba e presets em chips no
+  lugar do `<select>` nativo. **Grade de tiles por contagem** (1 / 2 / 3–4 /
+  5–6 / 7+) com trilhas `min-content` + `align-content: safe center`, em vez
+  de `auto-fit` (que deixava tile órfão ocupando meia tela) e de `1fr` (que
+  empilhava toda a folga vertical numa fileira só). Barra de rolagem com
+  estilo global fino e escuro. Nenhum arquivo de transporte tocado.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
   Detalhe por item na auditoria e no histórico do git.
 
@@ -159,7 +108,7 @@ entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
 
 Fonte única: **`docs/2026-08-27-auditoria-de-fragilidade.md`**. O que não foi
 feito e não está explicitamente fora de escopo (abaixo): **C5, F3, G6, H5,
-H6**, o resto do **B2** e a UI do **B3**.
+H6** e o resto do **B2**.
 
 Sobre o **B2**: a premissa da auditoria ("14 vulnerabilidades, todas na cadeia
 do `node-gyp@9`") não vale mais. Com o `node-gyp` da raiz na 11 **e o
@@ -170,14 +119,14 @@ sempre esteve em **0**: nada disso alcança quem usa o app.
 
 **F3** (host cai, sala morre) e **G6** (teto de ~4 pessoas) são "confirmado,
 por desenho" — limites conhecidos, não bugs. **B3** (sala sem autenticação)
-saiu dessa lista: o PIN opcional está feito no núcleo (ver "Em andamento"),
-falta só a passada visual na UI.
+saiu dessa lista de vez: núcleo, protocolo e UI (caixa, campo de PIN, cadeado
+na lista, selo no cabeçalho) foram lançados na 0.4.0.
 
-**C4** (`dist/` de 1,2 GB) e **C5** (branches obsoletas) são higiene de disco
-e de repositório local — o repo remoto já está enxuto (só `main`).
-
-A **dívida das 10 promessas soltas** foi paga nesta branch (ver "Em
-andamento").
+**C4** (`dist/` de 1,2 GB) é higiene de disco local. **C5** (branches
+obsoletas) segue aberto: `claude/backlog-pos-leyjak`,
+`claude/planejamentos-futuros-projeto-leyjak` e `claude/redesign-discord-style`
+já estão inteiramente mescladas na `main` e só precisam ser apagadas do
+remoto.
 
 ## Fora de escopo (adiado de propósito)
 
@@ -186,7 +135,6 @@ Precisam de verificação manual rodando o app, ou de esforço de dias.
 | Item | O que é | Por que ficou de fora |
 |---|---|---|
 | **B1** | Subir Electron (32 → 44) | Meio dia + verificação manual; flags de WGC e assinatura do `console-message` mudam entre versões e precisam de teste no app rodando. Fecha as 2 vulnerabilidades que sobram no `npm audit`. |
-| **B3 (UI)** | Caixa "Proteger com PIN", campo de PIN, cadeado na lista, selo do PIN no cabeçalho | O núcleo e o protocolo estão feitos e cobertos por teste; falta conferir layout/foco com o app rodando. |
 | **`npm run dist` pós-`electron-builder@26`** | Rodar um build completo | O 26 muda default de scripts de pacote e nomes de artefato; não dá pra validar sem gerar o instalador. |
 | **D1** | Extrair de `app.js` um módulo puro de orquestração de sessão/árvore | 1–2 dias de refatoração; ganho a prazo, não corrige bug aberto. |
 | **G1–G3** | Áudio nativo em C++ (batching do IPC, cancelamento do `Stop()`, leak no `NonBlockingCall`) | Mexe em C++ nativo; só testável rodando o app com captura real. |
