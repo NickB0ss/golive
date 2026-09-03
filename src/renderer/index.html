@@ -18,16 +18,23 @@
 <div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <!-- ============ LOBBY (fora de sala) ============ -->
-<!-- Tres faixas: topbar / corpo de duas colunas / barra do usuario. A regra
-     que organiza a tela: o que EU FACO fica na esquerda (fixa, sempre
-     visivel), o que ESTA ACONTECENDO na rede fica na direita (rola sozinha).
+<!-- Duas faixas: uma barra unica no topo (marca a esquerda, perfil e os dois
+     botoes de icone encostados na borda direita da JANELA, nao no miolo
+     centrado) e o corpo de duas colunas. A regra que organiza o corpo: o que
+     EU FACO fica na esquerda (fixa, sempre visivel), o que ESTA ACONTECENDO
+     na rede fica na direita (rola sozinha).
      Ver docs/superpowers/specs/2026-09-03-lobby-v2-e-acabamento-design.md -->
 <div id="lobby-view" class="lobby">
   <header class="lobby-topbar">
-    <div class="lobby-bounds lobby-topbar-inner">
+    <div class="lobby-topbar-inner">
       <span class="app-brand-badge">GL</span>
       <span class="app-brand-name">GoLive LAN</span>
       <span id="app-version" class="app-version"></span>
+      <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
+        <img id="user-panel-avatar-img" class="hidden" alt="" />
+        <span id="user-panel-avatar-fallback"></span>
+      </button>
+      <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
       <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" aria-label="Buscar atualizações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
       </button>
@@ -84,19 +91,6 @@
       <ul id="room-list-live" class="room-list"></ul>
     </section>
   </div>
-
-  <footer class="lobby-userbar">
-    <div class="lobby-bounds lobby-userbar-inner">
-      <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
-        <img id="user-panel-avatar-img" class="hidden" alt="" />
-        <span id="user-panel-avatar-fallback"></span>
-      </button>
-      <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
-      <button id="btn-open-settings-2" class="icon-btn" title="Configurações" aria-label="Configurações" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
-    </div>
-  </footer>
 </div>
 
 <!-- ============ DIALOGO: CRIAR SALA ============ -->
@@ -297,6 +291,7 @@
 </div>
 
 <script src="config.js"></script>
+<script src="version.js"></script>
 <script src="signaling.js"></script>
 <script src="tree.js"></script>
 <script src="mesh.js"></script>

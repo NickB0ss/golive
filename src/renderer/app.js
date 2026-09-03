@@ -2,11 +2,25 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth } = window.GoLive;
+  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
   sound.setEnabled(cfg.soundsEnabled); // aplica a preferencia salva antes de qualquer som tocar
+
+  // Versao deste app (a do package.json, via IPC). Vale pra tres coisas: o
+  // rotulo no topo, o toast do "ja esta na mais recente" e -- a que importa
+  // pro protocolo -- o campo `appVersion` do 'join': a sala so aceita quem
+  // estiver na MESMA versao de quem a criou (ver server/signaling-core.js).
+  // Fica numa promessa que nunca rejeita: quem manda o 'join' espera por ela
+  // em vez de mandar `null` e tomar uma recusa que nao explica nada.
+  let appVersion = null;
+  const appVersionReady = Promise.resolve(window.golive.getVersion?.())
+    .then((v) => {
+      appVersion = typeof v === 'string' && v.trim() ? v.trim() : null;
+      return appVersion;
+    })
+    .catch(() => null);
   // `currentSession` is the single source of truth for "the session that is
   // live right now". Every async callback (WS messages, WebRTC events,
   // capture promises) captures the specific `session` object it belongs to
@@ -569,9 +583,17 @@
       activeAddress: activeRoomAddress,
       liveRooms: discoveredRooms,
       isOnCooldown: (address) => cooldownRemaining(address) > 0,
+      appVersion,
       onSelect: (room) => {
         if (room.address === activeRoomAddress) return; // já conectado nessa sala
         if (cooldownRemaining(room.address) > 0) return;
+        // Trava de versao: o card ja vem sem clique quando as versoes nao
+        // batem, mas o beacon pode ter mudado entre o render e o clique --
+        // e conectar pra tomar um 'join-denied' e pior do que nao conectar.
+        if (appVersion && room.version && !version.same(appVersion, room.version)) {
+          showLobbyError(version.mismatchText({ mine: appVersion, theirs: room.version }));
+          return;
+        }
         hostInfo = null;
         renderHostWarning();
         // Sala com PIN (B3): em vez de conectar e tomar 'join-denied', abre
@@ -611,13 +633,10 @@
   // aperta o botao de buscar (#btn-check-update). Nada e baixado ate o clique
   // em "Reiniciar e instalar"; quando o download termina, instala e reinicia
   // sozinho. Ver main/updater.js e a spec de 2026-08-26.
-  let updateVersionAtual = null;
-  Promise.resolve(window.golive.getVersion?.())
-    .then((v) => {
-      updateVersionAtual = v || null;
-      if (updateVersionAtual) $('app-version').textContent = `v${updateVersionAtual}`;
-    })
-    .catch(() => {});
+  void appVersionReady.then(() => {  // appVersionReady nunca rejeita (ja tem .catch)
+    if (appVersion) $('app-version').textContent = `v${appVersion}`;
+    renderRoomList(); // a lista da rede so sabe marcar sala incompativel com a nossa versao em maos
+  });
 
   const btnCheckUpdate = $('btn-check-update');
   const spinCheck = (on) => {
@@ -659,7 +678,7 @@
         break;
       case 'not-available':
         spinCheck(false);
-        if (manual) showToast(`Você já está na versão mais recente${updateVersionAtual ? ` (${updateVersionAtual})` : ''}.`);
+        if (manual) showToast(`Você já está na versão mais recente${appVersion ? ` (${appVersion})` : ''}.`);
         break;
       case 'error':
         spinCheck(false);
@@ -1144,9 +1163,17 @@
           markCooldown(activeRoomAddress);
           updateDisconnectButtonState();
           renderRoomList();
-          session.sig.send({
-            type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null,
-            pin: pin || undefined, clientId: cfg.clientId, ownerToken: hostInfo?.ownerToken || undefined,
+          // O 'join' e a PRIMEIRA mensagem da conexao (o servidor nao manda
+          // nada antes dele), entao esperar a versao aqui nao reordena nada.
+          // Na pratica a promessa ja resolveu no boot -- isto so cobre o
+          // caso raro do IPC ainda estar no ar quando alguem clica rapido.
+          void appVersionReady.then(() => {
+            if (currentSession !== session) return;
+            session.sig.send({
+              type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null,
+              pin: pin || undefined, clientId: cfg.clientId, ownerToken: hostInfo?.ownerToken || undefined,
+              appVersion: appVersion || undefined,
+            });
           });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           if (attempts > 0) $('setup-error').textContent = '';
@@ -1190,6 +1217,21 @@
             teardownSession(session);
             if (!orphanSession) ui.stageHeader.clear();
             const reason = session.joinDenied;
+            // Versoes diferentes: nao ha o que redigitar (nem PIN, nem
+            // endereco) -- tentar de novo agora daria exatamente a mesma
+            // recusa. Em vez de reabrir o dialogo, o lobby explica qual
+            // lado precisa atualizar e o botao de buscar atualizacao fica a
+            // um clique dali, na barra do topo.
+            if (reason === 'version') {
+              const info = session.joinDeniedInfo || {};
+              const aviso = version.mismatchText({ mine: info.yourVersion || appVersion, theirs: info.hostVersion || null });
+              showLobbyError(aviso);
+              showToast(aviso, 8000);
+              renderMembersPanel();
+              renderRoomList();
+              onSettled?.();
+              return;
+            }
             // #dialog-join-room substituiu o #join-address-form inline (Task 8) --
             // reabre ja preenchido com o endereco pra pessoa nao redigitar.
             ui.dialogs.openJoinRoom({
@@ -1510,9 +1552,6 @@
     btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
   });
 
-  // Segundo botao de configuracoes (no rodape do lobby) -- reusa o handler do primeiro.
-  $('btn-open-settings-2')?.addEventListener('click', () => $('btn-open-settings').click());
-
   // ---------- Desconectar ----------
 
   function leaveRoom() {
@@ -1762,12 +1801,15 @@
         session.roomClosed = true;
         break;
       }
-      // B3: a sala pediu PIN e o nosso nao bateu (ou nao mandamos). O
-      // servidor fecha o socket logo depois (1008 'pin'); o onClose le esta
-      // marca pra voltar pro lobby com o aviso certo, sem tentar reconectar
-      // e sem orfanizar -- nunca chegamos a entrar.
+      // A sala recusou a entrada: PIN errado/ausente (B3), banido, ou versao
+      // diferente da de quem criou a sala. O servidor fecha o socket logo
+      // depois (1008); o onClose le esta marca pra voltar pro lobby com o
+      // aviso certo, sem tentar reconectar e sem orfanizar -- nunca chegamos
+      // a entrar. `joinDeniedInfo` carrega as duas versoes do caso 'version',
+      // que sao o que permite dizer QUEM precisa atualizar.
       case 'join-denied': {
         session.joinDenied = msg.reason || 'pin';
+        session.joinDeniedInfo = msg;
         break;
       }
       // Chat: mensagem de texto de um peer OU linha de sistema (entrada/saida,

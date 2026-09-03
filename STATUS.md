@@ -10,6 +10,13 @@ VPN / Tailscale). Sem servidor na nuvem, sem conta. Quem cria a sala sobe um
 servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 - Descoberta de salas na rede por beacon UDP (opcional, ligada por padrão).
+- **Sala só aceita quem está na mesma versão do app.** O `join` carrega a
+  `appVersion`; o servidor de sinalização de quem criou a sala recusa
+  qualquer versão diferente (`join-denied`, motivo `version`, com as duas
+  versões na resposta). A versão viaja também no beacon UDP, então a lista de
+  salas da rede já marca a sala incompatível e desliga o botão antes do
+  clique. Direção do aviso vem de `src/renderer/version.js` (quem tem de
+  atualizar: você ou quem criou a sala).
 - PIN opcional de 4 dígitos na sala (opt-in em "Criar sala"): corta o
   entrar-por-acidente numa rede compartilhada. Não é cripto.
 - Liberação de porta no firewall do Windows automática, com botão
@@ -37,7 +44,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 `0.5.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **286 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **301 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
@@ -102,6 +109,19 @@ após `await`).
   empilhava toda a folga vertical numa fileira só). Barra de rolagem com
   estilo global fino e escuro. Nenhum arquivo de transporte tocado.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
+
+## Ainda não lançado (na `main`, sem tag)
+
+- **Trava de versão de sala + barra única no lobby.** Duas coisas pequenas
+  vindas do uso: (1) a sala passou a recusar quem não está exatamente na
+  versão de quem a criou — protocolo de sinalização, formato da árvore e
+  negociação P2P mudam entre releases sem nenhum acordo de compatibilidade, e
+  a sala misturada quebrava parecendo problema de rede; (2) o lobby tinha
+  duas faixas horizontais (topbar + barra do usuário) e **dois** botões de
+  Configurações na mesma tela. Agora é uma barra só, de borda a borda da
+  janela: marca à esquerda, perfil + buscar atualização + Configurações
+  encostados na direita. Ver a spec de 2026-09-03 (barra única e trava de
+  versão).
   Detalhe por item na auditoria e no histórico do git.
 
 ## Backlog técnico

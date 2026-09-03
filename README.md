@@ -84,7 +84,13 @@ sala na rede" marcado, ela aparece sozinha em "Salas abertas na sua rede", na
 coluna da direita — é só clicar no card ou no botão **Entrar**. Se não, cola o
 endereço em "Entrar por endereço" (`26.x.x.x` — a porta é opcional, assume
 `:9000`) e clica em Conectar. O nome exibido pros outros é o apelido definido
-na barra do usuário (rodapé da tela inicial, clique pra editar).
+no perfil (avatar e nome na barra do topo, clique pra editar).
+
+**Todo mundo na sala precisa estar na mesma versão do GoLive.** A sala só
+aceita quem estiver exatamente na versão de quem a criou — as salas da rede
+que estão noutra versão aparecem apagadas na lista, com um selo dizendo qual
+lado precisa atualizar, e o botão de buscar atualização fica ali do lado, na
+barra do topo.
 
 O rodapé da coluna da esquerda mostra o **endereço desta máquina** na rede
 virtual antes mesmo de existir uma sala — é o endereço que os seus amigos vão
@@ -219,6 +225,13 @@ automática falhar, aparece um aviso acima da grade de vídeo com um botão
 pra mesma porta da sala. Só se essa tentativa também falhar é que o comando
 manual do `netsh` aparece como texto, pra rodar como administrador na máquina
 que criou a sala.
+
+**"Essa sala está na versão X e você está na Y"** — a sala recusa quem não
+está na mesma versão do app (o protocolo de sinalização e a árvore de
+retransmissão mudam entre releases, e uma sala com versões misturadas quebra
+de um jeito que parece problema de rede). Use o botão de buscar atualização
+na barra do topo; se a versão mais nova for a **sua**, quem criou a sala é
+que precisa atualizar.
 
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O
 Radmin às vezes bloqueia UDP entre peers; teste um `ping 26.x.x.x` primeiro.

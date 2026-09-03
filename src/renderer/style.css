@@ -158,7 +158,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 button:active:not(:disabled) { transform: scale(0.97); transition-duration: 0ms; }
 button svg { width: 17px; height: 17px; flex: none; }
 
-:where(button, .icon-btn, .icon-btn-inline, .room-row, .source-card, .picker-tab, .settings-cat, input, select, textarea):focus-visible {
+:where(button, .icon-btn-inline, .room-row, .source-card, .picker-tab, .settings-cat, input, select, textarea):focus-visible {
   outline: 2px solid var(--act);
   outline-offset: 2px;
   box-shadow: none;
@@ -342,22 +342,28 @@ input[type="range"] { accent-color: var(--live); }
 
 /* ============ LOBBY ============
  *
- * Tres faixas (topbar / corpo / barra do usuario) e, na do meio, duas
- * colunas: acoes a esquerda com largura fixa, salas da rede a direita.
- * A versao anterior era uma coluna de 560px centrada numa janela de
- * 1280px -- funcionava, mas 62% da largura era fundo vazio e a unica parte
- * viva da tela (a lista de salas) ficava espremida. Ver a spec de
- * 2026-09-03, secao 3. */
+ * Duas faixas (barra do topo / corpo) e, no corpo, duas colunas: acoes a
+ * esquerda com largura fixa, salas da rede a direita. A versao anterior era
+ * uma coluna de 560px centrada numa janela de 1280px -- funcionava, mas 62%
+ * da largura era fundo vazio e a unica parte viva da tela (a lista de salas)
+ * ficava espremida. Ver a spec de 2026-09-03, secao 3.
+ *
+ * A barra do usuario que morava no rodape foi absorvida pela barra do topo:
+ * eram duas molduras horizontais pra um lobby de uma tela so, e o botao de
+ * Configuracoes aparecia DUAS vezes na mesma pagina (topo e rodape). Agora
+ * ha uma barra e um botao. */
 
 .lobby {
   height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
-/* Todas as tres faixas compartilham o mesmo container: o conteudo alinha
-   verticalmente de ponta a ponta da tela, e o que sobra vira margem. */
+/* O CORPO e centrado num container de leitura; a barra do topo NAO usa este
+   container -- ela vai de borda a borda da janela, com a marca colada na
+   esquerda e os controles na direita. Numa janela larga, um botao de
+   Configuracoes parado a 200px da borda parece solto no meio da tela. */
 .lobby-bounds {
   width: 100%;
   max-width: 1120px;
@@ -366,7 +372,10 @@ input[type="range"] { accent-color: var(--live); }
 }
 
 .lobby-topbar { border-bottom: 1px solid var(--line); background: var(--s1); }
-.lobby-topbar-inner { display: flex; align-items: center; gap: var(--s-2); height: 56px; }
+.lobby-topbar-inner {
+  display: flex; align-items: center; gap: var(--s-2);
+  height: 56px; width: 100%; padding: 0 var(--s-4);
+}
 
 .app-brand-badge {
   width: 30px; height: 30px; border-radius: var(--r-sm);
@@ -497,6 +506,17 @@ input[type="range"] { accent-color: var(--live); }
 }
 .room-lock { flex: none; color: var(--warn); display: flex; }
 .room-lock svg { width: 13px; height: 13px; }
+
+/* Sala em outra versao do app: o card fica na lista (some-lo sem explicacao
+   viraria "a sala do meu amigo nao aparece"), mas apagado e sem clique --
+   e o selo diz de quem e a culpa. Ver a trava de versao no signaling-core. */
+.room-row.incompatible { opacity: .62; }
+.room-row.incompatible .room-badge { filter: grayscale(1); }
+.room-version {
+  flex: none; font-size: 11px; font-weight: 700; color: var(--warn);
+  background: var(--warn-dim); border-radius: var(--r-full); padding: 1px 7px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .room-connect { min-height: 36px; padding: 0 var(--s-3); font-size: 12.5px; flex: none; }
 .room-connect svg { width: 14px; height: 14px; }
 .room-connect:disabled { color: var(--tx2); opacity: 1; cursor: default; }
@@ -516,33 +536,37 @@ input[type="range"] { accent-color: var(--live); }
 .rooms-empty-title { font-size: 13px; font-weight: 600; color: var(--tx2); }
 .rooms-empty-hint { font-size: 12px; line-height: 1.5; color: var(--tx3); max-width: 320px; }
 
-/* ---------- Barra do usuario ---------- */
+/* ---------- Perfil (dentro da barra do topo) ---------- */
 
-.lobby-userbar { border-top: 1px solid var(--line); background: var(--s1); }
-.lobby-userbar-inner { display: flex; align-items: center; gap: var(--s-3); height: 60px; }
+/* Avatar + nome sao um par: ficam juntos, encostados nos dois botoes de
+   icone, e os dois abrem Configuracoes > Perfil. O nome nao estica (nada de
+   `flex: 1` como na barra antiga): aqui ele empurraria os botoes pra longe
+   da borda. */
 .user-avatar {
-  width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none;
+  width: 30px; height: 30px; border-radius: 50%; overflow: hidden; flex: none;
   min-height: 0; padding: 0; background: var(--s4); border: none;
   display: flex; align-items: center; justify-content: center;
-  color: var(--tx2); font-weight: 700;
+  color: var(--tx2); font-weight: 700; font-size: 12.5px;
 }
+/* Folga so na barra do topo -- a mesma classe veste o avatar grande de
+   Configuracoes > Perfil, que nao quer margem nenhuma. */
+.lobby-topbar-inner .user-avatar { margin-left: var(--s-2); }
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .user-panel-name {
-  font-weight: 600; font-size: 13.5px; flex: 1; text-align: left; min-width: 0;
+  font-weight: 600; font-size: 13px; text-align: left; min-width: 0; max-width: 200px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
-  background: transparent; border: none; min-height: 0; padding: 0; color: var(--tx);
+  background: transparent; border: none; min-height: 0; padding: 0 var(--s-1) 0 0;
+  color: var(--tx); flex: none;
 }
-.icon-btn {
-  width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: var(--r-sm);
-  background: transparent; color: var(--tx2); border: none;
-}
-.icon-btn:hover { background: var(--s3); color: var(--tx); }
-.icon-btn.active { background: var(--s4); color: var(--tx); }
+.user-avatar:hover, .user-panel-name:hover { color: var(--tx); opacity: .82; }
 
 /* Janela estreita (o minWidth da janela e 900px, entao isto acontece de
    verdade): as duas colunas viram uma pilha e a pagina inteira rola. */
 @media (max-width: 1040px) {
   .lobby-bounds { padding: 0 var(--s-4); }
+  /* Nome longo comendo os botoes de icone numa janela estreita: some com o
+     nome e fica so o avatar (que abre o mesmo perfil). */
+  .user-panel-name { max-width: 120px; }
   .lobby-body {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--s-4);
@@ -760,19 +784,10 @@ button.busy { cursor: default; }
   letter-spacing: 0.25em;
 }
 
-.icon-btn svg { width: 17px; height: 17px; }
 /* Pausado nao e so "ativo": e um estado que esconde a tela dos outros e
    precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
    elevacao neutra do .active. */
 #btn-pause-share.active { background: var(--warn); color: var(--surface-1); box-shadow: none; }
-/* Camera abrindo: pulsa ate o primeiro frame chegar (o driver decide quanto
-   tempo isso leva) pra deixar claro que o clique foi registrado. */
-.icon-btn.loading { background: var(--surface-3); animation: icon-btn-pulse 900ms ease-in-out infinite; }
-@keyframes icon-btn-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-
 /* O <em>AO VIVO</em> mora dentro de .peer-live-badge, que ja carrega a
    pilula inteira -- aqui so tira o italico do <em>. */
 .peer-list li em { font-style: normal; }

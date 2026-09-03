@@ -221,3 +221,30 @@ test('parseBeacon so aceita protected estritamente true', () => {
     assert.equal('protected' in parseBeacon(raw), false, `protected=${JSON.stringify(v)}`);
   }
 })
+
+test('formatBeacon + parseBeacon carregam a versao do app de quem hospeda', () => {
+  const raw = formatBeacon({ name: 'Sala', port: 9001, address: '1.2.3.4:9001', version: '0.6.0' });
+  assert.equal(JSON.parse(raw).version, '0.6.0');
+  assert.equal(parseBeacon(raw).version, '0.6.0');
+});
+
+test('formatBeacon omite version quando nao foi informada; parseBeacon ignora lixo', () => {
+  const raw = formatBeacon({ name: 'Sala', port: 9001, address: '1.2.3.4:9001' });
+  assert.equal('version' in JSON.parse(raw), false);
+  assert.equal('version' in parseBeacon(raw), false);
+  for (const v of [42, {}, '', '   ', null]) {
+    const lixo = JSON.stringify({ type: 'golive-room', port: 9000, address: '1.2.3.4:9000', version: v });
+    assert.equal('version' in parseBeacon(lixo), false, `version=${JSON.stringify(v)}`);
+  }
+});
+
+test('toRoomList repassa a versao quando presente', () => {
+  const rooms = new Map([
+    ['a:9000', { name: 'A', address: 'a:9000', port: 9000, version: '0.6.0', lastSeen: 1 }],
+    ['b:9000', { name: 'B', address: 'b:9000', port: 9000, lastSeen: 1 }],
+  ]);
+  assert.deepEqual(toRoomList(rooms), [
+    { name: 'A', address: 'a:9000', port: 9000, version: '0.6.0' },
+    { name: 'B', address: 'b:9000', port: 9000 },
+  ]);
+});
