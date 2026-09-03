@@ -653,9 +653,137 @@
     return '';
   }
 
+  // ---------- Lobby: lista de salas ----------
+
+  const roomListLiveEl = $('room-list-live');
+  const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
+  const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+  function fillRoomList(listEl, rooms, { onSelect, activeAddress, emptyMessage, isOnCooldown }) {
+    listEl.innerHTML = '';
+    if (!rooms.length) {
+      if (emptyMessage) listEl.innerHTML = `<li class="muted" style="padding:8px 10px;">${escapeHtml(emptyMessage)}</li>`;
+      return;
+    }
+    for (const room of rooms) {
+      const isActive = activeAddress && room.address === activeAddress;
+      const onCooldown = !isActive && !!isOnCooldown && isOnCooldown(room.address);
+      const li = document.createElement('li');
+      li.className = 'room-row';
+      if (isActive) li.classList.add('active');
+
+      const info = document.createElement('div');
+      info.className = 'room-info';
+      info.innerHTML = `
+        <span class="dot ${isActive ? 'ok' : ''}"></span>
+        <span class="room-item-text">
+          <span class="room-name">${room.protected ? '<span class="room-lock" title="Precisa de PIN">&#128274;</span> ' : ''}${escapeHtml(room.name || room.hostName || 'sala')}</span>
+          <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>
+        </span>`;
+      li.appendChild(info);
+
+      const connectBtn = document.createElement('button');
+      connectBtn.className = 'room-connect';
+      connectBtn.type = 'button';
+      connectBtn.title = isActive ? 'Já conectado nessa sala' : 'Conectar nessa sala';
+      connectBtn.disabled = isActive || onCooldown;
+      if (onCooldown) connectBtn.classList.add('cooldown');
+      connectBtn.innerHTML = isActive ? CONNECTED_ICON : CONNECT_ICON;
+      connectBtn.addEventListener('click', () => onSelect(room));
+      li.appendChild(connectBtn);
+
+      listEl.appendChild(li);
+    }
+  }
+
+  // `liveRooms` = salas descobertas agora mesmo via broadcast UDP na LAN
+  // (src/main/discovery.js) — nao ha historico local salvo em disco, so
+  // "isso esta aberto agora"; a lista some sozinha quando o beacon para de
+  // chegar.
+  function renderRooms({ onSelect, activeAddress, liveRooms = [], isOnCooldown }) {
+    fillRoomList(roomListLiveEl, liveRooms, {
+      onSelect,
+      activeAddress,
+      isOnCooldown,
+      emptyMessage: 'nenhuma sala aberta na rede agora — crie uma ou entre por endereço',
+    });
+  }
+
+  // ---------- Foco em modais (helpers temporarios) ----------
+
+  // TEMP: Task 16 replaces with verbatim port
+  function focusFirstInteractive(container) {
+    const el = container.querySelector('input, select, textarea, button');
+    if (el) el.focus();
+  }
+  // TEMP: Task 16 replaces with verbatim port
+  let lastFocusedBeforeModal = null;
+  // TEMP: Task 16 replaces with verbatim port
+  function restoreFocusAfterModal() {
+    if (lastFocusedBeforeModal && lastFocusedBeforeModal.focus) lastFocusedBeforeModal.focus();
+    lastFocusedBeforeModal = null;
+  }
+
+  // ---------- Dialogo: Criar sala ----------
+  const dlgCreateEl = $('dialog-create-room');
+  let onCreateConfirm = null;
+
+  function openCreateRoom({ onConfirm }) {
+    $('create-room-error').textContent = '';
+    $('chk-protect-room').checked = false;
+    onCreateConfirm = onConfirm;
+    dlgCreateEl.classList.remove('hidden');
+    focusFirstInteractive(dlgCreateEl);
+  }
+  function closeCreateRoom() {
+    dlgCreateEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onCreateConfirm = null;
+  }
+  function setCreateRoomError(text) {
+    $('create-room-error').textContent = text || '';
+  }
+  $('btn-create-room-cancel').addEventListener('click', closeCreateRoom);
+  $('btn-create-room-confirm').addEventListener('click', () => {
+    onCreateConfirm?.({ protect: $('chk-protect-room').checked });
+  });
+  dlgCreateEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCreateRoom(); });
+
+  // ---------- Dialogo: Entrar numa sala ----------
+  const dlgJoinEl = $('dialog-join-room');
+  let onJoinConnect = null;
+
+  function openJoinRoom({ onConnect, address, showPinField = false }) {
+    $('setup-error').textContent = '';
+    $('in-server').value = address || '';
+    $('in-pin').value = '';
+    $('join-pin-field').classList.toggle('hidden', !showPinField);
+    onJoinConnect = onConnect;
+    dlgJoinEl.classList.remove('hidden');
+    focusFirstInteractive(dlgJoinEl);
+  }
+  function closeJoinRoom() {
+    dlgJoinEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onJoinConnect = null;
+  }
+  function setJoinRoomPinVisible(visible) {
+    $('join-pin-field').classList.toggle('hidden', !visible);
+  }
+  $('btn-join-room-cancel').addEventListener('click', closeJoinRoom);
+  $('btn-connect').addEventListener('click', () => {
+    onJoinConnect?.({ address: $('in-server').value.trim(), pin: $('in-pin').value.trim() || null });
+  });
+  dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJoinRoom(); });
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
     grid: { showTile, removeTile, setPainting, setWatchers },
+    rooms: { render: renderRooms },
+    dialogs: {
+      openCreateRoom, closeCreateRoom, setCreateRoomError,
+      openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,
+    },
   };
 })(window);
