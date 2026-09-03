@@ -88,6 +88,27 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
     const peers = new Map();
     let nextId = 1;
 
+    const CHAT_HISTORY_MAX = 50;
+    const chatHistory = []; // ring buffer -- mensagens de texto e linhas de sistema juntas
+    const chatRateLimiters = new Map(); // peerId -> limiter, 5 msg/s
+
+    function pushChatEntry(entry) {
+      chatHistory.push(entry);
+      if (chatHistory.length > CHAT_HISTORY_MAX) chatHistory.shift();
+    }
+
+    /** Linha de sistema (entrada/saida/moderacao). `target` e omitido pra
+     * join/leave -- o `actor` JA e quem entrou ou saiu. Guardada no historico
+     * (pra quem entrar depois ver o que passou) e broadcast pra sala.
+     * `exceptId` pula um peer no broadcast ao vivo: o proprio recem-chegado
+     * nao precisa da linha "fulano entrou" sobre si (o welcome dele ja
+     * estabeleceu que ele entrou), igual o `peer-joined` tambem o pula. */
+    function pushSystemLine(room, event, actor, target, exceptId = null) {
+      const entry = { type: 'chat', system: true, event, actor, ...(target ? { target } : {}), ts: Date.now() };
+      pushChatEntry(entry);
+      broadcastToRoom(room, exceptId, entry);
+    }
+
     function roomPeers(room, exceptId) {
       const out = [];
       for (const [id, peer] of peers) {
@@ -187,8 +208,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               peers.set(id, { ws, name, room, avatar, owner });
               joined = true;
               log(`+ ${name} (#${id}) entrou na sala "${room}"${owner ? ' (dono)' : ''}`);
-              send(ws, { type: 'welcome', id, owner, peers: roomPeers(room, id) });
+              send(ws, { type: 'welcome', id, owner, peers: roomPeers(room, id), chat: chatHistory.slice() });
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
+              pushSystemLine(room, 'join', name, undefined, id);
               break;
             }
 
@@ -210,6 +232,21 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               const target = peers.get(String(msg.to));
               if (!me || !target || me.room !== target.room) return;
               send(target.ws, { ...msg, from: id });
+              break;
+            }
+
+            case 'chat': {
+              const me = peers.get(id);
+              if (!me) return; // sem join previo, sem chat
+              const limiter = chatRateLimiters.get(id) || createRateLimiter({ limit: 5, windowMs: 1000 });
+              chatRateLimiters.set(id, limiter);
+              if (!limiter.hit(Date.now())) return; // estoura em silencio, sem fechar o socket (chat nao e flood de sinalizacao)
+              if (typeof msg.text !== 'string') return;
+              const text = msg.text.trim().slice(0, 500);
+              if (!text) return;
+              const entry = { type: 'chat', id: String(nextId++), from: id, name: me.name, text, ts: Date.now() };
+              pushChatEntry(entry);
+              broadcastToRoom(me.room, null, entry); // pra sala INTEIRA, inclusive quem mandou
               break;
             }
 
@@ -255,8 +292,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
           const me = peers.get(id);
           if (!me) return;
           peers.delete(id);
+          chatRateLimiters.delete(id);
           log(`- ${me.name} (#${id}) saiu da sala "${me.room}"`);
           broadcastToRoom(me.room, id, { type: 'peer-left', id });
+          pushSystemLine(me.room, 'leave', me.name);
         });
 
         ws.on('error', () => {});

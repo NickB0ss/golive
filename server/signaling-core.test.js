@@ -17,6 +17,24 @@ function once(ws, type) {
   });
 }
 
+// Espera a proxima mensagem 'chat' que casa com `pred`. Necessario porque
+// join/leave broadcast uma linha de sistema pra sala INTEIRA: um peer que ja
+// esta na sala pode receber a linha de "fulano entrou" no meio de um
+// `await`, e um `once(ws, 'chat')` cru pegaria essa linha em vez da mensagem
+// (ou da linha de sistema) que o teste realmente quer.
+function onceChatWhere(ws, pred) {
+  return new Promise((resolve) => {
+    function onMessage(raw) {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'chat' && pred(msg)) {
+        ws.off('message', onMessage);
+        resolve(msg);
+      }
+    }
+    ws.on('message', onMessage);
+  });
+}
+
 test('apresenta dois peers um ao outro na mesma sala', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
@@ -569,6 +587,153 @@ test('sem ownerToken configurado no servidor, ninguem vira dono mesmo mandando u
     await new Promise((r) => a.once('open', r));
     a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', ownerToken: 'qualquer-coisa' }));
     assert.equal((await once(a, 'welcome')).owner, false);
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: eco pra sala inteira, INCLUSIVE quem mandou, com id/from/name/ts carimbados pelo servidor', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const ecoA = onceChatWhere(a, (m) => !m.system);
+    const ecoB = onceChatWhere(b, (m) => !m.system);
+    a.send(JSON.stringify({ type: 'chat', text: 'oi gente', id: 'forjado', from: 'forjado', ts: 1 }));
+
+    const [msgA, msgB] = await Promise.all([ecoA, ecoB]);
+    assert.equal(msgA.text, 'oi gente');
+    assert.equal(msgA.name, 'Ana');
+    assert.notEqual(msgA.from, 'forjado'); // o servidor carimba from = id da conexao, nao o que o cliente mandou
+    assert.equal(msgA.id, msgB.id); // mesma mensagem, mesmo id, pros dois lados
+    assert.equal(typeof msgA.ts, 'number');
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: corta em 500 caracteres, descarta nao-string e mensagem vazia', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const longa = 'x'.repeat(600);
+    const eco = once(a, 'chat');
+    a.send(JSON.stringify({ type: 'chat', text: longa }));
+    assert.equal((await eco).text.length, 500);
+
+    a.send(JSON.stringify({ type: 'chat', text: 42 })); // nao-string
+    a.send(JSON.stringify({ type: 'chat', text: '   ' })); // so espaco
+    a.send(JSON.stringify({ type: 'chat', text: 'depois' }));
+    assert.equal((await once(a, 'chat')).text, 'depois'); // a proxima que chega e a valida -- as duas descartadas nunca ecoam
+
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: 5 mensagens por segundo por peer, estouro nao derruba o socket', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const recebidas = [];
+    a.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'chat' && !m.system) recebidas.push(m);
+    });
+    for (let i = 0; i < 8; i += 1) a.send(JSON.stringify({ type: 'chat', text: `m${i}` }));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(recebidas.length, 5);
+    assert.equal(a.readyState, WebSocket.OPEN); // o limite de chat NAO fecha o socket (diferente do flood global)
+
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: welcome carrega o historico (ate 50), circular, com linhas de sistema de entrada/saida', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+    const eco = once(a, 'chat');
+    a.send(JSON.stringify({ type: 'chat', text: 'primeira' }));
+    await eco;
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    const welcomeB = await once(b, 'welcome');
+
+    assert.ok(Array.isArray(welcomeB.chat));
+    // A Ana entrando tambem gerou uma linha de sistema, antes da mensagem de texto.
+    const eventos = welcomeB.chat.map((e) => e.system ? `sys:${e.event}` : `msg:${e.text}`);
+    assert.deepEqual(eventos, ['sys:join', 'msg:primeira']);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: quem sai da sala gera linha de sistema "leave" pra quem ficou', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const linhaSistema = onceChatWhere(a, (m) => m.system && m.event === 'leave');
+    b.close();
+    const msg = await linhaSistema;
+    assert.equal(msg.system, true);
+    assert.equal(msg.event, 'leave');
+    assert.equal(msg.actor, 'Bruno');
+
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat e moderate de quem nunca deu join sao descartados em silencio', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    // Nao manda 'join'. Um 'chat' sem join previo nao pode lancar nem ecoar.
+    a.send(JSON.stringify({ type: 'chat', text: 'fantasma' }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(a.readyState, WebSocket.OPEN);
     a.close();
   } finally {
     await server.close();
