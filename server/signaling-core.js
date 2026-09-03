@@ -288,7 +288,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               if (!me || !me.owner) return; // so o dono modera; nao-dono e ignorado em silencio
               if (msg.action === 'unban') {
                 if (typeof msg.target !== 'string') return;
+                // Le o nome ANTES de removeBan apagar a entrada, pra a linha
+                // de sistema poder dizer quem foi readmitido.
+                const rec = bans.get(msg.target);
                 removeBan(msg.target);
+                if (rec) pushSystemLine(me.room, 'unban', me.name, rec.name);
                 sendBannedListToOwner(me.room);
                 return;
               }
@@ -309,6 +313,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
                   sendBannedListToOwner(me.room);
                 }
                 pushSystemLine(me.room, msg.action, me.name, target.name);
+                // O close abaixo dispara o handler ws.on('close') do alvo, que
+                // por padrao empurra uma linha 'leave'. Marca pra ele pular --
+                // a linha 'kick'/'ban' acima ja cobriu a saida.
+                target._moderationClose = true;
                 try {
                   target.ws.close(1008, msg.action);
                 } catch {
@@ -400,7 +408,8 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
           chatRateLimiters.delete(id);
           log(`- ${me.name} (#${id}) saiu da sala "${me.room}"`);
           broadcastToRoom(me.room, id, { type: 'peer-left', id });
-          pushSystemLine(me.room, 'leave', me.name);
+          // Expulso/banido ja tem a linha 'kick'/'ban' -- nao duplica com 'leave'.
+          if (!me._moderationClose) pushSystemLine(me.room, 'leave', me.name);
         });
 
         ws.on('error', () => {});

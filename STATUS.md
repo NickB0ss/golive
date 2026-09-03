@@ -74,7 +74,7 @@ entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
   uma passada visual com o app rodando**; a lógica está coberta por teste.
 
 Branch **`claude/chat-e-moderacao`**: redesign completo da interface, mais chat
-de texto e moderação pelo dono da sala. Ainda não mesclada. `npm test` → **283
+de texto e moderação pelo dono da sala. Ainda não mesclada. `npm test` → **286
 passando**, `npm run lint` → 0 erros (os mesmos 10 avisos `require-atomic-updates`).
 Exercitada com o app rodando — duas instâncias / peer de teste por CDP —, sem
 `npm run dist` (fora do escopo da spec).
@@ -104,7 +104,10 @@ Exercitada com o app rodando — duas instâncias / peer de teste por CDP —, s
   **banir** (fecha o socket e barra o reingresso por `clientId` + IP, com o
   loopback de fora pra o dono não se autobanir). Banir pede confirmação com
   foco no Cancelar; o banido entra numa lista "Banidos" com botão "Readmitir".
-  Expulso ou banido volta pro lobby sozinho.
+  Expulso ou banido volta pro lobby sozinho. O bloqueio é cooperativo — feito
+  pelo servidor de sinalização mais os clientes: um cliente modificado ainda
+  poderia manter um link P2P já aberto por alguns instantes, até os outros
+  processarem o `peer-left`, então "banido" não é uma garantia criptográfica.
 - **Quatro sons novos** — além de entrada/saída: mensagem no chat (o mais
   discreto, só com a janela fora de foco e no máximo 1x a cada 2s), alguém
   começou a transmitir, o dono parou a sua transmissão, e você foi removido da

@@ -883,6 +883,110 @@ test('ban: alvo e recusado ao tentar entrar de novo (mesmo clientId); unban read
   }
 });
 
+test('kick: gera exatamente uma linha de sistema (kick), sem "leave" na cola (M5)', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    await once(dono, 'welcome');
+
+    const joao = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => joao.once('open', r));
+    joao.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Joao' }));
+    const { id: joaoId } = await once(joao, 'welcome');
+
+    const sysLines = [];
+    dono.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'chat' && m.system && (m.event === 'kick' || m.event === 'leave')) sysLines.push(m);
+    });
+
+    const fechou = new Promise((r) => joao.once('close', (code) => r(code)));
+    dono.send(JSON.stringify({ type: 'moderate', action: 'kick', target: joaoId }));
+    assert.equal(await fechou, 1008);
+    await new Promise((r) => setTimeout(r, 80)); // deixa um eventual 'leave' tardio chegar
+
+    assert.deepEqual(sysLines.map((m) => m.event), ['kick']); // so a linha 'kick', nunca 'kick' + 'leave'
+    assert.equal(sysLines[0].actor, 'Nicolas');
+    assert.equal(sysLines[0].target, 'Joao');
+
+    dono.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('unban: readmitir emite linha de sistema {system, event:"unban", actor, target} (M8)', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    await once(dono, 'welcome');
+
+    const lucas = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => lucas.once('open', r));
+    lucas.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Lucas', clientId: 'c-lucas' }));
+    const { id: lucasId } = await once(lucas, 'welcome');
+
+    const listaBan = once(dono, 'banned-list');
+    dono.send(JSON.stringify({ type: 'moderate', action: 'ban', target: lucasId }));
+    const banKey = (await listaBan).list[0].key;
+
+    const sysUnban = onceChatWhere(dono, (m) => m.system && m.event === 'unban');
+    dono.send(JSON.stringify({ type: 'moderate', action: 'unban', target: banKey }));
+    const sys = await sysUnban;
+    assert.equal(sys.system, true);
+    assert.equal(sys.event, 'unban');
+    assert.equal(sys.actor, 'Nicolas');
+    assert.equal(sys.target, 'Lucas');
+
+    dono.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('ban de quem NAO e dono e ignorado: alvo segue aberto e um rejoin passa (Rec 4)', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    await once(dono, 'welcome');
+
+    const ana = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => ana.once('open', r));
+    ana.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(ana, 'welcome');
+
+    const bruno = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => bruno.once('open', r));
+    bruno.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', clientId: 'c-bruno' }));
+    const { id: brunoId } = await once(bruno, 'welcome');
+
+    // Ana (nao-dona) tenta banir o Bruno -- ignorado em silencio.
+    ana.send(JSON.stringify({ type: 'moderate', action: 'ban', target: brunoId }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(bruno.readyState, WebSocket.OPEN);
+
+    // O ban nao pegou: um rejoin com o mesmo clientId entra normalmente.
+    bruno.close();
+    await new Promise((r) => setTimeout(r, 40));
+    const bruno2 = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => bruno2.once('open', r));
+    bruno2.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', clientId: 'c-bruno' }));
+    assert.equal((await once(bruno2, 'welcome')).type, 'welcome');
+
+    dono.close();
+    ana.close();
+    bruno2.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('so o dono recebe welcome.banned; quem nao e dono recebe lista vazia', async () => {
   const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
   try {
