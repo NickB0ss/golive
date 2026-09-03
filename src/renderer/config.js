@@ -1,6 +1,19 @@
 'use strict';
 
 (function (root) {
+  // UUID de instalacao. Funciona tanto no renderer (crypto global do
+  // browser) quanto sob `node --test` (crypto do core). Gerado dentro de
+  // load() quando ausente/invalido -- nunca um valor fixo em DEFAULTS, que
+  // seria igual pra toda instalacao sem config salvo.
+  function randomId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    // `module.require` em vez de `require` solto: no renderer o unico nome de
+    // Node visivel e `module` (rodape da IIFE), e este ramo so roda sob
+    // `node --test` -- no browser/Electron o `crypto.randomUUID` acima ja
+    // resolveu.
+    return module.require('crypto').randomUUID();
+  }
+
   // Presets de qualidade pro select simples de Configuracoes > Transmissao.
   // Cada opcao e um pacote fechado de resolucao+fps+bitrate escolhido pra
   // ser uma combinacao razoavel -- sem controles soltos que exigem saber o
@@ -136,6 +149,7 @@
     v: 1,
     name: '',
     avatar: null,
+    soundsEnabled: true,
     quality: qualityFromPreset(DEFAULT_QUALITY_PRESET),
     camera: {
       width: 1280,
@@ -197,6 +211,8 @@
       v: 1,
       name: typeof parsed.name === 'string' ? parsed.name : DEFAULTS.name,
       avatar: typeof parsed.avatar === 'string' ? parsed.avatar : DEFAULTS.avatar,
+      clientId: typeof parsed.clientId === 'string' && parsed.clientId ? parsed.clientId : randomId(),
+      soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : DEFAULTS.soundsEnabled,
       quality: loadQuality(parsed.quality),
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
       network: { ...mergeSection(DEFAULTS.network, parsed.network), tree: true },

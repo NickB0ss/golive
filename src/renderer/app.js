@@ -5,6 +5,7 @@
   const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
+  localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
   // `currentSession` is the single source of truth for "the session that is
   // live right now". Every async callback (WS messages, WebRTC events,
   // capture promises) captures the specific `session` object it belongs to

@@ -16,12 +16,38 @@ const {
 
 test('load com null devolve os defaults', () => {
   const cfg = load(null);
-  assert.deepEqual(cfg, DEFAULTS);
+  const { clientId, ...resto } = cfg;
+  assert.deepEqual(resto, DEFAULTS);
+  assert.match(clientId, /^[0-9a-f-]{36}$/);
 });
 
 test('load com JSON invalido devolve os defaults', () => {
   const cfg = load('{ nao é json');
-  assert.deepEqual(cfg, DEFAULTS);
+  const { clientId, ...resto } = cfg;
+  assert.deepEqual(resto, DEFAULTS);
+  assert.match(clientId, /^[0-9a-f-]{36}$/);
+});
+
+test('load sem clientId gera um novo; load com clientId existente preserva', () => {
+  const fresh = load(null);
+  assert.match(fresh.clientId, /^[0-9a-f-]{36}$/);
+
+  const saved = serialize({ ...fresh, clientId: 'ja-existia' });
+  assert.equal(load(saved).clientId, 'ja-existia');
+});
+
+test('soundsEnabled: default true, e preserva false quando salvo', () => {
+  assert.equal(load(null).soundsEnabled, true);
+  const saved = serialize({ ...DEFAULTS, soundsEnabled: false });
+  assert.equal(load(saved).soundsEnabled, false);
+});
+
+test('config antigo sem soundsEnabled nem clientId carrega com os defaults novos, sem quebrar', () => {
+  const antigo = JSON.stringify({ v: 1, name: 'Nicolas' });
+  const cfg = load(antigo);
+  assert.equal(cfg.name, 'Nicolas');
+  assert.equal(cfg.soundsEnabled, true);
+  assert.match(cfg.clientId, /^[0-9a-f-]{36}$/);
 });
 
 test('load preenche campos ausentes de uma config antiga', () => {
