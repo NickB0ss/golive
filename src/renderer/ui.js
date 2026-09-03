@@ -95,6 +95,21 @@
     return state;
   }
 
+  /** "Silenciar" no menu de membro e LOCAL -- mesmo mecanismo que o menu de
+   * contexto do tile ja usa hoje (getOrCreateAudioState + um GainNode por
+   * tile, sem passar pelo servidor). setMuted() e a peca que faltava pra
+   * reusar isso fora de openTileMenu: as duas UIs (tile e membro) chamam a
+   * mesma funcao sobre o mesmo `state`, entao mutar por um lugar reflete no
+   * outro. */
+  function setMuted(id, muted) {
+    const state = getOrCreateAudioState(id);
+    state.muted = muted;
+    if (state.gain) state.gain.gain.value = muted ? 0 : state.volume;
+  }
+  function isMuted(id) {
+    return getOrCreateAudioState(id).muted;
+  }
+
   // Chamada em TODA renderizacao do tile (nao so quando o srcObject muda),
   // porque mesh.js dispara um evento 'track' por track (video, depois audio,
   // separadamente) e cada um vira uma chamada a showTile com o MESMO objeto
@@ -776,6 +791,159 @@
   });
   dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJoinRoom(); });
 
+  // ---------- Lista de membros / moderacao ----------
+
+  const peerListEl = $('peer-list');
+  const memberMenuEl = $('member-menu');
+
+  function closeMemberMenu() {
+    memberMenuEl.classList.add('hidden');
+    memberMenuEl.innerHTML = '';
+  }
+  document.addEventListener('click', (e) => {
+    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn')) closeMemberMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMemberMenu(); });
+
+  const MODERATE_ICONS = {
+    mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>',
+    'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
+    kick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>',
+    ban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
+  };
+
+  /** Abre o menu do membro `id` ancorado no botao clicado. `isOwner` decide
+   * se aparecem os tres poderes de moderacao ou so "Silenciar" (ver a spec,
+   * secao 8.2 -- item desabilitado nao aparece, so ensina o que falta).
+   * `onModerate` so e chamado pras acoes que passam pelo servidor
+   * (stop-share/kick/ban); "Silenciar" nunca chega la. */
+  function openMemberMenu(btn, id, name, isOwner, onModerate) {
+    const rect = btn.getBoundingClientRect();
+    memberMenuEl.innerHTML = `
+      <div class="member-menu-item" role="menuitem" data-mute="1">${MODERATE_ICONS.mute} ${isMuted(id) ? 'Reativar som' : 'Silenciar'}</div>
+      ${isOwner ? `
+        <div class="member-menu-sep"></div>
+        <div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>
+        <div class="member-menu-item" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</div>
+        <div class="member-menu-item danger" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</div>
+        <div class="member-menu-hint">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
+      ` : ''}
+    `;
+    memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    memberMenuEl.style.top = `${rect.bottom + 4}px`;
+    memberMenuEl.classList.remove('hidden');
+    memberMenuEl.querySelector('[data-mute]').addEventListener('click', () => {
+      setMuted(id, !isMuted(id));
+      closeMemberMenu();
+    });
+    for (const item of memberMenuEl.querySelectorAll('[data-action]')) {
+      item.addEventListener('click', () => {
+        onModerate?.(item.dataset.action, id, name);
+        closeMemberMenu();
+      });
+    }
+    memberMenuEl.querySelector('[role="menuitem"]')?.focus();
+  }
+
+  // `live` liga `.peer-avatar.on` (anel --live via box-shadow, o unico sinal
+  // saturado do tema). `borderClass` ('ok'/'warn', do estado da conexao)
+  // continua sendo emitido pra frente-compatibilidade -- hoje e inerte porque
+  // o `.peer-avatar` novo (Task 11) nao tem `border`, so `.on` pinta anel.
+  // Ver task-14-report / progress.md pra o follow-up de CSS da "borda de
+  // estado" da spec (secao 6).
+  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, pulsing, qualityTag, isOwner, canModerate, onModerate }) {
+    const li = document.createElement('li');
+    if (isSelf) li.classList.add('self');
+    li.innerHTML = `
+      <span class="peer-avatar-wrap">
+        <span class="peer-avatar${live ? ' on' : ''}${borderClass ? ` ${borderClass}` : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
+      </span>
+      <span class="peer-name">${escapeHtml(name)}</span>
+      ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
+      ${isOwner ? '<span class="peer-crown" title="Dono da sala">♛</span>' : ''}
+      ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
+      ${live
+        ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
+        : ''
+      }
+      ${!isSelf ? `<button class="member-menu-btn" type="button" aria-label="Opções de ${escapeHtml(name)}">⋮</button>` : ''}
+    `;
+    if (!isSelf) {
+      li.querySelector('.member-menu-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openMemberMenu(e.currentTarget, id, name, canModerate, onModerate);
+      });
+    }
+    return li;
+  }
+
+  function renderMembers(peers, self, qualityTags, { ownerId, myId, onModerate } = {}) {
+    peerListEl.innerHTML = '';
+    if (!self && !peers.size) {
+      peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
+      return;
+    }
+    let pulseTaken = false;
+    const claimPulse = (live) => {
+      if (!live || pulseTaken) return false;
+      pulseTaken = true;
+      return true;
+    };
+    const iAmOwner = ownerId != null && myId != null && ownerId === myId;
+
+    if (self) {
+      peerListEl.appendChild(
+        buildMemberRow({
+          id: 'me',
+          name: self.name || 'anônimo',
+          avatar: self.avatar,
+          live: self.live,
+          isSelf: true,
+          pulsing: claimPulse(self.live),
+          isOwner: iAmOwner,
+        })
+      );
+    }
+    for (const peer of peers.values()) {
+      const state = peer.inConns?.screen?.connectionState || peer.outConns?.screen?.connectionState
+        || peer.inConns?.camera?.connectionState || peer.outConns?.camera?.connectionState;
+      const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
+      peerListEl.appendChild(
+        buildMemberRow({
+          id: peer.id,
+          name: peer.name,
+          avatar: peer.avatar,
+          borderClass,
+          live: peer.live,
+          pulsing: claimPulse(peer.live),
+          qualityTag: qualityTags?.get(peer.id) || '',
+          isOwner: ownerId != null && peer.id === ownerId,
+          canModerate: iAmOwner,
+          onModerate,
+        })
+      );
+    }
+  }
+
+  // ---------- Banidos ----------
+  const bannedSectionEl = $('banned-section');
+  const bannedListEl = $('banned-list');
+
+  function renderBanned(list, { onUnban } = {}) {
+    bannedSectionEl.classList.toggle('hidden', !list || !list.length);
+    bannedListEl.innerHTML = '';
+    for (const entry of list || []) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="peer-avatar" style="background:${avatarColorFor(entry.key)}">${avatarInnerHtml(entry.key, entry.name, null)}</span>
+        <span class="peer-name">${escapeHtml(entry.name)}</span>
+        <button class="banned-readmit" type="button">Readmitir</button>
+      `;
+      li.querySelector('.banned-readmit').addEventListener('click', () => onUnban?.(entry.key));
+      bannedListEl.appendChild(li);
+    }
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
@@ -785,5 +953,6 @@
       openCreateRoom, closeCreateRoom, setCreateRoomError,
       openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,
     },
+    members: { render: renderMembers, renderBanned },
   };
 })(window);
