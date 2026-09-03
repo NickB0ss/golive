@@ -944,6 +944,107 @@
     }
   }
 
+  // ---------- Chat ----------
+  const chatMessagesEl = $('chat-messages');
+  const chatComposeEl = $('chat-compose');
+  const chatInputEl = $('chat-input');
+  const chatCountEl = $('chat-input-count');
+  const chatOfflineBarEl = $('chat-offline-bar');
+  let lastChatAuthorId = null; // pra saber quando agrupar (mesmo autor em sequencia)
+  let onChatSend = null;
+
+  const SYSTEM_ICONS = {
+    join: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
+    leave: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+    'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
+    kick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>',
+    ban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
+    unban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  };
+  const SYSTEM_LABELS = {
+    join: (actor) => `${actor} entrou`,
+    leave: (actor) => `${actor} saiu`,
+    'stop-share': (actor, target) => `${actor} parou a transmissão de ${target}`,
+    kick: (actor, target) => `${actor} expulsou ${target}`,
+    ban: (actor, target) => `${actor} baniu ${target}`,
+    unban: (actor, target) => `${actor} readmitiu ${target}`,
+  };
+  const SYSTEM_TONE = { 'stop-share': 'warn', kick: 'danger', ban: 'danger' };
+
+  function formatTime(ts) {
+    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function appendSystemLine(entry) {
+    const div = document.createElement('div');
+    const tone = SYSTEM_TONE[entry.event] || '';
+    div.className = `chat-sys${tone ? ` ${tone}` : ''}`;
+    const label = SYSTEM_LABELS[entry.event]?.(entry.actor, entry.target) || entry.event;
+    div.innerHTML = `${SYSTEM_ICONS[entry.event] || ''} ${escapeHtml(label)}`;
+    chatMessagesEl.appendChild(div);
+    lastChatAuthorId = null; // proxima mensagem de texto nao agrupa com o que veio antes de uma linha de sistema
+  }
+
+  function appendMessage(entry) {
+    const grouped = lastChatAuthorId === entry.from;
+    lastChatAuthorId = entry.from;
+    const div = document.createElement('div');
+    div.className = `chat-line${grouped ? ' grouped' : ''}`;
+    div.innerHTML = `
+      <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}; display:flex; align-items:center; justify-content:center; border-radius:50%; width:28px; height:28px; color:#fff; font-weight:700; font-size:11px;">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
+      <span class="chat-body">
+        ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
+        <span class="chat-text">${escapeHtml(entry.text)}</span>
+      </span>
+    `;
+    chatMessagesEl.appendChild(div);
+  }
+
+  function appendEntry(entry) {
+    if (entry.system) appendSystemLine(entry);
+    else appendMessage(entry);
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  function append(entry) {
+    appendEntry(entry);
+  }
+
+  function setHistory(entries) {
+    chatMessagesEl.innerHTML = '';
+    lastChatAuthorId = null;
+    for (const entry of entries || []) appendEntry(entry);
+  }
+
+  function setEnabled(enabled) {
+    chatInputEl.disabled = !enabled;
+    chatComposeEl.classList.toggle('disabled', !enabled);
+    chatOfflineBarEl.classList.toggle('hidden', enabled);
+  }
+
+  function sendCurrentInput() {
+    const text = chatInputEl.value.trim();
+    if (!text) return;
+    onChatSend?.(text);
+    chatInputEl.value = '';
+    chatCountEl.classList.add('hidden');
+  }
+
+  function render({ onSend }) {
+    onChatSend = onSend;
+    chatInputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendCurrentInput();
+      }
+    });
+    chatInputEl.addEventListener('input', () => {
+      const len = chatInputEl.value.length;
+      chatCountEl.textContent = `${len}/500`;
+      chatCountEl.classList.toggle('hidden', len < 400);
+    });
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
@@ -954,5 +1055,6 @@
       openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,
     },
     members: { render: renderMembers, renderBanned },
+    chat: { render, append, setHistory, setEnabled },
   };
 })(window);
