@@ -230,7 +230,13 @@
   function setPainting(enabled) {
     if (paintingEnabled === enabled) return;
     paintingEnabled = enabled;
-    gridEl.querySelectorAll('video').forEach(applyPainting);
+    gridEl.querySelectorAll('video').forEach((video) => {
+      // O veu de pausa ja mandou o video pausar e sumir -- a janela
+      // ficar visivel de novo nao pode religar a decodificacao por baixo
+      // dele (ver renderPausedOverlay).
+      if (video.closest('.tile')?.classList.contains('is-paused')) return;
+      applyPainting(video);
+    });
   }
 
   // Quem esta assistindo cada tile agora (F1.3 + o broadcast de
@@ -268,6 +274,73 @@
   function setWatchers(tileId, watchers) {
     tileWatchers.set(tileId, watchers || []);
     renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
+  }
+
+  // Ultimo estado de pausa por tile ({ paused, opts }), pro overlay
+  // sobreviver a um tile recriado do zero -- mesmo motivo do tileWatchers
+  // acima (renegociacao pode destruir e recriar o <div class="tile"> com o
+  // mesmo id).
+  const tilePaused = new Map();
+
+  /** Desenha (ou desfaz) o veu de pausa dentro de `tile`. `video` e o
+   * elemento do proprio tile -- borrar o ultimo quadro em vez de escurecer
+   * pra preto preserva contexto ("ainda e esta transmissao") e evita ler o
+   * conteudo parado (ver a spec de 2026-09-03, secao 4). */
+  function renderPausedOverlay(tile, video, paused, opts) {
+    if (!paused) {
+      tile.querySelector('.tile-paused-shot')?.remove();
+      tile.querySelector('.tile-paused')?.remove();
+      tile.classList.remove('is-paused');
+      if (video) {
+        video.hidden = false;
+        applyPainting(video);
+      }
+      return;
+    }
+    if (video && video.videoWidth > 0) {
+      // 320px de largura: o blur(20px) do CSS destroi qualquer detalhe
+      // acima disso, entao borrar um bitmap reduzido e esticar da o mesmo
+      // resultado visual por uma fracao dos pixels (ver spec, secao 4.3).
+      const canvas = tile.querySelector('.tile-paused-shot') || document.createElement('canvas');
+      canvas.className = 'tile-paused-shot';
+      const w = 320;
+      const h = Math.round((video.videoHeight / video.videoWidth) * w) || w;
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+      if (!canvas.isConnected) tile.insertBefore(canvas, tile.firstChild);
+    } else {
+      // Sem primeiro quadro ainda: pula o bitmap, so o veu escuro + texto.
+      tile.querySelector('.tile-paused-shot')?.remove();
+    }
+    if (video) {
+      video.pause();
+      video.hidden = true;
+    }
+    let veil = tile.querySelector('.tile-paused');
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.className = 'tile-paused';
+      veil.setAttribute('role', 'status');
+      veil.innerHTML = `
+        <span class="tile-paused-icon">${PAUSE_ICON}</span>
+        <p class="tile-paused-title"></p>
+        <p class="tile-paused-subtitle"></p>`;
+      tile.appendChild(veil);
+    }
+    veil.querySelector('.tile-paused-title').textContent = opts?.title || 'Transmissão pausada';
+    veil.querySelector('.tile-paused-subtitle').textContent = opts?.subtitle || '';
+    tile.classList.add('is-paused');
+  }
+
+  /** `tileId` no mesmo espaco de `showTile` ('me'/'cam-me' pro proprio,
+   * peerId ou `cam-${peerId}` pro de um peer). `opts` e `{ title, subtitle }`
+   * -- o tile local usa um texto diferente do de quem assiste (ver app.js). */
+  function setPaused(tileId, paused, opts) {
+    tilePaused.set(tileId, { paused, opts });
+    const tile = document.getElementById(`tile-${tileId}`);
+    if (!tile) return; // tile pode ja ter sido removido (ex: parou de transmitir)
+    renderPausedOverlay(tile, tile.querySelector('video'), paused, opts);
   }
 
   /** Numero de colunas da grade e uma DECISAO por contagem de tiles, nao um
@@ -314,6 +387,10 @@
       // recebido um 'watchers' pra esse id -- sem isto o overlay ficaria
       // vazio ate a proxima mudanca de audiencia.
       renderTileWatchers(tile, tileWatchers.get(id));
+      // Mesmo motivo: um tile recriado enquanto pausado nasceria sem o
+      // veu, ate a proxima mudanca de estado de pausa.
+      const pausedState = tilePaused.get(id);
+      if (pausedState?.paused) renderPausedOverlay(tile, tile.querySelector('video'), true, pausedState.opts);
     }
 
     const video = tile.querySelector('video');
@@ -344,8 +421,10 @@
     else badgeEl.removeAttribute('title');
 
     // Tile criado enquanto a janela esta oculta nasce pausado (o atributo
-    // autoplay do <video> tocaria sozinho, sem isto).
-    applyPainting(video);
+    // autoplay do <video> tocaria sozinho, sem isto). Excecao: tile com o
+    // veu de pausa ativo -- quem manda no video ali e o overlay, nao a
+    // visibilidade da janela (ver renderPausedOverlay).
+    if (!tilePaused.get(id)?.paused) applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
   }
@@ -356,6 +435,7 @@
     releaseTileAudio(id);
     tileRegistry.delete(id);
     tileWatchers.delete(id);
+    tilePaused.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
     if (id === fullscreenTileId) {
@@ -687,6 +767,7 @@
 
   const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
   const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+  const PAUSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`;
 
   // Badge no canto do tile indicando se aquele stream e tela compartilhada
   // ou camera -- necessario pra diferenciar quando o mesmo peer compartilha
@@ -1866,7 +1947,7 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused },
     rooms: { render: renderRooms, setNetworkStatus: renderNetworkStatus },
     dialogs: {
       openCreateRoom, closeCreateRoom, setCreateRoomError,
