@@ -84,7 +84,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });
 
-    /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null, owner: boolean}>} */
+    /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null, owner: boolean, clientId: string | null, address: string | null}>} */
     const peers = new Map();
     let nextId = 1;
 
@@ -120,6 +120,56 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
     function broadcastToRoom(room, exceptId, payload) {
       for (const [id, peer] of peers) {
         if (peer.room === room && id !== exceptId) send(peer.ws, payload);
+      }
+    }
+
+    // Chave(s) de ban pra um peer: client:<clientId> sempre que houver
+    // clientId (o caso comum), e ip:<endereco> so quando o endereco NAO for
+    // loopback -- o dono conecta em 127.0.0.1, e banir por loopback baniria
+    // o proprio dono no proximo reconnect. Ver a spec, secao 9.3.
+    function normalizeAddress(address) {
+      if (typeof address !== 'string') return null;
+      return address.replace(/^::ffff:/, '');
+    }
+    function isLoopback(address) {
+      return address === '127.0.0.1' || address === '::1';
+    }
+    function banKeysFor({ address, clientId }) {
+      const keys = [];
+      const ip = normalizeAddress(address);
+      if (ip && !isLoopback(ip)) keys.push(`ip:${ip}`);
+      if (typeof clientId === 'string' && clientId) keys.push(`client:${clientId}`);
+      return keys;
+    }
+
+    const bans = new Map(); // qualquer chave (ip: ou client:) -> { primaryKey, name }
+
+    function findBan(keys) {
+      for (const k of keys) if (bans.has(k)) return bans.get(k);
+      return null;
+    }
+    function addBan(keys, name) {
+      if (!keys.length) return null;
+      const primaryKey = keys.find((k) => k.startsWith('client:')) || keys[0];
+      for (const k of keys) bans.set(k, { primaryKey, name });
+      return primaryKey;
+    }
+    function removeBan(primaryKey) {
+      for (const [k, rec] of bans) if (rec.primaryKey === primaryKey) bans.delete(k);
+    }
+    function listBans() {
+      const seen = new Set();
+      const out = [];
+      for (const rec of bans.values()) {
+        if (seen.has(rec.primaryKey)) continue;
+        seen.add(rec.primaryKey);
+        out.push({ key: rec.primaryKey, name: rec.name });
+      }
+      return out;
+    }
+    function sendBannedListToOwner(room) {
+      for (const [, peer] of peers) {
+        if (peer.room === room && peer.owner) send(peer.ws, { type: 'banned-list', list: listBans() });
       }
     }
 
@@ -192,6 +242,19 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
           switch (msg.type) {
             case 'join': {
               if (joined) return;
+              // clientId e endereco entram cedo: a checagem de ban precisa
+              // deles, e o peer guarda ambos pro `close`/`moderate` montarem
+              // as mesmas chaves se o dono banir depois de o peer ja estar
+              // dentro.
+              const clientId = typeof msg.clientId === 'string' ? msg.clientId.slice(0, 100) : null;
+              const remoteAddress = ws._socket?.remoteAddress || null;
+              // Banido nao passa nem pela checagem de PIN (nao deve nem saber
+              // se acertaria o PIN). Ver a spec, secao 9.3.
+              if (findBan(banKeysFor({ address: remoteAddress, clientId }))) {
+                send(ws, { type: 'join-denied', reason: 'banned' });
+                ws.close(1008, 'banned');
+                return;
+              }
               // Sala protegida: PIN ausente ou errado e recusa explicita
               // (o cliente distingue "PIN errado" de "conexao caiu") seguida
               // de close 1008. Descartar em silencio faria o cliente ficar
@@ -205,12 +268,54 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               const name = String(msg.name || 'anonimo').slice(0, 40);
               const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;
               const owner = Boolean(ownerTok) && msg.ownerToken === ownerTok;
-              peers.set(id, { ws, name, room, avatar, owner });
+              peers.set(id, { ws, name, room, avatar, owner, clientId, address: remoteAddress });
               joined = true;
               log(`+ ${name} (#${id}) entrou na sala "${room}"${owner ? ' (dono)' : ''}`);
-              send(ws, { type: 'welcome', id, owner, peers: roomPeers(room, id), chat: chatHistory.slice() });
+              send(ws, {
+                type: 'welcome', id, owner, peers: roomPeers(room, id),
+                chat: chatHistory.slice(), banned: owner ? listBans() : [],
+              });
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
               pushSystemLine(room, 'join', name, undefined, id);
+              break;
+            }
+
+            // Poderes do dono: parar transmissao (pedido, socket segue
+            // aberto), expulsar (fecha 1008) e banir (expulsa + guarda as
+            // chaves pro rejoin ser barrado). Ver a spec, secao 9.
+            case 'moderate': {
+              const me = peers.get(id);
+              if (!me || !me.owner) return; // so o dono modera; nao-dono e ignorado em silencio
+              if (msg.action === 'unban') {
+                if (typeof msg.target !== 'string') return;
+                removeBan(msg.target);
+                sendBannedListToOwner(me.room);
+                return;
+              }
+              const targetId = String(msg.target);
+              if (targetId === id) return; // dono nao pode se auto-moderar
+              const target = peers.get(targetId);
+              if (!target || target.room !== me.room) return;
+
+              if (msg.action === 'stop-share') {
+                send(target.ws, { type: 'moderated', action: 'stop-share', by: me.name });
+                pushSystemLine(me.room, 'stop-share', me.name, target.name);
+                return;
+              }
+              if (msg.action === 'kick' || msg.action === 'ban') {
+                send(target.ws, { type: 'moderated', action: msg.action, by: me.name });
+                if (msg.action === 'ban') {
+                  addBan(banKeysFor({ address: target.address, clientId: target.clientId }), target.name);
+                  sendBannedListToOwner(me.room);
+                }
+                pushSystemLine(me.room, msg.action, me.name, target.name);
+                try {
+                  target.ws.close(1008, msg.action);
+                } catch {
+                  /* socket ja fechando */
+                }
+                return;
+              }
               break;
             }
 

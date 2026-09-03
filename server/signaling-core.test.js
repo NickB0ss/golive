@@ -739,3 +739,168 @@ test('chat e moderate de quem nunca deu join sao descartados em silencio', async
     await server.close();
   }
 });
+
+test('moderate de quem NAO e dono e ignorado, qualquer que seja a acao', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    const { id: donoId } = await once(dono, 'welcome');
+
+    const ana = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => ana.once('open', r));
+    ana.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(ana, 'welcome');
+
+    // Ana (nao-dona) tenta expulsar o dono -- tem que ser ignorado.
+    ana.send(JSON.stringify({ type: 'moderate', action: 'kick', target: donoId }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(dono.readyState, WebSocket.OPEN);
+
+    dono.close();
+    ana.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('moderate mirando o proprio dono e ignorado (um id errado nao pode expulsar o host)', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    const { id: donoId } = await once(dono, 'welcome');
+
+    dono.send(JSON.stringify({ type: 'moderate', action: 'kick', target: donoId }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(dono.readyState, WebSocket.OPEN);
+
+    dono.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('stop-share: so o alvo recebe "moderated", a sala inteira ve a linha de sistema', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    await once(dono, 'welcome');
+
+    const joao = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => joao.once('open', r));
+    joao.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Joao' }));
+    const { id: joaoId } = await once(joao, 'welcome');
+
+    const moderatedJoao = once(joao, 'moderated');
+    // once(dono, 'chat') pegaria uma linha de join/leave que caisse antes;
+    // filtra pela linha de sistema de stop-share, sem enfraquecer as asserts.
+    const sysLineDono = onceChatWhere(dono, (m) => m.system && m.event === 'stop-share');
+    dono.send(JSON.stringify({ type: 'moderate', action: 'stop-share', target: joaoId }));
+
+    const mod = await moderatedJoao;
+    assert.equal(mod.action, 'stop-share');
+    assert.equal(mod.by, 'Nicolas');
+    const sys = await sysLineDono;
+    assert.equal(sys.event, 'stop-share');
+    assert.equal(sys.actor, 'Nicolas');
+    assert.equal(sys.target, 'Joao');
+    assert.equal(joao.readyState, WebSocket.OPEN); // pedido, nao bloqueio -- o socket continua aberto
+
+    dono.close();
+    joao.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('kick: o alvo recebe "moderated" e o socket fecha com 1008', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    await once(dono, 'welcome');
+
+    const joao = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => joao.once('open', r));
+    joao.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Joao' }));
+    const { id: joaoId } = await once(joao, 'welcome');
+
+    const fechou = new Promise((resolve) => joao.once('close', (code) => resolve(code)));
+    dono.send(JSON.stringify({ type: 'moderate', action: 'kick', target: joaoId }));
+    assert.equal(await fechou, 1008);
+
+    dono.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('ban: alvo e recusado ao tentar entrar de novo (mesmo clientId); unban readmite', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    await once(dono, 'welcome');
+
+    const lucas1 = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => lucas1.once('open', r));
+    lucas1.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Lucas', clientId: 'client-lucas' }));
+    const { id: lucasId } = await once(lucas1, 'welcome');
+
+    const listaBan = once(dono, 'banned-list');
+    dono.send(JSON.stringify({ type: 'moderate', action: 'ban', target: lucasId }));
+    const lista = await listaBan;
+    assert.equal(lista.list.length, 1);
+    assert.equal(lista.list[0].name, 'Lucas');
+    const banKey = lista.list[0].key;
+
+    // Mesmo clientId, endereco de loopback (todo teste conecta em 127.0.0.1):
+    // so o clientId e observavel aqui, e e o que barra o rejoin.
+    const lucas2 = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => lucas2.once('open', r));
+    const negado = onceWithin(lucas2, 'join-denied');
+    lucas2.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Lucas', clientId: 'client-lucas' }));
+    assert.equal((await negado).reason, 'banned');
+
+    dono.send(JSON.stringify({ type: 'moderate', action: 'unban', target: banKey }));
+    await new Promise((r) => setTimeout(r, 60));
+    const lucas3 = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => lucas3.once('open', r));
+    lucas3.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Lucas', clientId: 'client-lucas' }));
+    assert.equal((await once(lucas3, 'welcome')).type, 'welcome'); // readmitido
+
+    dono.close();
+    lucas3.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('so o dono recebe welcome.banned; quem nao e dono recebe lista vazia', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => dono.once('open', r));
+    dono.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Nicolas', ownerToken: 'segredo' }));
+    const welcomeDono = await once(dono, 'welcome');
+    assert.deepEqual(welcomeDono.banned, []);
+
+    const ana = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => ana.once('open', r));
+    ana.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const welcomeAna = await once(ana, 'welcome');
+    assert.deepEqual(welcomeAna.banned, []);
+
+    dono.close();
+    ana.close();
+  } finally {
+    await server.close();
+  }
+});
