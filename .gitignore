@@ -6,3 +6,4 @@ tools/iperf3/
 *.log
 .worktrees/
 .superpowers/
+.claude/worktrees/
