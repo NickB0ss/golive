@@ -186,8 +186,84 @@ button svg { width: 17px; height: 17px; flex: none; }
 .error { color: var(--danger); margin-top: 10px; font-size: 13px; line-height: 1.5; }
 .hint { color: var(--tx2); font-size: 0.85em; min-height: 1.2em; }
 
-.check-inline { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 13px; cursor: pointer; }
-.check-inline input { accent-color: var(--act); width: 16px; height: 16px; }
+/* ---------- Checkbox ----------
+ *
+ * O <input type=checkbox> nativo com accent-color e o controle mais cru que
+ * o navegador tem, e ele aparecia em cinco lugares ao lado de botoes de
+ * 44px com icone. Aqui a caixa e desenhada, a linha inteira e alvo de
+ * clique, e o input real continua existindo (so opacity:0, NUNCA
+ * display:none) -- e ele que o teclado tabula e que o leitor de tela le. */
+.check-group {
+  display: flex; flex-direction: column; gap: var(--s-1);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--s1); padding: var(--s-1);
+}
+.check {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3); min-height: 44px; border-radius: var(--r-sm);
+  cursor: pointer; position: relative;
+  transition: background-color var(--dur-fast) var(--ease-in-out);
+}
+.check:hover { background: var(--s2); }
+.check.compact { align-items: center; padding: var(--s-2) var(--s-3); }
+/* Variantes pro dialogo de criar sala: duas opcoes com uma linha de apoio
+   cada nao precisam da moldura nem do respiro de um painel de
+   Configuracoes -- com eles, o dialogo virava meia tela. */
+.check-group.bare { border: none; background: none; padding: 0; gap: 0; }
+.check.tight { gap: var(--s-2); padding: var(--s-2); }
+.check.tight .check-desc { font-size: 11.5px; }
+
+/* Fora do fluxo e invisivel, mas focavel e clicavel pelo label. */
+.check input[type="checkbox"] {
+  position: absolute; opacity: 0; width: 20px; height: 20px; margin: 0;
+  top: var(--s-3); left: var(--s-3); cursor: pointer;
+}
+.check.tight input[type="checkbox"] { top: var(--s-2); left: var(--s-2); }
+
+.check-box {
+  flex: none; width: 20px; height: 20px; border-radius: var(--r-xs);
+  background: var(--s2); border: 1.5px solid var(--line2);
+  display: grid; place-items: center; color: #fff;
+  transition: background-color var(--dur-fast) var(--ease-in-out),
+              border-color var(--dur-fast) var(--ease-in-out);
+}
+/* Marca: so opacity + transform animados, como manda a regra do topo. */
+.check-mark {
+  width: 13px; height: 13px;
+  opacity: 0; transform: scale(0.6);
+  transition: opacity var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.check input:checked ~ .check-box { background: var(--act); border-color: var(--act); }
+.check input:checked ~ .check-box .check-mark { opacity: 1; transform: scale(1); }
+.check input:focus-visible ~ .check-box { box-shadow: var(--ring); }
+.check input:disabled ~ .check-box { opacity: 0.45; }
+.check input:disabled ~ .check-text { opacity: 0.45; }
+.check:has(input:disabled) { cursor: default; }
+.check:has(input:disabled):hover { background: transparent; }
+
+.check-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.check-title { font-size: 13px; font-weight: 550; color: var(--tx); }
+.check-desc { font-size: 12px; line-height: 1.45; color: var(--tx2); }
+
+/* ---------- Barras de rolagem ----------
+ *
+ * Ate aqui so o .picker-box tinha estilo proprio; todo o resto usava a
+ * barra nativa do Chromium -- clara, grossa, desenhada pra tema claro. O
+ * polegar ganha respiro por uma borda transparente com background-clip em
+ * vez de margem (margem em scrollbar nao existe). Trilho invisivel, sem
+ * botao de passo, sem hover no trilho (alta frequencia, proposito zero). */
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: var(--r-full);
+  border: 3.5px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); background-clip: padding-box; }
 
 input[type="text"], select {
   width: 100%;
@@ -202,7 +278,7 @@ input[type="text"], select {
 /* O anel de foco substitui a troca de border-color: a borda mudando de cor
    nao muda a espessura, entao passava despercebida. */
 input[type="text"]:focus-visible, select:focus-visible { outline: none; box-shadow: var(--ring); }
-input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
+input[type="range"] { accent-color: var(--live); }
 
 .update-banner, .toast {
   position: fixed;
@@ -264,74 +340,186 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   100% { margin-left: 100%; }
 }
 
-/* ============ LOBBY ============ */
+/* ============ LOBBY ============
+ *
+ * Tres faixas (topbar / corpo / barra do usuario) e, na do meio, duas
+ * colunas: acoes a esquerda com largura fixa, salas da rede a direita.
+ * A versao anterior era uma coluna de 560px centrada numa janela de
+ * 1280px -- funcionava, mas 62% da largura era fundo vazio e a unica parte
+ * viva da tela (a lista de salas) ficava espremida. Ver a spec de
+ * 2026-09-03, secao 3. */
 
 .lobby {
   height: 100vh;
-  max-width: 560px;
-  margin: 0 auto;
-  padding: var(--s-5) var(--s-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-5);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
 }
 
-.lobby-header {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
+/* Todas as tres faixas compartilham o mesmo container: o conteudo alinha
+   verticalmente de ponta a ponta da tela, e o que sobra vira margem. */
+.lobby-bounds {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--s-6);
 }
+
+.lobby-topbar { border-bottom: 1px solid var(--line); background: var(--s1); }
+.lobby-topbar-inner { display: flex; align-items: center; gap: var(--s-2); height: 56px; }
+
 .app-brand-badge {
   width: 30px; height: 30px; border-radius: var(--r-sm);
   background: var(--act); color: #fff; font-weight: 700; font-size: 13px;
   display: flex; align-items: center; justify-content: center; flex: none;
 }
-.app-brand-name { font-weight: 700; font-size: 15px; margin-right: auto; }
+.app-brand-name { font-weight: 700; font-size: 15px; }
+.app-version {
+  font-size: 11px; color: var(--tx3); font-variant-numeric: tabular-nums;
+  margin-right: auto; padding-top: 2px;
+}
+.app-version:empty { margin-right: auto; }
+
 .icon-btn-inline {
-  width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: var(--r-xs);
+  width: 34px; height: 34px; min-height: 0; padding: 0; border-radius: var(--r-xs);
   color: var(--tx2); background: transparent; border: none;
 }
-.icon-btn-inline svg { width: 15px; height: 15px; }
+.icon-btn-inline svg { width: 16px; height: 16px; }
 .icon-btn-inline:hover { background: var(--s3); color: var(--tx); }
 .icon-btn-inline.spin svg { animation: spin 600ms linear; }
 
-.lobby-hero {
+.lobby-body {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+  min-height: 0;
+  height: 100%;
+  padding-top: var(--s-6);
+  padding-bottom: var(--s-6);
+}
+
+/* ---------- Coluna de acoes ---------- */
+
+.lobby-start {
+  background: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
   gap: var(--s-3);
 }
-.lobby-hero-btn { padding: 0 var(--s-4); height: 56px; font-size: 14.5px; }
-
-.lobby-rooms { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-3); }
-.rooms-title {
-  display: flex; align-items: center; gap: var(--s-2);
-  font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--tx3); font-weight: 700; margin: 0;
+.lobby-eyebrow {
+  margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--tx3);
 }
-.room-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1;
-  display: flex; flex-direction: column; gap: 1px; background: var(--s1);
-  border: 1px solid var(--line); border-radius: var(--r-md); }
+.lobby-title { margin: 0; font-size: 26px; line-height: 1.22; font-weight: 700; letter-spacing: -0.01em; }
+.lobby-lede { margin: 0; font-size: 13px; line-height: 1.6; color: var(--tx2); }
+
+.lobby-actions { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.lobby-cta { width: 100%; height: 56px; font-size: 14.5px; justify-content: flex-start; padding: 0 var(--s-4); gap: var(--s-3); }
+.lobby-cta svg { width: 19px; height: 19px; }
+
+.lobby-start .error { margin-top: 0; }
+.lobby-start .error:empty { display: none; }
+
+/* Empurrado pro rodape do painel: e contexto, nao acao. */
+.lobby-net {
+  margin-top: var(--s-2);
+  display: flex; align-items: center; gap: var(--s-2);
+  padding-top: var(--s-3); border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.lobby-net .dot { background: var(--tx2); }
+.lobby-net .dot.warn { background: var(--warn); }
+.lobby-net-text { display: flex; flex-direction: column; min-width: 0; }
+.lobby-net-kind { font-size: 12px; font-weight: 600; color: var(--tx2); }
+.lobby-net-addr {
+  font-size: 12px; color: var(--tx3); font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- Coluna de salas ---------- */
+
+.lobby-rooms {
+  display: flex; flex-direction: column; gap: var(--s-3);
+  height: 100%; min-height: 0; min-width: 0;
+  max-width: 640px;
+}
+.rooms-head { display: flex; align-items: center; gap: var(--s-2); }
+.rooms-title {
+  margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--tx3); font-weight: 700;
+}
+.rooms-count {
+  font-size: 11px; font-weight: 700; color: var(--tx2);
+  background: var(--s3); border-radius: var(--r-full); padding: 1px 8px;
+  font-variant-numeric: tabular-nums; margin-right: auto;
+}
+.rooms-count.empty { color: var(--tx3); background: var(--s2); }
+
+/* Cards soltos, nao uma lista dentro de uma moldura: com uma sala so, uma
+   moldura em volta de uma linha unica parece um erro de layout. */
+.room-list {
+  list-style: none; margin: 0; padding: 2px 2px var(--s-2);
+  overflow-y: auto; overflow-x: clip; flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: var(--s-2);
+}
 .room-row {
   display: flex; align-items: center; gap: var(--s-3);
-  padding: var(--s-3) var(--s-4); min-height: 44px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--s-3); min-height: 64px; min-width: 0;
+  background: var(--s1); border: 1px solid var(--line); border-radius: var(--r-md);
+  transition: background-color var(--dur-fast) var(--ease-in-out),
+              border-color var(--dur-fast) var(--ease-in-out);
 }
-.room-row:last-child { border-bottom: none; }
-.room-info { display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1; }
-.room-item-text { min-width: 0; flex: 1; }
-.room-name { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-meta { font-size: 12px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-lock { font-size: 0.9em; opacity: .8; flex: none; }
-.room-connect { min-height: 36px; padding: 0 14px; font-size: 12.5px; }
-.room-connect:disabled { color: var(--live); opacity: 1; cursor: default; }
-.room-connect.cooldown { opacity: .4; cursor: not-allowed; }
-.room-list .muted { color: var(--tx3); padding: var(--s-4); text-align: center; list-style: none; }
+.room-row.clickable { cursor: pointer; }
+.room-row.clickable:hover { background: var(--s2); border-color: var(--line2); }
+.room-row.active { border-color: var(--line2); }
 
-.user-panel {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: var(--s-2) var(--s-3); background: var(--s1);
-  border: 1px solid var(--line); border-radius: var(--r-md);
+/* Inicial da sala com cor derivada do endereco -- duas salas ficam
+   distinguiveis de relance, antes de ler o nome. */
+.room-badge {
+  width: 40px; height: 40px; flex: none; border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: 15px; text-transform: uppercase;
 }
+.room-info { display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1; }
+.room-item-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.room-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.room-name {
+  font-weight: 600; font-size: 14px; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.room-meta {
+  font-size: 12px; color: var(--tx2); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.room-lock { flex: none; color: var(--warn); display: flex; }
+.room-lock svg { width: 13px; height: 13px; }
+.room-connect { min-height: 36px; padding: 0 var(--s-3); font-size: 12.5px; flex: none; }
+.room-connect svg { width: 14px; height: 14px; }
+.room-connect:disabled { color: var(--tx2); opacity: 1; cursor: default; }
+.room-connect.cooldown { opacity: .4; cursor: not-allowed; }
+
+/* Estado vazio com explicacao, nao uma frase cinza solta. */
+/* Altura propria, nao `flex: 1`: esticado ate o rodape da coluna, o
+   retangulo tracejado virava um buraco de 900px no meio da tela. */
+.rooms-empty {
+  flex: none; min-height: 232px;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: var(--s-2); text-align: center;
+  padding: var(--s-6) var(--s-4);
+  border: 1px dashed var(--line2); border-radius: var(--r-md);
+}
+.rooms-empty svg { width: 26px; height: 26px; color: var(--tx3); }
+.rooms-empty-title { font-size: 13px; font-weight: 600; color: var(--tx2); }
+.rooms-empty-hint { font-size: 12px; line-height: 1.5; color: var(--tx3); max-width: 320px; }
+
+/* ---------- Barra do usuario ---------- */
+
+.lobby-userbar { border-top: 1px solid var(--line); background: var(--s1); }
+.lobby-userbar-inner { display: flex; align-items: center; gap: var(--s-3); height: 60px; }
 .user-avatar {
   width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none;
   min-height: 0; padding: 0; background: var(--s4); border: none;
@@ -340,8 +528,8 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 }
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .user-panel-name {
-  font-weight: 600; font-size: 13.5px; flex: 1; text-align: left;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; font-size: 13.5px; flex: 1; text-align: left; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
   background: transparent; border: none; min-height: 0; padding: 0; color: var(--tx);
 }
 .icon-btn {
@@ -351,11 +539,41 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .icon-btn:hover { background: var(--s3); color: var(--tx); }
 .icon-btn.active { background: var(--s4); color: var(--tx); }
 
+/* Janela estreita (o minWidth da janela e 900px, entao isto acontece de
+   verdade): as duas colunas viram uma pilha e a pagina inteira rola. */
+@media (max-width: 1040px) {
+  .lobby-bounds { padding: 0 var(--s-4); }
+  .lobby-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-4);
+    overflow-y: auto;
+    align-content: start;
+  }
+  /* Empilhado, o painel ocupa a largura toda: dois CTAs de 830px um em
+     cima do outro seriam duas faixas, nao dois botoes. Lado a lado, e o
+     comprimento da linha do titulo fica legivel. */
+  .lobby-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .lobby-title, .lobby-lede { max-width: 42ch; }
+  .lobby-rooms { max-width: none; height: auto; min-height: 260px; }
+  .room-list { overflow: visible; }
+}
+/* Janela baixa: o paragrafo de apoio e a primeira coisa que empurra a
+   lista pra fora da area visivel. */
+@media (max-height: 700px) {
+  .lobby-lede { display: none; }
+  .lobby-title { font-size: 22px; }
+}
+
 /* ============ DIALOGOS (criar sala / entrar / banir) ============ */
 
-.dialog-box { width: min(380px, 90vw); padding: var(--s-5); }
+.dialog-box { width: min(360px, 90vw); padding: var(--s-5); }
 .dialog-box h2 { margin: 0 0 var(--s-3); font-size: 17px; }
-.dialog-hint { color: var(--tx2); font-size: 12.5px; line-height: 1.55; margin: var(--s-2) 0 0; }
+/* Botao ocupado: o rotulo troca e o spinner entra no lugar do que houver
+   antes dele. Subir o servidor embutido inclui pedir liberacao de firewall
+   ao Windows, o que pode abrir um prompt de elevacao e demorar segundos --
+   ate aqui o dialogo simplesmente congelava sem explicacao. */
+.btn-spinner { animation: spin 700ms linear infinite; }
+button.busy { cursor: default; }
 .dialog-field { margin-bottom: var(--s-3); }
 .dialog-field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .dialog-field input {
@@ -417,10 +635,17 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   color: var(--tx3); font-weight: 700;
 }
 
-.peer-list, .banned-list { list-style: none; margin: 0; padding: 0 var(--s-2) var(--s-2); max-height: 176px; overflow-y: auto; }
+/* overflow-x: clip explicito -- com overflow-y:auto e o eixo X em
+   `visible`, o CSS promove o X a `auto` sozinho, e era dai que nascia a
+   barra horizontal quando alguem entrava com nome grande. */
+.peer-list, .banned-list {
+  list-style: none; margin: 0; padding: 0 var(--s-2) var(--s-2);
+  max-height: 176px; overflow-y: auto; overflow-x: clip;
+}
 .peer-list li, .banned-list li {
   display: flex; align-items: center; gap: var(--s-2);
   min-height: 44px; padding: 0 var(--s-2); border-radius: var(--r-sm); position: relative;
+  min-width: 0; overflow: hidden;
 }
 .peer-list li:hover, .banned-list li:hover { background: var(--s2); }
 .peer-list .muted { color: var(--tx3); }
@@ -436,11 +661,16 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .peer-avatar.on { box-shadow: 0 0 0 2px var(--live); }
 .banned-list .peer-avatar { opacity: .5; }
 
-.peer-name { font-weight: 550; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.peer-you-tag { color: var(--tx3); font-weight: 400; font-size: 10.5px; }
-.peer-crown { color: var(--warn); font-size: 12px; }
+/* flex: 0 1 auto e o que autoriza o nome a encolher: sem base declarada,
+   o item flex nao passa da largura de conteudo e empurra a linha inteira. */
+.peer-name {
+  font-weight: 550; font-size: 13px; flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.peer-you-tag { color: var(--tx3); font-weight: 400; font-size: 10.5px; flex: none; }
+.peer-crown { color: var(--warn); font-size: 12px; flex: none; }
 .peer-live-badge {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
   background: var(--live-dim); color: #FF8385;
   border-radius: var(--r-xs); padding: 2px 6px; font-size: 9.5px; font-weight: 700;
   letter-spacing: .03em; margin-left: auto;
@@ -479,7 +709,7 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 /* ---- Chat ---- */
 
 .chat-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; overflow-x: clip; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
 
 .chat-line { display: flex; gap: 9px; padding: 3px var(--s-2); }
 .chat-line.grouped { padding-top: 0; }
@@ -490,9 +720,12 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   color: #fff; font-weight: 700; font-size: 11px;
 }
 .chat-line .chat-body { min-width: 0; flex: 1; }
-.chat-line .chat-head { display: flex; align-items: baseline; gap: 7px; }
-.chat-author { font-size: 12.5px; font-weight: 650; color: var(--tx); }
-.chat-time { font-size: 10px; color: var(--tx3); }
+.chat-line .chat-head { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.chat-author {
+  font-size: 12.5px; font-weight: 650; color: var(--tx);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-time { font-size: 10px; color: var(--tx3); flex: none; }
 .chat-text { font-size: 12.5px; line-height: 1.5; color: #D3D7DD; margin-top: 1px; word-break: break-word; }
 
 .chat-sys {
@@ -521,10 +754,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   background: var(--warn-dim); color: var(--warn); font-size: 11px;
   padding: 7px var(--s-3); border-top: 1px solid rgba(245, 181, 68, 0.2);
 }
-
-/* O ::before com um bullet virou o componente de status de verdade: a
-   linha ja renderiza um `.dot`, entao ele so precisa herdar a cor certa. */
-#room-list-live .dot { background: var(--live); }
 
 #in-pin {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -586,17 +815,22 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 #btn-disconnect svg { width: 14px; height: 14px; }
 #btn-disconnect:disabled { opacity: .5; cursor: not-allowed; }
 
+/* Layout por CONTAGEM, nao por auto-fit.
+ *
+ * Com `repeat(auto-fit, minmax(420px, 1fr))`, tres tiles numa janela de
+ * 1280px viravam duas colunas + um tile orfao ocupando meia tela sozinho na
+ * linha de baixo -- o "espalhado" que a spec de 2026-09-03 (secao 9)
+ * descreve. Aqui `ui.js` escreve data-count na grade a cada showTile /
+ * removeTile e o numero de colunas passa a ser uma decisao, nao um resto
+ * de divisao. */
 .grid {
   flex: 1;
   min-width: 0;
   padding: 16px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: clip;
   display: grid;
-  /* min(420px, 100%) em vez de so 420px -- sem isso, uma janela mais
-     estreita que 420px (+ padding/gap) forcava a trilha a manter 420px
-     de qualquer jeito e o grid transbordava pros lados, empurrando/
-     sobrepondo as colunas vizinhas (sala/membros) em vez de encolher. */
-  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   /* minmax(0, 1fr) em vez de "auto" -- com auto, o algoritmo de sizing das
      linhas ignora o stretch e deixa a altura de cada tile vir so do
      aspect-ratio (16/9) aplicado a largura da coluna. Numa janela baixa
@@ -604,10 +838,51 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
      transborda pra cima do proximo (camera cobrindo a tela compartilhada,
      ou vice-versa). Com 1fr a trilha vira um tamanho definido que o tile
      de fato respeita (ver max-height: 100% em .tile). */
-  grid-auto-rows: minmax(0, 1fr);
+  /* Trilha do tamanho do tile, nao 1fr.
+   *
+   * Com trilhas de 1fr a altura do palco era dividida IGUALMENTE entre as
+   * linhas, e a folga (3 tiles 16/9 lado a lado sao mais largos que altos,
+   * entao sempre sobra altura) era multiplicada por linha: um vao enorme
+   * entre as duas fileiras e outro embaixo. Com `min-content` a folga
+   * aparece UMA vez, e o `safe center` a divide entre topo e base -- `safe`
+   * porque, quando os tiles nao cabem, ele volta a alinhar no inicio em vez
+   * de cortar a primeira fileira pra fora da area rolavel. */
+  grid-auto-rows: min-content;
   gap: 14px;
-  align-content: start;
+  align-content: safe center;
+  align-items: center;
+  justify-content: center;
 }
+/* Excecao do tile unico: a trilha volta a ser 1fr (altura definida) porque
+   e ela que faz o `max-height: 100%` de .tile valer -- sem isso, numa
+   janela larga e baixa, um tile 16/9 com a largura toda ficaria mais alto
+   que o palco e a grade rolaria. */
+.grid[data-count="1"] { grid-auto-rows: minmax(0, 1fr); }
+/* Um tile so nao vira um painel de 1900px numa janela maximizada. */
+.grid[data-count="1"] { grid-template-columns: minmax(0, min(1280px, 100%)); }
+.grid[data-count="2"],
+.grid[data-count="3"],
+.grid[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid[data-count="5"],
+.grid[data-count="6"],
+.grid[data-count="many"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Janela estreita: o palco perde ~300px pra coluna lateral quando ela esta
+   aberta, que e o caso comum -- por isso o corte e em 1100px de JANELA, e
+   nao uma consulta de container (que criaria um contexto de contencao novo
+   justamente em cima do elemento que hospeda os <video>). */
+@media (max-width: 1100px) {
+  .grid[data-count="5"],
+  .grid[data-count="6"],
+  .grid[data-count="many"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .grid[data-count] { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Ordem estavel: tela e o conteudo, camera e o acompanhamento. Sem isto a
+   ordem e a de chegada dos streams, que muda a cada reconexao. */
+.tile[data-kind="camera"] { order: 1; }
 
 .empty {
   grid-column: 1 / -1;
@@ -741,6 +1016,7 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   gap: 3px;
   max-height: 120px;
   overflow-y: auto;
+  overflow-x: clip;
 }
 .tile-watchers-list li {
   display: flex;
@@ -749,6 +1025,9 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   font-size: 12px;
   color: var(--text-1);
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tile-watchers-avatar {
   flex: none;
@@ -923,16 +1202,8 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   flex-direction: column;
   gap: 10px;
 }
-.tile-menu-mute-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--bg-inset);
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-}
+.tile-menu-mute-row { background: var(--bg-inset); }
+.tile-menu-mute-row:hover { background: var(--surface-3); }
 .tile-menu-volume { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .tile-menu-volume input[type="range"] { width: 100%; }
 
@@ -1042,16 +1313,11 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .user-avatar-lg #settings-profile-avatar-fallback { font-size: 28px; }
 
 .picker-box {
-  width: min(880px, 90vw);
+  width: min(920px, 92vw);
   max-height: 88vh;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) var(--surface-2);
+  overflow-x: clip;
 }
-.picker-box::-webkit-scrollbar { width: 10px; }
-.picker-box::-webkit-scrollbar-track { background: var(--surface-2); border-radius: var(--r-xs); }
-.picker-box::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-xs); border: 2px solid var(--surface-2); }
-/* Sem hover na scrollbar: alta frequencia, proposito zero. */
 .picker-box h2 { font-size: 17px; margin-bottom: 18px; }
 .picker-box h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 18px 0 10px; }
 
@@ -1082,19 +1348,11 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
               opacity var(--t-move) var(--ease-move);
   pointer-events: none;
 }
-.picker-refresh {
-  margin-left: auto;
-  align-self: center;
-  margin-bottom: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-.picker-refresh:hover { color: var(--text); border-color: var(--line-strong, var(--line)); }
+/* Era o unico botao de acao do app sem icone, e com estilo proprio em vez
+   do .ghost.small que todo secundario usa. */
+.picker-refresh { margin-left: auto; align-self: center; margin-bottom: 6px; }
+.picker-refresh svg { width: 14px; height: 14px; }
+.picker-refresh.spin svg { animation: spin 600ms linear; }
 .picker-hint {
   margin: -8px 0 12px;
   padding: 8px 10px;
@@ -1112,10 +1370,22 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   padding: 8px 14px;
   font-size: 13px;
 }
+.picker-tab-count {
+  font-size: 11px; font-weight: 700; color: var(--tx3);
+  background: var(--s2); border-radius: var(--r-full); padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+.picker-tab-count:empty { display: none; }
+.picker-tab.active .picker-tab-count { color: var(--tx2); background: var(--s3); }
 .picker-tab:hover:not(.active) { color: var(--text-1); }
 .picker-tab.active { color: var(--text-1); font-weight: 650; }
 
-.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
 .picker-grid-empty { grid-column: 1 / -1; color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
 .source-card {
   background: var(--surface-2);
@@ -1125,6 +1395,16 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   text-align: left;
   display: flex;
   flex-direction: column;
+  /* CAUSA RAIZ do nome de janela estourando o card: a regra base de
+     `button` (no topo do arquivo) traz `align-items: center`, e num
+     container coluna isso e o eixo HORIZONTAL -- os filhos passavam a ser
+     dimensionados pelo proprio conteudo em vez de esticar ate a largura do
+     card, entao o texto vazava dos dois lados e as reticencias nunca
+     entravam. `stretch` amarra os filhos a largura do card; o min-width
+     abaixo (item de grade nasce com min-width:auto) amarra o card a
+     trilha. */
+  align-items: stretch;
+  min-width: 0;
   gap: 5px;
   color: var(--text-1);
   transition: background-color var(--t-tint) var(--ease-move),
@@ -1137,14 +1417,50 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 /* Selecionado e um anel que cresce, nao uma borda que troca de cor: a
    borda mudando de cor nao muda a espessura e passa despercebida. */
 .source-card.selected { box-shadow: 0 0 0 2px var(--text-1); border-color: transparent; }
-.source-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-xs); background: #000; }
-.source-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.source-meta { font-size: 11px; color: var(--muted); font-weight: 400; }
+.source-thumb { position: relative; min-width: 0; }
+.source-card img.source-shot { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-xs); background: #000; display: block; }
 
-.audio-mode { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-.audio-mode label { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 13px; }
-.audio-mode input { accent-color: var(--live); }
-#share-discord-row { margin-left: 22px; color: var(--muted); }
+/* Tag de qualidade da tela (4K / 1440p / 1080p / 720p). Neutra de
+   proposito: pela regra do acento, cor na tela quer dizer transmissao. */
+.source-quality {
+  position: absolute; top: 6px; right: 6px;
+  padding: 2px 7px; border-radius: var(--r-full);
+  background: rgba(13, 15, 19, 0.82); border: 1px solid var(--line2);
+  font-size: 10px; font-weight: 700; letter-spacing: .03em; color: var(--tx);
+}
+
+/* Corpo de altura fixa (duas linhas): cards de alturas diferentes na mesma
+   fileira eram metade da sensacao de "espalhado". */
+.source-body { display: flex; align-items: center; gap: 7px; min-width: 0; height: 34px; }
+.source-icon { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
+.source-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.source-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-meta { font-size: 11px; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Presets de qualidade ---------- */
+
+.quality-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.quality-chip {
+  flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
+  min-height: 56px; padding: 0 var(--s-3);
+  background: var(--s2); border: 1px solid var(--line); color: var(--tx2);
+  border-radius: var(--r-sm); font-weight: 600;
+}
+.quality-chip:hover:not(.selected) { background: var(--s3); color: var(--tx); }
+/* Selecionado por elevacao + contraste, nunca por cor (regra do tema). */
+.quality-chip.selected { background: var(--s4); border-color: var(--line2); color: var(--tx); }
+.quality-chip-res { font-size: 13.5px; }
+.quality-chip-fps { font-size: 11px; font-weight: 500; color: var(--tx3); }
+.quality-chip.selected .quality-chip-fps { color: var(--tx2); }
+/* min-height reservado mesmo quando o chip nao tem tag: sem isso os seis
+   chips ficam com tres alturas diferentes na mesma grade. */
+.quality-chip-tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--tx3); min-height: 13px;
+}
+.quality-bandwidth { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; }
+
+.audio-mode { margin-bottom: 10px; }
 
 .picker-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 

@@ -70,20 +70,25 @@ npm install
 
 ## Como usar
 
-**1. Alguém da turma clica em "Criar sala"**, na coluna "Salas na rede" da
-tela inicial do GoLive. O app sobe o servidor de sinalização embutido, libera
-a porta no firewall (pode pedir uma confirmação do Windows na primeira vez) e
+**1. Alguém da turma clica em "Criar sala"**, na coluna da esquerda da tela
+inicial do GoLive. Um diálogo pergunta se a sala deve ser **anunciada na
+rede** (ligado por padrão) e se deve ser **protegida por um PIN** de 4
+dígitos. Confirmando, o app sobe o servidor de sinalização embutido, libera a
+porta no firewall (pode pedir uma confirmação do Windows na primeira vez) e
 mostra o endereço no cabeçalho do palco, com um botão **Copiar** ao lado.
 
 Sem terminal, sem instalar Node à parte, sem digitar porta.
 
-**2. Todo mundo mais abre o GoLive.** Se a sala foi criada com "Anunciar
-minha sala na rede" ligado (Configurações > Rede, ligado por padrão), ela
-aparece sozinha em "Ao vivo agora" — é só clicar em Conectar do lado dela.
-Se não, cola o endereço em "Entrar por endereço" (`26.x.x.x` — a porta é
-opcional, assume `:9000`) e clica em Conectar. O nome exibido pros outros é
-o apelido definido no painel do usuário (canto inferior esquerdo, clique pra
-editar).
+**2. Todo mundo mais abre o GoLive.** Se a sala foi criada com "Anunciar a
+sala na rede" marcado, ela aparece sozinha em "Salas abertas na sua rede", na
+coluna da direita — é só clicar no card ou no botão **Entrar**. Se não, cola o
+endereço em "Entrar por endereço" (`26.x.x.x` — a porta é opcional, assume
+`:9000`) e clica em Conectar. O nome exibido pros outros é o apelido definido
+na barra do usuário (rodapé da tela inicial, clique pra editar).
+
+O rodapé da coluna da esquerda mostra o **endereço desta máquina** na rede
+virtual antes mesmo de existir uma sala — é o endereço que os seus amigos vão
+digitar.
 
 Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
 janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
@@ -120,11 +125,12 @@ clica em **Criar sala** (ver "Como usar" acima).
 ## Configurações de qualidade
 
 Não há aba "Transmissão" no modal de Configurações. As categorias são
-**Perfil**, **Voz e Vídeo**, **Rede** e **Estatísticas** — nenhuma delas tem
-controle de bitrate, codec ou áudio do sistema.
+**Perfil**, **Voz e Vídeo** e **Estatísticas** — nenhuma delas tem controle de
+bitrate, codec ou áudio do sistema. (O anúncio da sala na rede também não
+mora mais lá: virou uma opção do diálogo de criar sala.)
 
 A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
-tela" → "O que você quer compartilhar?"), num único `select` de presets
+tela" → "O que você quer compartilhar?"), numa grade de seis presets
 fechados: `720p · 30 fps` até `1440p · 60 fps`, com `1080p · 60 fps` (12 Mbps)
 como padrão. Cada preset é um pacote fechado de resolução + fps + bitrate —
 sem sliders soltos. Ao lado, uma linha mostra o upload que aquele preset

@@ -5,13 +5,15 @@
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
 
-  const QUALITY_PRESET_LABELS = {
-    '720p30': '720p · 30 fps',
-    '720p60': '720p · 60 fps',
-    '1080p30': '1080p · 30 fps',
-    '1080p60': '1080p · 60 fps (padrão)',
-    '1440p30': '1440p · 30 fps',
-    '1440p60': '1440p · 60 fps',
+  // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
+  // padrao do app (1080p60), pra escolha nao ser as cegas.
+  const QUALITY_PRESET_SPLIT = {
+    '720p30': { res: '720p', fps: '30 fps', tag: 'mais leve' },
+    '720p60': { res: '720p', fps: '60 fps', tag: '' },
+    '1080p30': { res: '1080p', fps: '30 fps', tag: '' },
+    '1080p60': { res: '1080p', fps: '60 fps', tag: 'padrão' },
+    '1440p30': { res: '1440p', fps: '30 fps', tag: '' },
+    '1440p60': { res: '1440p', fps: '60 fps', tag: 'exige banda' },
   };
 
   function escapeHtml(str) {
@@ -264,6 +266,15 @@
     renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
   }
 
+  /** Numero de colunas da grade e uma DECISAO por contagem de tiles, nao um
+   * resto de divisao do auto-fit -- ver a spec de 2026-09-03, secao 9. O CSS
+   * le este data-count; 7+ tiles caem todos no balde 'many'. */
+  function syncGridCount() {
+    const n = gridEl.querySelectorAll('.tile').length;
+    if (!n) gridEl.removeAttribute('data-count');
+    else gridEl.dataset.count = n > 6 ? 'many' : String(n);
+  }
+
   function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
     gridEl.querySelector('.empty')?.remove();
 
@@ -294,6 +305,7 @@
         });
       }
       gridEl.appendChild(tile);
+      syncGridCount();
       // Tile pode ter sido recriado (ex: renegociacao) depois de ja termos
       // recebido um 'watchers' pra esse id -- sem isto o overlay ficaria
       // vazio ate a proxima mudanca de audiencia.
@@ -317,6 +329,10 @@
     // da inicial do nome do usuario.
     const avatarName = displayName || label;
     tile.querySelector('.tile-avatar').innerHTML = avatarInnerHtml(displayName || id, avatarName, avatar);
+    // Ordena a grade por CSS (`.tile[data-kind="camera"] { order: 1 }`):
+    // tela e o conteudo, camera e o acompanhamento.
+    if (kind) tile.dataset.kind = kind;
+    else delete tile.dataset.kind;
     const badgeEl = tile.querySelector('.tile-kind-badge');
     badgeEl.innerHTML = tileKindIcon(kind);
     if (kind === 'camera') badgeEl.title = 'Câmera';
@@ -332,6 +348,7 @@
 
   function removeTile(id, emptyMessage) {
     document.getElementById(`tile-${id}`)?.remove();
+    syncGridCount();
     releaseTileAudio(id);
     tileRegistry.delete(id);
     tileWatchers.delete(id);
@@ -602,8 +619,10 @@
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
     menu.innerHTML = `
-      <label class="check-inline tile-menu-mute-row">
-        <input type="checkbox" class="tile-menu-mute" ${state.muted ? 'checked' : ''} /> Silenciar
+      <label class="check compact tile-menu-mute-row">
+        <input type="checkbox" class="tile-menu-mute" ${state.muted ? 'checked' : ''} />
+        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="check-text"><span class="check-title">Silenciar</span></span>
       </label>
       <label class="tile-menu-volume">
         <span>Volume: <b class="tile-menu-volume-label">${Math.round(state.volume * 100)}%</b></span>
@@ -681,41 +700,67 @@
   // ---------- Lobby: lista de salas ----------
 
   const roomListLiveEl = $('room-list-live');
-  const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
-  const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const roomsCountEl = $('rooms-count');
+  const LOCK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+  const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
+  const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const ANTENNA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.48"/><path d="M16.24 7.76a6 6 0 0 1 0 8.48"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><circle cx="12" cy="12" r="1.6"/></svg>`;
 
-  function fillRoomList(listEl, rooms, { onSelect, activeAddress, emptyMessage, isOnCooldown }) {
+  function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown }) {
     listEl.innerHTML = '';
     if (!rooms.length) {
-      if (emptyMessage) listEl.innerHTML = `<li class="muted" style="padding:8px 10px;">${escapeHtml(emptyMessage)}</li>`;
+      const empty = document.createElement('li');
+      empty.className = 'rooms-empty';
+      empty.innerHTML = `
+        ${ANTENNA_ICON}
+        <span class="rooms-empty-title">Nenhuma sala aberta na rede agora</span>
+        <span class="rooms-empty-hint">Crie uma sala aqui do lado, ou entre por endereço — quem criou pode ter deixado o anúncio desligado.</span>`;
+      listEl.appendChild(empty);
       return;
     }
     for (const room of rooms) {
       const isActive = activeAddress && room.address === activeAddress;
       const onCooldown = !isActive && !!isOnCooldown && isOnCooldown(room.address);
+      const name = room.name || room.hostName || 'sala';
       const li = document.createElement('li');
       li.className = 'room-row';
       if (isActive) li.classList.add('active');
 
+      const meta = room.peers != null
+        ? `${room.address} · ${room.peers} ${room.peers === 1 ? 'pessoa' : 'pessoas'}`
+        : room.address;
+
       const info = document.createElement('div');
       info.className = 'room-info';
       info.innerHTML = `
-        <span class="dot ${isActive ? 'ok' : ''}"></span>
+        <span class="room-badge" style="background:${avatarColorFor(room.address)}">${escapeHtml(name.trim().charAt(0) || '?')}</span>
         <span class="room-item-text">
-          <span class="room-name">${room.protected ? '<span class="room-lock" title="Precisa de PIN">&#128274;</span> ' : ''}${escapeHtml(room.name || room.hostName || 'sala')}</span>
-          <span class="room-meta">${room.peers != null ? `${escapeHtml(String(room.peers))} pessoa(s)` : escapeHtml(room.address)}</span>
+          <span class="room-name-line">
+            ${room.protected ? `<span class="room-lock" title="Precisa de PIN">${LOCK_ICON}</span>` : ''}
+            <span class="room-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+          </span>
+          <span class="room-meta" title="${escapeHtml(meta)}">${escapeHtml(meta)}</span>
         </span>`;
       li.appendChild(info);
 
       const connectBtn = document.createElement('button');
-      connectBtn.className = 'room-connect';
+      connectBtn.className = 'room-connect secondary';
       connectBtn.type = 'button';
-      connectBtn.title = isActive ? 'Já conectado nessa sala' : 'Conectar nessa sala';
+      connectBtn.title = isActive ? 'Já conectado nessa sala' : `Entrar em ${name}`;
       connectBtn.disabled = isActive || onCooldown;
       if (onCooldown) connectBtn.classList.add('cooldown');
-      connectBtn.innerHTML = isActive ? CONNECTED_ICON : CONNECT_ICON;
-      connectBtn.addEventListener('click', () => onSelect(room));
+      connectBtn.innerHTML = isActive
+        ? `${CONNECTED_ICON}<span>Conectado</span>`
+        : `${CONNECT_ICON}<span>Entrar</span>`;
       li.appendChild(connectBtn);
+
+      // O card inteiro e a porta; o botao e o reforco visual. Um so
+      // caminho de codigo, pra nao existir "clicou no card" diferente de
+      // "clicou no botao".
+      if (!connectBtn.disabled) {
+        li.classList.add('clickable');
+        li.addEventListener('click', () => onSelect(room));
+      }
 
       listEl.appendChild(li);
     }
@@ -726,26 +771,78 @@
   // "isso esta aberto agora"; a lista some sozinha quando o beacon para de
   // chegar.
   function renderRooms({ onSelect, activeAddress, liveRooms = [], isOnCooldown }) {
-    fillRoomList(roomListLiveEl, liveRooms, {
-      onSelect,
-      activeAddress,
-      isOnCooldown,
-      emptyMessage: 'nenhuma sala aberta na rede agora — crie uma ou entre por endereço',
-    });
+    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown });
+    roomsCountEl.textContent = String(liveRooms.length);
+    roomsCountEl.classList.toggle('empty', liveRooms.length === 0);
+  }
+
+  // ---------- Lobby: endereco desta maquina na rede ----------
+
+  const NET_LABELS = { radmin: 'Radmin VPN', tailscale: 'Tailscale', lan: 'Rede local' };
+
+  /** `info` e o { address, kind } do IPC network:address, ou null. Tres
+   * estados: rede virtual (verde), so LAN (amarelo), nada (cinza). */
+  function renderNetworkStatus(info) {
+    const dot = $('lobby-net-dot');
+    const kindEl = $('lobby-net-kind');
+    const addrEl = $('lobby-net-addr');
+    if (!dot || !kindEl || !addrEl) return;
+    // Ponto neutro quando esta tudo certo: --live (vermelho) e reservado a
+    // "alguem esta ao vivo", e uma bolinha vermelha aqui ainda leria como
+    // erro. So o que exige atencao ganha cor.
+    dot.classList.remove('warn');
+    addrEl.removeAttribute('title');
+    if (!info) {
+      dot.classList.add('warn');
+      kindEl.textContent = 'Sem rede detectada';
+      addrEl.textContent = 'ligue o Radmin ou o Tailscale e atualize';
+      return;
+    }
+    if (info.kind === 'lan') dot.classList.add('warn');
+    kindEl.textContent = NET_LABELS[info.kind] || 'Rede';
+    addrEl.textContent = info.address;
+    addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
   }
 
   // ---------- Dialogo: Criar sala ----------
   const dlgCreateEl = $('dialog-create-room');
+  const btnCreateConfirmEl = $('btn-create-room-confirm');
+  const btnCreateCancelEl = $('btn-create-room-cancel');
   let onCreateConfirm = null;
+  let creatingRoom = false;
 
-  function openCreateRoom({ onConfirm }) {
+  /** Estado ocupado do "Criar": subir o servidor embutido inclui pedir
+   * liberacao de firewall ao Windows, que pode abrir um prompt de elevacao
+   * e demorar segundos. O Cancelar tambem desabilita -- nao ha o que
+   * cancelar no meio do room:host, e um botao que finge cancelar e pior
+   * que um desabilitado. */
+  function setCreateRoomBusy(busy) {
+    creatingRoom = busy;
+    btnCreateConfirmEl.disabled = busy;
+    btnCreateCancelEl.disabled = busy;
+    btnCreateConfirmEl.classList.toggle('busy', busy);
+    btnCreateConfirmEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
+    btnCreateConfirmEl.querySelector('.btn-label').textContent = busy ? 'Criando sala…' : 'Criar';
+    $('chk-protect-room').disabled = busy;
+    $('chk-advertise-room').disabled = busy;
+  }
+
+  function openCreateRoom({ onConfirm, advertise = true }) {
     $('create-room-error').textContent = '';
     $('chk-protect-room').checked = false;
+    // Ultima escolha do usuario (persistida no config) vira o padrao.
+    $('chk-advertise-room').checked = advertise !== false;
+    setCreateRoomBusy(false);
     onCreateConfirm = onConfirm;
     dlgCreateEl.classList.remove('hidden');
+    // focusFirstInteractive guarda o foco anterior (pro restore no close),
+    // mas o primeiro focavel aqui e a caixa "anunciar" -- e as duas ja vem
+    // com um padrao razoavel. O foco vai pro "Criar": Enter cria a sala.
     focusFirstInteractive(dlgCreateEl);
+    btnCreateConfirmEl.focus();
   }
   function closeCreateRoom() {
+    setCreateRoomBusy(false);
     dlgCreateEl.classList.add('hidden');
     restoreFocusAfterModal();
     onCreateConfirm = null;
@@ -753,11 +850,23 @@
   function setCreateRoomError(text) {
     $('create-room-error').textContent = text || '';
   }
-  $('btn-create-room-cancel').addEventListener('click', closeCreateRoom);
-  $('btn-create-room-confirm').addEventListener('click', () => {
-    onCreateConfirm?.({ protect: $('chk-protect-room').checked });
+  btnCreateCancelEl.addEventListener('click', () => { if (!creatingRoom) closeCreateRoom(); });
+  btnCreateConfirmEl.addEventListener('click', async () => {
+    if (creatingRoom || !onCreateConfirm) return;
+    const handler = onCreateConfirm;
+    setCreateRoomBusy(true);
+    try {
+      await handler({
+        protect: $('chk-protect-room').checked,
+        advertise: $('chk-advertise-room').checked,
+      });
+    } finally {
+      // closeCreateRoom ja zerou o estado quando deu certo; quando deu
+      // erro o dialogo continua aberto e precisa voltar a ser usavel.
+      if (!dlgCreateEl.classList.contains('hidden')) setCreateRoomBusy(false);
+    }
   });
-  dlgCreateEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCreateRoom(); });
+  dlgCreateEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !creatingRoom) closeCreateRoom(); });
 
   // ---------- Dialogo: Entrar numa sala ----------
   const dlgJoinEl = $('dialog-join-room');
@@ -850,7 +959,7 @@
       <span class="peer-avatar-wrap">
         <span class="peer-avatar${live ? ' on' : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
       </span>
-      <span class="peer-name">${escapeHtml(name)}</span>
+      <span class="peer-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
       ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
       ${isOwner ? '<span class="peer-crown" title="Dono da sala">♛</span>' : ''}
       ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
@@ -924,7 +1033,7 @@
       const li = document.createElement('li');
       li.innerHTML = `
         <span class="peer-avatar" style="background:${avatarColorFor(entry.key)}">${avatarInnerHtml(entry.key, entry.name, null)}</span>
-        <span class="peer-name">${escapeHtml(entry.name)}</span>
+        <span class="peer-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span>
         <button class="banned-readmit" type="button">Readmitir</button>
       `;
       li.querySelector('.banned-readmit').addEventListener('click', () => onUnban?.(entry.key));
@@ -1088,7 +1197,6 @@
   const settingsPanes = {
     profile: $('settings-profile'),
     voice: $('settings-voice'),
-    network: $('settings-network'),
     stats: $('settings-stats'),
   };
 
@@ -1256,15 +1364,15 @@
         <video id="settings-camera-preview" autoplay playsinline muted></video>
       </div>
       <h3>Sons</h3>
-      <div class="settings-field">
-        <label class="check-inline"><input id="settings-sounds" type="checkbox" /> Sons do app</label>
-        <small>Entrada, saída, chat, transmissão começando e avisos de moderação.</small>
-      </div>`;
-
-    settingsPanes.network.innerHTML = `
-      <div class="settings-field">
-        <label class="check-inline"><input id="settings-advertise" type="checkbox" /> Anunciar minha sala na rede</label>
-        <small>Desligado, a sala funciona normalmente e só entra quem receber o endereço.</small>
+      <div class="check-group">
+        <label class="check">
+          <input id="settings-sounds" type="checkbox" />
+          <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <span class="check-text">
+            <span class="check-title">Sons do app</span>
+            <span class="check-desc">Entrada, saída, chat, transmissão começando e avisos de moderação.</span>
+          </span>
+        </label>
       </div>`;
 
     settingsPanes.stats.innerHTML = `
@@ -1275,7 +1383,6 @@
       </div>`;
 
     renderProfilePreview(config);
-    $('settings-advertise').checked = config.network.advertise;
     $('settings-sounds').checked = config.soundsEnabled;
 
     $('settings-profile-name').addEventListener('input', (event) => {
@@ -1292,10 +1399,6 @@
       if (!file) return;
       await deps.onAvatarChange(file);
       renderProfilePreview(deps.getConfig());
-    });
-
-    $('settings-advertise').addEventListener('change', () => {
-      deps.onNetworkChange({ ...config.network, advertise: $('settings-advertise').checked });
     });
 
     $('settings-sounds').addEventListener('change', () => {
@@ -1341,7 +1444,7 @@
   const pickerGridEl = $('picker-grid');
   const pickerTabsEl = $('picker-tabs');
   const pickerWindowHintEl = $('picker-window-hint');
-  const pickerQualityPresetEl = $('picker-quality-preset');
+  const pickerQualityEl = $('picker-quality');
   const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
   const shareSoundEl = $('share-sound');
   const shareDiscordRowEl = $('share-discord-row');
@@ -1353,13 +1456,51 @@
   // de openPicker (o elemento e estatico, so o callback de destino muda).
   let pickerOnQualityChange = null;
 
-  pickerQualityPresetEl.innerHTML = configApi.QUALITY_PRESET_ORDER.map(
-    (preset) => `<option value="${preset}">${escapeHtml(QUALITY_PRESET_LABELS[preset] || preset)}</option>`
-  ).join('');
-  pickerQualityPresetEl.addEventListener('change', () => {
-    const quality = configApi.qualityFromPreset(pickerQualityPresetEl.value);
+  // O <select> nativo era o segundo controle mais cru do app (o primeiro era
+  // o checkbox). Seis chips selecionaveis, duas linhas de tres: o preset
+  // escolhido se distingue por elevacao + contraste, nunca por cor -- mesma
+  // regra do resto do tema.
+  pickerQualityEl.innerHTML = configApi.QUALITY_PRESET_ORDER.map((preset) => {
+    const parts = QUALITY_PRESET_SPLIT[preset] || { res: preset, fps: '', tag: '' };
+    return `<button class="quality-chip" type="button" role="radio" aria-checked="false" data-preset="${preset}">
+      <span class="quality-chip-res">${escapeHtml(parts.res)}</span>
+      <span class="quality-chip-fps">${escapeHtml(parts.fps)}</span>
+      ${parts.tag ? `<span class="quality-chip-tag">${escapeHtml(parts.tag)}</span>` : ''}
+    </button>`;
+  }).join('');
+
+  function syncQualityChips(preset) {
+    for (const chip of pickerQualityEl.querySelectorAll('.quality-chip')) {
+      const on = chip.dataset.preset === preset;
+      chip.classList.toggle('selected', on);
+      chip.setAttribute('aria-checked', on ? 'true' : 'false');
+      // Um so chip tabulavel: dentro de um radiogroup a navegacao entre
+      // opcoes e por seta, nao por Tab.
+      chip.tabIndex = on ? 0 : -1;
+    }
+  }
+
+  function selectQualityPreset(preset) {
+    const quality = configApi.qualityFromPreset(preset);
+    syncQualityChips(quality.preset);
     pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
     pickerOnQualityChange?.(quality);
+  }
+
+  pickerQualityEl.addEventListener('click', (event) => {
+    const chip = event.target.closest('.quality-chip');
+    if (chip) selectQualityPreset(chip.dataset.preset);
+  });
+  pickerQualityEl.addEventListener('keydown', (event) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const order = configApi.QUALITY_PRESET_ORDER;
+    const atual = pickerQualityEl.querySelector('.quality-chip.selected')?.dataset.preset;
+    const i = order.indexOf(atual);
+    const proximo = order[(Math.max(0, i) + step + order.length) % order.length];
+    selectQualityPreset(proximo);
+    pickerQualityEl.querySelector('.quality-chip.selected')?.focus();
   });
   let pickerSources = [];
   let pickerTab = 'screen';
@@ -1370,9 +1511,38 @@
   // depois do usuario fechar e abrir de novo.
   let pickerRun = 0;
 
+  /** Tag curta da qualidade de uma TELA, derivada da altura em pixels do
+   * display. Janela nao tem: o desktopCapturer nao devolve tamanho de
+   * janela, e inventar um numero seria pior que nao mostrar nada. */
+  function qualityTagFor(source) {
+    if (!source.isScreen) return '';
+    const h = Number(source.height) || 0;
+    if (h >= 2160) return '4K';
+    if (h >= 1440) return '1440p';
+    if (h >= 1080) return '1080p';
+    if (h >= 720) return '720p';
+    return h > 0 ? 'SD' : '';
+  }
+
+  // Ordem previsivel em vez da ordem em que o Chromium devolveu: telas por
+  // nome com comparacao numerica ("Tela 10" depois de "Tela 2", nao antes),
+  // janelas em alfabetica insensivel a caixa.
+  const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+  function sortSources(list) {
+    return [...list].sort((a, b) => collator.compare(a.name || '', b.name || ''));
+  }
+
+  function syncPickerCounts() {
+    const telas = pickerSources.filter((s) => s.isScreen).length;
+    const janelas = pickerSources.length - telas;
+    $('picker-count-screen').textContent = pickerLoading.screen ? '' : String(telas);
+    $('picker-count-window').textContent = pickerLoading.window ? '' : String(janelas);
+  }
+
   function renderPickerGrid() {
     pickerGridEl.innerHTML = '';
-    const filtered = pickerSources.filter((s) => (pickerTab === 'screen' ? s.isScreen : !s.isScreen));
+    syncPickerCounts();
+    const filtered = sortSources(pickerSources.filter((s) => (pickerTab === 'screen' ? s.isScreen : !s.isScreen)));
     if (!filtered.length) {
       if (pickerLoading[pickerTab]) {
         pickerGridEl.innerHTML = `<div class="picker-grid-empty">${
@@ -1390,12 +1560,22 @@
       card.type = 'button';
       card.className = 'source-card';
       card.classList.toggle('selected', source.id === selectedSourceId);
+      const tag = qualityTagFor(source);
+      card.title = source.name;
       card.innerHTML = `
-        <img src="${source.thumbnail}" alt="" />
-        <span class="source-name">${escapeHtml(source.name)}</span>
-        <span class="source-meta">${source.isScreen ? 'Tela' : 'Janela'}${
-          source.resolution ? ` &middot; ${source.resolution}` : ''
-        }</span>`;
+        <span class="source-thumb">
+          <img class="source-shot" src="${source.thumbnail}" alt="" />
+          ${tag ? `<span class="source-quality">${escapeHtml(tag)}</span>` : ''}
+        </span>
+        <span class="source-body">
+          ${source.appIcon ? `<img class="source-icon" src="${source.appIcon}" alt="" />` : ''}
+          <span class="source-text">
+            <span class="source-name">${escapeHtml(source.name)}</span>
+            <span class="source-meta">${source.isScreen ? 'Tela' : 'Janela'}${
+              source.resolution ? ` &middot; ${escapeHtml(source.resolution)}` : ''
+            }</span>
+          </span>
+        </span>`;
       card.addEventListener('click', () => {
         selectedSourceId = source.id;
         btnGoLiveEl.disabled = false;
@@ -1453,7 +1633,11 @@
   // Uma fonte selecionada some se ela nao existir mais na lista nova, entao
   // o botao "Ir ao vivo" volta a ficar desabilitado -- melhor do que
   // transmitir uma janela que acabou de fechar.
-  $('picker-refresh').addEventListener('click', () => {
+  $('picker-refresh').addEventListener('click', (event) => {
+    const btn = event.currentTarget;
+    btn.classList.remove('spin');
+    void btn.offsetWidth; // reinicia a animacao mesmo se clicado de novo dentro dos 600ms
+    btn.classList.add('spin');
     selectedSourceId = null;
     btnGoLiveEl.disabled = true;
     loadPickerSources();
@@ -1500,9 +1684,9 @@
     pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
     syncWindowHint();
     pickerGridEl.innerHTML = '';
-    pickerQualityPresetEl.value = quality.preset;
-    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
     pickerOnQualityChange = onQualityChange;
+    syncQualityChips(quality.preset);
+    pickerQualityBandwidthEl.textContent = bandwidthLine(quality);
     shareSoundEl.checked = true;
     shareDiscordEl.checked = false;
     shareDiscordRowEl.classList.remove('hidden');
@@ -1560,7 +1744,7 @@
   root.GoLive.ui = {
     escapeHtml,
     grid: { showTile, removeTile, setPainting, setWatchers },
-    rooms: { render: renderRooms },
+    rooms: { render: renderRooms, setNetworkStatus: renderNetworkStatus },
     dialogs: {
       openCreateRoom, closeCreateRoom, setCreateRoomError,
       openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,

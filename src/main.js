@@ -124,14 +124,13 @@ app.on('child-process-gone', (_event, details) => {
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
-/** Nome do host da sala ativa, pra reusar no beacon quando o toggle de
- * anunciar e ligado depois (Configuracoes > Rede), sem precisar do renderer
- * reenviar o nome. */
+/** Nome do host da sala ativa, pra reusar no beacon quando o anuncio e
+ * refeito (discovery:refresh) sem o renderer reenviar o nome. */
 let hostedRoomName = 'anônimo';
 /** PIN da sala ativa (B3), ou null pra sala aberta. Guardado aqui pelo
- * mesmo motivo do nome: o toggle de anunciar (Configuracoes > Rede) chama
- * advertiseHostedRoom sem o renderer reenviar nada, e o beacon precisa
- * saber se marca o cadeado. O PIN em si nunca vai pro beacon. */
+ * mesmo motivo do nome: o discovery:refresh chama advertiseHostedRoom sem
+ * o renderer reenviar nada, e o beacon precisa saber se marca o cadeado.
+ * O PIN em si nunca vai pro beacon. */
 let hostedRoomPin = null;
 
 /** Descoberta de salas via broadcast UDP. Sempre escuta (independente de
@@ -407,22 +406,32 @@ ipcMain.handle('sources:list', async (_event, types) => {
   const sources = await desktopCapturer.getSources({
     types: wanted,
     thumbnailSize: { width: 224, height: 126 },
-    fetchWindowIcons: false,
+    // O icone e o que distingue cinco janelas do mesmo navegador uma da
+    // outra antes de ler o titulo. Custa um bitmap pequeno por janela, no
+    // mesmo lote que ja captura uma miniatura de 224x126 -- e o lote de
+    // janelas ja roda em paralelo com o de telas, sem segurar a abertura
+    // do dialogo (ver a spec de 2026-08-23, F1.6).
+    fetchWindowIcons: true,
   });
 
   return sources.map((s) => {
     // Casa a fonte de tela com o display pra mostrar a resolucao real.
     const display = displays.find((d) => String(d.id) === String(s.display_id));
+    const height = display ? Math.round(display.size.height * display.scaleFactor) : null;
     return {
       id: s.id,
       name: s.name,
       isScreen: s.id.startsWith('screen:'),
       thumbnail: thumbnailDataUrl(s.thumbnail),
       resolution: display
-        ? `${Math.round(display.size.width * display.scaleFactor)}x${Math.round(
-            display.size.height * display.scaleFactor
-          )}`
+        ? `${Math.round(display.size.width * display.scaleFactor)}x${height}`
         : null,
+      // Altura em pixels do display -- o renderer deriva dela a tag
+      // (4K/1440p/1080p/720p) sem reparsear a string de resolucao.
+      height,
+      // Data URL do icone do app dono da janela, ou null (telas nunca tem;
+      // janela sem icone registrado tambem nao).
+      appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
     };
   });
 });
@@ -493,14 +502,13 @@ ipcMain.handle('firewall:retry', async () => {
   return ensureFirewallRule(embeddedServer.port);
 });
 
-ipcMain.handle('discovery:setAdvertise', async (_event, enabled) => {
-  await ensureDiscoveryStarted();
-  if (!enabled || !embeddedServer) {
-    discovery.stopAdvertising();
-    return true;
-  }
-  advertiseHostedRoom();
-  return true;
+// Endereco desta maquina na rede virtual, pro lobby responder "qual endereco
+// eu passo pros meus amigos?" ANTES de criar a sala -- ate agora essa
+// resposta so existia depois. Mesmo pickAddress que o room:host usa, entao
+// o que o lobby mostra e o que a sala vai anunciar.
+ipcMain.handle('network:address', () => {
+  const picked = pickAddress();
+  return picked ? { address: picked.address, kind: picked.kind, iface: picked.iface } : null;
 });
 
 ipcMain.handle('discovery:refresh', async () => {

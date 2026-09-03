@@ -43,7 +43,57 @@ após `await`).
 
 ## Em andamento
 
-Branch **`claude/backlog-pos-leyjak`**: o que restava do backlog depois que a
+Branch **`claude/redesign-connection-page-k64yy3`**: **Lobby v2 e acabamento
+da interface** — a passada seguinte ao redesign de 0.4.0. Spec em
+`docs/superpowers/specs/2026-09-03-lobby-v2-e-acabamento-design.md`.
+
+- **Lobby refeito pra desktop**: era uma coluna de 560px centrada numa janela
+  de 1280×800 (62% da largura em fundo vazio). Virou três faixas (topbar /
+  corpo / barra do usuário) com **duas colunas** no corpo — ações à esquerda
+  (380px fixos: hero, os dois CTAs, e o **endereço desta máquina na rede
+  virtual**, IPC `network:address` novo em cima do `pickAddress` já testado),
+  salas descobertas à direita em cards de 64px com avatar por endereço,
+  cadeado SVG, contador e estado vazio explicado. Empilha abaixo de 1040px.
+- **"Anunciar na rede" saiu de Configurações** e virou opção do diálogo de
+  criar sala — é propriedade da sala, decidida quando a sala é criada. A aba
+  **Rede** de Configurações foi removida (sobraram Perfil / Voz e Vídeo /
+  Estatísticas) junto do que ficou órfão: `discovery:setAdvertise`,
+  `setAdvertise` no preload e `onNetworkChange`. O `config.network.advertise`
+  vira o padrão da caixa e é regravado a cada criação.
+- **"Criar" agora mostra progresso**: spinner + "Criando sala…", confirmar e
+  cancelar desabilitados. Subir o servidor inclui pedir liberação de firewall
+  ao Windows, que pode abrir prompt de elevação — antes o diálogo congelava.
+- **Checkbox virou componente**: caixa desenhada, título + descrição, linha
+  inteira clicável, marca entrando por `opacity`+`transform`. O `<input>`
+  continua lá (só `opacity: 0`) pro teclado e pro leitor de tela. Substitui
+  os cinco `check-inline` do app.
+- **Nome longo não estoura mais nem cria barra horizontal.** Causa raiz do
+  card de janela: a regra base de `button` traz `align-items: center`, e num
+  container coluna isso é o eixo horizontal — os filhos passavam a ser
+  dimensionados pelo conteúdo em vez de esticar até a largura do card. Nas
+  listas (membros, banidos, chat, espectadores) era `overflow-y: auto` com o
+  eixo X em `visible`, que o CSS promove a `auto` sozinho. Barra de rolagem
+  ganhou estilo global fino e escuro (antes só o `.picker-box` tinha).
+- **Diálogo de compartilhar**: tag de qualidade (`4K`/`1440p`/`1080p`/`720p`)
+  em cada tela, ícone do app em cada janela (`fetchWindowIcons`), ordenação
+  determinística (telas por nome numérico, janelas alfabéticas), contador por
+  aba, cards de altura fixa, ícone no botão "Atualizar" e os seis presets de
+  qualidade em chips no lugar do `<select>` nativo.
+- **Grade de tiles por contagem** (1 / 2 / 3–4 / 5–6 / 7+) em vez de
+  `auto-fit`, que deixava um tile órfão ocupando meia tela. Trilhas
+  `min-content` + `align-content: safe center`: com `1fr` a folga vertical
+  era dividida por linha e virava um vão entre as fileiras **e** outro
+  embaixo. Ordem estável: tela antes de câmera, por CSS (`order`).
+- **Diálogo de criar sala enxuto**: título, duas opções com uma linha de
+  apoio cada, botões. O foco abre no "Criar" — Enter cria a sala.
+
+Verificado com o renderer carregado em Chromium headless (lobby cheio/vazio,
+900×620, diálogos, sala com 1/3/5 tiles): zero `pageerror`, zero overflow
+horizontal em qualquer região.
+
+---
+
+Branch **`claude/backlog-pos-leyjak`** (anterior, ainda aberta): o que restava do backlog depois que a
 leva `leyjak` (A8/D2/G5/C7/B2, [PR #25](https://github.com/NickB0ss/golive/pull/25))
 entrou na `main`. Tudo coberto por teste, sem rodar o app à mão.
 

@@ -32,10 +32,10 @@ contextBridge.exposeInMainWorld('golive', {
    * { ok: true } ou { ok: false, manualCommand?, error? }. */
   retryFirewall: () => ipcRenderer.invoke('firewall:retry'),
 
-  /** Liga/desliga o anuncio da sala ativa via broadcast UDP em tempo real
-   * (ex: usuario mexeu no toggle de Configuracoes > Rede depois de ja ter
-   * criado a sala). Sem efeito se nao houver sala local hospedada. */
-  setAdvertise: (enabled) => ipcRenderer.invoke('discovery:setAdvertise', enabled),
+  /** Endereco desta maquina na rede virtual (radmin > tailscale > lan), pro
+   * lobby mostrar antes mesmo de existir uma sala. Devolve
+   * { address, kind, iface } ou null se nao houver interface IPv4 externa. */
+  getNetworkAddress: () => ipcRenderer.invoke('network:address'),
 
   /** Força um novo ciclo de descoberta: fecha e reabre o socket UDP,
    * limpando salas conhecidas, e reanuncia a sala hospedada se havia uma
