@@ -4,6 +4,7 @@
 (function (root) {
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
+  const version = root.GoLive.version;
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -706,7 +707,7 @@
   const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
   const ANTENNA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.48"/><path d="M16.24 7.76a6 6 0 0 1 0 8.48"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><circle cx="12" cy="12" r="1.6"/></svg>`;
 
-  function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown }) {
+  function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown, appVersion }) {
     listEl.innerHTML = '';
     if (!rooms.length) {
       const empty = document.createElement('li');
@@ -721,14 +722,25 @@
     for (const room of rooms) {
       const isActive = activeAddress && room.address === activeAddress;
       const onCooldown = !isActive && !!isOnCooldown && isOnCooldown(room.address);
+      // Trava de versao: a sala so aceita quem estiver na MESMA versao (o
+      // servidor recusa o 'join'). O beacon traz a versao de quem hospeda,
+      // entao da pra dizer isso aqui, antes do clique, em vez de deixar a
+      // pessoa conectar e voltar com um erro. Beacon sem versao (release
+      // antiga anunciando) nao e marcado -- a recusa vem do servidor.
+      const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
       const name = room.name || room.hostName || 'sala';
       const li = document.createElement('li');
       li.className = 'room-row';
       if (isActive) li.classList.add('active');
+      if (incompatible) li.classList.add('incompatible');
 
       const meta = room.peers != null
         ? `${room.address} · ${room.peers} ${room.peers === 1 ? 'pessoa' : 'pessoas'}`
         : room.address;
+
+      const versionNote = incompatible
+        ? version.mismatchText({ mine: appVersion, theirs: room.version })
+        : '';
 
       const info = document.createElement('div');
       info.className = 'room-info';
@@ -738,16 +750,19 @@
           <span class="room-name-line">
             ${room.protected ? `<span class="room-lock" title="Precisa de PIN">${LOCK_ICON}</span>` : ''}
             <span class="room-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+            ${incompatible ? `<span class="room-version" title="${escapeHtml(versionNote)}">${escapeHtml(version.mismatchBadge({ mine: appVersion, theirs: room.version }))}</span>` : ''}
           </span>
-          <span class="room-meta" title="${escapeHtml(meta)}">${escapeHtml(meta)}</span>
+          <span class="room-meta" title="${escapeHtml(incompatible ? versionNote : meta)}">${escapeHtml(incompatible ? versionNote : meta)}</span>
         </span>`;
       li.appendChild(info);
 
       const connectBtn = document.createElement('button');
       connectBtn.className = 'room-connect secondary';
       connectBtn.type = 'button';
-      connectBtn.title = isActive ? 'Já conectado nessa sala' : `Entrar em ${name}`;
-      connectBtn.disabled = isActive || onCooldown;
+      connectBtn.title = isActive ? 'Já conectado nessa sala'
+        : incompatible ? versionNote
+        : `Entrar em ${name}`;
+      connectBtn.disabled = isActive || onCooldown || incompatible;
       if (onCooldown) connectBtn.classList.add('cooldown');
       connectBtn.innerHTML = isActive
         ? `${CONNECTED_ICON}<span>Conectado</span>`
@@ -770,8 +785,8 @@
   // (src/main/discovery.js) — nao ha historico local salvo em disco, so
   // "isso esta aberto agora"; a lista some sozinha quando o beacon para de
   // chegar.
-  function renderRooms({ onSelect, activeAddress, liveRooms = [], isOnCooldown }) {
-    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown });
+  function renderRooms({ onSelect, activeAddress, liveRooms = [], isOnCooldown, appVersion = null }) {
+    fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown, appVersion });
     roomsCountEl.textContent = String(liveRooms.length);
     roomsCountEl.classList.toggle('empty', liveRooms.length === 0);
   }

@@ -535,6 +535,80 @@ test('PIN da sala: tentativa errada de um intruso nao afeta quem ja esta dentro 
   }
 });
 
+test('versao da sala: so entra quem manda exatamente a mesma appVersion', async () => {
+  const server = await createSignalingServer({ port: 0, appVersion: '0.6.0' });
+  try {
+    // Mesma versao -> welcome normal. O "v" da frente e espaco nao contam.
+    const ok = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => ok.once('open', r));
+    ok.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', appVersion: 'v0.6.0' }));
+    assert.equal((await once(ok, 'welcome')).type, 'welcome');
+
+    // Versao mais velha -> negado, com as duas versoes na recusa e close 1008
+    const velho = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => velho.once('open', r));
+    const deniedMsg = onceWithin(velho, 'join-denied');
+    const closed = new Promise((r) => velho.once('close', (code) => r(code)));
+    velho.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', appVersion: '0.5.0' }));
+    const denied = await deniedMsg;
+    assert.equal(denied.reason, 'version');
+    assert.equal(denied.hostVersion, '0.6.0');
+    assert.equal(denied.yourVersion, '0.5.0');
+    assert.equal(await closed, 1008);
+
+    // Versao mais NOVA que a da sala tambem e negada: a regra e "mesma
+    // versao", nao "no minimo a versao da sala".
+    const novo = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => novo.once('open', r));
+    const deniedNovo = onceWithin(novo, 'join-denied');
+    novo.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Carla', appVersion: '0.7.0' }));
+    assert.equal((await deniedNovo).reason, 'version');
+
+    // Sem appVersion nenhuma (cliente antigo, de antes da trava) -> negado
+    // tambem, com yourVersion null pro cliente saber que nao deu pra ler.
+    const mudo = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => mudo.once('open', r));
+    const deniedMudo = onceWithin(mudo, 'join-denied');
+    mudo.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Dedé' }));
+    const negadoMudo = await deniedMudo;
+    assert.equal(negadoMudo.reason, 'version');
+    assert.equal(negadoMudo.yourVersion, null);
+
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(server.getPeerCount(), 1, 'so a Ana entrou');
+
+    ok.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('versao e checada ANTES do PIN: quem esta em outra versao nem descobre se acertou o PIN', async () => {
+  const server = await createSignalingServer({ port: 0, pin: '4821', appVersion: '0.6.0' });
+  try {
+    const velho = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => velho.once('open', r));
+    const deniedMsg = onceWithin(velho, 'join-denied');
+    velho.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', pin: '4821', appVersion: '0.5.0' }));
+    assert.equal((await deniedMsg).reason, 'version');
+  } finally {
+    await server.close();
+  }
+});
+
+test('sem appVersion configurada no servidor, a trava de versao fica desligada', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', appVersion: '9.9.9' }));
+    assert.equal((await once(a, 'welcome')).type, 'welcome');
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('sem PIN configurado, join com um campo pin qualquer segue entrando (compat)', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {

@@ -71,7 +71,7 @@ function send(ws, payload) {
  * 60-120s tem o estado de NAT descartado e o cliente "cai da sala"
  * sozinho, com close code 1006. O ping periodico mantem o fluxo vivo e
  * ainda deixa o servidor derrubar quem parou de responder. */
-function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerToken = null }) {
+function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerToken = null, appVersion = null }) {
   // PIN opcional da sala (B3 da auditoria). Nao e cripto: so corta o
   // entrar-por-acidente numa rede Radmin/Tailscale compartilhada, onde o
   // beacon anuncia a sala pra todo mundo. `null`/'' => sala aberta, igual
@@ -81,6 +81,14 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
   // renderer de quem criou a sala -- nunca sai da maquina. Comparado por
   // igualdade estrita: string vazia/null nunca marca dono.
   const ownerTok = typeof ownerToken === 'string' && ownerToken !== '' ? ownerToken : null;
+  // Versao do app de quem hospeda. Quando definida, TODO mundo que entrar
+  // tem de estar exatamente nela: o protocolo de sinalizacao, o formato da
+  // arvore e a negociacao P2P mudam entre releases sem nenhum acordo de
+  // compatibilidade, e uma sala com versoes misturadas quebra de um jeito
+  // que parece problema de rede (tile que nunca abre, arvore que nao fecha).
+  // `null` (o default, usado pelos testes de protocolo) desliga a checagem.
+  const hostVersion = typeof appVersion === 'string' && appVersion.trim() !== '' ? appVersion.trim() : null;
+  const sameVersion = (v) => typeof v === 'string' && v.trim() !== '' && v.trim().replace(/^v/, '') === hostVersion.replace(/^v/, '');
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });
 
@@ -253,6 +261,16 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               if (findBan(banKeysFor({ address: remoteAddress, clientId }))) {
                 send(ws, { type: 'join-denied', reason: 'banned' });
                 ws.close(1008, 'banned');
+                return;
+              }
+              // Versao diferente da de quem criou a sala: recusa antes do PIN
+              // (nao adianta acertar o PIN numa sala que o seu app nao sabe
+              // conversar). Manda as duas versoes de volta pra que o cliente
+              // saiba dizer QUEM precisa atualizar, e fecha com 1008.
+              if (hostVersion && !sameVersion(msg.appVersion)) {
+                const theirVersion = typeof msg.appVersion === 'string' ? msg.appVersion.slice(0, 40) : null;
+                send(ws, { type: 'join-denied', reason: 'version', hostVersion, yourVersion: theirVersion });
+                ws.close(1008, 'version');
                 return;
               }
               // Sala protegida: PIN ausente ou errado e recusa explicita

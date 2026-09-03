@@ -391,6 +391,10 @@ function advertiseHostedRoom() {
     address,
     getPeerCount: () => embeddedServer.getPeerCount(),
     protected: Boolean(hostedRoomPin),
+    // A versao viaja no beacon so pra lista da rede poder avisar ANTES do
+    // clique ("v0.6.0 - atualize") em vez de deixar a pessoa conectar e
+    // tomar um join-denied. Quem barra de verdade e o servidor.
+    version: app.getVersion(),
   });
 }
 
@@ -453,7 +457,9 @@ ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) =>
     // Token de dono (novo): gerado por sala, nunca sai desta maquina -- so
     // volta pro renderer que criou a sala, que o reenvia no proprio 'join'.
     const ownerToken = require('crypto').randomUUID();
-    embeddedServer = await findFreeServer((port) => createSignalingServer({ port, pin, ownerToken }));
+    // A versao entra na sala junto com o PIN e o token de dono: o servidor
+    // barra no 'join' quem nao estiver exatamente nela (ver signaling-core).
+    embeddedServer = await findFreeServer((port) => createSignalingServer({ port, pin, ownerToken, appVersion: app.getVersion() }));
     hostedRoomPin = pin;
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
