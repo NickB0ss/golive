@@ -112,12 +112,9 @@ Exercitada com o app rodando — duas instâncias / peer de teste por CDP —, s
   de uma vez, entrada/saída incluídas.
 
 **Pendências desta branch** (não travam a lógica, que está coberta por teste e
-verificação com o app rodando): quando a sinalização cai, a faixa âmbar do chat
-e o bloqueio do campo de digitar não aparecem — `ui.chat.setEnabled` existe mas
-não chega a ser chamada pelo `app.js` (o cabeçalho já mostra "reconectando…" e
-o histórico volta certo na reconexão); e o menu ⋮ de cada membro não é
-navegável por teclado (itens `role="menuitem"` sem `tabindex`, sem seta),
-alinhado ao item **F1** de acessibilidade que já está adiado.
+verificação com o app rodando): o menu ⋮ de cada membro não é navegável por
+teclado (itens `role="menuitem"` sem `tabindex`, sem seta), alinhado ao item
+**F1** de acessibilidade que já está adiado.
 
 **Já lançado** (em release com tag):
 

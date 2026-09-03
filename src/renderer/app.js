@@ -976,6 +976,14 @@
       softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
       effectivePreset: effective.preset,
     }));
+    // Chat: o compose so aceita texto enquanto a sinalizacao esta viva. Com a
+    // sessao orfa (H1) `currentSession` e null e o `currentSession?.sig.send`
+    // do onSend vira no-op silencioso -- entao desabilita o campo e mostra a
+    // faixa ambar "Reconectando...". Este render roda em TODA troca de estado
+    // de conexao (queda: orphanSession set + renderRoomStatus logo abaixo;
+    // volta: reconexao/welcome -> renderMembersPanel -> renderRoomStatus),
+    // cobre os dois sentidos e `ui.chat.setEnabled` e idempotente.
+    ui.chat.setEnabled(!orphanSession);
   }
 
   // ---------- Conexao de sinalizacao ----------
