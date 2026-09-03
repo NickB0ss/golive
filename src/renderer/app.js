@@ -533,11 +533,6 @@
           restartCamera().catch((err) => console.error('[camera] troca de dispositivo falhou:', err));
         }
       },
-      onNetworkChange: (network) => {
-        cfg = { ...cfg, network };
-        persist();
-        window.golive.setAdvertise(network.advertise);
-      },
       onSoundsChange: (enabled) => {
         cfg = { ...cfg, soundsEnabled: enabled };
         persist();
@@ -594,6 +589,17 @@
   renderRoomList();
   renderMembersPanel();
 
+  // Endereco desta maquina na rede virtual, mostrado no rodape da coluna de
+  // acoes do lobby. Relido no botao de atualizar porque o Radmin/Tailscale
+  // pode ter subido DEPOIS do app (caso comum: abrir o app, ver "sem rede",
+  // ligar a VPN).
+  function refreshNetworkStatus() {
+    Promise.resolve(window.golive.getNetworkAddress?.())
+      .then((info) => ui.rooms.setNetworkStatus(info || null))
+      .catch(() => ui.rooms.setNetworkStatus(null));
+  }
+  refreshNetworkStatus();
+
   // Assina a lista de salas descobertas ao vivo na LAN (main process manda
   // sempre que a lista muda: sala nova anunciada ou sala expirou).
   window.golive.onRoomsDiscovered((rooms) => {
@@ -606,7 +612,12 @@
   // em "Reiniciar e instalar"; quando o download termina, instala e reinicia
   // sozinho. Ver main/updater.js e a spec de 2026-08-26.
   let updateVersionAtual = null;
-  Promise.resolve(window.golive.getVersion?.()).then((v) => { updateVersionAtual = v || null; }).catch(() => {});
+  Promise.resolve(window.golive.getVersion?.())
+    .then((v) => {
+      updateVersionAtual = v || null;
+      if (updateVersionAtual) $('app-version').textContent = `v${updateVersionAtual}`;
+    })
+    .catch(() => {});
 
   const btnCheckUpdate = $('btn-check-update');
   const spinCheck = (on) => {
@@ -696,6 +707,7 @@
     void btn.offsetWidth; // força reflow pra reiniciar a animacao mesmo se clicado de novo dentro dos 600ms
     btn.classList.add('spin');
     window.golive.refreshDiscovery();
+    refreshNetworkStatus();
   });
 
   // Corpo compartilhado do "Conectar" do dialogo de entrar numa sala -- usado
@@ -725,11 +737,11 @@
   // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
   // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
   // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
-  async function hostRoomFlow(protect) {
+  async function hostRoomFlow(protect, advertise) {
     showLobbyError('');
     let result;
     try {
-      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise, protect });
+      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise, protect });
     } catch {
       return { ok: false, error: 'Não consegui subir a sala: erro inesperado. Tente de novo.' };
     }
@@ -749,12 +761,21 @@
 
   $('btn-create-room').addEventListener('click', () => {
     ui.dialogs.openCreateRoom({
+      // Ultima escolha do usuario vira o padrao da caixa "anunciar" -- quem
+      // sempre anuncia (ou nunca) nao precisa marcar nada de novo.
+      advertise: cfg.network.advertise,
       // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
       // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
       // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
-      onConfirm: async ({ protect }) => {
+      onConfirm: async ({ protect, advertise }) => {
         ui.dialogs.setCreateRoomError('');
-        const res = await hostRoomFlow(protect);
+        // Persistido ANTES do resultado: a preferencia e da pessoa, nao da
+        // sala que talvez nem suba.
+        if (advertise !== cfg.network.advertise) {
+          cfg = { ...cfg, network: { ...cfg.network, advertise } };
+          persist();
+        }
+        const res = await hostRoomFlow(protect, advertise);
         if (res.ok) ui.dialogs.closeCreateRoom();
         else ui.dialogs.setCreateRoomError(res.error);
       },

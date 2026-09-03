@@ -18,66 +18,122 @@
 <div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <!-- ============ LOBBY (fora de sala) ============ -->
+<!-- Tres faixas: topbar / corpo de duas colunas / barra do usuario. A regra
+     que organiza a tela: o que EU FACO fica na esquerda (fixa, sempre
+     visivel), o que ESTA ACONTECENDO na rede fica na direita (rola sozinha).
+     Ver docs/superpowers/specs/2026-09-03-lobby-v2-e-acabamento-design.md -->
 <div id="lobby-view" class="lobby">
-  <header class="lobby-header">
-    <span class="app-brand-badge">GL</span>
-    <span class="app-brand-name">GoLive LAN</span>
-    <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
-    </button>
-    <button id="btn-open-settings" class="icon-btn-inline" title="Configurações" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
+  <header class="lobby-topbar">
+    <div class="lobby-bounds lobby-topbar-inner">
+      <span class="app-brand-badge">GL</span>
+      <span class="app-brand-name">GoLive LAN</span>
+      <span id="app-version" class="app-version"></span>
+      <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" aria-label="Buscar atualizações" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      </button>
+      <button id="btn-open-settings" class="icon-btn-inline" title="Configurações" aria-label="Configurações" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
   </header>
 
-  <div class="lobby-hero">
-    <button id="btn-create-room" class="primary lobby-hero-btn" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Criar sala
-    </button>
-    <button id="btn-join-address" class="secondary lobby-hero-btn" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      Entrar numa sala
-    </button>
+  <div class="lobby-bounds lobby-body">
+    <!-- Coluna de acoes: largura fixa, nunca rola. Os dois CTAs ficam
+         visiveis com a rede cheia de salas ou vazia. -->
+    <section class="lobby-start">
+      <p class="lobby-eyebrow">Comece por aqui</p>
+      <h1 class="lobby-title">Sua tela, na casa dos seus amigos.</h1>
+      <p class="lobby-lede">
+        1080p60 direto de PC pra PC pela sua LAN virtual — sem servidor no
+        meio, sem conta, sem ninguém olhando a transmissão.
+      </p>
+
+      <div class="lobby-actions">
+        <button id="btn-create-room" class="primary lobby-cta" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Criar sala
+        </button>
+        <button id="btn-join-address" class="secondary lobby-cta" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Entrar por endereço
+        </button>
+      </div>
+
+      <p id="lobby-error" class="error" role="alert"></p>
+
+      <!-- Responde "qual endereco eu passo pros meus amigos?" ANTES de
+           existir uma sala; ate agora so tinha resposta depois de criar. -->
+      <div class="lobby-net">
+        <span id="lobby-net-dot" class="dot"></span>
+        <span class="lobby-net-text">
+          <span id="lobby-net-kind" class="lobby-net-kind">procurando rede…</span>
+          <span id="lobby-net-addr" class="lobby-net-addr"></span>
+        </span>
+      </div>
+    </section>
+
+    <!-- Coluna viva: cards de sala descobertos por beacon UDP. -->
+    <section class="lobby-rooms">
+      <div class="rooms-head">
+        <h2 class="rooms-title">Salas abertas na sua rede</h2>
+        <span id="rooms-count" class="rooms-count">0</span>
+        <button id="btn-refresh-discovery" class="icon-btn-inline" title="Procurar salas de novo" aria-label="Procurar salas de novo" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+        </button>
+      </div>
+      <ul id="room-list-live" class="room-list"></ul>
+    </section>
   </div>
 
-  <p id="lobby-error" class="error"></p>
-
-  <section class="lobby-rooms">
-    <h2 class="rooms-title">
-      Salas abertas na sua rede
-      <button id="btn-refresh-discovery" class="icon-btn-inline" title="Atualizar lista de salas" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+  <footer class="lobby-userbar">
+    <div class="lobby-bounds lobby-userbar-inner">
+      <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
+        <img id="user-panel-avatar-img" class="hidden" alt="" />
+        <span id="user-panel-avatar-fallback"></span>
       </button>
-    </h2>
-    <ul id="room-list-live" class="room-list"></ul>
-  </section>
-
-  <div class="user-panel">
-    <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
-      <img id="user-panel-avatar-img" class="hidden" alt="" />
-      <span id="user-panel-avatar-fallback"></span>
-    </button>
-    <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
-    <button id="btn-open-settings-2" class="icon-btn" title="Configurações" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
-  </div>
+      <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
+      <button id="btn-open-settings-2" class="icon-btn" title="Configurações" aria-label="Configurações" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </footer>
 </div>
 
 <!-- ============ DIALOGO: CRIAR SALA ============ -->
 <div id="dialog-create-room" class="modal hidden">
   <div class="modal-box dialog-box">
     <h2>Criar sala</h2>
-    <label class="check-inline">
-      <input id="chk-protect-room" type="checkbox" />
-      <span>Proteger a sala com um PIN</span>
-    </label>
-    <p class="dialog-hint">Gera um PIN de 4 dígitos que quem quiser entrar vai precisar digitar.</p>
-    <p id="create-room-error" class="error"></p>
+    <p class="dialog-sub">Você vira o dono: só você pode parar transmissão, expulsar e banir.</p>
+
+    <!-- "Anunciar na rede" mora AQUI, nao em Configuracoes: e uma
+         propriedade da sala que esta sendo criada, decidida no momento em
+         que ela e criada. O estado inicial vem do config (ultima escolha). -->
+    <div class="check-group">
+      <label class="check">
+        <input id="chk-advertise-room" type="checkbox" />
+        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="check-text">
+          <span class="check-title">Anunciar a sala na rede</span>
+          <span class="check-desc">Quem estiver na mesma LAN virtual vê a sala na lista e entra sem precisar do endereço.</span>
+        </span>
+      </label>
+      <label class="check">
+        <input id="chk-protect-room" type="checkbox" />
+        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="check-text">
+          <span class="check-title">Proteger com um PIN</span>
+          <span class="check-desc">Gera um PIN de 4 dígitos que quem quiser entrar vai precisar digitar.</span>
+        </span>
+      </label>
+    </div>
+
+    <p id="create-room-error" class="error" role="alert"></p>
     <div class="dialog-actions">
       <button id="btn-create-room-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-create-room-confirm" class="primary" type="button">Criar</button>
+      <button id="btn-create-room-confirm" class="primary" type="button">
+        <svg class="btn-spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
+        <span class="btn-label">Criar</span>
+      </button>
     </div>
   </div>
 </div>
@@ -181,13 +237,11 @@
     <nav class="settings-nav">
       <button class="settings-cat active" data-cat="profile">Perfil</button>
       <button class="settings-cat" data-cat="voice">Voz e Vídeo</button>
-      <button class="settings-cat" data-cat="network">Rede</button>
       <button class="settings-cat" data-cat="stats">Estatísticas</button>
     </nav>
     <div class="settings-content">
       <section id="settings-profile" class="settings-pane"></section>
       <section id="settings-voice" class="settings-pane hidden"></section>
-      <section id="settings-network" class="settings-pane hidden"></section>
       <section id="settings-stats" class="settings-pane hidden"></section>
     </div>
     <button id="btn-close-settings" class="modal-close" title="Fechar" type="button">×</button>
@@ -199,9 +253,14 @@
   <div class="modal-box picker-box">
     <h2>O que você quer compartilhar?</h2>
     <div id="picker-tabs" class="picker-tabs">
-      <button class="picker-tab active" data-tab="screen" type="button">Telas</button>
-      <button class="picker-tab" data-tab="window" type="button">Janelas</button>
-      <button id="picker-refresh" class="picker-refresh" type="button" title="Procurar de novo">
+      <button class="picker-tab active" data-tab="screen" type="button">
+        Telas <span id="picker-count-screen" class="picker-tab-count"></span>
+      </button>
+      <button class="picker-tab" data-tab="window" type="button">
+        Janelas <span id="picker-count-window" class="picker-tab-count"></span>
+      </button>
+      <button id="picker-refresh" class="ghost small picker-refresh" type="button" title="Procurar de novo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
         Atualizar
       </button>
     </div>
@@ -212,16 +271,22 @@
     <div id="picker-grid" class="picker-grid"></div>
 
     <h3>Qualidade</h3>
-    <div class="settings-field">
-      <select id="picker-quality-preset"></select>
-      <small id="picker-quality-bandwidth"></small>
-    </div>
+    <!-- Teto da transmissao. O app desce sozinho dai pra baixo (tamanho da
+         sala + telemetria de encode) -- ver STATUS.md. -->
+    <div id="picker-quality" class="quality-chips" role="radiogroup" aria-label="Qualidade da transmissão"></div>
+    <small id="picker-quality-bandwidth" class="quality-bandwidth"></small>
 
     <h3>Áudio</h3>
-    <div id="audio-mode" class="audio-mode">
-      <label class="check-inline"><input type="checkbox" id="share-sound" checked /> Compartilhar som</label>
-      <label class="check-inline hidden" id="share-discord-row">
-        <input type="checkbox" id="share-discord" /> Incluir o som do Discord também
+    <div id="audio-mode" class="check-group audio-mode">
+      <label class="check compact">
+        <input type="checkbox" id="share-sound" checked />
+        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="check-text"><span class="check-title">Compartilhar som</span></span>
+      </label>
+      <label class="check compact hidden" id="share-discord-row">
+        <input type="checkbox" id="share-discord" />
+        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="check-text"><span class="check-title">Incluir o som do Discord também</span></span>
       </label>
     </div>
 
