@@ -80,8 +80,12 @@ da interface** — a passada seguinte ao redesign de 0.4.0. Spec em
   aba, cards de altura fixa, ícone no botão "Atualizar" e os seis presets de
   qualidade em chips no lugar do `<select>` nativo.
 - **Grade de tiles por contagem** (1 / 2 / 3–4 / 5–6 / 7+) em vez de
-  `auto-fit`, que deixava um tile órfão ocupando meia tela. Ordem estável:
-  tela antes de câmera, por CSS (`order`).
+  `auto-fit`, que deixava um tile órfão ocupando meia tela. Trilhas
+  `min-content` + `align-content: safe center`: com `1fr` a folga vertical
+  era dividida por linha e virava um vão entre as fileiras **e** outro
+  embaixo. Ordem estável: tela antes de câmera, por CSS (`order`).
+- **Diálogo de criar sala enxuto**: título, duas opções com uma linha de
+  apoio cada, botões. O foco abre no "Criar" — Enter cria a sala.
 
 Verificado com o renderer carregado em Chromium headless (lobby cheio/vazio,
 900×620, diálogos, sala com 1/3/5 tiles): zero `pageerror`, zero overflow

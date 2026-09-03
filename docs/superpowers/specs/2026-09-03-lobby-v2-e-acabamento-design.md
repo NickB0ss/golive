@@ -114,9 +114,10 @@ quantas salas a rede tem, e a lista rola sozinha na coluna dela.
 - Abaixo de **1040px** de viewport: uma coluna só (`grid-template-columns:
   minmax(0, 1fr)`), ações em cima, salas embaixo. O `minWidth` da janela é
   900px, então este caso existe de verdade.
-- Abaixo de **820px** de altura: o parágrafo de apoio do hero some
+- Abaixo de **700px** de altura: o parágrafo de apoio do hero some
   (`display: none`), porque numa janela baixa ele é a primeira coisa que
-  empurra a lista pra fora.
+  empurra a lista pra fora. O corte é 700 e não 820 porque a janela padrão
+  do app tem 800px de altura — em 820 o parágrafo nunca apareceria.
 
 ### 3.3 A coluna de ações
 
@@ -140,9 +141,14 @@ e já é testado em `src/main/network.test.js`). Três estados:
 
 | `kind` | Ponto | Texto | Por quê |
 |---|---|---|---|
-| `radmin` / `tailscale` | `--live` | `Radmin VPN` / `Tailscale` + IP | é a rede que o app espera |
+| `radmin` / `tailscale` | `--tx2` (neutro) | `Radmin VPN` / `Tailscale` + IP | é a rede que o app espera |
 | `lan` | `--warn` | `Rede local` + IP | funciona, mas só na mesma casa |
-| `null` | `--tx3` | `Sem rede detectada` | criar sala vai falhar ou só servir localhost |
+| `null` | `--warn` | `Sem rede detectada` + como resolver | criar sala vai falhar ou só servir localhost |
+
+O ponto é **neutro** quando está tudo certo, não verde nem vermelho: `--live`
+(o único vermelho saturado do tema) quer dizer "alguém está ao vivo", e uma
+bolinha vermelha aqui ainda leria como erro. Só o que exige atenção ganha
+cor, e o texto ao lado diz o quê — cor nunca é o único indicador.
 
 Isto responde à pergunta que hoje só tem resposta **depois** de criar a sala
 ("qual endereço eu passo pros meus amigos?") e é o tipo de informação que
