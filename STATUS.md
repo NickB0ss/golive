@@ -25,7 +25,11 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   quando o addon nativo está compilado.
 - Árvore de retransmissão **sempre ligada** (origem → relay → folha,
   fanout 1/2, profundidade 2). Teto prático ~4 pessoas.
-- Qualidade em preset fechado, escolhida no diálogo de compartilhar, que é
+- Qualidade escolhida em **dois eixos** no diálogo de compartilhar
+  (Resolução × Fluidez, um controle segmentado cada, em vez dos seis chips
+  numa grade de três colunas): os presets são uma matriz 3×2 sem célula
+  morta, e o controle passou a ter a forma dos dados. A linha embaixo diz o
+  custo exato da combinação escolhida. O que se escolhe ali é
   só um **teto**: o app desce sozinho pelo tamanho da sala **e** pela
   telemetria de encode (tempo por quadro, encoder em software), degradando a própria captura
   via `applyConstraints`, não só o teto do encode — e volta a subir quando
@@ -44,7 +48,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 `0.6.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **301 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **306 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 

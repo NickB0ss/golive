@@ -266,8 +266,13 @@
     <h3>Qualidade</h3>
     <!-- Teto da transmissao. O app desce sozinho dai pra baixo (tamanho da
          sala + telemetria de encode) -- ver STATUS.md. -->
-    <div id="picker-quality" class="quality-chips" role="radiogroup" aria-label="Qualidade da transmissão"></div>
-    <small id="picker-quality-bandwidth" class="quality-bandwidth"></small>
+    <!-- Duas trilhas (resolucao x fps), montadas por ui.js. O role de
+         radiogroup fica em CADA trilha, nao aqui: sao dois grupos
+         independentes, e setas so andam dentro do proprio eixo. -->
+    <div id="picker-quality" class="quality-axes"></div>
+    <!-- aria-live: quem anda de seta ouve o preco da combinacao mudar em
+         vez de ter de ir procurar a linha. -->
+    <small id="picker-quality-bandwidth" class="quality-bandwidth" aria-live="polite"></small>
 
     <h3>Áudio</h3>
     <div id="audio-mode" class="check-group audio-mode">

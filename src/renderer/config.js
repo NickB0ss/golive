@@ -33,6 +33,34 @@
   // depender de ordem implicita de chaves.
   const QUALITY_PRESET_ORDER = ['720p30', '720p60', '1080p30', '1080p60', '1440p30', '1440p60'];
 
+  // Os presets nao sao uma lista de seis: sao uma matriz 3x2 (resolucao x
+  // fps), sem celula morta -- toda combinacao existe. A UI escolhe um eixo
+  // por vez (ver a spec de 2026-09-03), entao os dois eixos vivem aqui, ao
+  // lado da tabela que eles indexam, e nao no render.
+  //
+  // Explicitos de proposito, pela mesma razao do QUALITY_PRESET_ORDER: dava
+  // pra derivar as duas listas das chaves de QUALITY_PRESETS, mas ai a
+  // ordem dos controles passaria a depender de ordem implicita de chaves.
+  // O teste do produto cartesiano em config.test.js e quem garante que as
+  // duas listas e a tabela nao saem de sincronia.
+  const QUALITY_RESOLUTIONS = ['720p', '1080p', '1440p'];
+  const QUALITY_FPS = [30, 60];
+
+  /** Preset da celula (resolucao, fps). Combinacao desconhecida cai no
+   * padrao em vez de lancar -- esta funcao roda no clique da UI. */
+  function presetFor(resolution, fps) {
+    const nome = `${resolution}${fps}`;
+    return QUALITY_PRESETS[nome] ? nome : DEFAULT_QUALITY_PRESET;
+  }
+
+  /** Eixos de um preset. A resolucao sai da ALTURA da propria tabela, nao
+   * de um segundo mapa preset->rotulo: assim nao existe lugar onde o rotulo
+   * possa divergir do que vai ser codificado de verdade. */
+  function presetAxes(preset) {
+    const dims = QUALITY_PRESETS[preset] || QUALITY_PRESETS[DEFAULT_QUALITY_PRESET];
+    return { resolution: `${dims.height}p`, fps: dims.fps };
+  }
+
   function qualityFromPreset(preset) {
     const dims = QUALITY_PRESETS[preset] || QUALITY_PRESETS[DEFAULT_QUALITY_PRESET];
     return { ...dims, preset: QUALITY_PRESETS[preset] ? preset : DEFAULT_QUALITY_PRESET, codec: 'video/H264' };
@@ -263,6 +291,10 @@
     DEFAULTS,
     QUALITY_PRESETS,
     QUALITY_PRESET_ORDER,
+    QUALITY_RESOLUTIONS,
+    QUALITY_FPS,
+    presetFor,
+    presetAxes,
     DEFAULT_QUALITY_PRESET,
     qualityFromPreset,
     degradePreset,

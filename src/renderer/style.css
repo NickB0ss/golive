@@ -1454,26 +1454,74 @@ button.busy { cursor: default; }
 
 /* ---------- Presets de qualidade ---------- */
 
-.quality-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.quality-chip {
-  flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
-  min-height: 56px; padding: 0 var(--s-3);
-  background: var(--s2); border: 1px solid var(--line); color: var(--tx2);
-  border-radius: var(--r-sm); font-weight: 600;
+/* Os presets sao uma matriz 3x2 (resolucao x fps), nao uma lista de seis:
+   um controle por eixo, em vez de seis quadrados numa grade de tres colunas
+   que quebrava a linha no meio do 1080p e escondia a ordem. Ver a spec
+   docs/superpowers/specs/2026-09-03-seletor-de-qualidade-em-dois-eixos-design.md */
+.quality-axes { display: flex; flex-direction: column; gap: var(--s-2); }
+/* Rotulo em coluna de largura fixa: as duas trilhas comecam no mesmo x, o
+   que e o que faz os dois eixos lerem como um controle so. */
+.quality-axis { display: flex; align-items: center; gap: var(--s-3); }
+.quality-axis-label {
+  flex: none; width: 74px;
+  font-size: 12px; font-weight: 600; color: var(--tx2);
 }
-.quality-chip:hover:not(.selected) { background: var(--s3); color: var(--tx); }
-/* Selecionado por elevacao + contraste, nunca por cor (regra do tema). */
-.quality-chip.selected { background: var(--s4); border-color: var(--line2); color: var(--tx); }
-.quality-chip-res { font-size: 13.5px; }
-.quality-chip-fps { font-size: 11px; font-weight: 500; color: var(--tx3); }
-.quality-chip.selected .quality-chip-fps { color: var(--tx2); }
-/* min-height reservado mesmo quando o chip nao tem tag: sem isso os seis
-   chips ficam com tres alturas diferentes na mesma grade. */
-.quality-chip-tag {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--tx3); min-height: 13px;
+
+.quality-seg {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 3px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
 }
-.quality-bandwidth { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; }
+/* Trilha do tamanho do proprio conteudo: 1440p nao precisa esticar ate a
+   borda do dialogo, e a de fps (duas opcoes) ficaria absurda se esticasse. */
+.quality-seg { justify-self: start; min-width: 0; }
+.quality-axis > .quality-seg { flex: none; }
+
+/* Polegar deslizante -- selecionado por elevacao + contraste, nunca por cor
+   (regra do tema). Desliza por translateX puro sobre colunas iguais: nao
+   precisa de medicao em JS (ao contrario do indicador das abas, cujas
+   larguras sao desiguais) e nao anima layout. `--seg-count` e `--seg-index`
+   vem do ui.js. O bloco global de prefers-reduced-motion no topo do arquivo
+   ja desliga a transicao. */
+.quality-seg::before {
+  content: '';
+  position: absolute;
+  top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / var(--seg-count, 1));
+  background: var(--s4);
+  border: 1px solid var(--line2);
+  border-radius: 7px;
+  transform: translateX(calc(var(--seg-index, 0) * 100%));
+  transition: transform var(--t-move) var(--ease-move);
+  pointer-events: none;
+}
+/* Abertura do dialogo: o polegar aparece ja no lugar em vez de deslizar
+   sozinho da posicao anterior -- movimento sem acao do usuario e o
+   anti-padrao. A regra e no ::before porque e nele que a transicao mora
+   (estilo inline no container nao alcanca pseudo-elemento). */
+.quality-seg.no-move::before { transition: none; }
+
+.quality-seg-opt {
+  position: relative; /* acima do polegar */
+  justify-content: center;
+  min-height: 44px; padding: 0 var(--s-4);
+  background: transparent; border: 0; border-radius: 7px;
+  color: var(--tx2); font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--t-move) var(--ease-move);
+}
+.quality-seg-opt:hover:not(.selected) { color: var(--tx); }
+.quality-seg-opt.selected { color: var(--tx); }
+
+.quality-bandwidth { display: block; margin-top: var(--s-4); color: var(--muted); font-size: 12px; }
+/* O sufixo ("padrao", "o mais leve") e uma nota sobre a linha, nao parte da
+   medida -- por isso recua um degrau de contraste em vez de virar tag. */
+.quality-bandwidth-note { color: var(--tx3); }
 
 .audio-mode { margin-bottom: 10px; }
 

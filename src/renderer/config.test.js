@@ -12,6 +12,10 @@ const {
   degradePreset,
   audienceSteps,
   qualityForAudience,
+  QUALITY_RESOLUTIONS,
+  QUALITY_FPS,
+  presetFor,
+  presetAxes,
 } = require('./config');
 
 test('load com null devolve os defaults', () => {
@@ -251,4 +255,58 @@ test('qualityForRelay: banda invalida cai na regra deterministica', () => {
 
 test('qualityForRelay: para no piso da cadeia mesmo com orcamento minusculo', () => {
   assert.equal(qualityForRelay('1080p60', 2, 1000).preset, '720p30');
+});
+
+// ---------- Eixos do seletor de qualidade ----------
+
+test('os dois eixos cobrem exatamente QUALITY_PRESET_ORDER, sem celula morta nem preset orfao', () => {
+  const combinacoes = [];
+  for (const resolution of QUALITY_RESOLUTIONS) {
+    for (const fps of QUALITY_FPS) combinacoes.push(presetFor(resolution, fps));
+  }
+  // Ordenado dos dois lados: o que importa aqui e o CONJUNTO ser igual --
+  // a ordem de exibicao de cada eixo e testada logo abaixo.
+  assert.deepEqual([...combinacoes].sort(), [...QUALITY_PRESET_ORDER].sort());
+  assert.equal(new Set(combinacoes).size, QUALITY_PRESET_ORDER.length);
+});
+
+test('os eixos vao do mais barato pro mais caro, que e a ordem que o controle mostra', () => {
+  assert.deepEqual(QUALITY_RESOLUTIONS, ['720p', '1080p', '1440p']);
+  assert.deepEqual(QUALITY_FPS, [30, 60]);
+  // Dentro de um mesmo fps, subir na lista de resolucao sempre custa mais.
+  for (const fps of QUALITY_FPS) {
+    for (let i = 1; i < QUALITY_RESOLUTIONS.length; i += 1) {
+      const antes = QUALITY_PRESETS[presetFor(QUALITY_RESOLUTIONS[i - 1], fps)].bitrate;
+      const depois = QUALITY_PRESETS[presetFor(QUALITY_RESOLUTIONS[i], fps)].bitrate;
+      assert.ok(depois > antes, `${QUALITY_RESOLUTIONS[i]}@${fps} nao custa mais que ${QUALITY_RESOLUTIONS[i - 1]}@${fps}`);
+    }
+  }
+  // E dentro de uma mesma resolucao, 60 fps sempre custa mais que 30.
+  for (const resolution of QUALITY_RESOLUTIONS) {
+    const trinta = QUALITY_PRESETS[presetFor(resolution, 30)].bitrate;
+    const sessenta = QUALITY_PRESETS[presetFor(resolution, 60)].bitrate;
+    assert.ok(sessenta > trinta, `${resolution}@60 nao custa mais que ${resolution}@30`);
+  }
+});
+
+test('presetAxes e presetFor sao ida e volta pra todo preset', () => {
+  for (const preset of QUALITY_PRESET_ORDER) {
+    const { resolution, fps } = presetAxes(preset);
+    assert.equal(presetFor(resolution, fps), preset);
+    assert.ok(QUALITY_RESOLUTIONS.includes(resolution), `${resolution} fora do eixo de resolucao`);
+    assert.ok(QUALITY_FPS.includes(fps), `${fps} fora do eixo de fps`);
+  }
+});
+
+test('presetAxes le a altura da tabela, entao o rotulo nunca diverge do que e codificado', () => {
+  assert.deepEqual(presetAxes('1440p30'), { resolution: '1440p', fps: 30 });
+  assert.equal(presetAxes('1080p60').resolution, `${QUALITY_PRESETS['1080p60'].height}p`);
+});
+
+test('eixo desconhecido cai no padrao em vez de lancar', () => {
+  assert.equal(presetFor('2160p', 60), '1080p60');
+  assert.equal(presetFor('1080p', 144), '1080p60');
+  assert.equal(presetFor(undefined, undefined), '1080p60');
+  assert.deepEqual(presetAxes('inexistente'), { resolution: '1080p', fps: 60 });
+  assert.deepEqual(presetAxes(undefined), { resolution: '1080p', fps: 60 });
 });
