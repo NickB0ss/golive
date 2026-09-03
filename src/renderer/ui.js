@@ -841,17 +841,14 @@
   }
 
   // `live` liga `.peer-avatar.on` (anel --live via box-shadow, o unico sinal
-  // saturado do tema). `borderClass` ('ok'/'warn', do estado da conexao)
-  // continua sendo emitido pra frente-compatibilidade -- hoje e inerte porque
-  // o `.peer-avatar` novo (Task 11) nao tem `border`, so `.on` pinta anel.
-  // Ver task-14-report / progress.md pra o follow-up de CSS da "borda de
-  // estado" da spec (secao 6).
-  function buildMemberRow({ id, name, avatar, borderClass, live, isSelf, pulsing, qualityTag, isOwner, canModerate, onModerate }) {
+  // saturado do tema). Sem anel no estado normal -- "conectado" e "ao vivo"
+  // sao a mesma afirmacao neste tema.
+  function buildMemberRow({ id, name, avatar, live, isSelf, pulsing, qualityTag, isOwner, canModerate, onModerate }) {
     const li = document.createElement('li');
     if (isSelf) li.classList.add('self');
     li.innerHTML = `
       <span class="peer-avatar-wrap">
-        <span class="peer-avatar${live ? ' on' : ''}${borderClass ? ` ${borderClass}` : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
+        <span class="peer-avatar${live ? ' on' : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
       </span>
       <span class="peer-name">${escapeHtml(name)}</span>
       ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
@@ -900,15 +897,11 @@
       );
     }
     for (const peer of peers.values()) {
-      const state = peer.inConns?.screen?.connectionState || peer.outConns?.screen?.connectionState
-        || peer.inConns?.camera?.connectionState || peer.outConns?.camera?.connectionState;
-      const borderClass = state === 'connected' ? 'ok' : state ? 'warn' : '';
       peerListEl.appendChild(
         buildMemberRow({
           id: peer.id,
           name: peer.name,
           avatar: peer.avatar,
-          borderClass,
           live: peer.live,
           pulsing: claimPulse(peer.live),
           qualityTag: qualityTags?.get(peer.id) || '',
@@ -986,7 +979,7 @@
     const div = document.createElement('div');
     div.className = `chat-line${grouped ? ' grouped' : ''}`;
     div.innerHTML = `
-      <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}; display:flex; align-items:center; justify-content:center; border-radius:50%; width:28px; height:28px; color:#fff; font-weight:700; font-size:11px;">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
+      <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
       <span class="chat-body">
         ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
         <span class="chat-text">${escapeHtml(entry.text)}</span>
@@ -1027,6 +1020,9 @@
 
   function render({ onSend }) {
     onChatSend = onSend;
+    // #chat-compose e um <form> sem action -- um submit acidental (Enter num
+    // futuro <input>, extensao) navegaria o renderer pra file://.../?. Corta.
+    chatComposeEl.addEventListener('submit', (e) => e.preventDefault());
     chatInputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -1054,6 +1050,7 @@
       badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');
+      badge.textContent = ''; // sem texto morto por tras do .hidden
     }
   }
 
@@ -1545,6 +1542,8 @@
     $('dialog-ban-text').textContent = `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de membros.`;
     onBanConfirm = onConfirm;
     dlgBanEl.classList.remove('hidden');
+    // Guarda o foco anterior pra restaura-lo no closeBan (restoreFocusAfterModal).
+    lastFocusedBeforeModal = document.activeElement;
     // Foco no Cancelar, nao no botao destrutivo (ver a spec, secao 8.3).
     $('btn-ban-cancel').focus();
   }

@@ -401,7 +401,14 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
   transition: width var(--dur-slow) var(--ease-in-out), opacity var(--dur-base) var(--ease-in-out);
 }
-.room-side.collapsed { width: 0; opacity: 0; border-left: none; }
+/* visibility: hidden tira os filhos (input do chat, botoes de membro) da
+   ordem de tabulacao enquanto a coluna esta recolhida e invisivel -- so
+   width:0/opacity:0 os deixava focaveis e digitaveis por tras do nada. */
+.room-side.collapsed { width: 0; opacity: 0; border-left: none; visibility: hidden; }
+
+/* O chevron do botao de recolher gira pra apontar pra onde a coluna vai. */
+#btn-toggle-side svg { transition: transform var(--dur-fast) var(--ease-in-out); }
+#btn-toggle-side.collapsed svg { transform: rotate(180deg); }
 
 .room-side-section { border-bottom: 1px solid var(--line); }
 .members-title {
@@ -477,7 +484,11 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 .chat-line { display: flex; gap: 9px; padding: 3px var(--s-2); }
 .chat-line.grouped { padding-top: 0; }
 .chat-line .chat-avatar-slot { width: 28px; flex: none; }
-.chat-line .chat-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; }
+.chat-line .chat-avatar {
+  width: 28px; height: 28px; border-radius: 50%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 11px;
+}
 .chat-line .chat-body { min-width: 0; flex: 1; }
 .chat-line .chat-head { display: flex; align-items: baseline; gap: 7px; }
 .chat-author { font-size: 12.5px; font-weight: 650; color: var(--tx); }
@@ -520,19 +531,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   letter-spacing: 0.25em;
 }
 
-#user-panel-avatar-fallback { font-weight: 700; font-size: 13px; color: #fff; }
-#user-panel-name {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 2px 4px;
-}
-#user-panel-name:hover { background: var(--surface-3); }
-.user-panel-actions { display: flex; gap: 4px; }
 .icon-btn svg { width: 17px; height: 17px; }
 /* Pausado nao e so "ativo": e um estado que esconde a tela dos outros e
    precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
@@ -546,26 +544,9 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   50% { opacity: 0.45; }
 }
 
-.peer-live-group {
-  margin-left: auto;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.peer-list li em {
-  flex: none;
-  white-space: nowrap;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--live);
-  background: var(--live-dim);
-  box-shadow: inset 0 0 0 1px rgba(57, 216, 255, 0.35);
-  padding: 2px 6px;
-  border-radius: var(--r-xs);
-}
+/* O <em>AO VIVO</em> mora dentro de .peer-live-badge, que ja carrega a
+   pilula inteira -- aqui so tira o italico do <em>. */
+.peer-list li em { font-style: normal; }
 /* Preset menor que estamos mandando pra ESTE espectador porque a conexao
    dele nao esta aguentando. Neutro de proposito -- nao e um alerta nem um
    estado "ao vivo", so um dado. Ver a regra do tema no topo. */
@@ -579,11 +560,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   flex: none;
 }
 
-/* Anel do avatar: --live quando ha sinal, --warn quando degradado, sem
-   anel no estado normal. "Conectado" e "ao vivo" sao a mesma afirmacao --
-   ha sinal -- entao sao a mesma cor. */
-.peer-avatar.ok { border-color: var(--live); }
-.peer-avatar.warn { border-color: var(--warn); }
 .peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
 
 .dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--text-3); flex: none; }

@@ -670,6 +670,15 @@
     window.golive.checkForUpdates?.();
   });
 
+  // Erro no nivel do LOBBY (fora de qualquer dialogo). O #setup-error mora
+  // dentro do #dialog-join-room e so aparece com esse dialogo aberto -- a
+  // maioria das falhas de conexao acontece com ele ja fechado (host caiu,
+  // reconexao, endereco invalido), entao essas vao pra ca.
+  function showLobbyError(msg) {
+    const el = $('lobby-error');
+    if (el) el.textContent = msg || '';
+  }
+
   let toastTimer = null;
   function showToast(msg, ms = 4000) {
     $('toast-text').textContent = msg;
@@ -713,34 +722,41 @@
   // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto
   // pelo botao "Criar sala" quanto ao reconectar numa sala propria que estava
   // salva em "Recentes" (ver isOwn em onSelect, acima).
-  async function hostRoomFlow() {
-    $('setup-error').textContent = '';
-    const protect = $('chk-protect-room').checked;
+  // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
+  // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
+  // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
+  async function hostRoomFlow(protect) {
+    showLobbyError('');
     let result;
     try {
       result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise: cfg.network.advertise, protect });
     } catch {
-      $('setup-error').textContent = 'Não consegui subir a sala: erro inesperado. Tente de novo.';
-      return;
+      return { ok: false, error: 'Não consegui subir a sala: erro inesperado. Tente de novo.' };
     }
     if (!result.ok) {
-      $('setup-error').textContent =
-        result.error === 'PORTS_EXHAUSTED'
+      return {
+        ok: false,
+        error: result.error === 'PORTS_EXHAUSTED'
           ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
-          : `Não consegui subir a sala: ${result.error}`;
-      return;
+          : `Não consegui subir a sala: ${result.error}`,
+      };
     }
     hostInfo = { port: result.port, address: result.address, pin: result.pin || null, ownerToken: result.ownerToken || null, firewall: result.firewall, addressWarning: result.addressWarning };
     renderHostWarning();
     joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address, undefined, 0, result.pin || null);
+    return { ok: true };
   }
 
   $('btn-create-room').addEventListener('click', () => {
     ui.dialogs.openCreateRoom({
+      // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
+      // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
+      // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
       onConfirm: async ({ protect }) => {
-        $('chk-protect-room').checked = protect;
-        ui.dialogs.closeCreateRoom();
-        await hostRoomFlow();
+        ui.dialogs.setCreateRoomError('');
+        const res = await hostRoomFlow(protect);
+        if (res.ok) ui.dialogs.closeCreateRoom();
+        else ui.dialogs.setCreateRoomError(res.error);
       },
     });
   });
@@ -1016,7 +1032,15 @@
   const STABLE_MS = 20000;
 
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null) {
-    if (!reconnectAttempt) $('setup-error').textContent = '';
+    if (!reconnectAttempt) {
+      $('setup-error').textContent = '';
+      // Tentativa deliberada -- o dialogo de entrar ja fechou (ou nunca
+      // abriu, no caso de hospedar / clicar numa sala da lista), entao o
+      // feedback vai pro lobby (ledger T17). Limpo no onOpen; trocado pela
+      // mensagem de falha no onError/onClose. Numa reconexao automatica
+      // (reconnectAttempt > 0) o countdown fica: e ele que informa o progresso.
+      showLobbyError('Conectando…');
+    }
     // Join deliberado do usuario: qualquer retry pendente de uma queda
     // anterior morre aqui (esta chamada e por si so a nova intencao). O
     // retry automatico (reconnectAttempt > 0) e a propria continuacao do
@@ -1105,6 +1129,7 @@
           });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           if (attempts > 0) $('setup-error').textContent = '';
+          showLobbyError(''); // conectou -- limpa "Conectando…" / countdown de reconexao
           stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
           sound.playJoinSound();
           onSettled?.();
@@ -1118,8 +1143,11 @@
         onMessage: (msg) => session.signalQueue.push(() => handleSignal(session, msg)),
         onError: () => {
           if (currentSession === session && attempts === 0) {
-            $('setup-error').textContent =
-              'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.';
+            // O dialogo de entrar ja fechou antes de chamar joinRoom -- o erro
+            // vai pro lobby, nao pro #setup-error invisivel.
+            showLobbyError(
+              'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.'
+            );
           }
           onSettled?.();
         },
@@ -1148,6 +1176,7 @@
               showPinField: reason === 'pin',
               onConnect: handleJoinConnect,
             });
+            showLobbyError(''); // o aviso vai pro #setup-error do dialogo reaberto
             $('setup-error').textContent =
               reason === 'pin' ? 'PIN incorreto ou ausente. Confira o PIN da sala e tente de novo.'
               : reason === 'banned' ? 'Você foi banido desta sala.'
@@ -1183,7 +1212,7 @@
             stopStatsLoop();
             ui.stageHeader.clear();
             renderHostWarning();
-            $('setup-error').textContent = 'O host encerrou a sala.';
+            showLobbyError('O host encerrou a sala.');
             renderMembersPanel();
             renderRoomList();
             onSettled?.();
@@ -1269,8 +1298,9 @@
             // no onClose da tentativa seguinte), e leaveRoom / um join
             // deliberado / o onOpen de uma reconexao que abriu o cancelam.
             const next = attempts + 1;
-            $('setup-error').textContent =
-              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`;
+            showLobbyError(
+              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`
+            );
             renderMembersPanel();
             renderRoomList();
             retryTimer = setTimeout(() => {
@@ -1282,15 +1312,17 @@
           }
 
           if (abnormal && attempts >= MAX_RECONNECT) {
-            $('setup-error').textContent =
-              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
+            showLobbyError(
+              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+            );
           } else if (session.opened && !abnormal) {
             // Fecho limpo (1000/1001) -- o proprio host fechando o app, que e
             // o cenario tipico do H1. Sem retry, mas a sessao virou orfa
             // acima: o video segue e o usuario precisa saber disso e que o
             // botao Desconectar e a saida.
-            $('setup-error').textContent =
-              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.';
+            showLobbyError(
+              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+            );
           }
 
           // Cabecalho da sala: limpa SO quando nao sobrou orfa nenhuma. Se
@@ -1308,7 +1340,7 @@
       // Endereco malformado (ex: porta nao numerica) faz `new WebSocket`
       // estourar de forma sincrona. Sem isso o botao que chamou joinRoom
       // ficava travado em "Conectando…" pra sempre.
-      $('setup-error').textContent = 'Não consegui conectar: endereço inválido.';
+      showLobbyError('Não consegui conectar: endereço inválido.');
       onSettled?.();
       return;
     }
@@ -1446,9 +1478,15 @@
     onSend: (text) => currentSession?.sig.send({ type: 'chat', text }),
   });
 
-  // Recolher a coluna direita (membros + banidos + chat).
+  // Recolher a coluna direita (membros + banidos + chat). O CSS de
+  // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
+  // por teclado enquanto invisiveis); aqui a affordance do botao acompanha o
+  // estado -- title e o chevron giram.
   $('btn-toggle-side').addEventListener('click', () => {
-    $('room-side').classList.toggle('collapsed');
+    const collapsed = $('room-side').classList.toggle('collapsed');
+    const btn = $('btn-toggle-side');
+    btn.classList.toggle('collapsed', collapsed);
+    btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
   });
 
   // Segundo botao de configuracoes (no rodape do lobby) -- reusa o handler do primeiro.
@@ -1480,6 +1518,7 @@
       if (wasHosting) window.golive.stopHosting?.().catch(() => {});
       ui.stageHeader.clear();
       $('setup-error').textContent = '';
+      showLobbyError(''); // saiu de vez -- limpa o aviso de "conexao encerrada"
       renderHostWarning();
       teardownSession(orphan);
       // Sem markCooldown: `activeRoomAddress` ja e null na orfa (o onClose
@@ -1511,6 +1550,7 @@
     // vazia, ate o app fechar.
     if (wasHosting) window.golive.stopHosting?.().catch(() => {});
     ui.stageHeader.clear();
+    showLobbyError(''); // pode haver um countdown de reconexao da orfa encerrada acima
     renderHostWarning();
     teardownSession(session);
     markCooldown(leavingAddress);
@@ -1529,6 +1569,7 @@
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
+        showLobbyError(''); // entrou de verdade -- nada de erro pendente no lobby
         ownerId = msg.owner ? 'me' : (msg.peers.find((p) => p.owner)?.id ?? null);
         for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
         renderMembersPanel();
@@ -1626,6 +1667,9 @@
         break;
       }
       case 'peer-left': {
+        // Se quem saiu era o dono, zera ownerId -- senao a coroa e o "iAmOwner"
+        // ficam presos num id que nao esta mais na sala.
+        if (msg.id === ownerId) ownerId = null;
         mesh.removePeer(msg.id);
         for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
         for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
