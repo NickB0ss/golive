@@ -835,7 +835,11 @@
     setCreateRoomBusy(false);
     onCreateConfirm = onConfirm;
     dlgCreateEl.classList.remove('hidden');
+    // focusFirstInteractive guarda o foco anterior (pro restore no close),
+    // mas o primeiro focavel aqui e a caixa "anunciar" -- e as duas ja vem
+    // com um padrao razoavel. O foco vai pro "Criar": Enter cria a sala.
     focusFirstInteractive(dlgCreateEl);
+    btnCreateConfirmEl.focus();
   }
   function closeCreateRoom() {
     setCreateRoomBusy(false);

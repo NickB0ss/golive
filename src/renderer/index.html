@@ -103,26 +103,25 @@
 <div id="dialog-create-room" class="modal hidden">
   <div class="modal-box dialog-box">
     <h2>Criar sala</h2>
-    <p class="dialog-sub">Você vira o dono: só você pode parar transmissão, expulsar e banir.</p>
 
     <!-- "Anunciar na rede" mora AQUI, nao em Configuracoes: e uma
          propriedade da sala que esta sendo criada, decidida no momento em
          que ela e criada. O estado inicial vem do config (ultima escolha). -->
-    <div class="check-group">
-      <label class="check">
+    <div class="check-group bare">
+      <label class="check tight">
         <input id="chk-advertise-room" type="checkbox" />
         <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
         <span class="check-text">
           <span class="check-title">Anunciar a sala na rede</span>
-          <span class="check-desc">Quem estiver na mesma LAN virtual vê a sala na lista e entra sem precisar do endereço.</span>
+          <span class="check-desc">Aparece na lista de quem está na mesma LAN.</span>
         </span>
       </label>
-      <label class="check">
+      <label class="check tight">
         <input id="chk-protect-room" type="checkbox" />
         <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
         <span class="check-text">
           <span class="check-title">Proteger com um PIN</span>
-          <span class="check-desc">Gera um PIN de 4 dígitos que quem quiser entrar vai precisar digitar.</span>
+          <span class="check-desc">Quatro dígitos, pedidos na entrada.</span>
         </span>
       </label>
     </div>

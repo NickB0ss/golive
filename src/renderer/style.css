@@ -206,12 +206,19 @@ button svg { width: 17px; height: 17px; flex: none; }
 }
 .check:hover { background: var(--s2); }
 .check.compact { align-items: center; padding: var(--s-2) var(--s-3); }
+/* Variantes pro dialogo de criar sala: duas opcoes com uma linha de apoio
+   cada nao precisam da moldura nem do respiro de um painel de
+   Configuracoes -- com eles, o dialogo virava meia tela. */
+.check-group.bare { border: none; background: none; padding: 0; gap: 0; }
+.check.tight { gap: var(--s-2); padding: var(--s-2); }
+.check.tight .check-desc { font-size: 11.5px; }
 
 /* Fora do fluxo e invisivel, mas focavel e clicavel pelo label. */
 .check input[type="checkbox"] {
   position: absolute; opacity: 0; width: 20px; height: 20px; margin: 0;
   top: var(--s-3); left: var(--s-3); cursor: pointer;
 }
+.check.tight input[type="checkbox"] { top: var(--s-2); left: var(--s-2); }
 
 .check-box {
   flex: none; width: 20px; height: 20px; border-radius: var(--r-xs);
@@ -559,10 +566,8 @@ input[type="range"] { accent-color: var(--live); }
 
 /* ============ DIALOGOS (criar sala / entrar / banir) ============ */
 
-.dialog-box { width: min(380px, 90vw); padding: var(--s-5); }
-.dialog-box h2 { margin: 0 0 var(--s-2); font-size: 17px; }
-.dialog-sub { margin: 0 0 var(--s-4); font-size: 12.5px; line-height: 1.55; color: var(--tx2); }
-
+.dialog-box { width: min(360px, 90vw); padding: var(--s-5); }
+.dialog-box h2 { margin: 0 0 var(--s-3); font-size: 17px; }
 /* Botao ocupado: o rotulo troca e o spinner entra no lugar do que houver
    antes dele. Subir o servidor embutido inclui pedir liberacao de firewall
    ao Windows, o que pode abrir um prompt de elevacao e demorar segundos --
@@ -833,14 +838,26 @@ button.busy { cursor: default; }
      transborda pra cima do proximo (camera cobrindo a tela compartilhada,
      ou vice-versa). Com 1fr a trilha vira um tamanho definido que o tile
      de fato respeita (ver max-height: 100% em .tile). */
-  grid-auto-rows: minmax(0, 1fr);
+  /* Trilha do tamanho do tile, nao 1fr.
+   *
+   * Com trilhas de 1fr a altura do palco era dividida IGUALMENTE entre as
+   * linhas, e a folga (3 tiles 16/9 lado a lado sao mais largos que altos,
+   * entao sempre sobra altura) era multiplicada por linha: um vao enorme
+   * entre as duas fileiras e outro embaixo. Com `min-content` a folga
+   * aparece UMA vez, e o `safe center` a divide entre topo e base -- `safe`
+   * porque, quando os tiles nao cabem, ele volta a alinhar no inicio em vez
+   * de cortar a primeira fileira pra fora da area rolavel. */
+  grid-auto-rows: min-content;
   gap: 14px;
-  /* As trilhas (1fr) ja dividem a altura do palco; `center` no eixo do
-     bloco tira os tiles do topo e distribui o espaco que sobra dentro de
-     cada trilha, em vez de acumular tudo num vazio embaixo. */
+  align-content: safe center;
   align-items: center;
   justify-content: center;
 }
+/* Excecao do tile unico: a trilha volta a ser 1fr (altura definida) porque
+   e ela que faz o `max-height: 100%` de .tile valer -- sem isso, numa
+   janela larga e baixa, um tile 16/9 com a largura toda ficaria mais alto
+   que o palco e a grade rolaria. */
+.grid[data-count="1"] { grid-auto-rows: minmax(0, 1fr); }
 /* Um tile so nao vira um painel de 1900px numa janela maximizada. */
 .grid[data-count="1"] { grid-template-columns: minmax(0, min(1280px, 100%)); }
 .grid[data-count="2"],

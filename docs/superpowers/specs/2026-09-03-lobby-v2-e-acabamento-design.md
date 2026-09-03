@@ -218,6 +218,13 @@ já é ligado/desligado pelo `advertise` que viaja no `room:host`, e
 └────────────────────────────────────────────┘
 ```
 
+O diálogo é **deliberadamente curto**: título, as duas opções com uma linha
+de apoio cada, e os botões. Sem parágrafo de abertura, sem moldura em volta
+das opções (a variante `.check-group.bare` + `.check.tight`) — a primeira
+versão tinha as três coisas e ocupava meia tela pra fazer duas perguntas de
+sim/não. O foco abre no **Criar**, não na primeira caixa: as duas já vêm com
+um padrão razoável, então Enter cria a sala.
+
 O botão "Criar" ganha estado ocupado: `disabled`, spinner girando no lugar do
 ícone e rótulo `Criando sala…`. O Cancelar também fica `disabled` enquanto
 isso — cancelar no meio do `room:host` não cancelaria coisa nenhuma, e um
@@ -358,6 +365,18 @@ cada `showTile`/`removeTile`, e o CSS decide as colunas:
 | 3–4 | 2 | 2×2; com 3, o terceiro fica na coluna da esquerda, previsível |
 | 5–6 | 3 | |
 | 7+ | 3 | rola verticalmente |
+
+As trilhas são `min-content`, **não** `1fr`, com `align-content: safe center`.
+Com trilhas de `1fr` a altura do palco era dividida igualmente entre as
+linhas, e como três tiles 16/9 lado a lado são sempre mais largos que altos,
+a folga vertical sobrava — multiplicada por linha. O resultado eram dois
+vãos: um enorme entre as fileiras e outro embaixo. Com `min-content` a folga
+aparece uma vez só e o `safe center` a divide entre topo e base; `safe`
+porque, quando os tiles não cabem, ele volta a alinhar no início em vez de
+empurrar a primeira fileira pra fora da área rolável. A exceção é o tile
+único, que mantém `1fr`: é a trilha de altura definida que faz o
+`max-height: 100%` do tile valer, senão numa janela larga e baixa um tile
+com a largura toda ficaria mais alto que o palco.
 
 Numa janela estreita tudo cai pra uma coluna. O corte é `@media` na largura
 da janela (1100px), não `@container` na largura do palco: `container-type`
