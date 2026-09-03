@@ -46,7 +46,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.6.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.7.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **306 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
@@ -112,7 +112,7 @@ após `await`).
   de `auto-fit` (que deixava tile órfão ocupando meia tela) e de `1fr` (que
   empilhava toda a folga vertical numa fileira só). Barra de rolagem com
   estilo global fino e escuro. Nenhum arquivo de transporte tocado.
-- **0.6.0** ([PR #32](https://github.com/NickB0ss/golive/pull/32), **pré-release**)
+- **0.6.0** ([PR #32](https://github.com/NickB0ss/golive/pull/32))
   — **trava de versão de sala**: a sala recusa quem não está exatamente na
   versão de quem a criou (`join-denied {reason:'version'}` + close 1008,
   checado logo depois do ban e antes do PIN; a versão viaja no beacon UDP,
@@ -125,6 +125,20 @@ após `await`).
   perfil, buscar atualização e Configurações à direita). `#btn-open-settings-2`
   e a classe `.icon-btn` (sem elemento) saíram. Novo `src/renderer/version.js`
   (parte pura: comparar + redigir o aviso), +15 testes.
+- **0.7.0** ([PR #34](https://github.com/NickB0ss/golive/pull/34)) — **seletor de
+  qualidade em dois eixos** no diálogo de compartilhar: os seis chips eram uma
+  matriz 3×2 (resolução × fps) achatada numa lista que quebrava no meio do
+  1080p; viraram dois controles segmentados, um por eixo, sempre do mais barato
+  pro mais caro da esquerda pra direita. As três tags ("mais leve" / "padrão" /
+  "exige banda") saíram dos alvos e viraram sufixo na linha de resumo, ao lado
+  do número exato da combinação. Não virou slider porque a escada de custo não
+  é monotônica (1440p30 = 10 Mbps, 1080p60 = 12). `presetFor`/`presetAxes` em
+  `config.js` ao lado da tabela que indexam, com teste de produto cartesiano
+  garantindo sincronia; radiogroup por eixo com roving tabindex e `aria-live`
+  na linha de custo. +5 testes.
+  **É a primeira release `latest` da linha do redesign** — quem estava na 0.3.4
+  recebe de uma vez tudo de 0.4.0 a 0.7.0 (interface nova, chat, moderação,
+  trava de versão, seletor de qualidade).
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
   Detalhe por item na auditoria e no histórico do git.
 
