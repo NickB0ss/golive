@@ -204,14 +204,6 @@ input[type="text"], select {
 input[type="text"]:focus-visible, select:focus-visible { outline: none; box-shadow: var(--ring); }
 input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 
-/* ---------- Layout raiz ---------- */
-
-.app {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 220px;
-  height: 100vh;
-}
-
 .update-banner, .toast {
   position: fixed;
   z-index: 1000;
@@ -272,63 +264,108 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   100% { margin-left: 100%; }
 }
 
-.rooms-col, .members-col {
-  background: var(--surface-1);
-  overflow-y: auto;
+/* ============ LOBBY ============ */
+
+.lobby {
+  height: 100vh;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--s-5) var(--s-4);
   display: flex;
   flex-direction: column;
+  gap: var(--s-5);
 }
-.rooms-col { border-right: 1px solid var(--line); }
-.members-col { border-left: 1px solid var(--line); padding: 16px; }
 
-.app-brand {
+.lobby-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
+  gap: var(--s-2);
 }
 .app-brand-badge {
-  width: 28px; height: 28px;
-  border-radius: var(--r-xs);
-  /* A marca nao e sinal -- ver a regra do acento no topo do arquivo. */
-  background: var(--surface-3);
-  color: var(--text-1);
-  display: grid; place-items: center;
-  font-weight: 700;
-  font-size: 12px;
-  flex: none;
+  width: 30px; height: 30px; border-radius: var(--r-sm);
+  background: var(--act); color: #fff; font-weight: 700; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; flex: none;
 }
-.app-brand-name { font-weight: 700; font-size: 14px; margin-right: auto; }
-
-.rooms-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  color: var(--muted);
-  padding: 16px 16px 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+.app-brand-name { font-weight: 700; font-size: 15px; margin-right: auto; }
 .icon-btn-inline {
-  /* 32x32 e o alvo minimo de toque (§5.6 da spec). O icone continua 14px --
-     cresce a area clicavel, nao o desenho. */
-  width: 32px; height: 32px;
-  padding: 0;
-  background: transparent;
-  color: var(--text-2);
-  border-radius: var(--r-xs);
-  display: grid;
-  place-items: center;
+  width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: var(--r-xs);
+  color: var(--tx2); background: transparent; border: none;
 }
-.icon-btn-inline svg { width: 14px; height: 14px; }
-.icon-btn-inline:hover { background: var(--surface-3); color: var(--text-1); }
+.icon-btn-inline svg { width: 15px; height: 15px; }
+.icon-btn-inline:hover { background: var(--s3); color: var(--tx); }
 .icon-btn-inline.spin svg { animation: spin 600ms linear; }
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+
+.lobby-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
 }
+.lobby-hero-btn { padding: 0 var(--s-4); height: 56px; font-size: 14.5px; }
+
+.lobby-rooms { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.rooms-title {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--tx3); font-weight: 700; margin: 0;
+}
+.room-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; gap: 1px; background: var(--s1);
+  border: 1px solid var(--line); border-radius: var(--r-md); }
+.room-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4); min-height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+.room-row:last-child { border-bottom: none; }
+.room-info { display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1; }
+.room-item-text { min-width: 0; flex: 1; }
+.room-name { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-meta { font-size: 12px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-lock { font-size: 0.9em; opacity: .8; flex: none; }
+.room-connect { min-height: 36px; padding: 0 14px; font-size: 12.5px; }
+.room-connect:disabled { color: var(--live); opacity: 1; cursor: default; }
+.room-connect.cooldown { opacity: .4; cursor: not-allowed; }
+.room-list .muted { color: var(--tx3); padding: var(--s-4); text-align: center; list-style: none; }
+
+.user-panel {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); background: var(--s1);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+}
+.user-avatar {
+  width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none;
+  min-height: 0; padding: 0; background: var(--s4); border: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx2); font-weight: 700;
+}
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.user-panel-name {
+  font-weight: 600; font-size: 13.5px; flex: 1; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: transparent; border: none; min-height: 0; padding: 0; color: var(--tx);
+}
+.icon-btn {
+  width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--tx2); border: none;
+}
+.icon-btn:hover { background: var(--s3); color: var(--tx); }
+.icon-btn.active { background: var(--s4); color: var(--tx); }
+
+/* ============ DIALOGOS (criar sala / entrar / banir) ============ */
+
+.dialog-box { width: min(380px, 90vw); padding: var(--s-5); }
+.dialog-box h2 { margin: 0 0 var(--s-3); font-size: 17px; }
+.dialog-hint { color: var(--tx2); font-size: 12.5px; line-height: 1.55; margin: var(--s-2) 0 0; }
+.dialog-field { margin-bottom: var(--s-3); }
+.dialog-field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.dialog-field input {
+  width: 100%; min-height: 44px; padding: 0 12px; border-radius: var(--r-sm);
+  background: var(--s2); border: 1px solid var(--line2); color: var(--tx); font-size: 14px;
+}
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-4); }
+
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
 .members-title {
   font-size: 11px;
   text-transform: uppercase;
@@ -337,92 +374,16 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   padding: 16px 16px 8px;
 }
 
-.room-list, .peer-list { list-style: none; flex: 1; overflow-y: auto; }
-.room-list { padding: 0 8px; }
+.peer-list { list-style: none; flex: 1; overflow-y: auto; }
 
-.rooms-subtitle {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  color: var(--muted);
-  padding: 8px 16px 4px;
-}
 /* O ::before com um bullet virou o componente de status de verdade: a
    linha ja renderiza um `.dot`, entao ele so precisa herdar a cor certa. */
 #room-list-live .dot { background: var(--live); }
-.room-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-bottom: 2px;
-  border-radius: var(--r-sm);
-  position: relative;
-  /* Alta frequencia inverte a assimetria: entra em 0ms (abaixo), sai em
-     --t-tint. Esperar pelo hover de uma lista parece travamento. */
-  transition: background-color var(--t-tint) var(--ease-move);
-}
-@media (hover: hover) and (pointer: fine) {
-  .room-row:hover { background: var(--surface-3); transition-duration: 0ms; }
-}
-.room-row.active { background: var(--surface-4); }
-/* O unico acento da coluna, e ele quer dizer "e nesta sala que voce esta". */
-.room-row.active::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 6px; bottom: 6px;
-  width: 3px;
-  border-radius: var(--r-full);
-  background: var(--live);
-}
 
-.room-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 6px 8px 10px;
-}
-.room-info .dot { flex: none; }
-.room-item-text { min-width: 0; flex: 1; }
-.room-name { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.room-connect, .room-delete {
-  flex: none;
-  width: 28px; height: 28px;
-  padding: 0;
-  background: transparent;
-  border-radius: 6px;
-  display: grid; place-items: center;
-  color: var(--muted);
-}
-.room-connect svg, .room-delete svg { width: 15px; height: 15px; }
-.room-connect:hover:not(:disabled) { background: var(--surface-4); color: var(--text-1); }
-.room-connect:disabled { color: var(--live); cursor: default; opacity: 1; }
-.room-connect.cooldown { opacity: .35; cursor: not-allowed; }
-.room-delete { opacity: 0; margin-right: 4px; }
-.room-row:hover .room-delete { opacity: 1; }
-.room-delete:hover { background: var(--surface-3); color: var(--danger); }
-
-.rooms-actions { padding: 4px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
-.room-action-btn { width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; }
-.room-action-btn svg { width: 15px; height: 15px; flex: none; }
-.join-address-form { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
-
-/* B3 -- PIN opcional da sala */
-.protect-room-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 16px 10px;
-  font-size: 12px; color: var(--muted);
-  cursor: pointer; user-select: none;
-}
-.protect-room-row input { accent-color: var(--accent, currentColor); }
 #in-pin {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.25em;
 }
-.room-lock { font-size: 0.85em; opacity: .8; }
 .stage-room-pin {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: 12px; font-weight: 650;
@@ -433,28 +394,7 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   white-space: nowrap;
 }
 
-.user-panel {
-  margin-top: auto;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  border-top: 1px solid var(--line-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.user-avatar {
-  width: 32px; height: 32px;
-  padding: 0;
-  border-radius: 50%;
-  overflow: hidden;
-  background: var(--surface-4);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-.user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 #user-panel-avatar-fallback { font-weight: 700; font-size: 13px; color: #fff; }
-.user-panel-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #user-panel-name {
   flex: 1;
   min-width: 0;
@@ -467,18 +407,7 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 }
 #user-panel-name:hover { background: var(--surface-3); }
 .user-panel-actions { display: flex; gap: 4px; }
-.icon-btn {
-  width: 32px; height: 32px;
-  padding: 0;
-  background: transparent;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-}
 .icon-btn svg { width: 17px; height: 17px; }
-.icon-btn:hover { background: var(--surface-3); }
-/* Ativo se distingue por elevacao, nao por cor. */
-.icon-btn.active { background: var(--surface-4); box-shadow: inset 0 0 0 1px var(--line-strong); }
 /* Pausado nao e so "ativo": e um estado que esconde a tela dos outros e
    precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
    elevacao neutra do .active. */
