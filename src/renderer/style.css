@@ -89,6 +89,19 @@
   --surface-4: var(--s4);
   --line-subtle: var(--line);
   --line-strong: var(--line2);
+
+  /* Aliases de motion -- mesma razao do bloco de aliases acima: as secoes
+     nao tocadas nesta reescrita (tile, modal, indicadores deslizantes,
+     view-transition, pulse de reconexao) referenciam estes nomes. O scale
+     novo tem 3 duracoes / 2 curvas; o antigo tinha mais -- alguma nuance
+     se perde, mas todo o movimento volta. */
+  --t-press:    var(--dur-fast);
+  --t-hover:    var(--dur-fast);
+  --t-tint:     var(--dur-base);
+  --t-move:     var(--dur-slow);
+  --t-modal:    var(--dur-slow);
+  --ease-enter: var(--ease-out);
+  --ease-move:  var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
