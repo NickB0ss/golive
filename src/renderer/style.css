@@ -366,15 +366,150 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
+/* ============ SALA ============ */
+
+.room { display: flex; height: 100vh; }
+.stage { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.stage-header {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line);
+  background: var(--s1);
+}
+.stage-status-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--tx3); flex: none; }
+.stage-status-dot[data-level="live"] { background: var(--live); }
+.stage-status-dot[data-level="degraded"] { background: var(--warn); }
+.stage-status-dot[data-level="paused"] { background: var(--tx3); }
+.stage-room-name { font-weight: 650; font-size: 14.5px; }
+.stage-room-address { font-size: 12px; color: var(--tx2); font-variant-numeric: tabular-nums; }
+.stage-room-pin { font-size: 12px; color: var(--warn); }
+.stage-status-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--r-full);
+  background: var(--warn-dim); color: var(--warn);
+}
+#btn-toggle-side { margin-left: auto; }
+
+.control-bar {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line); background: var(--s1);
+}
+.control-btn { min-width: 0; }
+.control-btn-end { margin-left: auto; }
+
+.room-side {
+  width: 300px; flex: none; display: flex; flex-direction: column;
+  border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
+  transition: width var(--dur-slow) var(--ease-in-out), opacity var(--dur-base) var(--ease-in-out);
+}
+.room-side.collapsed { width: 0; opacity: 0; border-left: none; }
+
+.room-side-section { border-bottom: 1px solid var(--line); }
 .members-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  color: var(--muted);
-  padding: 16px 16px 8px;
+  margin: 0; padding: var(--s-3) var(--s-3) var(--s-2);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--tx3); font-weight: 700;
 }
 
-.peer-list { list-style: none; flex: 1; overflow-y: auto; }
+.peer-list, .banned-list { list-style: none; margin: 0; padding: 0 var(--s-2) var(--s-2); max-height: 176px; overflow-y: auto; }
+.peer-list li, .banned-list li {
+  display: flex; align-items: center; gap: var(--s-2);
+  min-height: 44px; padding: 0 var(--s-2); border-radius: var(--r-sm); position: relative;
+}
+.peer-list li:hover, .banned-list li:hover { background: var(--s2); }
+.peer-list .muted { color: var(--tx3); }
+.peer-list li.self { color: var(--tx2); }
+
+.peer-avatar-wrap { position: relative; flex: none; }
+.peer-avatar {
+  width: 28px; height: 28px; border-radius: 50%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 11px;
+}
+.peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.peer-avatar.on { box-shadow: 0 0 0 2px var(--live); }
+.banned-list .peer-avatar { opacity: .5; }
+
+.peer-name { font-weight: 550; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peer-you-tag { color: var(--tx3); font-weight: 400; font-size: 10.5px; }
+.peer-crown { color: var(--warn); font-size: 12px; }
+.peer-live-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--live-dim); color: #FF8385;
+  border-radius: var(--r-xs); padding: 2px 6px; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .03em; margin-left: auto;
+}
+.peer-live-badge svg { width: 9px; height: 9px; }
+
+.member-menu-btn {
+  margin-left: auto; width: 28px; height: 28px; min-height: 0; padding: 0;
+  border-radius: var(--r-xs); background: transparent; color: var(--tx2); border: none;
+  flex: none;
+}
+.member-menu-btn:hover { background: var(--s3); color: var(--tx); }
+
+.member-menu {
+  position: fixed; z-index: 50; background: var(--s2); border: 1px solid var(--line2);
+  border-radius: var(--r-md); padding: 5px; width: 210px; box-shadow: var(--shadow-3);
+}
+.member-menu-item {
+  display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 9px;
+  border-radius: var(--r-xs); font-size: 12.5px; color: var(--tx); cursor: pointer;
+}
+.member-menu-item:hover { background: var(--s3); }
+.member-menu-item svg { width: 15px; height: 15px; flex: none; }
+.member-menu-item.warn { color: var(--warn); }
+.member-menu-item.danger { color: #FF8385; }
+.member-menu-sep { height: 1px; background: var(--line); margin: 5px 4px; }
+.member-menu-hint { font-size: 10px; color: var(--tx3); padding: 4px 9px 5px; line-height: 1.45; }
+
+.banned-readmit {
+  margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--act);
+  border: 1px solid var(--line2); border-radius: var(--r-xs); padding: 3px 8px;
+  background: transparent; min-height: 0;
+}
+.banned-readmit:hover { background: var(--s3); }
+
+/* ---- Chat ---- */
+
+.chat-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
+
+.chat-line { display: flex; gap: 9px; padding: 3px var(--s-2); }
+.chat-line.grouped { padding-top: 0; }
+.chat-line .chat-avatar-slot { width: 28px; flex: none; }
+.chat-line .chat-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; }
+.chat-line .chat-body { min-width: 0; flex: 1; }
+.chat-line .chat-head { display: flex; align-items: baseline; gap: 7px; }
+.chat-author { font-size: 12.5px; font-weight: 650; color: var(--tx); }
+.chat-time { font-size: 10px; color: var(--tx3); }
+.chat-text { font-size: 12.5px; line-height: 1.5; color: #D3D7DD; margin-top: 1px; word-break: break-word; }
+
+.chat-sys {
+  display: flex; align-items: center; gap: 7px; padding: 4px var(--s-3);
+  font-size: 11px; line-height: 1.4; color: var(--tx3);
+}
+.chat-sys svg { width: 12px; height: 12px; flex: none; }
+.chat-sys.warn { color: var(--warn); }
+.chat-sys.danger { color: #FF8385; }
+
+.chat-compose {
+  margin: var(--s-2); background: var(--s2); border: 1px solid var(--line2);
+  border-radius: var(--r-sm); padding: 9px 11px; display: flex; align-items: flex-end; gap: 6px;
+  transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
+}
+.chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.22); }
+.chat-compose textarea {
+  flex: 1; resize: none; background: transparent; border: none; color: var(--tx);
+  font-family: inherit; font-size: 12.5px; line-height: 1.4; max-height: 88px;
+}
+.chat-compose textarea:focus { outline: none; }
+.chat-input-count { font-size: 10px; color: var(--tx3); flex: none; }
+.chat-compose.disabled { opacity: .6; pointer-events: none; }
+
+.offbar {
+  background: var(--warn-dim); color: var(--warn); font-size: 11px;
+  padding: 7px var(--s-3); border-top: 1px solid rgba(245, 181, 68, 0.2);
+}
 
 /* O ::before com um bullet virou o componente de status de verdade: a
    linha ja renderiza um `.dot`, entao ele so precisa herdar a cor certa. */
@@ -383,15 +518,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
 #in-pin {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.25em;
-}
-.stage-room-pin {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px; font-weight: 650;
-  color: var(--text-2);
-  background: var(--surface-3, var(--warn-dim));
-  border-radius: var(--r-full);
-  padding: 2px var(--s-2);
-  white-space: nowrap;
 }
 
 #user-panel-avatar-fallback { font-weight: 700; font-size: 13px; color: #fff; }
@@ -420,17 +546,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   50% { opacity: 0.45; }
 }
 
-.peer-list li {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line-subtle);
-  font-size: 14px;
-  /* O nome encolhe antes de empurrar o badge "AO VIVO" pra fora da coluna
-     -- sem isto a linha estoura 2px e a coluna inteira ganha uma barra de
-     rolagem horizontal. */
-  min-width: 0;
-  overflow: hidden;
-}
 .peer-live-group {
   margin-left: auto;
   flex: none;
@@ -451,18 +566,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   padding: 2px 6px;
   border-radius: var(--r-xs);
 }
-/* O nome precisa ser um elemento pra poder truncar: um no de texto solto
-   vira item anonimo do flex e nao aceita text-overflow. */
-.peer-name {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.peer-list .muted { color: var(--muted); border: none; }
-.peer-list li.self { font-weight: 600; }
-.peer-you-tag { color: var(--muted); font-weight: 400; font-size: 12px; }
 /* Preset menor que estamos mandando pra ESTE espectador porque a conexao
    dele nao esta aguentando. Neutro de proposito -- nao e um alerta nem um
    estado "ao vivo", so um dado. Ver a regra do tema no topo. */
@@ -476,66 +579,20 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   flex: none;
 }
 
-.peer-avatar-wrap { position: relative; flex: none; display: grid; place-items: center; }
-
-.peer-avatar {
-  width: 36px; height: 36px;
-  flex: none;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-}
 /* Anel do avatar: --live quando ha sinal, --warn quando degradado, sem
    anel no estado normal. "Conectado" e "ao vivo" sao a mesma afirmacao --
    ha sinal -- entao sao a mesma cor. */
 .peer-avatar.ok { border-color: var(--live); }
 .peer-avatar.warn { border-color: var(--warn); }
-.peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
-
-/* Vive ao lado de "AO VIVO" (dentro de .peer-live-group), nao mais
-   colado no avatar -- os dois formam um so grupo de sinal, no lado
-   direito da linha. */
-.peer-live-badge {
-  position: relative;
-  flex: none;
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  background: var(--live);
-  display: grid;
-  place-items: center;
-  color: var(--surface-0);
-}
-.peer-live-badge svg { width: 8px; height: 8px; }
 
 .dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--text-3); flex: none; }
 .dot.ok { background: var(--live); }
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--danger); }
 
-/* ---------- Palco ---------- */
-
-.stage { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-
-.stage-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: var(--s-4) var(--s-5);
-  border-bottom: 1px solid var(--line-subtle);
-}
-/* O ponto e um indicador de ESTADO, nao decoracao: ele so recebe o acento
-   quando alguem esta de fato ao vivo. Ver a regra do tema no topo do
-   arquivo -- antes disto ele era pintado de --live fixo e ficava aceso por
-   voce estar numa sala. */
-.stage-status-dot {
-  width: 8px; height: 8px; border-radius: var(--r-full);
-  background: var(--text-3); flex: none;
-  transition: background var(--t-tint) var(--ease-move);
-}
-.stage-status-dot[data-level="live"] { background: var(--live); }
-.stage-status-dot[data-level="degraded"] { background: var(--warn); }
-.stage-status-dot[data-level="paused"] { background: var(--text-3); }
+/* O ponto ganha o pulso quando esta reconectando -- as demais cores/niveis
+   ja vem do bloco SALA acima. */
 .stage-status-dot[data-level="reconnecting"] {
   background: var(--warn);
   animation: status-dot-pulse 1.4s var(--ease-move) infinite;
@@ -549,20 +606,6 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--live); }
   50% { opacity: 0.35; }
 }
 
-.stage-status-badge {
-  font-size: 12px;
-  color: var(--warn);
-  background: var(--warn-dim);
-  border-radius: var(--r-full);
-  padding: 2px var(--s-2);
-  white-space: nowrap;
-}
-.stage-room-name { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
-.stage-room-address {
-  color: var(--text-2);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-}
 #btn-disconnect { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 #btn-disconnect svg { width: 14px; height: 14px; }
 #btn-disconnect:disabled { opacity: .5; cursor: not-allowed; }
