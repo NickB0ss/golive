@@ -27,10 +27,14 @@
   --tx:  #E8EAED;
   --tx2: #9AA0AA;
   --tx3: #868D9B; /* rotulo 10-11px, hora, dica -- 5.33:1 sobre --s1, 4.89:1 sobre --s2 */
+  --tx-soft: #D3D7DD; /* corpo de mensagem do chat -- entre --tx e --tx2 */
 
   /* Cor semantica -- tres papeis, nunca decorativo (ver a spec, secao 4.1).
      --act e --live sao os dois unicos acentos que competem por atencao;
-     --danger so preenche o botao de confirmar banimento, nunca e acento. */
+     --danger so preenche o botao de confirmar banimento, nunca e acento.
+     TRAVADOS (spec 2026-09-03, secao 5.1): --live/--warn/--danger e os tres
+     -dim so existem aqui, no :root base -- nenhum bloco :root[data-theme]
+     nem o tema custom os redefine. */
   --act:      #4F46E5;
   --act-hover:#6257EB;
   --live:     #FF4D4F;
@@ -41,12 +45,39 @@
   --warn-dim:   rgba(245, 181, 68, 0.13);
   --danger-dim: rgba(201, 42, 51, 0.13);
 
+  /* Variantes de leitura das cores travadas acima -- nao sao o token
+     semantico em si, so uma tinta/estado mais clara pra texto ou hover
+     onde a cor cheia erraria o contraste ou pesaria demais. Como derivam
+     de tokens travados e ficam so aqui no :root base, a trava vale pra
+     elas tambem por construcao. */
+  --live-soft:   #FF8385; /* texto do selo "AO VIVO" sobre --live-dim */
+  --danger-soft: #FF8385; /* texto de item/aviso "perigo" sobre superficie escura */
+  --danger-hover:#B3242D; /* hover de .destructive */
+  --warn-border:        color-mix(in srgb, var(--warn) 20%, transparent);
+  --warn-border-strong: color-mix(in srgb, var(--warn) 35%, transparent);
+  /* Nao e um derivado exato de --warn (rgb 240,178,50 contra 245,181,68
+     do token) -- ja existia com esse desvio antes desta tokenizacao;
+     mantido literal pra nao mudar o pixel. */
+  --warn-hint-bg: rgba(240, 178, 50, 0.12);
+
   /* "Ligado" nao e o primario mais saturado -- e uma superficie viva
      rebaixada, pra nao competir com a cor de acao (spec 2026-09-03,
-     secao 3.2). Derivados de --act, nunca o acento cheio. */
-  --on-fill: rgba(79, 70, 229, 0.16);
-  --on-line: rgba(79, 70, 229, 0.4);
+     secao 3.2). Derivados de --act com color-mix(), nao um rgba() fixo --
+     assim uma predefinicao ou o tema custom que troca --act arrasta os
+     tres juntos, sem precisar redefini-los em cada bloco de
+     :root[data-theme] (spec 2026-09-03, secao 5, "Ponto tecnico
+     importante"). As porcentagens (16%/40%) reproduzem o rgba() antigo --
+     zero mudanca visual no tema padrao. */
+  --on-fill: color-mix(in srgb, var(--act) 16%, transparent);
+  --on-line: color-mix(in srgb, var(--act) 40%, transparent);
   --on-text: var(--act-hover);
+  /* Texto/icone sobre uma cor de acao ou avatar saturado (botao primario,
+     destrutivo, selecao de texto, badges de usuario). Fixo em branco: as
+     cores de acao de todas as predefinicoes de hoje (e o piso de contraste
+     que theme.js aplica ao tema custom) sao escuras o bastante pra 4.5:1 --
+     o ajuste fino por contraste e decisao de JS (Frente C2), nao de CSS
+     estatico. */
+  --on-act: #fff;
 
   --r-xs: 6px;
   --r-sm: 10px;
@@ -60,6 +91,36 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-3: 0 1px 3px rgba(0, 0, 0, 0.40), 0 16px 48px rgba(0, 0, 0, 0.50);
+
+  /* Veus escuros -- scrims sobre video/imagem (rotulo do tile, botoes
+     flutuantes, menus, modal). Nomeados do mais sutil ao mais opaco; mesma
+     cor (preto) em opacidades diferentes, cada uma reaproveitada em todo
+     lugar que ja usava aquele valor exato antes desta tokenizacao. */
+  --scrim-1: rgba(0, 0, 0, 0.40);
+  --scrim-2: rgba(0, 0, 0, 0.50);
+  --scrim-3: rgba(0, 0, 0, 0.55);
+  --scrim-4: rgba(0, 0, 0, 0.65);
+  --scrim-5: rgba(0, 0, 0, 0.75);
+  --scrim-6: rgba(0, 0, 0, 0.85);
+  /* Veus tingidos de --bg (nao preto puro) -- overlay de "transmissao
+     pausada" e chips sobre video (quem esta assistindo, selo de qualidade
+     da fonte). */
+  --scrim-tint-1: rgba(14, 15, 19, 0.72);
+  --scrim-tint-2: rgba(13, 15, 19, 0.82);
+
+  /* Veus CLAROS -- barra de rolagem e a alca de redimensionar do PiP, as
+     unicas superficies translucidas de branco fora de --line/--line2 (que
+     ja cobrem 0.08 e 0.14 -- reaproveitados onde o valor batia). */
+  --veil:        rgba(255, 255, 255, 0.16);
+  --veil-hover:  rgba(255, 255, 255, 0.24);
+  --veil-strong: rgba(255, 255, 255, 0.55);
+
+  /* Fundo de <video>/thumbnail antes do primeiro quadro chegar. */
+  --video-bg: #000;
+
+  /* Glow de foco do campo de chat -- mesma tecnica do --on-fill acima:
+     opacidade fixa (22%) sobre --act, entao acompanha o tema. */
+  --act-focus-ring: color-mix(in srgb, var(--act) 22%, transparent);
 
   --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--act);
 
@@ -111,6 +172,50 @@
   --ease-move:  var(--ease-out);
 }
 
+/* Predefinicoes de tema -- spec 2026-09-03, secao 5.2. Cada bloco troca
+ * SO os tokens de superficie e de acao (a divisao da secao 5.1). Nenhum
+ * redefine --live/--warn/--danger nem os tres -dim: eles nao aparecem
+ * aqui de proposito, e por isso continuam vindo do :root base acima por
+ * cascata -- e essa ausencia, nao uma regra de CSS, que trava a
+ * semantica contra qualquer predefinicao ou o tema custom (theme.js).
+ * "Superficie e sinal" (o padrao de hoje) nao tem bloco proprio: e o
+ * :root de cima, sem [data-theme].
+ *
+ * --on-fill/--on-line/--on-text (e --act-hover, entrada de cada bloco)
+ * sao os unicos tokens de acao alem de --act que cada preset define --
+ * os tres primeiros, la no :root base, sao color-mix() sobre --act, entao
+ * seguem sozinhos qualquer bloco que troque --act, sem entrar aqui. */
+:root[data-theme="midnight"] {  /* Meia-noite */
+  --bg:#080B14; --s1:#0D1220; --s2:#121A2C; --s3:#1A2438; --s4:#243149;
+  --tx:#E7ECF7; --tx2:#98A3BE; --tx3:#7C87A3;
+  --line: rgba(160,185,255,.08); --line2: rgba(160,185,255,.14);
+  --act:#4F8EF7; --act-hover:#6FA3F9;
+}
+:root[data-theme="carvao"] {  /* Carvao */
+  --bg:#111111; --s1:#181818; --s2:#202020; --s3:#2A2A2A; --s4:#363636;
+  --tx:#EDEDED; --tx2:#A3A3A3; --tx3:#8C8C8C;
+  --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
+  --act:#9CA3AF; --act-hover:#B0B7C3;
+}
+:root[data-theme="amber"] {  /* Ambar quente */
+  --bg:#15100C; --s1:#1D1712; --s2:#261E17; --s3:#332821; --s4:#42352B;
+  --tx:#F1E7DD; --tx2:#B8A697; --tx3:#9C8C7E;
+  --line: rgba(255,220,180,.08); --line2: rgba(255,220,180,.14);
+  --act:#C4AB31; --act-hover:#D4BF54;
+}
+:root[data-theme="forest"] {  /* Floresta */
+  --bg:#0A120E; --s1:#0F1913; --s2:#16231B; --s3:#1F2F25; --s4:#2A3D31;
+  --tx:#E6F0EA; --tx2:#9DB5A8; --tx3:#84998C;
+  --line: rgba(180,255,200,.08); --line2: rgba(180,255,200,.14);
+  --act:#5FA37E; --act-hover:#72B491;
+}
+:root[data-theme="paper"] {  /* Papel -- o unico claro */
+  --bg:#F7F5F2; --s1:#EFEDE9; --s2:#E6E3DD; --s3:#D8D4CC; --s4:#C7C2B8;
+  --tx:#1C1A16; --tx2:#47423A; --tx3:#5C564B;
+  --line: rgba(30,25,15,.10); --line2: rgba(30,25,15,.18);
+  --act:#4338CA; --act-hover:#3730A3;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -131,7 +236,7 @@ body {
   overflow: hidden;
   user-select: none;
 }
-::selection { background: var(--act); color: #fff; }
+::selection { background: var(--act); color: var(--on-act); }
 
 .hidden { display: none !important; }
 .visually-hidden {
@@ -172,7 +277,7 @@ button svg { width: 17px; height: 17px; flex: none; }
 }
 
 /* Uma primaria colorida por tela, nunca duas (ver a spec, secao 4.5). */
-.primary { background: var(--act); border-color: var(--act); color: #fff; }
+.primary { background: var(--act); border-color: var(--act); color: var(--on-act); }
 .primary:hover:not(:disabled) { background: var(--act-hover); border-color: var(--act-hover); }
 
 .secondary { background: var(--s3); border-color: var(--line2); color: var(--tx); }
@@ -185,8 +290,8 @@ button svg { width: 17px; height: 17px; flex: none; }
    contrario do sistema antigo. So aparece dentro de um dialogo de
    confirmacao (banir); nunca como acento solto na interface (ver spec 4.1
    e 4.5 -- --live e --danger sao dois vermelhos com papeis diferentes). */
-.destructive { background: var(--danger); border-color: var(--danger); color: #fff; }
-.destructive:hover:not(:disabled) { background: #B3242D; border-color: #B3242D; }
+.destructive { background: var(--danger); border-color: var(--danger); color: var(--on-act); }
+.destructive:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); }
 
 .small { min-height: 36px; padding: 0 12px; font-size: 0.85em; }
 
@@ -230,7 +335,7 @@ button svg { width: 17px; height: 17px; flex: none; }
 .check-box {
   flex: none; width: 20px; height: 20px; border-radius: var(--r-xs);
   background: var(--s2); border: 1.5px solid var(--line2);
-  display: grid; place-items: center; color: #fff;
+  display: grid; place-items: center; color: var(--on-act);
   transition: background-color var(--dur-fast) var(--ease-in-out),
               border-color var(--dur-fast) var(--ease-in-out);
 }
@@ -260,17 +365,17 @@ button svg { width: 17px; height: 17px; flex: none; }
  * polegar ganha respiro por uma borda transparente com background-clip em
  * vez de margem (margem em scrollbar nao existe). Trilho invisivel, sem
  * botao de passo, sem hover no trilho (alta frequencia, proposito zero). */
-* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--veil) transparent; }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--line2);
   border-radius: var(--r-full);
   border: 3.5px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--veil-hover); background-clip: padding-box; }
 
 input[type="text"], select {
   width: 100%;
@@ -386,7 +491,7 @@ input[type="range"] { accent-color: var(--live); }
 
 .app-brand-badge {
   width: 30px; height: 30px; border-radius: var(--r-sm);
-  background: var(--act); color: #fff; font-weight: 700; font-size: 13px;
+  background: var(--act); color: var(--on-act); font-weight: 700; font-size: 13px;
   display: flex; align-items: center; justify-content: center; flex: none;
 }
 .app-brand-name { font-weight: 700; font-size: 15px; }
@@ -498,7 +603,7 @@ input[type="range"] { accent-color: var(--live); }
 .room-badge {
   width: 40px; height: 40px; flex: none; border-radius: var(--r-sm);
   display: grid; place-items: center;
-  color: #fff; font-weight: 700; font-size: 15px; text-transform: uppercase;
+  color: var(--on-act); font-weight: 700; font-size: 15px; text-transform: uppercase;
 }
 .room-info { display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1; }
 .room-item-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
@@ -708,7 +813,7 @@ button.busy { cursor: default; }
 .peer-avatar {
   width: 28px; height: 28px; border-radius: 50%; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 700; font-size: 11px;
+  color: var(--on-act); font-weight: 700; font-size: 11px;
 }
 .peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .peer-avatar.on { box-shadow: 0 0 0 2px var(--live); }
@@ -724,7 +829,7 @@ button.busy { cursor: default; }
 .peer-crown { color: var(--warn); font-size: 12px; flex: none; }
 .peer-live-badge {
   display: inline-flex; align-items: center; gap: 4px; flex: none;
-  background: var(--live-dim); color: #FF8385;
+  background: var(--live-dim); color: var(--live-soft);
   border-radius: var(--r-xs); padding: 2px 6px; font-size: 9.5px; font-weight: 700;
   letter-spacing: .03em; margin-left: auto;
 }
@@ -748,7 +853,7 @@ button.busy { cursor: default; }
 .member-menu-item:hover { background: var(--s3); }
 .member-menu-item svg { width: 15px; height: 15px; flex: none; }
 .member-menu-item.warn { color: var(--warn); }
-.member-menu-item.danger { color: #FF8385; }
+.member-menu-item.danger { color: var(--danger-soft); }
 .member-menu-sep { height: 1px; background: var(--line); margin: 5px 4px; }
 .member-menu-hint { font-size: 10px; color: var(--tx3); padding: 4px 9px 5px; line-height: 1.45; }
 
@@ -770,7 +875,7 @@ button.busy { cursor: default; }
 .chat-line .chat-avatar {
   width: 28px; height: 28px; border-radius: 50%; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 700; font-size: 11px;
+  color: var(--on-act); font-weight: 700; font-size: 11px;
 }
 .chat-line .chat-body { min-width: 0; flex: 1; }
 .chat-line .chat-head { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
@@ -779,7 +884,7 @@ button.busy { cursor: default; }
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .chat-time { font-size: 10px; color: var(--tx3); flex: none; }
-.chat-text { font-size: 12.5px; line-height: 1.5; color: #D3D7DD; margin-top: 1px; word-break: break-word; }
+.chat-text { font-size: 12.5px; line-height: 1.5; color: var(--tx-soft); margin-top: 1px; word-break: break-word; }
 
 .chat-sys {
   display: flex; align-items: center; gap: 7px; padding: 4px var(--s-3);
@@ -787,14 +892,14 @@ button.busy { cursor: default; }
 }
 .chat-sys svg { width: 12px; height: 12px; flex: none; }
 .chat-sys.warn { color: var(--warn); }
-.chat-sys.danger { color: #FF8385; }
+.chat-sys.danger { color: var(--danger-soft); }
 
 .chat-compose {
   margin: var(--s-2); background: var(--s2); border: 1px solid var(--line2);
   border-radius: var(--r-sm); padding: 9px 11px; display: flex; align-items: flex-end; gap: 6px;
   transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
 }
-.chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.22); }
+.chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px var(--act-focus-ring); }
 .chat-compose textarea {
   flex: 1; resize: none; background: transparent; border: none; color: var(--tx);
   font-family: inherit; font-size: 12.5px; line-height: 1.4; max-height: 88px;
@@ -805,7 +910,7 @@ button.busy { cursor: default; }
 
 .offbar {
   background: var(--warn-dim); color: var(--warn); font-size: 11px;
-  padding: 7px var(--s-3); border-top: 1px solid rgba(245, 181, 68, 0.2);
+  padding: 7px var(--s-3); border-top: 1px solid var(--warn-border);
 }
 
 #in-pin {
@@ -833,7 +938,7 @@ button.busy { cursor: default; }
   flex: none;
 }
 
-.peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
+.peer-avatar-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: var(--on-act); font-weight: 700; font-size: 15px; }
 
 .dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--text-3); flex: none; }
 .dot.ok { background: var(--live); }
@@ -942,7 +1047,7 @@ button.busy { cursor: default; }
 .tile {
   position: relative;
   min-width: 0;
-  background: #000;
+  background: var(--video-bg);
   border-radius: var(--r-md);
   /* Sem borda: a sombra e a superficie ja separam o tile do fundo, e uma
      borda clara em cima de video escuro vira um retangulo desenhado. */
@@ -973,7 +1078,7 @@ button.busy { cursor: default; }
   padding: 28px 12px 10px;
   /* Scrim em vez de pilula: nome claro sobre cena clara sumia. O gradiente
      escurece so a faixa de baixo, sem cobrir o video. */
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
+  background: linear-gradient(to top, var(--scrim-4), transparent);
   font-size: 12px;
   font-weight: 600;
   opacity: 0;
@@ -994,7 +1099,7 @@ button.busy { cursor: default; }
   width: 32px; height: 32px;
   border-radius: 50%;
   overflow: hidden;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px var(--scrim-3);
   z-index: 1;
 }
 .tile-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1008,11 +1113,11 @@ button.busy { cursor: default; }
   bottom: 16px; right: 48px;
   width: 20px; height: 20px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  background: var(--scrim-4);
+  box-shadow: 0 0 0 2px var(--scrim-3);
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--on-act);
   z-index: 1;
 }
 .tile-kind-badge:empty { display: none; }
@@ -1046,7 +1151,7 @@ button.busy { cursor: default; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(14, 15, 19, 0.72);
+  background: var(--scrim-tint-1);
   color: var(--tx);
   text-align: center;
   padding: 16px;
@@ -1071,7 +1176,7 @@ button.busy { cursor: default; }
   top: 10px; right: 10px;
   max-width: calc(100% - 20px);
   padding: 6px 10px;
-  background: rgba(13, 15, 19, 0.82);
+  background: var(--scrim-tint-2);
   border: 1px solid var(--line-subtle);
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-1);
@@ -1145,7 +1250,7 @@ button.busy { cursor: default; }
 
 .pip-thumb {
   position: absolute;
-  background: #000;
+  background: var(--video-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
@@ -1160,7 +1265,7 @@ button.busy { cursor: default; }
   width: 20px; height: 20px;
   border-radius: 50%;
   overflow: hidden;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px var(--scrim-3);
   opacity: 1;
   transition: opacity 0.25s;
 }
@@ -1171,13 +1276,13 @@ button.busy { cursor: default; }
   width: 18px; height: 18px;
   padding: 0;
   line-height: 1;
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
+  background: var(--scrim-4);
+  color: var(--on-act);
   border-radius: 50%;
   opacity: 1;
   transition: opacity 0.25s;
 }
-.pip-thumb-remove:hover { background: rgba(0, 0, 0, 0.85); }
+.pip-thumb-remove:hover { background: var(--scrim-6); }
 
 /* Alca de redimensionar no canto inferior direito da miniatura -- arrastar
    muda a largura (altura segue 16:9), ver buildPipThumb em ui.js. */
@@ -1186,7 +1291,7 @@ button.busy { cursor: default; }
   right: 0; bottom: 0;
   width: 16px; height: 16px;
   cursor: nwse-resize;
-  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.55) 50%);
+  background: linear-gradient(135deg, transparent 50%, var(--veil-strong) 50%);
   opacity: 1;
   transition: opacity 0.25s;
 }
@@ -1206,16 +1311,16 @@ button.busy { cursor: default; }
   left: 16px; bottom: 16px;
   width: 40px; height: 40px;
   pointer-events: auto;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim-2);
   border: 1px dashed var(--line);
   border-radius: 6px;
-  color: #fff;
+  color: var(--on-act);
   font-size: 20px;
   line-height: 1;
   opacity: 1;
   transition: opacity 0.25s;
 }
-.pip-add-btn:hover { background: rgba(0, 0, 0, 0.75); }
+.pip-add-btn:hover { background: var(--scrim-5); }
 .tile.fullscreen.idle .pip-add-btn { opacity: 0; pointer-events: none; }
 
 .pip-picker {
@@ -1230,7 +1335,7 @@ button.busy { cursor: default; }
   min-width: 180px;
   max-height: 240px;
   overflow-y: auto;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--scrim-1);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1244,7 +1349,7 @@ button.busy { cursor: default; }
   border-radius: 6px;
   text-align: left;
 }
-.pip-picker-item:hover { background: rgba(255, 255, 255, 0.08); }
+.pip-picker-item:hover { background: var(--line); }
 .pip-picker-avatar {
   width: 22px; height: 22px;
   border-radius: 50%;
@@ -1259,8 +1364,8 @@ button.busy { cursor: default; }
   top: 10px; right: 10px;
   width: 30px; height: 30px;
   padding: 0;
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
+  background: var(--scrim-4);
+  color: var(--on-act);
   border-radius: 6px;
   display: grid;
   place-items: center;
@@ -1269,7 +1374,7 @@ button.busy { cursor: default; }
 }
 .tile-fullscreen-btn svg { width: 16px; height: 16px; }
 .tile:hover .tile-fullscreen-btn { opacity: 1; }
-.tile-fullscreen-btn:hover { background: rgba(0, 0, 0, 0.85); }
+.tile-fullscreen-btn:hover { background: var(--scrim-6); }
 .tile.fullscreen .tile-fullscreen-btn { top: 16px; right: 16px; opacity: 1; transition: opacity 0.25s; }
 .tile.fullscreen.idle .tile-fullscreen-btn { opacity: 0; pointer-events: none; }
 
@@ -1281,7 +1386,7 @@ button.busy { cursor: default; }
   border-radius: var(--radius);
   padding: 10px;
   min-width: 200px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--scrim-1);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1297,7 +1402,7 @@ button.busy { cursor: default; }
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim-3);
   display: grid;
   place-items: center;
   z-index: 100;
@@ -1388,7 +1493,7 @@ button.busy { cursor: default; }
 .settings-field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .settings-field small { display: block; font-weight: 400; color: var(--muted); margin-top: 5px; }
 .settings-field input[type="range"] { width: 100%; accent-color: var(--live); }
-.settings-field video { width: 100%; max-width: 280px; border-radius: var(--r-md); background: #000; aspect-ratio: 4/3; }
+.settings-field video { width: 100%; max-width: 280px; border-radius: var(--r-md); background: var(--video-bg); aspect-ratio: 4/3; }
 .settings-profile-field { display: flex; }
 .user-avatar-lg {
   width: 84px; height: 84px;
@@ -1441,7 +1546,7 @@ button.busy { cursor: default; }
   margin: -8px 0 12px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: rgba(240, 178, 50, 0.12);
+  background: var(--warn-hint-bg);
   border-left: 3px solid var(--warn);
   color: var(--muted);
   font-size: 12px;
@@ -1502,14 +1607,14 @@ button.busy { cursor: default; }
    borda mudando de cor nao muda a espessura e passa despercebida. */
 .source-card.selected { box-shadow: 0 0 0 2px var(--text-1); border-color: transparent; }
 .source-thumb { position: relative; min-width: 0; }
-.source-card img.source-shot { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-xs); background: #000; display: block; }
+.source-card img.source-shot { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-xs); background: var(--video-bg); display: block; }
 
 /* Tag de qualidade da tela (4K / 1440p / 1080p / 720p). Neutra de
    proposito: pela regra do acento, cor na tela quer dizer transmissao. */
 .source-quality {
   position: absolute; top: 6px; right: 6px;
   padding: 2px 7px; border-radius: var(--r-full);
-  background: rgba(13, 15, 19, 0.82); border: 1px solid var(--line2);
+  background: var(--scrim-tint-2); border: 1px solid var(--line2);
   font-size: 10px; font-weight: 700; letter-spacing: .03em; color: var(--tx);
 }
 
@@ -1655,7 +1760,7 @@ button.busy { cursor: default; }
   padding: var(--s-3);
   border-radius: var(--r-sm);
   background: var(--warn-dim);
-  border: 1px solid rgba(245, 181, 68, 0.35);
+  border: 1px solid var(--warn-border-strong);
   color: var(--text-1);
   font-size: 0.85em;
   line-height: 1.45;
