@@ -1181,6 +1181,33 @@
             onSettled?.();
             return;
           }
+          // Fomos expulsos ou banidos pelo dono. O servidor manda 'moderated' e
+          // logo fecha o socket com 1008 kick/ban -- um close LIMPO, entao nem o
+          // ramo 'abnormal' (1006/wasClean:false, que tentaria reconectar) nem o
+          // 'roomClosed' (1001 host-left) pegam este caso. Sem sala a preservar
+          // pra nos: teardown completo e de volta pro lobby, espelhando o ramo
+          // roomClosed acima. O aviso ("fulano expulsou/baniu voce") ja saiu como
+          // toast no case 'moderated' (roda antes deste onClose -- mesma cadeia
+          // serial da signalQueue), entao aqui nao mexemos em setup-error.
+          const moderatedOut = detail?.code === 1008 && (detail?.reason === 'kick' || detail?.reason === 'ban');
+          if (moderatedOut) {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            currentSession = null;
+            activeRoomAddress = null;
+            if (orphanSession) {
+              teardownSession(orphanSession);
+              orphanSession = null;
+            }
+            teardownSession(session);
+            stopStatsLoop();
+            ui.stageHeader.clear();
+            renderMembersPanel();
+            renderRoomList();
+            onSettled?.();
+            return;
+          }
+
           // O code/reason do WebSocket diz se foi um close limpo (1000/1001,
           // ex: o proprio host fechando o app) ou uma queda anormal de
           // rede/processo (1006, sem handshake de close) -- tipico de NAT de
