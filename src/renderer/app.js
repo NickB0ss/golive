@@ -914,9 +914,9 @@
       cameraStream.getTracks().forEach((t) => t.stop());
       cameraStream = null;
       ui.grid.removeTile('cam-me', emptyMessage());
-      $('btn-toggle-camera').classList.remove('active');
+      ui.setToggleState('camera', 'off');
     }
-    $('btn-toggle-share').classList.remove('active');
+    ui.setToggleState('share', 'off');
     resetShareState();
   }
 
@@ -2324,7 +2324,7 @@
       recomputeTree('screen');
 
       session.sig.send({ type: 'broadcast-state', live: true });
-      $('btn-toggle-share').classList.add('active');
+      ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
       renderMembersPanel();
       startStatsLoop();
@@ -2349,7 +2349,7 @@
     forgetOriginTree('screen');
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
-    $('btn-toggle-share').classList.remove('active');
+    ui.setToggleState('share', 'off');
     renderMembersPanel();
     // syncStatsLoop, nao stopStatsLoop: parar de compartilhar nao quer dizer
     // parar de codificar -- este no pode seguir sendo relay de outra pessoa.
@@ -2364,7 +2364,7 @@
     autoQuality = autoquality.initialState();
     lastCaptureKey = '';
     sharePaused = false;
-    $('btn-pause-share').classList.remove('active');
+    ui.setToggleState('pause', 'off');
     $('btn-pause-share').classList.add('hidden');
     rxHealthByPeer.clear();
     rxPrevSample.clear();
@@ -2391,7 +2391,7 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
-    $('btn-pause-share').classList.toggle('active', paused);
+    ui.setToggleState('pause', paused ? 'on' : 'off');
     showToast(paused ? 'Transmissão pausada — ninguém está vendo sua tela.' : 'Transmissão retomada.');
     renderMembersPanel();
     renderRoomStatus();
@@ -2414,7 +2414,7 @@
     // A camera leva um tempo pra abrir (o driver e quem manda nisso), entao
     // o botao acusa o clique na hora em vez de ficar parecendo que nada
     // aconteceu ate o primeiro frame chegar.
-    $('btn-toggle-camera').classList.add('loading');
+    ui.setToggleState('camera', 'loading');
     try {
       const constraints = config.cameraConstraints(cfg.camera);
       if (cfg.camera.deviceId) constraints.deviceId = { exact: cfg.camera.deviceId };
@@ -2424,6 +2424,7 @@
         stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
       } catch (err) {
         showToast(`Não consegui acessar a câmera: ${err.message}`);
+        ui.setToggleState('camera', 'off');
         return;
       }
 
@@ -2432,7 +2433,7 @@
       if (track) track.addEventListener('ended', stopCamera);
 
       ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, { muted: true, avatar: cfg.avatar || null, kind: 'camera', displayName: cfg.name || 'anônimo' });
-      $('btn-toggle-camera').classList.add('active');
+      ui.setToggleState('camera', 'on');
 
       if (currentSession) {
         // Hoje isto e identico a `{ ...cfg.camera, codec: 'video/VP8' }`,
@@ -2448,7 +2449,6 @@
       }
     } finally {
       cameraStarting = false;
-      $('btn-toggle-camera').classList.remove('loading');
     }
   }
 
@@ -2470,7 +2470,7 @@
     cameraStream = null;
     forgetOriginTree('camera');
     ui.grid.removeTile('cam-me', emptyMessage());
-    $('btn-toggle-camera').classList.remove('active');
+    ui.setToggleState('camera', 'off');
 
     if (currentSession && track) {
       const session = currentSession;

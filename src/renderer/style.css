@@ -41,6 +41,13 @@
   --warn-dim:   rgba(245, 181, 68, 0.13);
   --danger-dim: rgba(201, 42, 51, 0.13);
 
+  /* "Ligado" nao e o primario mais saturado -- e uma superficie viva
+     rebaixada, pra nao competir com a cor de acao (spec 2026-09-03,
+     secao 3.2). Derivados de --act, nunca o acento cheio. */
+  --on-fill: rgba(79, 70, 229, 0.16);
+  --on-line: rgba(79, 70, 229, 0.4);
+  --on-text: var(--act-hover);
+
   --r-xs: 6px;
   --r-sm: 10px;
   --r-md: 14px;
@@ -638,6 +645,28 @@ button.busy { cursor: default; }
 .control-btn { min-width: 0; }
 .control-btn-end { margin-left: auto; }
 
+/* Ligado: forma diferente, nao so cor mais forte -- o rotulo e o icone ja
+   mudaram em ui.js, isto e so o preenchimento que faz a mudanca ser vista
+   sem ler (spec 2026-09-03, secao 3.2). Especificidade de duas classes
+   basta pra vencer .primary/.secondary:hover:not(:disabled) mesmo sem a
+   regra de hover abaixo -- ela existe so pra deixar isso explicito. */
+.control-btn.is-on {
+  background: var(--on-fill);
+  border-color: var(--on-line);
+  color: var(--on-text);
+  box-shadow: inset 0 0 0 1px var(--on-line);
+}
+.control-btn.is-on:hover:not(:disabled) { background: var(--on-fill); border-color: var(--on-line); }
+
+/* Carregando: disabled de verdade (atributo, nao so classe) ja cobre
+   cursor e opacidade via button:disabled -- esta classe existe pra
+   ui.js ter onde pendurar o estado, e pra futuras regras nao precisarem
+   reinventar o seletor. */
+.control-btn.loading { cursor: default; }
+/* O spinner reaproveita a classe .btn-spinner (mesma animacao "spin" de
+   cima) e o toggle de prefers-reduced-motion global do topo do arquivo
+   ja congela a rotacao num traco estatico -- nao ha regra extra aqui. */
+
 .room-side {
   width: 300px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
@@ -784,10 +813,10 @@ button.busy { cursor: default; }
   letter-spacing: 0.25em;
 }
 
-/* Pausado nao e so "ativo": e um estado que esconde a tela dos outros e
+/* Pausado nao e so "ligado": e um estado que esconde a tela dos outros e
    precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
-   elevacao neutra do .active. */
-#btn-pause-share.active { background: var(--warn); color: var(--surface-1); box-shadow: none; }
+   superficie neutra do .is-on -- o seletor por id vence a regra generica. */
+#btn-pause-share.is-on { background: var(--warn); color: var(--surface-1); box-shadow: none; }
 /* O <em>AO VIVO</em> mora dentro de .peer-live-badge, que ja carrega a
    pilula inteira -- aqui so tira o italico do <em>. */
 .peer-list li em { font-style: normal; }

@@ -1828,6 +1828,41 @@
   $('btn-ban-confirm').addEventListener('click', () => { onBanConfirm?.(); closeBan(); });
   dlgBanEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBan(); });
 
+  // ---------- Barra de controle: estado visivel dos toggles ----------
+  // Compartilhar/camera/pausa sabem o proprio estado (app.js ja escrevia
+  // classList direto), mas nada em CSS reagia a isso. Esta e a UNICA funcao
+  // que mexe em classList/aria/disabled desses tres botoes -- app.js so
+  // chama, nunca escreve o DOM deles direto (spec 2026-09-03, secao 3).
+  const TOGGLE_BUTTON_IDS = {
+    share: 'btn-toggle-share',
+    camera: 'btn-toggle-camera',
+    pause: 'btn-pause-share',
+  };
+  const TOGGLE_LABELS = {
+    share: { off: 'Compartilhar tela', on: 'Parar de compartilhar' },
+    camera: { off: 'Câmera', loading: 'Abrindo…', on: 'Desligar câmera' },
+    pause: { off: 'Pausar', on: 'Retomar' },
+  };
+
+  function setToggleState(id, state) {
+    const btn = $(TOGGLE_BUTTON_IDS[id]);
+    if (!btn) return;
+    const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
+    btn.querySelector('.btn-label').textContent = label;
+    btn.querySelector('.icon-off').hidden = state !== 'off';
+    btn.querySelector('.icon-on').hidden = state !== 'on';
+    const spinner = btn.querySelector('.btn-spinner');
+    if (spinner) spinner.hidden = state !== 'loading';
+    btn.classList.toggle('is-on', state === 'on');
+    btn.classList.toggle('loading', state === 'loading');
+    btn.setAttribute('aria-pressed', state === 'on' ? 'true' : 'false');
+    // disabled de verdade, nao so visual -- senao o teclado ainda dispara
+    // um segundo clique enquanto o driver da camera abre (spec, secao 3.3).
+    btn.disabled = state === 'loading';
+    if (state === 'loading') btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
@@ -1843,5 +1878,6 @@
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },
     chat: { render, append, setHistory, setEnabled },
+    setToggleState,
   };
 })(window);
