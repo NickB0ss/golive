@@ -47,8 +47,8 @@ test('transmitindo degradado vira nivel degraded com preset e motivo', () => {
 
 test('precedencia dos motivos: encoder vence malha, malha vence sala', () => {
   const live = { ...BASE, anyoneLive: true, weAreLive: true, effectivePreset: '720p30' };
-  assert.match(roomStatus({ ...live, softwareEncoder: true, meshFallback: true, presetDegraded: true }).label, /encoder/);
-  assert.match(roomStatus({ ...live, meshFallback: true, presetDegraded: true }).label, /retransmissor/);
+  assert.match(roomStatus({ ...live, softwareEncoder: true, meshFallback: true, presetDegraded: true }).label, /aceleração/);
+  assert.match(roomStatus({ ...live, meshFallback: true, presetDegraded: true }).label, /recebendo de você/);
   assert.match(roomStatus({ ...live, presetDegraded: true }).label, /sala cheia/);
 });
 
@@ -85,7 +85,7 @@ test('degrade automatico tem rotulo proprio, nao "sala cheia"', () => {
 
 test('precedencia com auto: encoder e malha vencem auto, auto vence sala', () => {
   const base = { ...BASE, anyoneLive: true, weAreLive: true, effectivePreset: '720p30', autoDegraded: true, presetDegraded: true };
-  assert.match(roomStatus({ ...base, softwareEncoder: true }).label, /encoder/);
-  assert.match(roomStatus({ ...base, meshFallback: true }).label, /retransmissor/);
+  assert.match(roomStatus({ ...base, softwareEncoder: true }).label, /aceleração/);
+  assert.match(roomStatus({ ...base, meshFallback: true }).label, /recebendo de você/);
   assert.match(roomStatus(base).label, /limite/);
 });

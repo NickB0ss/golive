@@ -4,9 +4,9 @@
   // Rotulos sao texto de UI, entao levam acento -- ao contrario dos
   // comentarios deste arquivo.
   const REASON_LABELS = {
-    encoder: 'encoder em software',
-    malha: 'sem retransmissor',
-    auto: 'máquina no limite',
+    encoder: 'sem aceleração de vídeo',
+    malha: 'muita gente recebendo de você',
+    auto: 'seu PC no limite',
     sala: 'sala cheia',
   };
 
