@@ -39,7 +39,9 @@ barra de rolagem, tag de qualidade, ícone do atualizar, ordem da grade).
   tabela §7 da spec.
 - [x] **3. Lobby v2** (`index.html`, `style.css`, `ui.js`, `app.js`) —
   topbar, coluna de ações com rodapé de rede, coluna de salas com cards,
-  barra do usuário, breakpoints de 1040px/820px.
+  barra do usuário, breakpoints de 1040px/700px (o de altura desceu de 820
+  na implementação: a janela padrão tem 800px, então em 820 o parágrafo do
+  hero nunca apareceria).
 - [x] **4. Criar sala** (`index.html`, `ui.js`, `app.js`) — opção "anunciar"
   no diálogo com estado inicial do config, estado ocupado do botão, aba
   Rede removida de Configurações, `onNetworkChange` removido.
