@@ -42,7 +42,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.5.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.6.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **301 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
@@ -108,20 +108,20 @@ após `await`).
   de `auto-fit` (que deixava tile órfão ocupando meia tela) e de `1fr` (que
   empilhava toda a folga vertical numa fileira só). Barra de rolagem com
   estilo global fino e escuro. Nenhum arquivo de transporte tocado.
+- **0.6.0** ([PR #32](https://github.com/NickB0ss/golive/pull/32), **pré-release**)
+  — **trava de versão de sala**: a sala recusa quem não está exatamente na
+  versão de quem a criou (`join-denied {reason:'version'}` + close 1008,
+  checado logo depois do ban e antes do PIN; a versão viaja no beacon UDP,
+  então o card da sala incompatível já aparece apagado, sem clique e com selo).
+  Protocolo de sinalização, formato da árvore de retransmissão e negociação
+  P2P mudam entre releases sem acordo de compatibilidade — sala com versões
+  misturadas quebrava parecendo problema de rede. **Barra única no topo do
+  lobby** — era topbar + barra do usuário no rodapé, com dois botões de
+  Configurações; virou uma faixa só de borda a borda (marca à esquerda;
+  perfil, buscar atualização e Configurações à direita). `#btn-open-settings-2`
+  e a classe `.icon-btn` (sem elemento) saíram. Novo `src/renderer/version.js`
+  (parte pura: comparar + redigir o aviso), +15 testes.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
-
-## Ainda não lançado (na `main`, sem tag)
-
-- **Trava de versão de sala + barra única no lobby.** Duas coisas pequenas
-  vindas do uso: (1) a sala passou a recusar quem não está exatamente na
-  versão de quem a criou — protocolo de sinalização, formato da árvore e
-  negociação P2P mudam entre releases sem nenhum acordo de compatibilidade, e
-  a sala misturada quebrava parecendo problema de rede; (2) o lobby tinha
-  duas faixas horizontais (topbar + barra do usuário) e **dois** botões de
-  Configurações na mesma tela. Agora é uma barra só, de borda a borda da
-  janela: marca à esquerda, perfil + buscar atualização + Configurações
-  encostados na direita. Ver a spec de 2026-09-03 (barra única e trava de
-  versão).
   Detalhe por item na auditoria e no histórico do git.
 
 ## Backlog técnico
