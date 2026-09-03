@@ -1721,9 +1721,11 @@
         // A sala cresceu com a tela ja no ar: o 'broadcast-state {live:true}'
         // so foi mandado uma vez, la no startShare. Quem acabou de entrar
         // recebeu o 'welcome' com peer.live=false pra todos -- sem reenviar
-        // aqui, o "AO VIVO" nunca acende ao nosso lado pra ele. Idempotente
-        // pra quem ja sabia (broadcast-state so regrava peer.live).
-        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true });
+        // aqui, o "AO VIVO" nunca acende ao nosso lado pra ele. `paused:
+        // sharePaused` resolve "entrei durante uma pausa" do mesmo jeito,
+        // sem mensagem nova. Idempotente pra quem ja sabia (broadcast-state
+        // so regrava peer.live/peer.paused).
+        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true, paused: sharePaused });
         break;
       }
       case 'peer-left': {
@@ -1857,8 +1859,17 @@
         const peer = mesh.peers.get(msg.id);
         const wasLive = peer?.live;
         if (peer) peer.live = msg.live;
-        if (!msg.live) ui.grid.removeTile(msg.id, emptyMessage());
-        else if (peer && !wasLive) sound.playLiveSound();
+        if (peer) peer.paused = Boolean(msg.paused);
+        if (!msg.live) {
+          // Tile some por inteiro -- nao ha o que pausar num tile ausente.
+          ui.grid.removeTile(msg.id, emptyMessage());
+        } else {
+          if (!wasLive) sound.playLiveSound();
+          ui.grid.setPaused(msg.id, peer.paused, {
+            title: 'Transmissão pausada',
+            subtitle: `${peer.name || 'Alguém'} pausou a tela`,
+          });
+        }
         renderMembersPanel();
         break;
       }
@@ -2323,7 +2334,7 @@
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
       recomputeTree('screen');
 
-      session.sig.send({ type: 'broadcast-state', live: true });
+      session.sig.send({ type: 'broadcast-state', live: true, paused: false });
       $('btn-toggle-share').classList.add('active');
       $('btn-pause-share').classList.remove('hidden');
       renderMembersPanel();
@@ -2364,6 +2375,7 @@
     autoQuality = autoquality.initialState();
     lastCaptureKey = '';
     sharePaused = false;
+    ui.grid.setPaused('me', false, {});
     $('btn-pause-share').classList.remove('active');
     $('btn-pause-share').classList.add('hidden');
     rxHealthByPeer.clear();
@@ -2391,6 +2403,11 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
+    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused });
+    ui.grid.setPaused('me', paused, {
+      title: paused ? 'Você pausou' : '',
+      subtitle: paused ? 'Ninguém está vendo' : '',
+    });
     $('btn-pause-share').classList.toggle('active', paused);
     showToast(paused ? 'Transmissão pausada — ninguém está vendo sua tela.' : 'Transmissão retomada.');
     renderMembersPanel();

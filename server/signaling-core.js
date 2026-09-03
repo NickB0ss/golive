@@ -389,6 +389,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
                 id,
                 name: me.name,
                 live: Boolean(msg.live),
+                paused: Boolean(msg.paused),
               });
               break;
             }
