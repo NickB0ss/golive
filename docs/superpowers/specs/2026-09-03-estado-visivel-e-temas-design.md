@@ -385,9 +385,23 @@ os degraus são fixos e só o ponto de partida se move.
 - texto branco sobre `--act` (todo `.primary`): mínimo 4.5:1 — se o acento
   escolhido for claro demais, o texto do botão vira o `--tx` escuro do
   tema, automaticamente, em vez de o botão ficar ilegível;
-- `--live`, `--warn`, `--danger` sobre `--s1`: mínimo 3:1, senão o tema
-  não pode ficar tão claro (é o caso que barra "Papel" mal derivado);
+- `--live` e `--danger` sobre `--s1`: mínimo 3:1, senão o tema não pode
+  ficar tão claro;
 - distância de matiz entre `--act` e `--live`: mínimo 40°, pela §5.1.
+
+`--warn` fica **fora** desta checagem, e não por descuido: sua luminância
+(~0,53, típica de amarelo) torna 3:1 contra qualquer `--s1` claro
+matematicamente impossível — precisaria de uma superfície com luminância
+≥1,69 (acima do teto do espaço de cor) ou ≤0,143 (o que já não é mais
+"claro"). A primeira tentativa de derivar "Papel" aplicou a regra ao pé da
+letra e passou — à custa de forçar `--s1`…`--s4` para quase preto, o que
+tecnicamente batia o piso mas deixava de ser um tema claro. `--live`
+(~0,27) e `--danger` (~0,14) não têm esse problema: os dois têm solução
+com `--s1` genuinamente claro. O preço, aceito e documentado no código: em
+"Papel", texto na cor `--warn` pura (coroa de dono da sala, item de aviso
+no menu, aviso de chat) fica com contraste reduzido — ainda legível, só
+não bate 3:1 como nos outros cinco temas, onde `--warn` foi pensado (fundo
+escuro, onde sobra folga).
 
 Falhou: o controle mostra qual regra falhou, em português, e a cor mais
 próxima que passa — nunca aplica um tema reprovado nem trava o slider em
