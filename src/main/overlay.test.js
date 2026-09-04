@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { isScreenSource, indexSourceDisplays, boundsFor } = require('./overlay');
+const { isScreenSource, indexSourceDisplays, mergeSourceDisplays, boundsFor } = require('./overlay');
 
 const DISPLAYS = [
   { id: 2528732444, bounds: { x: 0, y: 0, width: 2560, height: 1440 } },
@@ -79,5 +79,53 @@ test('boundsFor recusa retangulo sem tamanho ou com numero torto', () => {
   ];
   for (const d of tortos) {
     assert.equal(boundsFor(d.id, tortos), null, `display ${d.id} nao devia virar bounds`);
+  }
+});
+
+// --- mergeSourceDisplays ---------------------------------------------------
+//
+// O dialogo de compartilhar pede as fontes em DUAS chamadas em paralelo,
+// `listSources(['screen'])` e `listSources(['window'])`, pra que as janelas
+// -- que sao a parte cara -- nao segurem a lista de telas. O main guardava o
+// casamento fonte->display com uma ATRIBUICAO a cada chamada, entao a
+// listagem de janelas (que nao tem tela nenhuma dentro e por isso indexa
+// vazio) apagava o que a listagem de telas tinha acabado de descobrir. Como
+// as janelas quase sempre chegam por ultimo, o resultado nao era intermitente:
+// era quase sempre. Quem compartilhava a TELA INTEIRA caia no aviso de
+// "compartilhando uma janela" e ficava sem o rabisco na tela real.
+
+test('a listagem de janelas nao apaga as telas ja indexadas', () => {
+  const telas = [{ id: 'screen:0:0', display_id: '2528732444' }];
+  const janelas = [{ id: 'window:1180244:0', display_id: '' }];
+
+  let index = mergeSourceDisplays(new Map(), telas, DISPLAYS);
+  assert.equal(index.get('screen:0:0'), '2528732444');
+
+  // ... e agora a chamada de janelas chega depois, como sempre chega
+  index = mergeSourceDisplays(index, janelas, DISPLAYS);
+  assert.equal(index.get('screen:0:0'), '2528732444', 'a tela tem de sobreviver');
+});
+
+test('a ordem inversa da o mesmo resultado', () => {
+  const telas = [{ id: 'screen:0:0', display_id: '2528732444' }];
+  const janelas = [{ id: 'window:1180244:0', display_id: '' }];
+
+  let index = mergeSourceDisplays(new Map(), janelas, DISPLAYS);
+  index = mergeSourceDisplays(index, telas, DISPLAYS);
+  assert.equal(index.get('screen:0:0'), '2528732444');
+});
+
+test('uma tela que trocou de display e atualizada, nao duplicada', () => {
+  let index = mergeSourceDisplays(new Map(), [{ id: 'screen:0:0', display_id: '2528732444' }], DISPLAYS);
+  index = mergeSourceDisplays(index, [{ id: 'screen:0:0', display_id: '2779098405' }], DISPLAYS);
+  assert.equal(index.size, 1);
+  assert.equal(index.get('screen:0:0'), '2779098405');
+});
+
+test('mergeSourceDisplays aguenta entrada torta sem perder o que ja tinha', () => {
+  const base = mergeSourceDisplays(new Map(), [{ id: 'screen:0:0', display_id: '2528732444' }], DISPLAYS);
+  for (const lixo of [null, undefined, 'nao e lista', [], [null]]) {
+    const depois = mergeSourceDisplays(base, lixo, DISPLAYS);
+    assert.equal(depois.get('screen:0:0'), '2528732444');
   }
 });

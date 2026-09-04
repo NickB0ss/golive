@@ -61,4 +61,34 @@ function boundsFor(displayId, displays) {
   return { x, y, width, height };
 }
 
-module.exports = { isScreenSource, indexSourceDisplays, boundsFor };
+/**
+ * Soma o que uma listagem descobriu ao indice que ja existe, em vez de
+ * trocar um pelo outro.
+ *
+ * O dialogo de compartilhar pede as fontes em DUAS chamadas em paralelo --
+ * `listSources(['screen'])` e `listSources(['window'])` -- justamente pra
+ * que as janelas, que sao a parte cara de enumerar, nao segurem a lista de
+ * telas. So que uma listagem de JANELAS nao tem tela nenhuma dentro, entao
+ * ela indexa vazio; enquanto o main ATRIBUIA o resultado, ela apagava o
+ * casamento tela->display que a outra chamada tinha acabado de descobrir.
+ * E como as janelas quase sempre chegam por ultimo, isso nao dava um bug
+ * intermitente: dava um bug quase certo -- quem compartilhava a tela inteira
+ * era avisado de que estava "compartilhando uma janela" e ficava sem o
+ * rabisco na tela real.
+ *
+ * Somar resolve sem depender de ordem nenhuma. Entrada torta (a promessa de
+ * uma das listagens falhou) nao tira nada do que ja estava la. Uma tela que
+ * mudou de monitor e sobrescrita, nao duplicada, porque a chave e o id da
+ * fonte. Entrada velha que sobreviva a uma troca de monitor nao faz estrago:
+ * quem vai usar o valor e `boundsFor`, que devolve `null` quando o display
+ * nao existe mais.
+ */
+function mergeSourceDisplays(existing, sources, displays) {
+  const merged = new Map(existing || []);
+  for (const [sourceId, displayId] of indexSourceDisplays(sources, displays)) {
+    merged.set(sourceId, displayId);
+  }
+  return merged;
+}
+
+module.exports = { isScreenSource, indexSourceDisplays, mergeSourceDisplays, boundsFor };

@@ -318,6 +318,86 @@ test('broadcast-state: paused atravessa pra sala inteira junto do live', async (
   }
 });
 
+// O campo `annotate` diz se a sala pode rabiscar na tela de quem transmite.
+// Ele nasce no dialogo de compartilhar e so chega em quem assiste pelo
+// broadcast-state -- se o servidor nao repassar, a barra de ferramentas de
+// rabisco simplesmente nunca aparece pra ninguem, sem erro nenhum no meio.
+test('broadcast-state: annotate atravessa pra sala inteira', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, annotate: true }));
+    const msg = await atB;
+    assert.equal(msg.live, true);
+    assert.equal(msg.annotate, true);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('broadcast-state: annotate ausente chega como false, nao undefined', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true }));
+    const msg = await atB;
+    assert.equal(msg.annotate, false);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('broadcast-state: annotate nao vaza de um cliente que mandou lixo', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, annotate: 'sim' }));
+    const msg = await atB;
+    assert.equal(msg.annotate, false);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('broadcast-state: paused ausente chega como false, nao undefined', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
