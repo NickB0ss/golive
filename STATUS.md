@@ -37,7 +37,20 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Áudio negociado em **estéreo** (Opus, bitrate declarado no SDP dos dois
   lados).
 - Pausar a transmissão a qualquer momento, com atalho global `Ctrl+Alt+P`
-  que funciona com o jogo por cima.
+  que funciona com o jogo por cima. **Quem assiste vê "Transmissão pausada"
+  sobre o último quadro borrado** (um bitmap estático de 320px, não
+  `backdrop-filter` — o `<video>` fica pausado e escondido enquanto dura),
+  em vez de um quadro congelado sem explicação. O próprio tile de quem
+  pausou mostra "Você pausou — ninguém está vendo".
+- Botões de **compartilhar tela e câmera mostram o próprio estado**: rótulo,
+  ícone e preenchimento mudam ao ligar (`Parar de compartilhar` / `Desligar
+  câmera`), e a câmera tem um estado de carregando enquanto o driver abre.
+- **Temas de cor** (Configurações > Aparência): seis predefinições
+  (Superfície e sinal, Meia-noite, Carvão, Âmbar quente, Floresta, Papel —
+  a única clara) mais um tema personalizado (dois sliders + cor de ação),
+  com trava de contraste que reprova combinações ilegíveis antes de
+  aplicar. `--live`/`--warn`/`--danger` ficam travados em todo tema — só
+  superfície e cor de ação são escolha da pessoa.
 - Painel de estatísticas mostra os dois lados: o que sai e o que está
   **sendo recebido**.
 - Atualização via GitHub Releases, disparada pelo usuário (não baixa sozinha).
@@ -46,9 +59,14 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.7.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.7.0` (`package.json`) na `main`; a branch
+`claude/screen-share-camera-ui-qppkll` tem as três frentes acima (estado
+visível nos toggles, overlay de pausa, temas de cor) prontas pra virar
+`0.8.0` — ver
+`docs/superpowers/specs/2026-09-03-estado-visivel-e-temas-design.md` e o
+plano irmão. Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **306 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **335 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 

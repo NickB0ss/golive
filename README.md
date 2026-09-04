@@ -104,9 +104,12 @@ Duplo clique em qualquer vídeo expande pra tela cheia.
 
 **Pra pausar a transmissão** sem parar de compartilhar, use o botão de pausa
 no palco ou o atalho global **`Ctrl+Alt+P`** — ele funciona mesmo com o jogo
-em tela cheia por cima, sem precisar dar alt-tab. Os espectadores veem o
-último quadro congelar, sem aviso automático do outro lado; o mesmo atalho
-retoma.
+em tela cheia por cima, sem precisar dar alt-tab. Os espectadores veem
+"Transmissão pausada" sobre o último quadro borrado, não um quadro
+congelado sem explicação; o mesmo atalho retoma. Os botões de compartilhar
+tela e câmera também mudam de rótulo e cor quando ligados ("Parar de
+compartilhar", "Desligar câmera"), pra não ter dúvida do que um clique vai
+fazer.
 
 **Se você fechar o GoLive no PC que criou a sala, a sala cai pra todo
 mundo** — não há como transferir a sala pra outra máquina no meio da
@@ -131,9 +134,16 @@ clica em **Criar sala** (ver "Como usar" acima).
 ## Configurações de qualidade
 
 Não há aba "Transmissão" no modal de Configurações. As categorias são
-**Perfil**, **Voz e Vídeo** e **Estatísticas** — nenhuma delas tem controle de
-bitrate, codec ou áudio do sistema. (O anúncio da sala na rede também não
-mora mais lá: virou uma opção do diálogo de criar sala.)
+**Perfil**, **Aparência**, **Voz e Vídeo** e **Estatísticas** — nenhuma delas
+tem controle de bitrate, codec ou áudio do sistema. (O anúncio da sala na
+rede também não mora mais lá: virou uma opção do diálogo de criar sala.)
+
+**Aparência** troca a cor do app: seis predefinições prontas (a última,
+"Papel", é a única clara) ou um tema personalizado com dois sliders (base
+fria/quente, escura/clara) e uma cor de ação à sua escolha. A troca é ao
+vivo, sem botão "aplicar". `--live`, `--warn` e `--danger` (os sinais de "ao
+vivo", "atenção" e "perigo") não mudam em nenhum tema — só a superfície e a
+cor de ação são customizáveis.
 
 A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
 tela" → "O que você quer compartilhar?"), numa grade de seis presets
