@@ -11,6 +11,17 @@
 const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut } = require('electron');
 const path = require('path');
 
+// So pode existir UM GoLive rodando por maquina: dois processos tentando abrir
+// o mesmo servidor de sinalizacao/porta, escutar a mesma descoberta UDP e
+// registrar o mesmo atalho global e receita pra sala fantasma e atalho que so
+// funciona num dos dois. `requestSingleInstanceLock` tem que ser a PRIMEIRA
+// coisa do arquivo, antes de qualquer commandLine.appendSwitch ou outro side
+// effect -- se perder a lock, so falta sair.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
+
 // TODAS as features do Chromium tem que sair daqui, numa lista so:
 // appendSwitch('enable-features', ...) chamado duas vezes NAO soma -- a
 // segunda chamada sobrescreve a primeira, em silencio.
@@ -95,6 +106,16 @@ let sourceDisplays = new Map();
 let selectedDisplayId = null;
 /** Controle do auto-updater, preenchido em whenReady (so em build empacotado). */
 let updater = null;
+
+// Segunda tentativa de abrir o app: em vez de deixar o SO iniciar outro
+// processo (que ia falhar tentando reusar porta/UDP), o Electron dispara isto
+// no processo original. So resta trazer a janela existente pra frente.
+app.on('second-instance', () => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 
 const { createSignalingServer } = require('../server/signaling-core');
 const { pickAddress } = require('./main/network');
