@@ -1782,7 +1782,7 @@
           // O id de conexao muda na reconexao, e a superficie da MINHA tela
           // e justamente esse id -- sem re-registrar, a sala inteira passa a
           // desenhar num id que nao existe mais.
-          ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true });
+          ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
           for (const p of msg.peers) {
             if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
@@ -2035,6 +2035,7 @@
           surfaceId: msg.id,
           allowed: Boolean(peer?.annotate),
           canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
+          canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
         });
         if (!msg.live) {
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
@@ -2506,7 +2507,7 @@
       // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
-      ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true });
+      ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
 
       // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
       // voce entra numa sala que ja tem 4 pessoas e clica "Compartilhar

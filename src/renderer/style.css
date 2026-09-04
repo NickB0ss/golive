@@ -1956,26 +1956,6 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 }
 .tile.annot-on .tile-annot-canvas { pointer-events: auto; cursor: crosshair; }
 
-.tile-annot-btn {
-  position: absolute;
-  top: 8px; right: 44px;
-  width: 28px; height: 28px;
-  display: grid; place-items: center;
-  border: none; border-radius: var(--r-sm);
-  background: var(--scrim-3);
-  color: #fff;
-  opacity: 0;
-  z-index: 4;
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-.tile-annot-btn svg { width: 15px; height: 15px; }
-.tile:hover .tile-annot-btn,
-.tile:focus-within .tile-annot-btn,
-.tile-annot-btn.active { opacity: 1; }
-.tile-annot-btn:hover { background: var(--scrim-5); }
-.tile-annot-btn.active { background: var(--act); }
-.tile.fullscreen.idle .tile-annot-btn { opacity: 0; }
-
 .tile-annot-bar {
   position: absolute;
   left: 50%;
@@ -1991,6 +1971,10 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   box-shadow: var(--shadow-2);
   z-index: 5;
 }
+/* Superficie anotavel sem nenhum botao pra este papel: a barra existe no
+   DOM mas nao tem o que mostrar, e uma pilula vazia flutuando sobre o video
+   seria pior que barra nenhuma. */
+.tile-annot-bar:empty { display: none; }
 .annot-tool {
   width: 30px; height: 30px;
   display: grid; place-items: center;
@@ -2002,9 +1986,21 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 .annot-tool svg { width: 15px; height: 15px; }
 .annot-tool em { font-style: normal; font-size: 9px; margin-left: 2px; }
 .annot-tool:hover:not(:disabled) { background: var(--s3); }
-.annot-tool.active { background: var(--act); color: var(--on-act); }
+/* Qual ferramenta esta escolhida: preenchimento DISCRETO. O preenchimento
+   forte (--act) e so do toggle -- ele e a chave geral da barra, e dois
+   botoes cheios lado a lado competiam sem dizer qual dos dois manda. */
+.annot-tool.active { background: var(--s4); color: var(--act); }
 .annot-tool.warn { width: auto; padding: 0 8px; color: var(--warn); }
 .annot-tool:disabled { opacity: .35; }
+/* O unico botao da barra de quem e DONO da tela. Rotulo por extenso porque
+   ele aparece sozinho: sem vizinhos, um icone de lixeira solto nao diz o que
+   apaga. `inline-flex` derruba o `grid` da regra base -- em grade o icone e
+   o rotulo empilhavam em duas linhas. */
+.annot-tool.wide { display: inline-flex; align-items: center; width: auto; padding: 0 12px; gap: 6px; }
+.annot-tool.wide em { font-size: 12px; font-weight: 600; margin-left: 0; }
+/* O toggle e a raiz da barra: e ele que decide se o resto responde. Separado
+   dos outros por uma linha, e nunca desabilitado. */
+.annot-toggle.active { background: var(--act); color: var(--on-act); }
 .annot-sep { width: 1px; height: 18px; background: var(--line2); margin: 0 3px; }
 /* Nao e um seletor: e a legenda de quem VOCE e na lousa. */
 .annot-ink {
