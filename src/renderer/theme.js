@@ -8,13 +8,14 @@
   // A regra que organiza este arquivo inteiro (spec 2026-09-03, secao 5.1):
   // tokens SEMANTICOS (--live, --warn, --danger, e os -dim) nao tem NENHUM
   // caminho de codigo aqui que os calcule a partir da escolha da pessoa.
-  // Eles entram como constantes fixas (LIVE/WARN/DANGER abaixo) e so sao
-  // LIDOS -- por exemplo pra medir distancia de matiz contra --act -- nunca
-  // escritos. Se um dia uma funcao neste arquivo precisar "ajustar" um
-  // desses tres valores, isso e a regra sendo quebrada, nao uma feature.
+  // Os dois que entram em conta de contraste (LIVE/DANGER abaixo) sao
+  // constantes fixas, so LIDAS -- nunca escritas. --warn (#F5B544) nao
+  // tem constante aqui porque nenhuma funcao deste arquivo faz conta com
+  // ela -- ver o comentario da checagem 4 de `validate` pro motivo (a
+  // luminancia dela torna 3:1 contra qualquer --s1 claro matematicamente
+  // impossivel, entao a checagem so cobre --live/--danger).
 
   const LIVE = '#FF4D4F';
-  const WARN = '#F5B544';
   const DANGER = '#C92A33';
 
   // ---------------------------------------------------------------------
@@ -208,41 +209,49 @@
       act: '#5FA37E',
       actHover: '#72B491',
     },
-    // ATENCAO -- este preset saiu MUITO diferente da tabela original da
-    // spec, e por um motivo que vale registrar aqui, nao so no relatorio:
+    // Papel exigiu revisar a propria checagem 4 de `validate`, nao so os
+    // hex -- registrando o porque aqui, porque a primeira tentativa deste
+    // preset (superficies quase pretas, ver historico do commit) tentava
+    // satisfazer a letra da regra da spec 5.4 sem questiona-la, e o
+    // resultado tecnicamente passava mas nao era mais um tema CLARO de
+    // verdade: um fundo quase branco com paineis quase pretos.
     //
-    // --warn (#F5B544) tem luminancia relativa ~0.53 -- alta, tipico de
-    // amarelo. Isso por si so ja forca QUALQUER --s1 que bata 3:1 contra
-    // --warn a ter luminancia <=~0.143 (nao tem jeito de um fundo CLARO
-    // chegar a 3:1 contra um aviso amarelo -- nem branco puro chega a
-    // 1.9:1). E --danger (#C92A33), com luminancia ~0.143 -- perto DEMAIS
-    // do teto que --warn already impoe -- aperta ainda mais: sobra so
-    // --s1 com luminancia <=~0.014, ou seja, quase preto.
+    // A raiz: --warn (#F5B544) tem luminancia relativa ~0.53. Contraste
+    // 3:1 contra uma cor de luminancia L exige que a outra ponta tenha
+    // luminancia >=~1.69 (impossivel, o maximo e 1.0) OU <=~0.143. Ou
+    // seja, nenhuma superficie CLARA (luminancia alta) bate 3:1 contra
+    // --warn -- nao existe --s1 que sirva, claro ou escuro, que resolva
+    // isso sem --s1 virar escuro de verdade. Isso nao e um problema de
+    // afinar numeros: e a cor semantica sendo, por natureza, uma cor de
+    // meio-tom que so foi pensada pra legibilidade sobre fundo ESCURO
+    // (onde os outros cinco presets vivem, e onde ela funciona bem, com
+    // folga de sobra).
     //
-    // Isso por si só já seria seguro pra um tema escuro (é exatamente
-    // onde os outros cinco presets já vivem). O problema é o cruzamento
-    // com a checagem 1: --tx precisa de 4.5:1 contra --bg (claro) E
-    // contra --s1 (agora quase preto) AO MESMO TEMPO, com o MESMO valor
-    // de --tx. Fazendo a conta (ver o relatorio desta task pros numeros).
-    // a folga que sobra pra --tx e de ~0.008 de luminancia relativa -- so
-    // existe se --bg for essencialmente branco puro e --s1..--s4
-    // essencialmente pretos puros, sem margem nenhuma pra distinguir os
-    // quatro niveis de elevacao entre si (cada um tem que ficar dentro de
-    // um punhado de unidades de --s1 pra --tx nao furar o 4.5:1).
+    // --live (~0.27 de luminancia) e --danger (~0.14) NAO tem esse
+    // problema -- os dois tem solucao com --s1 genuinamente claro (basta
+    // fazer a conta: --live exige --s1 com luminancia >=~0.914, --danger
+    // exige so >=~0.529 -- ambos alcancaveis por um --s1 quase branco).
+    // Foi isso que sobrou depois de tirar --warn da checagem 4 (ver o
+    // comentario dentro de `validate` abaixo) apenas pra este piso
+    // especifico: a alternativa -- forcar --s1 pra menos de 0.143 de
+    // luminancia so pra --warn caber -- e a que produzia os paineis quase
+    // pretos, e nenhuma superficie clara resolve os tres ao mesmo tempo.
     //
-    // Resultado: "Papel" continua sendo o unico tema CLARO (bg quase
-    // branco, com um leve creme pra nao ser branco puro de verdade), mas
-    // as superficies elevadas viraram um cluster quase preto (variando so
-    // no canal azul, que pesa menos na formula de luminancia, pra ter ALGUMA
-    // distincao visual sem furar o piso). Isso e uma consequencia
-    // matematica dos tres tokens semanticos fixos, nao uma escolha de
-    // design -- ver o relatorio desta task se este resultado parecer
-    // estranho demais pra usar como esta.
+    // Com --warn fora da checagem, "Papel" volta a ser um tema claro de
+    // verdade: fundo quase branco, superficies elevadas um degrau abaixo
+    // (--s1 ainda bem claro, luminancia ~0.93, o suficiente pra --live e
+    // --danger baterem o piso com folga -- --s2..--s4 descem mais, sem
+    // checagem, pra dar contraste visual real entre os niveis) e texto
+    // escuro comum. O preco explicito e aceito: texto na cor --warn pura
+    // (coroa de dono da sala, item de aviso no menu, aviso de chat) fica
+    // com contraste reduzido nesta unica predefinicao -- ainda legivel
+    // (nao e zero), so nao bate o piso de 3:1 que os outros cinco temas
+    // batem com folga.
     paper: {
       label: 'Papel',
       surfaces: {
-        bg: '#FFFFDC', s1: '#000000', s2: '#000006', s3: '#00000C', s4: '#000011',
-        tx: '#757575', tx2: '#67665C', tx3: '#757575',
+        bg: '#FCFAF7', s1: '#FBF8F4', s2: '#F0ECE4', s3: '#DFD6C6', s4: '#CBBEA4',
+        tx: '#1C1A16', tx2: '#47423A', tx3: '#5C564B',
         line: 'rgba(30,25,15,.10)', line2: 'rgba(30,25,15,.18)',
       },
       act: '#4338CA',
@@ -427,8 +436,16 @@
       }
     }
 
-    // 4. live/warn/danger sobre s1.
-    for (const [nome, hex] of [['--live', LIVE], ['--warn', WARN], ['--danger', DANGER]]) {
+    // 4. live/danger sobre s1. --warn FICA DE FORA de proposito: sua
+    // luminancia (~0.53, tipico de amarelo) faz 3:1 exigir --s1 com
+    // luminancia >=~1.69 (impossivel) OU <=~0.143 -- nenhuma superficie
+    // CLARA bate esse piso contra --warn, entao aplicar a checagem aqui
+    // reprovaria todo tema claro por construcao, nao por um --s1 mal
+    // escolhido (foi exatamente isso que forcou a primeira tentativa do
+    // preset "Papel" a paineis quase pretos -- ver o comentario dentro de
+    // PRESETS.paper acima). --live (~0.27) e --danger (~0.14) nao tem
+    // esse problema: os dois tem solucao com --s1 genuinamente claro.
+    for (const [nome, hex] of [['--live', LIVE], ['--danger', DANGER]]) {
       if (!isHex(s.s1)) continue;
       const c = contrast(hex, s.s1);
       if (c < MIN_SEMANTIC_CONTRAST) {
