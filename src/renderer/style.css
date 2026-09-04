@@ -209,8 +209,13 @@
   --line: rgba(180,255,200,.08); --line2: rgba(180,255,200,.14);
   --act:#5FA37E; --act-hover:#72B491;
 }
-:root[data-theme="paper"] {  /* Papel -- o unico claro */
-  --bg:#F7F5F2; --s1:#EFEDE9; --s2:#E6E3DD; --s3:#D8D4CC; --s4:#C7C2B8;
+/* Papel -- o unico claro. bg/s1..s4 foram revistos depois do bloco original
+   (ver theme.js, comentario dentro de PRESETS.paper e da checagem 4 de
+   validate): --warn nao bate 3:1 contra NENHUM --s1 claro, entao a
+   checagem so cobre --live/--danger -- e isso e o que permite --s1 ficar
+   genuinamente claro (~0.93 de luminancia) em vez de quase preto. */
+:root[data-theme="paper"] {
+  --bg:#FCFAF7; --s1:#FBF8F4; --s2:#F0ECE4; --s3:#DFD6C6; --s4:#CBBEA4;
   --tx:#1C1A16; --tx2:#47423A; --tx3:#5C564B;
   --line: rgba(30,25,15,.10); --line2: rgba(30,25,15,.18);
   --act:#4338CA; --act-hover:#3730A3;
