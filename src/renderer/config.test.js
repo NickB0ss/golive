@@ -310,3 +310,63 @@ test('eixo desconhecido cai no padrao em vez de lancar', () => {
   assert.deepEqual(presetAxes('inexistente'), { resolution: '1080p', fps: 60 });
   assert.deepEqual(presetAxes(undefined), { resolution: '1080p', fps: 60 });
 });
+
+// ---------- cfg.theme (spec 2026-09-03, secao 5) ----------
+
+test('theme: default e o preset "signal", config antigo sem theme cai nele', () => {
+  assert.deepEqual(DEFAULTS.theme, { preset: 'signal' });
+  assert.deepEqual(load(null).theme, { preset: 'signal' });
+
+  const antigo = JSON.stringify({ v: 1, name: 'Nicolas' }); // de antes do theme existir
+  assert.deepEqual(load(antigo).theme, { preset: 'signal' });
+});
+
+test('theme: round-trip preserva um preset conhecido', () => {
+  const saved = serialize({ ...DEFAULTS, theme: { preset: 'midnight' } });
+  assert.deepEqual(load(saved).theme, { preset: 'midnight' });
+});
+
+test('theme: round-trip preserva um custom valido', () => {
+  const custom = { preset: 'custom', base: { temp: 0.3, level: 0.8 }, act: '#4F8EF7' };
+  const saved = serialize({ ...DEFAULTS, theme: custom });
+  assert.deepEqual(load(saved).theme, custom);
+});
+
+test('theme: preset desconhecido cai no padrao', () => {
+  const saved = serialize({ ...DEFAULTS, theme: { preset: 'roxo-brilhante' } });
+  assert.deepEqual(load(saved).theme, DEFAULTS.theme);
+});
+
+test('theme: custom sem act cai no padrao', () => {
+  const saved = serialize({ ...DEFAULTS, theme: { preset: 'custom', base: { temp: 0.5, level: 0.5 } } });
+  assert.deepEqual(load(saved).theme, DEFAULTS.theme);
+});
+
+test('theme: custom com act em formato invalido cai no padrao', () => {
+  for (const act of ['azul', '#fff', '#gggggg', 123, null]) {
+    const saved = serialize({ ...DEFAULTS, theme: { preset: 'custom', base: { temp: 0.5, level: 0.5 }, act } });
+    assert.deepEqual(load(saved).theme, DEFAULTS.theme, `act=${JSON.stringify(act)} deveria cair no padrao`);
+  }
+});
+
+test('theme: custom com base fora de 0-1 ou faltando cai no padrao', () => {
+  const base_invalidos = [
+    { temp: 1.5, level: 0.5 },
+    { temp: -0.1, level: 0.5 },
+    { temp: 0.5, level: 'claro' },
+    { temp: 0.5 },
+    null,
+    'string',
+  ];
+  for (const base of base_invalidos) {
+    const saved = serialize({ ...DEFAULTS, theme: { preset: 'custom', base, act: '#4F46E5' } });
+    assert.deepEqual(load(saved).theme, DEFAULTS.theme, `base=${JSON.stringify(base)} deveria cair no padrao`);
+  }
+});
+
+test('theme: valor solto (nao objeto) cai no padrao', () => {
+  for (const theme of [null, 'signal', 42, undefined]) {
+    const saved = serialize({ ...DEFAULTS, theme });
+    assert.deepEqual(load(saved).theme, DEFAULTS.theme);
+  }
+});
