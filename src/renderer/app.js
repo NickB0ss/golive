@@ -2617,6 +2617,30 @@
     startCamera().catch((err) => console.error('[camera] startCamera falhou:', err));
   });
 
+  // Teto pra abrir a camera. `getUserMedia` normalmente REJEITA quando algo
+  // da errado (sem permissao, sem dispositivo), mas ha um caso em que ela
+  // simplesmente nao volta: driver travado ou outro app segurando a webcam em
+  // modo exclusivo. Sem teto, o `finally` de startCamera nunca roda e o botao
+  // fica em "Abrindo…", desabilitado, pra sempre.
+  const CAMERA_OPEN_TIMEOUT_MS = 15000;
+
+  /** Desiste da promessa depois de `ms`. A captura que chegar ATRASADA e
+   * parada aqui mesmo -- senao a webcam fica com a luzinha acesa servindo um
+   * stream que ninguem mais espera. */
+  function withCameraTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+      let timer = setTimeout(() => {
+        timer = null;
+        promise.then((stream) => stream.getTracks().forEach((t) => t.stop()), () => {});
+        reject(new Error('a câmera não respondeu'));
+      }, ms);
+      promise.then(
+        (stream) => { if (timer !== null) { clearTimeout(timer); resolve(stream); } },
+        (err) => { if (timer !== null) { clearTimeout(timer); reject(err); } }
+      );
+    });
+  }
+
   async function startCamera() {
     if (cameraStream || cameraStarting) return;
     cameraStarting = true;
@@ -2631,7 +2655,10 @@
 
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+        stream = await withCameraTimeout(
+          navigator.mediaDevices.getUserMedia({ video: constraints, audio: false }),
+          CAMERA_OPEN_TIMEOUT_MS
+        );
       } catch (err) {
         showToast(`Não consegui acessar a câmera: ${err.message}`);
         return; // o finally devolve o botao pro estado real

@@ -2815,10 +2815,18 @@
     if (!btn) return;
     const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
     btn.querySelector('.btn-label').textContent = label;
-    btn.querySelector('.icon-off').hidden = state !== 'off';
-    btn.querySelector('.icon-on').hidden = state !== 'on';
+    // classe `.hidden`, NAO o atributo/propriedade `hidden`: estes tres nos
+    // sao <svg>, e `hidden` e um atributo de HTMLElement -- `svg.hidden = x`
+    // grava uma propriedade solta que nao vira atributo, e nem o atributo no
+    // markup esconde um <svg> no Chromium (a regra `[hidden]` da folha do
+    // navegador nao vence o display do elemento SVG). Era por isso que o
+    // spinner da camera girava desde o boot e os dois icones de cada toggle
+    // apareciam empilhados. `.hidden { display: none !important }` funciona
+    // em qualquer namespace -- e o padrao que setCreateRoomBusy ja usava.
+    btn.querySelector('.icon-off').classList.toggle('hidden', state !== 'off');
+    btn.querySelector('.icon-on').classList.toggle('hidden', state !== 'on');
     const spinner = btn.querySelector('.btn-spinner');
-    if (spinner) spinner.hidden = state !== 'loading';
+    if (spinner) spinner.classList.toggle('hidden', state !== 'loading');
     btn.classList.toggle('is-on', state === 'on');
     btn.classList.toggle('loading', state === 'loading');
     btn.setAttribute('aria-pressed', state === 'on' ? 'true' : 'false');
