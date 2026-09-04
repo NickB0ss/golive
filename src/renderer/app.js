@@ -1682,10 +1682,13 @@
   // fica dentro do app, como sempre foi, e a pessoa e avisada.
   let annotOverlayOn = false;
 
-  async function startAnnotOverlay(sourceId) {
+  /** O main ja sabe qual fonte foi escolhida (ele guardou no `sources:select`),
+   * entao nao ha id pra passar daqui -- e melhor assim: uma fonte da verdade
+   * sobre o que esta sendo capturado, do lado que decide. */
+  async function startAnnotOverlay() {
     annotOverlayOn = false;
     if (!shareAnnotations) return;
-    const r = await window.golive.startAnnotOverlay?.(sourceId);
+    const r = await window.golive.startAnnotOverlay?.();
     if (r?.ok) {
       annotOverlayOn = true;
       // A lousa costuma nascer vazia aqui, mas nao sempre: reconectar sem
@@ -2558,7 +2561,7 @@
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
       ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
-      await startAnnotOverlay(sourceId);
+      await startAnnotOverlay();
 
       // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
       // voce entra numa sala que ja tem 4 pessoas e clica "Compartilhar

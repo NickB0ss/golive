@@ -105,12 +105,25 @@ direito** em cima de uma tela pra **silenciar** aquela pessoa ou mexer no
 volume dela (é só pra você — ninguém fica sabendo).
 
 **Pra deixar a turma rabiscar na sua tela**, marque *"Deixar a sala rabiscar
-na minha tela"* no diálogo de compartilhar, **antes** de ir ao vivo. Aí
-qualquer um clica no lápis no canto do vídeo e ganha caneta e texto, cada
-pessoa com a sua cor. Dá pra desfazer e apagar os seus rabiscos; quem é dono
-da tela pode limpar tudo. Sai do ar junto com a transmissão. A escolha fica
-lembrada pra próxima vez, e **não dá pra ligar no meio** — pare e
-compartilhe de novo.
+na minha tela"* no diálogo de compartilhar, **antes** de ir ao vivo. Uma
+barrinha aparece embaixo do vídeo; o primeiro botão dela liga e desliga a
+caneta, e aí vêm caneta e texto, cada pessoa com a sua cor. Você desfaz e
+apaga **os seus** rabiscos — ninguém apaga o traço de outro.
+
+Quem é **dono da tela** não rabisca na própria tela: a barra dele tem um
+botão só, *"Apagar tudo"*, que limpa a lousa inteira. Em compensação, é na
+tela dele que a coisa acontece de verdade — **compartilhando uma tela
+inteira, os rabiscos aparecem por cima da tela real**, não só dentro do
+GoLive, e sem atrapalhar o mouse nem entrar na transmissão (ninguém vê o
+traço duplicado). Compartilhando uma **janela** específica isso não rola: o
+rabisco fica dentro do app, e o GoLive avisa.
+
+Sai do ar junto com a transmissão. A escolha fica lembrada pra próxima vez,
+e **não dá pra ligar no meio** — pare e compartilhe de novo.
+
+Com o **mouse parado por 3 segundos**, o cabeçalho, a barra de baixo e a
+barra de rabisco somem pra não atrapalhar o vídeo. Voltam no primeiro
+movimento (ou no `Tab`, se você estiver de teclado).
 
 **No chat** dá pra mandar imagem (botão de clipe, `Ctrl+V` ou arrastando em
 cima da coluna) — ela é reduzida automaticamente e aparece como miniatura,
@@ -159,11 +172,12 @@ tem controle de bitrate, codec ou áudio do sistema. (O anúncio da sala na
 rede também não mora mais lá: virou uma opção do diálogo de criar sala.)
 
 **Aparência** troca a cor do app: seis predefinições prontas (a última,
-"Papel", é a única clara) ou um tema personalizado com dois sliders (base
-fria/quente, escura/clara) e uma cor de ação à sua escolha. A troca é ao
-vivo, sem botão "aplicar". `--live`, `--warn` e `--danger` (os sinais de "ao
-vivo", "atenção" e "perigo") não mudam em nenhum tema — só a superfície e a
-cor de ação são customizáveis.
+"Papel", é a única clara), e você pode trocar a **cor de ação** (botão
+principal, foco do teclado, seleção) por cima de qualquer uma delas. A troca
+é ao vivo, sem botão "aplicar", e o app reprova uma cor que deixaria algum
+texto ilegível. `--live`, `--warn` e `--danger` (os sinais de "ao vivo",
+"atenção" e "perigo") não mudam em nenhum tema, e as superfícies também não:
+só o acento é escolha sua.
 
 A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
 tela" → "O que você quer compartilhar?"), numa grade de seis presets
