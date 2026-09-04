@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<!-- Mais fechada que a do app: esta pagina nao carrega imagem, nao toca
+     midia e nao abre socket nenhum. Ela so desenha num canvas o que o
+     processo principal manda. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'" />
+<title>Rabiscos da sala</title>
+<style>
+  /* Fundo REALMENTE transparente: a janela e `transparent: true`, e qualquer
+     cor aqui viraria um vidro fosco por cima da tela inteira de quem esta
+     compartilhando. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="lousa"></canvas>
+<script src="annotate.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>

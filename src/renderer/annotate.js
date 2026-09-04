@@ -154,6 +154,28 @@
     return out;
   }
 
+  /** Quem pode fazer O QUE numa superficie. Duas regras, e elas sao o
+   * espelho uma da outra:
+   *
+   *   - Quem DONA a tela nao desenha nela. Rabisco e o que a sala escreve na
+   *     tela de alguem; o dono ja tem o cursor dele ali, e um traco dele no
+   *     meio dos outros so confunde de quem e o que.
+   *   - So o dono limpa a lousa inteira (`clear` com `scope:'all'`). Apagar
+   *     o traco dos outros e diferente de apagar os seus: e o dono da tela
+   *     dizendo "chega", nao um participante apagando o que nao e dele.
+   *
+   * Fica aqui, e nao so na interface, porque isto tambem e regra de REDE:
+   * `apply` e o unico caminho tanto pro que nasce no proprio app quanto pro
+   * que chega pelo fio, entao checar aqui vale pros dois de uma vez -- do
+   * mesmo jeito cooperativo do resto do protocolo (o servidor de sinalizacao
+   * nao guarda estado de anotacao nenhum, e nao vai passar a guardar). */
+  function opAllowed(surfaceId, from, op) {
+    if (!op || typeof op !== 'object' || Array.isArray(op)) return false;
+    const isOwner = String(surfaceId) === String(from);
+    if (op.op === 'clear' && op.scope === 'all') return isOwner;
+    return !isOwner;
+  }
+
   /** Deposito de lousas, indexado pela superficie (o id de quem esta
    * transmitindo aquela tela). Uma instancia por app -- ele guarda tanto o
    * que EU desenho quanto o que chega pela rede, pelo mesmo caminho
@@ -184,6 +206,7 @@
      * proprio item. */
     function apply(surfaceId, from, op) {
       if (!op || typeof op !== 'object') return false;
+      if (!opAllowed(surfaceId, from, op)) return false;
       const author = String(from);
       const list = listFor(surfaceId);
 
@@ -315,6 +338,7 @@
     contentRect,
     toNorm,
     toPx,
+    opAllowed,
     sanitizeItem,
     sanitizeItems,
     createStore,

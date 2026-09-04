@@ -61,32 +61,52 @@
     if (enabled) return;
     document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen', 'idle'));
     fullscreenTileId = null;
-    clearTimeout(fullscreenIdleTimer);
+    scheduleIdle();
   });
 
-  // Nome, avatar, "+" do PiP e o botao de sair do fullscreen (`.tile.fullscreen.idle`
-  // no CSS) e o proprio cursor do mouse (`cursor: none`) somem depois de um
-  // tempo parado, tipo player de video, e voltam no primeiro movimento.
-  const FULLSCREEN_IDLE_MS = 3000;
-  let fullscreenIdleTimer = null;
+  // Ociosidade do mouse: a interface sai da frente do video depois de um
+  // tempo parada, tipo player de video, e volta no primeiro movimento.
+  //
+  // UM timer so pros dois alcances, porque e UMA nocao de "parado":
+  //   - `body.room-idle`  -> cabecalho da sala, barra de controles e barra
+  //                          de ferramentas do rabisco (CSS `.room-idle`);
+  //   - `.tile.idle`      -> o que ja sumia dentro do fullscreen (nome,
+  //                          avatar, PiP, botao de sair) e o cursor.
+  // Dois timers dariam duas verdades sobre a mesma coisa, e a chance de a
+  // barra sumir enquanto o nome do tile continua la.
+  const IDLE_MS = 3000;
+  let idleTimer = null;
 
-  function scheduleFullscreenIdle(tile) {
-    clearTimeout(fullscreenIdleTimer);
-    tile.classList.remove('idle');
-    fullscreenIdleTimer = setTimeout(() => tile.classList.add('idle'), FULLSCREEN_IDLE_MS);
+  /** So entra em ocioso com tile na grade. Numa sala vazia a barra de baixo
+   * e a unica saida ("Compartilhar tela", "Sair da sala") -- esconde-la ali
+   * seria deixar a pessoa numa tela preta sem porta. */
+  function canGoIdle() {
+    return !!gridEl?.querySelector('.tile');
   }
 
-  function clearFullscreenIdle(tile) {
-    clearTimeout(fullscreenIdleTimer);
-    fullscreenIdleTimer = null;
-    tile?.classList.remove('idle');
+  function scheduleIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+    document.body.classList.remove('room-idle');
+    if (fullscreenTileId) {
+      document.getElementById(`tile-${fullscreenTileId}`)?.classList.remove('idle');
+    }
+    if (!canGoIdle()) return;
+    idleTimer = setTimeout(() => {
+      document.body.classList.add('room-idle');
+      if (fullscreenTileId) {
+        document.getElementById(`tile-${fullscreenTileId}`)?.classList.add('idle');
+      }
+    }, IDLE_MS);
   }
 
-  document.addEventListener('mousemove', () => {
-    if (!fullscreenTileId) return;
-    const tile = document.getElementById(`tile-${fullscreenTileId}`);
-    if (tile) scheduleFullscreenIdle(tile);
-  });
+  // `focusin` e `keydown` junto do `mousemove`: quem anda de Tab tem de
+  // trazer a barra de volta antes de chegar num botao invisivel. Sem eles, o
+  // foco do teclado pousaria atras de uma barra apagada -- e o que a regra
+  // de "overlay nunca esconde o foco" existe pra impedir.
+  for (const evento of ['mousemove', 'mousedown', 'keydown', 'focusin']) {
+    document.addEventListener(evento, scheduleIdle, true);
+  }
 
   // Volume/mute por tile remoto, roteado via Web Audio pra poder passar de
   // 100% (o <video> nativo so vai ate 1.0) -- ver Step 3 do Task 11 do plano
@@ -200,11 +220,10 @@
       if (entering) {
         fullscreenTileId = id;
         renderPipStrip(tile);
-        scheduleFullscreenIdle(tile);
       } else {
         fullscreenTileId = null;
-        clearFullscreenIdle(tile);
       }
+      scheduleIdle();
     };
 
     if (!document.startViewTransition) return apply(); // fallback: corte seco, como antes
@@ -370,9 +389,6 @@
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
         <div class="tile-watchers empty"></div>
-        <button class="tile-annot-btn" type="button" title="Rabiscar nesta tela" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
-        </button>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
@@ -458,9 +474,12 @@
     tilePaused.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
+    // A grade mudou: se o ultimo tile saiu, a sala nao pode mais ficar
+    // ociosa (a barra de baixo vira a unica saida) -- e scheduleIdle e quem
+    // sabe disso.
+    scheduleIdle();
     if (id === fullscreenTileId) {
       fullscreenTileId = null;
-      clearTimeout(fullscreenIdleTimer);
       window.golive.setFullScreen(false);
     } else if (fullscreenTileId) {
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
@@ -495,9 +514,17 @@
   const ANNOT_TOOLS = {
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>',
     text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
-    undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.51 13a9 9 0 1 0 2.13-9.36L3 7"/></svg>',
+    // Meio circulo com a seta pra tras. O icone antigo era o `rotate-ccw` do
+    // Feather -- um arco de quase 360 graus, que le como "recarregar", nao
+    // como "desfazer".
+    undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h10a5 5 0 0 1 0 10h-3"/><polyline points="8 6 4 10 8 14"/></svg>',
     clear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
-    off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    // Par ligado/desligado do toggle da barra: lapis inteiro e lapis cortado.
+    // Mesma gramatica dos toggles da barra de controles (`.icon-off` /
+    // `.icon-on`), e um so no com as duas formas dentro -- a classe `.hidden`
+    // decide qual aparece (o atributo `hidden` nao esconde <svg>).
+    penOn: '<svg class="icon-on hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+    penOff: '<svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><line x1="3" y1="3" x2="21" y2="21"/></svg>',
   };
 
   function annotSetSelf(id) {
@@ -507,8 +534,14 @@
 
   /** Liga (ou desliga) a lousa de um tile. `surfaceId` e o dono da tela --
    * a chave da lousa, igual dos dois lados do fio. `allowed: false` desliga
-   * tudo e apaga: quem parou de compartilhar levou a lousa junto. */
-  function setAnnotSurface(tileId, { surfaceId, allowed, canClearAll = false } = {}) {
+   * tudo e apaga: quem parou de compartilhar levou a lousa junto.
+   *
+   * `canDraw` e `canClearAll` sao os dois papeis, e sao mutuamente
+   * exclusivos na pratica: a tela e sua (apaga tudo, nao desenha) ou e de
+   * outra pessoa (desenha, nao apaga tudo). A regra de verdade mora em
+   * `annotate.opAllowed`, que barra a op no deposito mesmo se a interface
+   * deixar passar -- aqui e so o que a barra MOSTRA. */
+  function setAnnotSurface(tileId, { surfaceId, allowed, canClearAll = false, canDraw = true } = {}) {
     const tile = document.getElementById(`tile-${tileId}`);
     if (!allowed || !surfaceId) {
       if (annotSurfaces.has(tileId)) {
@@ -518,16 +551,19 @@
       annotSurfaces.delete(tileId);
       if (annotDrawingTile === tileId) setAnnotDrawing(tileId, false);
       if (tile) {
-        tile.classList.remove('annotatable');
-        tile.querySelector('.tile-annot-btn').hidden = true;
+        tile.classList.remove('annotatable', 'annot-on');
+        tile.querySelector('.tile-annot-bar').hidden = true;
         clearAnnotCanvas(tile);
       }
       return;
     }
-    annotSurfaces.set(tileId, { surfaceId: String(surfaceId), canClearAll });
+    annotSurfaces.set(tileId, { surfaceId: String(surfaceId), canClearAll, canDraw });
     if (!tile) return;
     tile.classList.add('annotatable');
-    tile.querySelector('.tile-annot-btn').hidden = false;
+    // A barra nasce visivel: era ela que o lapis do canto do tile abria, e
+    // esse lapis saiu. Quem some com ela agora e a ociosidade do mouse.
+    tile.querySelector('.tile-annot-bar').hidden = false;
+    if (!canDraw && annotDrawingTile === tileId) setAnnotDrawing(tileId, false);
     syncAnnotBar(tileId);
     redrawAnnot(tileId);
   }
@@ -672,34 +708,70 @@
    * E a razao de o modo ser explicito: o tile ja tem quatro gestos, e
    * roubar todos eles pra caneta seria pior que um clique a mais. */
   function setAnnotDrawing(tileId, on) {
+    // Quem e dono da tela nao arma a caneta na propria tela, nem por teclado
+    // nem por um estado torto -- a mesma regra que `annotate.opAllowed` ja
+    // garante no deposito.
+    if (on && !annotSurfaces.get(tileId)?.canDraw) return;
     if (on && annotDrawingTile && annotDrawingTile !== tileId) setAnnotDrawing(annotDrawingTile, false);
     const tile = document.getElementById(`tile-${tileId}`);
     if (!tile) return;
     tile.classList.toggle('annot-on', on);
-    tile.querySelector('.tile-annot-bar').hidden = !on;
-    tile.querySelector('.tile-annot-btn').classList.toggle('active', on);
     annotDrawingTile = on ? tileId : (annotDrawingTile === tileId ? null : annotDrawingTile);
-    if (on) syncAnnotBar(tileId);
-    else closeAnnotTextInput(tile);
+    // A barra continua ali dos dois jeitos -- e ela que carrega o toggle.
+    // O que muda e o proprio toggle, as ferramentas travadas e o canvas
+    // passando (ou nao) a receber ponteiro.
+    syncAnnotBar(tileId);
+    if (!on) closeAnnotTextInput(tile);
   }
 
+  /** Remonta a barra a partir do estado. Duas barras diferentes, porque sao
+   * dois papeis diferentes (spec de 2026-09-05, secao 2):
+   *
+   *   - Quem ASSISTE tem o toggle, as duas ferramentas, desfazer, apagar os
+   *     seus e a bolinha da propria cor.
+   *   - Quem e DONO da tela tem um botao so: apagar tudo. Ele nao rabisca na
+   *     propria tela -- ja tem o cursor dele ali.
+   *
+   * O `✕` que existia no fim saiu: desligar e o toggle, e sair sem desligar
+   * nao precisava de botao. */
   function syncAnnotBar(tileId) {
     const tile = document.getElementById(`tile-${tileId}`);
     const bar = tile?.querySelector('.tile-annot-bar');
     const surfaceId = annotSurfaceOf(tileId);
     if (!bar || !surfaceId) return;
     const info = annotSurfaces.get(tileId);
+
+    if (!info.canDraw) {
+      bar.innerHTML = info.canClearAll
+        ? `<button type="button" class="annot-tool warn wide" data-act="clear-all" title="Apagar tudo que a sala rabiscou na sua tela" aria-label="Apagar tudo que a sala rabiscou na sua tela">${ANNOT_TOOLS.clear}<em>Apagar tudo</em></button>`
+        : '';
+      return;
+    }
+
+    const desenhando = tile.classList.contains('annot-on');
     const temMeu = annotStore.hasFrom(surfaceId, annotSelfId);
+    // As ferramentas ficam DESABILITADAS com o toggle desligado, nunca
+    // removidas: a barra nao pode mudar de largura ao ligar e desligar.
+    const travado = desenhando ? '' : ' disabled';
     bar.innerHTML = `
-      <button type="button" class="annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta">${ANNOT_TOOLS.pen}</button>
-      <button type="button" class="annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever">${ANNOT_TOOLS.text}</button>
+      <button type="button" class="annot-tool annot-toggle${desenhando ? ' active' : ''}" data-act="toggle"
+              aria-pressed="${desenhando}"
+              title="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}"
+              aria-label="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}">${ANNOT_TOOLS.penOff}${ANNOT_TOOLS.penOn}</button>
       <span class="annot-sep"></span>
-      <button type="button" class="annot-tool" data-act="undo" title="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
-      <button type="button" class="annot-tool" data-act="clear-mine" title="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
-      ${info.canClearAll ? `<button type="button" class="annot-tool warn" data-act="clear-all" title="Apagar tudo (é a sua tela)">${ANNOT_TOOLS.clear}<em>tudo</em></button>` : ''}
+      <button type="button" class="annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta" aria-label="Caneta"${travado}>${ANNOT_TOOLS.pen}</button>
+      <button type="button" class="annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever" aria-label="Escrever"${travado}>${ANNOT_TOOLS.text}</button>
       <span class="annot-sep"></span>
-      <span class="annot-ink" style="background:${annotate.colorFor(annotSelfId)}" title="Esta é a sua cor"></span>
-      <button type="button" class="annot-tool" data-act="off" title="Sair do modo rabisco">${ANNOT_TOOLS.off}</button>`;
+      <button type="button" class="annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
+      <button type="button" class="annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
+      <span class="annot-sep"></span>
+      <span class="annot-ink" style="background:${annotate.colorFor(annotSelfId)}" title="Esta é a sua cor"></span>`;
+
+    // O par de icones do toggle segue a mesma regra do resto do app: classe
+    // `.hidden`, nunca o atributo -- `hidden` nao esconde um <svg>.
+    const toggle = bar.querySelector('.annot-toggle');
+    toggle.querySelector('.icon-off').classList.toggle('hidden', desenhando);
+    toggle.querySelector('.icon-on').classList.toggle('hidden', !desenhando);
   }
 
   /** Amarra o tile ao sistema de anotacao, uma vez, na criacao dele. Todo
@@ -709,28 +781,28 @@
     const canvas = annotCanvasOf(tile);
     const bar = tile.querySelector('.tile-annot-bar');
 
-    tile.querySelector('.tile-annot-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      setAnnotDrawing(tileId, !tile.classList.contains('annot-on'));
-    });
-
     bar.addEventListener('click', (e) => {
       e.stopPropagation();
       const btn = e.target.closest('button');
-      if (!btn) return;
+      if (!btn || btn.disabled) return;
       if (btn.dataset.tool) {
         annotTool = btn.dataset.tool;
         syncAnnotBar(tileId);
         return;
       }
       switch (btn.dataset.act) {
+        case 'toggle': setAnnotDrawing(tileId, !tile.classList.contains('annot-on')); break;
         case 'undo': emitAnnotOp(tileId, { op: 'undo' }); break;
         case 'clear-mine': emitAnnotOp(tileId, { op: 'clear', scope: 'mine' }); break;
         case 'clear-all': emitAnnotOp(tileId, { op: 'clear', scope: 'all' }); break;
-        case 'off': setAnnotDrawing(tileId, false); break;
         default: break;
       }
     });
+
+    // A barra vive por cima do video: um clique nela nao pode virar o
+    // duplo-clique que joga o tile em fullscreen, nem o arrasto do PiP.
+    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+    bar.addEventListener('dblclick', (e) => e.stopPropagation());
 
     // Um traco por vez por tile. `pending` junta os pontos do quadro
     // corrente: um `points` por quadro de animacao, nao um por pointermove
@@ -762,6 +834,13 @@
       event.stopPropagation();
       const p = pointOf(event);
       if (annotTool === 'text') {
+        // preventDefault e o que faz a escrita funcionar. A acao padrao do
+        // mousedown que vem logo depois deste pointerdown move o foco pro
+        // elemento clicado -- o canvas, que nao e focavel, entao o foco ia
+        // pro body e o campo recem-criado levava um `blur` no mesmo clique.
+        // O listener de blur chamava commit(), que removia o campo vazio: a
+        // caixa de texto abria e sumia antes de dar pra digitar uma letra.
+        event.preventDefault();
         openAnnotTextInput(tile, tileId, p, event);
         return;
       }
@@ -827,7 +906,10 @@
     input.style.top = `${event.clientY - box.top}px`;
     input.style.color = annotate.colorFor(annotSelfId);
     tile.appendChild(input);
-    input.focus();
+    // Focar no quadro seguinte, nao dentro do pointerdown: o preventDefault
+    // acima ja impede o roubo de foco, e adiar tira a corrida do caminho de
+    // qualquer navegador que ainda mova o foco por outra via.
+    requestAnimationFrame(() => input.focus());
 
     const commit = () => {
       const text = input.value.trim();
@@ -847,7 +929,11 @@
       if (e.key === 'Enter') commit();
       else if (e.key === 'Escape') input.remove();
     });
-    input.addEventListener('blur', commit);
+    // "Clicar fora fecha" so passa a valer DEPOIS que o campo teve o foco de
+    // verdade. Um blur que chegue antes do primeiro focus nao e a pessoa
+    // desistindo -- e o navegador tirando o foco de um campo que ela ainda
+    // nem viu, e apagar o campo ali e o bug que a escrita tinha.
+    input.addEventListener('focus', () => input.addEventListener('blur', commit), { once: true });
   }
 
   function closeAnnotTextInput(tile) {
@@ -869,14 +955,13 @@
     if (oldId === newId || !tileRegistry.has(newId)) return;
     const newTile = document.getElementById(`tile-${newId}`);
     if (!newTile) return;
-    clearFullscreenIdle(document.getElementById(`tile-${oldId}`));
-    document.getElementById(`tile-${oldId}`)?.classList.remove('fullscreen');
+    document.getElementById(`tile-${oldId}`)?.classList.remove('fullscreen', 'idle');
     newTile.classList.add('fullscreen');
     fullscreenTileId = newId;
     pinnedPip.delete(newId);
     if (oldId) pinnedPip.add(oldId);
     renderPipStrip(newTile);
-    scheduleFullscreenIdle(newTile);
+    scheduleIdle();
   }
 
   // Posicao/tamanho inicial de uma miniatura que ainda nao foi arrastada --
@@ -2143,32 +2228,29 @@
     $('theme-presets').innerHTML = THEME_PRESET_ORDER.map((id) => renderThemePresetCard(id, activeId)).join('');
   }
 
-  // Modo personalizado: nenhum cartao de preset fica marcado (a pessoa
-  // saiu do conjunto fechado assim que mexeu num slider).
-  function markThemePresetsInactive() {
-    Array.from($('theme-presets').children).forEach((card) => {
-      card.classList.remove('active');
-      card.setAttribute('aria-pressed', 'false');
-    });
+  /** Qual cartao de predefinicao esta marcado agora. A cor de acao e um
+   * acento POR CIMA de uma predefinicao -- nunca um estado sem predefinicao
+   * nenhuma --, entao sempre ha uma resposta; 'signal' e a rede de seguranca
+   * se o DOM ainda nao foi montado. */
+  function selectedThemePreset() {
+    const card = $('theme-presets')?.querySelector('.theme-preset-card.active');
+    return card?.dataset.preset || 'signal';
   }
 
-  /** Le os tres controles de "Personalizar", valida e aplica ao vivo. E
-   * chamada a cada evento `input` (nunca so `change`) -- a pessoa precisa
-   * ver o app mudando enquanto arrasta o slider, que e o unico jeito de
-   * avaliar um tema (spec 5.6). Aplica MESMO quando a validacao reprova --
-   * o aviso abaixo do controle e que carrega a reprovacao, a aplicacao ao
-   * vivo continua sendo o feedback principal. */
+  /** Le a cor de acao, valida e aplica ao vivo. E chamada a cada evento
+   * `input` (nunca so `change`) -- a pessoa precisa ver o app mudando
+   * enquanto arrasta o seletor de cor, que e o unico jeito de avaliar um
+   * tema (spec 5.6). Aplica MESMO quando a validacao reprova -- o aviso
+   * abaixo do controle e que carrega a reprovacao, a aplicacao ao vivo
+   * continua sendo o feedback principal.
+   *
+   * O cartao da predefinicao CONTINUA marcado: trocar o acento nao tira a
+   * pessoa do conjunto fechado, so troca a cor de acao dentro dele. Isso
+   * mudou quando os sliders de superficie sairam -- antes, mexer em
+   * qualquer controle daqui significava sair de todos os presets. */
   function applyCustomThemeFromControls(deps) {
-    const themeCfg = {
-      preset: 'custom',
-      base: {
-        temp: Number($('theme-temp').value) / 100,
-        level: Number($('theme-level').value) / 100,
-      },
-      act: $('theme-act').value,
-    };
+    const themeCfg = { preset: selectedThemePreset(), act: $('theme-act').value };
     const result = theme.validate(theme.tokensFor(themeCfg));
-    markThemePresetsInactive();
     deps.onThemeChange(themeCfg);
 
     const warningEl = $('theme-warning');
@@ -2189,32 +2271,25 @@
     }
   }
 
-  /** Inicializa a aba Aparencia a partir de `cfg.theme` -- preset conhecido
-   * marca o cartao correspondente (sliders/cor ficam num meio-termo, so pra
-   * nao nascer vazios); `custom` preenche sliders e cor com os valores
-   * salvos e deixa nenhum cartao marcado. */
+  /** Inicializa a aba Aparencia a partir de `cfg.theme`. Sempre ha um cartao
+   * marcado; o seletor de cor nasce no `act` salvo, ou no do proprio preset
+   * quando nao ha acento proprio.
+   *
+   * Um `custom` legado (config salvo quando ainda dava pra mexer nas
+   * superficies) nao tem mais controle que o represente: os cartoes caem no
+   * padrao e o seletor mostra o acento salvo. O tema em uso so muda quando a
+   * pessoa mexer em alguma coisa -- abrir as Configuracoes nao repinta nada. */
   function initThemeControls(config) {
     const themeCfg = (config && config.theme) || { preset: 'signal' };
-    const isCustom = themeCfg.preset === 'custom' && isObjectWithBase(themeCfg);
-    const knownPreset = !isCustom && theme.PRESETS[themeCfg.preset] ? themeCfg.preset : null;
+    const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'signal';
 
-    renderThemePresets(isCustom ? null : knownPreset || 'signal');
-
-    if (isCustom) {
-      $('theme-temp').value = Math.round((themeCfg.base.temp ?? 0.5) * 100);
-      $('theme-level').value = Math.round((themeCfg.base.level ?? 0.1) * 100);
-      $('theme-act').value = themeCfg.act;
-    } else {
-      const preset = theme.PRESETS[knownPreset || 'signal'];
-      $('theme-temp').value = 50;
-      $('theme-level').value = 10;
-      $('theme-act').value = preset.act;
-    }
+    renderThemePresets(knownPreset);
+    $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;
     $('theme-warning').textContent = '';
   }
 
-  function isObjectWithBase(themeCfg) {
-    return !!themeCfg.base && typeof themeCfg.act === 'string';
+  function isHexColor(v) {
+    return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
   }
 
   async function openSettings(config, deps) {
@@ -2271,18 +2346,6 @@
       <div id="theme-presets" class="theme-presets"></div>
 
       <h3>Personalizar</h3>
-      <div class="settings-field">
-        <label for="theme-temp">Temperatura do cinza</label>
-        <p class="settings-hint">Muda o fundo e os painéis de um cinza azulado pra um cinza quente. Não mexe no texto nem nas cores de aviso.</p>
-        <input id="theme-temp" type="range" min="0" max="100" value="50" class="range-temp" />
-        <span class="range-ends"><span>frio</span><span>quente</span></span>
-      </div>
-      <div class="settings-field">
-        <label for="theme-level">Claridade do fundo</label>
-        <p class="settings-hint">Sobe ou desce as cinco superfícies de uma vez. No extremo claro, o app inteiro inverte pra tema claro.</p>
-        <input id="theme-level" type="range" min="0" max="100" value="10" class="range-level" />
-        <span class="range-ends"><span>escuro</span><span>claro</span></span>
-      </div>
       <div class="settings-field">
         <label for="theme-act">Cor de ação</label>
         <p class="settings-hint">Botão principal, foco do teclado e seleção. O vermelho de "ao vivo" e o âmbar de aviso não mudam — eles significam uma coisa só.</p>
@@ -2353,15 +2416,17 @@
         c.setAttribute('aria-pressed', String(c === card));
       });
       $('theme-warning').textContent = '';
+      // Trocar de predefinicao ZERA o acento proprio: cada preset foi
+      // desenhado com o seu, e carregar o acento antigo pro novo entregaria
+      // uma combinacao que ninguem escolheu. O seletor de cor acompanha.
+      $('theme-act').value = theme.PRESETS[card.dataset.preset].act;
       deps.onThemeChange({ preset: card.dataset.preset });
     });
-    ['theme-temp', 'theme-level', 'theme-act'].forEach((id) => {
-      $(id).addEventListener('input', () => applyCustomThemeFromControls(deps));
-    });
+    $('theme-act').addEventListener('input', () => applyCustomThemeFromControls(deps));
 
     // Voltar ao padrao: aplica o tema de fabrica E devolve os controles pro
-    // estado inicial. Sem o initThemeControls, os sliders continuariam na
-    // posicao antiga -- mostrando um tema que nao e mais o que esta no ar.
+    // estado inicial. Sem o initThemeControls, o seletor de cor continuaria
+    // na posicao antiga -- mostrando um tema que nao e mais o que esta no ar.
     $('btn-theme-reset').addEventListener('click', () => {
       const padrao = { preset: configApi.DEFAULTS.theme.preset };
       deps.onThemeChange(padrao);
@@ -2815,10 +2880,18 @@
     if (!btn) return;
     const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
     btn.querySelector('.btn-label').textContent = label;
-    btn.querySelector('.icon-off').hidden = state !== 'off';
-    btn.querySelector('.icon-on').hidden = state !== 'on';
+    // classe `.hidden`, NAO o atributo/propriedade `hidden`: estes tres nos
+    // sao <svg>, e `hidden` e um atributo de HTMLElement -- `svg.hidden = x`
+    // grava uma propriedade solta que nao vira atributo, e nem o atributo no
+    // markup esconde um <svg> no Chromium (a regra `[hidden]` da folha do
+    // navegador nao vence o display do elemento SVG). Era por isso que o
+    // spinner da camera girava desde o boot e os dois icones de cada toggle
+    // apareciam empilhados. `.hidden { display: none !important }` funciona
+    // em qualquer namespace -- e o padrao que setCreateRoomBusy ja usava.
+    btn.querySelector('.icon-off').classList.toggle('hidden', state !== 'off');
+    btn.querySelector('.icon-on').classList.toggle('hidden', state !== 'on');
     const spinner = btn.querySelector('.btn-spinner');
-    if (spinner) spinner.hidden = state !== 'loading';
+    if (spinner) spinner.classList.toggle('hidden', state !== 'loading');
     btn.classList.toggle('is-on', state === 'on');
     btn.classList.toggle('loading', state === 'loading');
     btn.setAttribute('aria-pressed', state === 'on' ? 'true' : 'false');

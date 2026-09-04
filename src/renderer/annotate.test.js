@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   PALETTE, MAX_ITEMS, MAX_POINTS_PER_STROKE, MAX_TEXT,
-  colorFor, contentRect, toNorm, toPx, sanitizeItems, createStore,
+  colorFor, contentRect, toNorm, toPx, opAllowed, sanitizeItems, createStore,
 } = require('./annotate');
 
 // ---------- cor por pessoa ----------
@@ -161,13 +161,19 @@ test('undo tira o ultimo item de quem pediu, nao o ultimo da lousa', () => {
   assert.equal(s.apply('tela', '2', { op: 'undo' }), false); // nao sobra nada meu
 });
 
-test('clear "mine" so apaga o proprio; "all" apaga tudo', () => {
+test('clear "mine" so apaga o proprio; "all" apaga tudo, e so o dono da tela manda', () => {
   const s = store();
   s.apply('tela', '2', { op: 'begin', id: 'a', x: 0, y: 0 });
   s.apply('tela', '3', { op: 'begin', id: 'b', x: 0, y: 0 });
   s.apply('tela', '2', { op: 'clear', scope: 'mine' });
   assert.deepEqual(s.items('tela').map((i) => i.from), ['3']);
-  s.apply('tela', '9', { op: 'clear', scope: 'all' });
+
+  // Quem NAO e dono da superficie nao limpa a lousa dos outros.
+  assert.equal(s.apply('tela', '9', { op: 'clear', scope: 'all' }), false);
+  assert.equal(s.items('tela').length, 1);
+
+  // O dono, sim.
+  assert.equal(s.apply('tela', 'tela', { op: 'clear', scope: 'all' }), true);
   assert.equal(s.items('tela').length, 0);
 });
 
@@ -241,4 +247,61 @@ test('sanitizeItems recusa item sem autor e respeita o teto', () => {
     kind: 'stroke', id: `i${i}`, from: '2', points: [[0, 0]],
   }));
   assert.equal(sanitizeItems(muitos).length, MAX_ITEMS);
+});
+
+// ---------- papeis: quem assiste rabisca, quem e dono da tela apaga ----------
+
+test('opAllowed: o dono da tela nao desenha na propria tela', () => {
+  for (const op of [
+    { op: 'begin', id: 'a', x: 0, y: 0 },
+    { op: 'points', id: 'a', points: [[0.5, 0.5]] },
+    { op: 'text', id: 't', x: 0.1, y: 0.1, text: 'oi' },
+    { op: 'undo' },
+    { op: 'clear', scope: 'mine' },
+  ]) {
+    assert.equal(opAllowed('7', '7', op), false, `${op.op} do dono devia ser recusado`);
+    assert.equal(opAllowed('7', '2', op), true, `${op.op} de quem assiste devia passar`);
+  }
+});
+
+test('opAllowed: "clear all" e o inverso -- so o dono', () => {
+  assert.equal(opAllowed('7', '7', { op: 'clear', scope: 'all' }), true);
+  assert.equal(opAllowed('7', '2', { op: 'clear', scope: 'all' }), false);
+});
+
+test('opAllowed compara ids como texto (o id de conexao viaja como string)', () => {
+  assert.equal(opAllowed(7, '7', { op: 'undo' }), false);
+  assert.equal(opAllowed('7', 7, { op: 'clear', scope: 'all' }), true);
+});
+
+test('opAllowed recusa op que nao e objeto', () => {
+  for (const lixo of [null, undefined, 'begin', 42, []]) {
+    assert.equal(opAllowed('7', '2', lixo), false);
+  }
+});
+
+test('store.apply nao deixa o dono da tela abrir um traco na propria tela', () => {
+  // A regra vale no store, nao so na interface: `apply` e o unico caminho
+  // tanto pro que nasce aqui quanto pro que chega pela rede.
+  const s = store();
+  assert.equal(s.apply('7', '7', { op: 'begin', id: 'a', x: 0.5, y: 0.5 }), false);
+  assert.equal(s.items('7').length, 0);
+
+  assert.equal(s.apply('7', '2', { op: 'begin', id: 'b', x: 0.5, y: 0.5 }), true);
+  assert.equal(s.items('7').length, 1);
+});
+
+test('store.apply: um "text" do dono da propria tela nao entra', () => {
+  const s = store();
+  assert.equal(s.apply('7', '7', { op: 'text', id: 't', x: 0.2, y: 0.2, text: 'meu' }), false);
+  assert.equal(s.items('7').length, 0);
+});
+
+test('store.apply: o dono da tela limpa tudo, inclusive o que nao e dele', () => {
+  const s = store();
+  s.apply('7', '2', { op: 'begin', id: 'a', x: 0, y: 0 });
+  s.apply('7', '3', { op: 'text', id: 't', x: 0.2, y: 0.2, text: 'oi' });
+  assert.equal(s.items('7').length, 2);
+  assert.equal(s.apply('7', '7', { op: 'clear', scope: 'all' }), true);
+  assert.equal(s.items('7').length, 0);
 });

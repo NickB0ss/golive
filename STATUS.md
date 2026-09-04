@@ -47,18 +47,32 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   câmera`), e a câmera tem um estado de carregando enquanto o driver abre.
 - **Temas de cor** (Configurações > Aparência): seis predefinições
   (Superfície e sinal, Meia-noite, Carvão, Âmbar quente, Floresta, Papel —
-  a única clara) mais um tema personalizado (dois sliders + cor de ação),
-  com trava de contraste que reprova combinações ilegíveis antes de
-  aplicar. `--live`/`--warn`/`--danger` ficam travados em todo tema — só
-  superfície e cor de ação são escolha da pessoa.
+  a única clara), cada uma com a **cor de ação** trocável por cima, e trava
+  de contraste que reprova combinações ilegíveis antes de aplicar.
+  `--live`/`--warn`/`--danger` ficam travados em todo tema, e as superfícies
+  também: só o acento é escolha da pessoa.
 - **Rabisco e escrita na tela de quem transmite** (opt-in no diálogo de
-  compartilhar, decidido antes de ir ao vivo). Caneta e texto, uma cor fixa
-  por pessoa, desfazer/limpar os seus, e limpar tudo pra quem é dono da
-  tela. Coordenadas normalizadas sobre a caixa de conteúdo do vídeo (não a
-  do tile), então o mesmo rabisco cai no mesmo pixel em janela, em
-  fullscreen e em quem recebe degradado. Repassado pela sinalização
-  (`annotate` broadcast + `annotate-sync` roteado pra quem chega depois); o
-  servidor não guarda estado nenhum.
+  compartilhar, decidido antes de ir ao vivo). Dois papéis, espelho um do
+  outro: **quem assiste rabisca** (caneta, texto, desfazer e apagar os
+  seus), **quem é dono da tela não rabisca nela** e tem um botão só —
+  apagar tudo. A regra vale no depósito (`annotate.opAllowed`), não só na
+  interface. Uma cor fixa por pessoa, derivada do id de conexão.
+  Coordenadas normalizadas sobre a caixa de conteúdo do vídeo (não a do
+  tile), então o mesmo rabisco cai no mesmo pixel em janela, em fullscreen
+  e em quem recebe degradado. Repassado pela sinalização (`annotate`
+  broadcast + `annotate-sync` roteado pra quem chega depois); o servidor
+  não guarda estado nenhum.
+- **O rabisco aparece na tela REAL de quem compartilha**: uma janela
+  transparente, click-through, sempre por cima e **fora da própria captura**
+  (`setContentProtection`, senão quem assiste vê cada traço duas vezes),
+  esticada sobre o monitor compartilhado. Só pra compartilhamento de tela
+  inteira — o retângulo de uma janela muda quando a pessoa a move, e um
+  overlay que erra o lugar é pior que overlay nenhum; nesse caso o rabisco
+  fica dentro do app e a pessoa é avisada.
+- **A interface sai da frente do vídeo** depois de 3s de mouse parado:
+  cabeçalho, barra de controles, barra de ferramentas e o cursor somem, e
+  voltam no primeiro movimento, tecla ou foco. Não acontece em sala vazia —
+  ali a barra de baixo é a única saída.
 - **Imagem no chat**: clipe, `Ctrl+V` ou arrastar. Reduzida no cliente até
   caber em 200 KB, miniatura de 240px na linha, tela cheia no clique. O
   histórico do host guarda no máximo 8 imagens.
@@ -76,7 +90,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 `0.9.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **416 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **439 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
@@ -176,7 +190,8 @@ após `await`).
   quadro congelado sem explicação; quem pausou vê "Você pausou — ninguém está
   vendo". **Temas de cor** em Configurações > Aparência: seis predefinições
   (Superfície e sinal, Meia-noite, Carvão, Âmbar quente, Floresta, Papel — a
-  única clara) mais um tema personalizado (dois sliders + cor de ação), com
+  única clara) mais um tema personalizado (dois sliders + cor de ação — os
+  sliders saíram depois, na 0.9.1), com
   trava de contraste que reprova combinações ilegíveis antes de aplicar;
   `--live`/`--warn`/`--danger` ficam travados em todo tema. +29 testes.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
@@ -184,6 +199,28 @@ após `await`).
 
 ## Na branch, ainda não lançado
 
+- **0.9.1** — **rabisco na tela real, papéis na lousa e a interface que sai
+  da frente**
+  (`docs/superpowers/specs/2026-09-05-rabisco-na-tela-real-design.md`).
+  O rabisco passa a aparecer **na tela de verdade** de quem compartilha, por
+  uma janela transparente click-through sobre o monitor compartilhado, fora
+  da própria captura (`setContentProtection`); só pra tela inteira, e
+  `src/main/overlay.js` decide qual monitor cobrir pelo `display_id` do
+  desktopCapturer (o `<n>` de `screen:<n>:0` não é o id de display).
+  A lousa ganha **papéis**: quem assiste rabisca, quem é dono da tela só
+  apaga tudo — garantido em `annotate.opAllowed`, dentro do `apply`, não na
+  interface. A barra de ferramentas fica sempre visível e ganha o
+  **liga/desliga** (o lápis do canto do tile e o `✕` saíram), com o ícone de
+  desfazer virando meio círculo com seta em vez do arco de quase 360°.
+  Três bugs: **o spinner da câmera girava desde o boot** (`hidden` não
+  existe em `SVGElement` e o atributo também não esconde um `<svg>` no
+  Chromium — a classe `.hidden` resolve, e de quebra os três toggles voltam
+  a trocar de ícone); **não dava pra escrever texto** (o campo era focado
+  dentro do `pointerdown` e o `mousedown` seguinte roubava o foco, disparando
+  o `blur` que o apagava); e os **sliders de temperatura e claridade** saem
+  do tema — sobra a predefinição com a cor de ação por cima. A interface da
+  sala passa a sumir com o mouse parado, com um timer só pros dois alcances
+  e o teclado sempre acordando as barras.
 - **0.9.0** — **anotação na tela, liderança e chat rico**
   (`docs/superpowers/specs/2026-09-04-anotacoes-lideranca-e-chat-rico-design.md`).
   **Rabisco e escrita** por cima da tela de quem transmite, opt-in no

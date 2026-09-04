@@ -777,6 +777,44 @@ button.busy { cursor: default; }
    cima) e o toggle de prefers-reduced-motion global do topo do arquivo
    ja congela a rotacao num traco estatico -- nao ha regra extra aqui. */
 
+/* ---------- A interface sai da frente com o mouse parado ---------- */
+/* Depois de 3s parado (IDLE_MS em ui.js), o que emoldura o video some: o
+   cabecalho da sala, a barra de controles e a barra de ferramentas do
+   rabisco. Volta no primeiro movimento, tecla ou foco.
+   Tres decisoes deliberadas:
+
+   1. `opacity`, nunca `display`/`height`: sumir nao pode reflowar a grade e
+      fazer o video pular de tamanho -- e o mesmo motivo pelo qual o
+      fullscreen ja usava opacity.
+   2. Sair (fade out) e mais lento que entrar (fade in): aparecer responde a
+      um gesto da pessoa e tem de parecer instantaneo; sumir e o app se
+      retirando, e mais suave incomoda menos.
+   3. `:focus-within` cancela: barra apagada nunca pode esconder o foco do
+      teclado. Quem anda de Tab ve o botao aceso mesmo com o mouse parado.
+   O toggle global de prefers-reduced-motion no topo do arquivo ja corta a
+   transicao pra quem pediu menos movimento -- o sumico continua, sem fade. */
+#stage-header,
+.control-bar,
+.tile-annot-bar {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.room-idle #stage-header,
+.room-idle .control-bar,
+.room-idle .tile-annot-bar {
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--dur-slow);
+}
+.room-idle #stage-header:focus-within,
+.room-idle .control-bar:focus-within,
+.room-idle .tile-annot-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* O cursor tambem: sem isso sobra uma setinha parada no meio do video. O
+   fullscreen ja fazia isso no proprio tile; aqui vale pra sala em janela. */
+.room-idle .stage { cursor: none; }
+
 .room-side {
   width: 300px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
@@ -1956,26 +1994,6 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 }
 .tile.annot-on .tile-annot-canvas { pointer-events: auto; cursor: crosshair; }
 
-.tile-annot-btn {
-  position: absolute;
-  top: 8px; right: 44px;
-  width: 28px; height: 28px;
-  display: grid; place-items: center;
-  border: none; border-radius: var(--r-sm);
-  background: var(--scrim-3);
-  color: #fff;
-  opacity: 0;
-  z-index: 4;
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-.tile-annot-btn svg { width: 15px; height: 15px; }
-.tile:hover .tile-annot-btn,
-.tile:focus-within .tile-annot-btn,
-.tile-annot-btn.active { opacity: 1; }
-.tile-annot-btn:hover { background: var(--scrim-5); }
-.tile-annot-btn.active { background: var(--act); }
-.tile.fullscreen.idle .tile-annot-btn { opacity: 0; }
-
 .tile-annot-bar {
   position: absolute;
   left: 50%;
@@ -1991,6 +2009,10 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   box-shadow: var(--shadow-2);
   z-index: 5;
 }
+/* Superficie anotavel sem nenhum botao pra este papel: a barra existe no
+   DOM mas nao tem o que mostrar, e uma pilula vazia flutuando sobre o video
+   seria pior que barra nenhuma. */
+.tile-annot-bar:empty { display: none; }
 .annot-tool {
   width: 30px; height: 30px;
   display: grid; place-items: center;
@@ -2002,9 +2024,21 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 .annot-tool svg { width: 15px; height: 15px; }
 .annot-tool em { font-style: normal; font-size: 9px; margin-left: 2px; }
 .annot-tool:hover:not(:disabled) { background: var(--s3); }
-.annot-tool.active { background: var(--act); color: var(--on-act); }
+/* Qual ferramenta esta escolhida: preenchimento DISCRETO. O preenchimento
+   forte (--act) e so do toggle -- ele e a chave geral da barra, e dois
+   botoes cheios lado a lado competiam sem dizer qual dos dois manda. */
+.annot-tool.active { background: var(--s4); color: var(--act); }
 .annot-tool.warn { width: auto; padding: 0 8px; color: var(--warn); }
 .annot-tool:disabled { opacity: .35; }
+/* O unico botao da barra de quem e DONO da tela. Rotulo por extenso porque
+   ele aparece sozinho: sem vizinhos, um icone de lixeira solto nao diz o que
+   apaga. `inline-flex` derruba o `grid` da regra base -- em grade o icone e
+   o rotulo empilhavam em duas linhas. */
+.annot-tool.wide { display: inline-flex; align-items: center; width: auto; padding: 0 12px; gap: 6px; }
+.annot-tool.wide em { font-size: 12px; font-weight: 600; margin-left: 0; }
+/* O toggle e a raiz da barra: e ele que decide se o resto responde. Separado
+   dos outros por uma linha, e nunca desabilitado. */
+.annot-toggle.active { background: var(--act); color: var(--on-act); }
 .annot-sep { width: 1px; height: 18px; background: var(--line2); margin: 0 3px; }
 /* Nao e um seletor: e a legenda de quem VOCE e na lousa. */
 .annot-ink {
@@ -2262,36 +2296,6 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   margin: 0 0 7px;
   font-size: 11.5px;
   line-height: 1.5;
-  color: var(--tx3);
-}
-/* A trilha do slider MOSTRA o que ele faz: frio->quente e escuro->claro. */
-.settings-field input[type="range"].range-temp,
-.settings-field input[type="range"].range-level {
-  appearance: none;
-  height: 10px;
-  border-radius: var(--r-full);
-  border: 1px solid var(--line);
-}
-.settings-field input[type="range"].range-temp {
-  background: linear-gradient(90deg, #1b2430, #23262c, #2e2a24);
-}
-.settings-field input[type="range"].range-level {
-  background: linear-gradient(90deg, #0c0d10, #2a2e36, #e6e8ec);
-}
-.settings-field input[type="range"].range-temp::-webkit-slider-thumb,
-.settings-field input[type="range"].range-level::-webkit-slider-thumb {
-  appearance: none;
-  width: 16px; height: 16px;
-  border-radius: var(--r-full);
-  background: var(--tx);
-  border: 2px solid var(--bg);
-  box-shadow: var(--shadow-1);
-}
-.range-ends {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3px;
-  font-size: 10px;
   color: var(--tx3);
 }
 .settings-actions { margin-top: var(--s-4); display: flex; justify-content: flex-start; }

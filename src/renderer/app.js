@@ -926,6 +926,7 @@
       stopNativeAudioFns = [];
       shareAnnotations = false;
       ui.annotations.setSurface('me', { allowed: false });
+      stopAnnotOverlay();
       ui.grid.removeTile('me', emptyMessage());
     }
     if (cameraStream) {
@@ -1664,8 +1665,59 @@
     onOp: (surfaceId, op) => {
       if (!surfaceId) return;
       currentSession?.sig.send({ type: 'annotate', surface: surfaceId, ...op });
+      // O que EU mando na minha propria tela nao volta pela rede, entao o
+      // overlay precisa ouvir daqui tambem. Na pratica isto e so o "apagar
+      // tudo" -- a unica op que o dono da tela pode emitir (annotate.js
+      // barra o resto) --, mas passa pelo mesmo caminho de qualquer forma,
+      // pra nao existirem duas regras sobre o que chega no overlay.
+      pushToAnnotOverlay(surfaceId, myId, op);
     },
   });
+
+  // --- Rabisco na tela real -------------------------------------------
+  //
+  // O overlay so existe pra quem esta compartilhando uma TELA inteira. Com
+  // uma janela, o retangulo dela muda quando a pessoa move ou redimensiona,
+  // e nao ha como acompanhar isso de forma confiavel -- entao o rabisco
+  // fica dentro do app, como sempre foi, e a pessoa e avisada.
+  let annotOverlayOn = false;
+
+  /** O main ja sabe qual fonte foi escolhida (ele guardou no `sources:select`),
+   * entao nao ha id pra passar daqui -- e melhor assim: uma fonte da verdade
+   * sobre o que esta sendo capturado, do lado que decide. */
+  async function startAnnotOverlay() {
+    annotOverlayOn = false;
+    if (!shareAnnotations) return;
+    const r = await window.golive.startAnnotOverlay?.();
+    if (r?.ok) {
+      annotOverlayOn = true;
+      // A lousa costuma nascer vazia aqui, mas nao sempre: reconectar sem
+      // parar de transmitir mantem o que a sala ja tinha rabiscado. Mandar o
+      // snapshot e o que faz a janela nova comecar de onde a lousa esta, em
+      // vez de de onde ela estaria se ninguem tivesse desenhado ainda.
+      window.golive.sendAnnotOverlayLoad?.({ surface: String(myId), items: ui.annotations.snapshot(myId) });
+      return;
+    }
+    if (r?.reason === 'window') {
+      showToast('Compartilhando uma janela: os rabiscos aparecem no app, não na tela.');
+    } else if (r?.reason === 'display') {
+      showToast('Não achei o monitor pra desenhar os rabiscos; eles ficam só no app.');
+    }
+  }
+
+  function stopAnnotOverlay() {
+    if (!annotOverlayOn) return;
+    annotOverlayOn = false;
+    window.golive.stopAnnotOverlay?.();
+  }
+
+  /** Repassa uma op pro overlay, mas SO quando a superficie e a minha tela:
+   * a janela desenha na tela desta maquina, e rabisco na tela de outra
+   * pessoa nao tem nada que fazer nela. */
+  function pushToAnnotOverlay(surfaceId, from, op) {
+    if (!annotOverlayOn || String(surfaceId) !== String(myId)) return;
+    window.golive.sendAnnotOverlayOp?.({ surface: String(surfaceId), from: String(from), op });
+  }
 
   // Recolher a coluna direita (membros + banidos + chat). O CSS de
   // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
@@ -1782,7 +1834,7 @@
           // O id de conexao muda na reconexao, e a superficie da MINHA tela
           // e justamente esse id -- sem re-registrar, a sala inteira passa a
           // desenhar num id que nao existe mais.
-          ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true });
+          ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
           for (const p of msg.peers) {
             if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
@@ -1994,6 +2046,7 @@
       // com a cor de outra pessoa.
       case 'annotate': {
         ui.annotations.applyOp(msg.surface, msg.from, msg);
+        pushToAnnotOverlay(msg.surface, msg.from, msg);
         break;
       }
       // Snapshot da lousa pra quem entrou no meio. So o DONO da tela manda
@@ -2035,6 +2088,7 @@
           surfaceId: msg.id,
           allowed: Boolean(peer?.annotate),
           canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
+          canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
         });
         if (!msg.live) {
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
@@ -2506,7 +2560,8 @@
       // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
-      ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true });
+      ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
+      await startAnnotOverlay();
 
       // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
       // voce entra numa sala que ja tem 4 pessoas e clica "Compartilhar
@@ -2550,6 +2605,7 @@
     // o que estava desenhado, aqui e -- via broadcast-state -- em todo mundo.
     shareAnnotations = false;
     ui.annotations.setSurface('me', { allowed: false });
+    stopAnnotOverlay();
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     ui.setToggleState('share', 'off');
@@ -2617,6 +2673,30 @@
     startCamera().catch((err) => console.error('[camera] startCamera falhou:', err));
   });
 
+  // Teto pra abrir a camera. `getUserMedia` normalmente REJEITA quando algo
+  // da errado (sem permissao, sem dispositivo), mas ha um caso em que ela
+  // simplesmente nao volta: driver travado ou outro app segurando a webcam em
+  // modo exclusivo. Sem teto, o `finally` de startCamera nunca roda e o botao
+  // fica em "Abrindo…", desabilitado, pra sempre.
+  const CAMERA_OPEN_TIMEOUT_MS = 15000;
+
+  /** Desiste da promessa depois de `ms`. A captura que chegar ATRASADA e
+   * parada aqui mesmo -- senao a webcam fica com a luzinha acesa servindo um
+   * stream que ninguem mais espera. */
+  function withCameraTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+      let timer = setTimeout(() => {
+        timer = null;
+        promise.then((stream) => stream.getTracks().forEach((t) => t.stop()), () => {});
+        reject(new Error('a câmera não respondeu'));
+      }, ms);
+      promise.then(
+        (stream) => { if (timer !== null) { clearTimeout(timer); resolve(stream); } },
+        (err) => { if (timer !== null) { clearTimeout(timer); reject(err); } }
+      );
+    });
+  }
+
   async function startCamera() {
     if (cameraStream || cameraStarting) return;
     cameraStarting = true;
@@ -2631,7 +2711,10 @@
 
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+        stream = await withCameraTimeout(
+          navigator.mediaDevices.getUserMedia({ video: constraints, audio: false }),
+          CAMERA_OPEN_TIMEOUT_MS
+        );
       } catch (err) {
         showToast(`Não consegui acessar a câmera: ${err.message}`);
         return; // o finally devolve o botao pro estado real
