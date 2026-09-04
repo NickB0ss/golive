@@ -5,6 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
   const version = root.GoLive.version;
+  const theme = root.GoLive.theme;
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -230,7 +231,13 @@
   function setPainting(enabled) {
     if (paintingEnabled === enabled) return;
     paintingEnabled = enabled;
-    gridEl.querySelectorAll('video').forEach(applyPainting);
+    gridEl.querySelectorAll('video').forEach((video) => {
+      // O veu de pausa ja mandou o video pausar e sumir -- a janela
+      // ficar visivel de novo nao pode religar a decodificacao por baixo
+      // dele (ver renderPausedOverlay).
+      if (video.closest('.tile')?.classList.contains('is-paused')) return;
+      applyPainting(video);
+    });
   }
 
   // Quem esta assistindo cada tile agora (F1.3 + o broadcast de
@@ -268,6 +275,73 @@
   function setWatchers(tileId, watchers) {
     tileWatchers.set(tileId, watchers || []);
     renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
+  }
+
+  // Ultimo estado de pausa por tile ({ paused, opts }), pro overlay
+  // sobreviver a um tile recriado do zero -- mesmo motivo do tileWatchers
+  // acima (renegociacao pode destruir e recriar o <div class="tile"> com o
+  // mesmo id).
+  const tilePaused = new Map();
+
+  /** Desenha (ou desfaz) o veu de pausa dentro de `tile`. `video` e o
+   * elemento do proprio tile -- borrar o ultimo quadro em vez de escurecer
+   * pra preto preserva contexto ("ainda e esta transmissao") e evita ler o
+   * conteudo parado (ver a spec de 2026-09-03, secao 4). */
+  function renderPausedOverlay(tile, video, paused, opts) {
+    if (!paused) {
+      tile.querySelector('.tile-paused-shot')?.remove();
+      tile.querySelector('.tile-paused')?.remove();
+      tile.classList.remove('is-paused');
+      if (video) {
+        video.hidden = false;
+        applyPainting(video);
+      }
+      return;
+    }
+    if (video && video.videoWidth > 0) {
+      // 320px de largura: o blur(20px) do CSS destroi qualquer detalhe
+      // acima disso, entao borrar um bitmap reduzido e esticar da o mesmo
+      // resultado visual por uma fracao dos pixels (ver spec, secao 4.3).
+      const canvas = tile.querySelector('.tile-paused-shot') || document.createElement('canvas');
+      canvas.className = 'tile-paused-shot';
+      const w = 320;
+      const h = Math.round((video.videoHeight / video.videoWidth) * w) || w;
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+      if (!canvas.isConnected) tile.insertBefore(canvas, tile.firstChild);
+    } else {
+      // Sem primeiro quadro ainda: pula o bitmap, so o veu escuro + texto.
+      tile.querySelector('.tile-paused-shot')?.remove();
+    }
+    if (video) {
+      video.pause();
+      video.hidden = true;
+    }
+    let veil = tile.querySelector('.tile-paused');
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.className = 'tile-paused';
+      veil.setAttribute('role', 'status');
+      veil.innerHTML = `
+        <span class="tile-paused-icon">${PAUSE_ICON}</span>
+        <p class="tile-paused-title"></p>
+        <p class="tile-paused-subtitle"></p>`;
+      tile.appendChild(veil);
+    }
+    veil.querySelector('.tile-paused-title').textContent = opts?.title || 'Transmissão pausada';
+    veil.querySelector('.tile-paused-subtitle').textContent = opts?.subtitle || '';
+    tile.classList.add('is-paused');
+  }
+
+  /** `tileId` no mesmo espaco de `showTile` ('me'/'cam-me' pro proprio,
+   * peerId ou `cam-${peerId}` pro de um peer). `opts` e `{ title, subtitle }`
+   * -- o tile local usa um texto diferente do de quem assiste (ver app.js). */
+  function setPaused(tileId, paused, opts) {
+    tilePaused.set(tileId, { paused, opts });
+    const tile = document.getElementById(`tile-${tileId}`);
+    if (!tile) return; // tile pode ja ter sido removido (ex: parou de transmitir)
+    renderPausedOverlay(tile, tile.querySelector('video'), paused, opts);
   }
 
   /** Numero de colunas da grade e uma DECISAO por contagem de tiles, nao um
@@ -314,6 +388,10 @@
       // recebido um 'watchers' pra esse id -- sem isto o overlay ficaria
       // vazio ate a proxima mudanca de audiencia.
       renderTileWatchers(tile, tileWatchers.get(id));
+      // Mesmo motivo: um tile recriado enquanto pausado nasceria sem o
+      // veu, ate a proxima mudanca de estado de pausa.
+      const pausedState = tilePaused.get(id);
+      if (pausedState?.paused) renderPausedOverlay(tile, tile.querySelector('video'), true, pausedState.opts);
     }
 
     const video = tile.querySelector('video');
@@ -344,8 +422,10 @@
     else badgeEl.removeAttribute('title');
 
     // Tile criado enquanto a janela esta oculta nasce pausado (o atributo
-    // autoplay do <video> tocaria sozinho, sem isto).
-    applyPainting(video);
+    // autoplay do <video> tocaria sozinho, sem isto). Excecao: tile com o
+    // veu de pausa ativo -- quem manda no video ali e o overlay, nao a
+    // visibilidade da janela (ver renderPausedOverlay).
+    if (!tilePaused.get(id)?.paused) applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
   }
@@ -356,6 +436,7 @@
     releaseTileAudio(id);
     tileRegistry.delete(id);
     tileWatchers.delete(id);
+    tilePaused.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
     if (id === fullscreenTileId) {
@@ -687,6 +768,7 @@
 
   const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
   const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+  const PAUSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`;
 
   // Badge no canto do tile indicando se aquele stream e tela compartilhada
   // ou camera -- necessario pra diferenciar quando o mesmo peer compartilha
@@ -1214,6 +1296,7 @@
   const settingsCatButtons = Array.from(document.querySelectorAll('.settings-cat'));
   const settingsPanes = {
     profile: $('settings-profile'),
+    appearance: $('settings-appearance'),
     voice: $('settings-voice'),
     stats: $('settings-stats'),
   };
@@ -1370,6 +1453,106 @@
     if (document.activeElement !== nameInput) nameInput.value = config.name || '';
   }
 
+  // Ordem de exibicao dos cartoes de predefinicao (spec 2026-09-03, 5.2):
+  // do escuro neutro ao unico claro. Array explicito, nao
+  // Object.keys(theme.PRESETS) -- ainda que coincidam hoje, a ordem de
+  // exibicao nao deveria depender da ordem de insercao de theme.js.
+  const THEME_PRESET_ORDER = ['signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+
+  /** Um cartao por predefinicao: a rampa das 5 superficies + a cor de acao
+   * em faixas -- nunca um quadrado solido com o nome escrito (spec 5.6). */
+  function renderThemePresetCard(id, activeId) {
+    const preset = theme.PRESETS[id];
+    const s = preset.surfaces;
+    const faixas = [s.bg, s.s1, s.s2, s.s3, s.s4, preset.act]
+      .map((hex) => `<span style="background:${hex}"></span>`)
+      .join('');
+    const active = id === activeId;
+    return `
+      <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
+        <span class="theme-preset-ramp">${faixas}</span>
+        <span class="theme-preset-label">${escapeHtml(preset.label)}</span>
+      </button>`;
+  }
+
+  function renderThemePresets(activeId) {
+    $('theme-presets').innerHTML = THEME_PRESET_ORDER.map((id) => renderThemePresetCard(id, activeId)).join('');
+  }
+
+  // Modo personalizado: nenhum cartao de preset fica marcado (a pessoa
+  // saiu do conjunto fechado assim que mexeu num slider).
+  function markThemePresetsInactive() {
+    Array.from($('theme-presets').children).forEach((card) => {
+      card.classList.remove('active');
+      card.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  /** Le os tres controles de "Personalizar", valida e aplica ao vivo. E
+   * chamada a cada evento `input` (nunca so `change`) -- a pessoa precisa
+   * ver o app mudando enquanto arrasta o slider, que e o unico jeito de
+   * avaliar um tema (spec 5.6). Aplica MESMO quando a validacao reprova --
+   * o aviso abaixo do controle e que carrega a reprovacao, a aplicacao ao
+   * vivo continua sendo o feedback principal. */
+  function applyCustomThemeFromControls(deps) {
+    const themeCfg = {
+      preset: 'custom',
+      base: {
+        temp: Number($('theme-temp').value) / 100,
+        level: Number($('theme-level').value) / 100,
+      },
+      act: $('theme-act').value,
+    };
+    const result = theme.validate(theme.tokensFor(themeCfg));
+    markThemePresetsInactive();
+    deps.onThemeChange(themeCfg);
+
+    const warningEl = $('theme-warning');
+    warningEl.textContent = '';
+    if (result.ok) return;
+
+    warningEl.append(result.failures[0]);
+    if (result.nearestAct) {
+      const fixBtn = document.createElement('button');
+      fixBtn.type = 'button';
+      fixBtn.className = 'theme-warning-fix';
+      fixBtn.textContent = `usar ${result.nearestAct}`;
+      fixBtn.addEventListener('click', () => {
+        $('theme-act').value = result.nearestAct;
+        applyCustomThemeFromControls(deps);
+      });
+      warningEl.append(' ', fixBtn);
+    }
+  }
+
+  /** Inicializa a aba Aparencia a partir de `cfg.theme` -- preset conhecido
+   * marca o cartao correspondente (sliders/cor ficam num meio-termo, so pra
+   * nao nascer vazios); `custom` preenche sliders e cor com os valores
+   * salvos e deixa nenhum cartao marcado. */
+  function initThemeControls(config) {
+    const themeCfg = (config && config.theme) || { preset: 'signal' };
+    const isCustom = themeCfg.preset === 'custom' && isObjectWithBase(themeCfg);
+    const knownPreset = !isCustom && theme.PRESETS[themeCfg.preset] ? themeCfg.preset : null;
+
+    renderThemePresets(isCustom ? null : knownPreset || 'signal');
+
+    if (isCustom) {
+      $('theme-temp').value = Math.round((themeCfg.base.temp ?? 0.5) * 100);
+      $('theme-level').value = Math.round((themeCfg.base.level ?? 0.1) * 100);
+      $('theme-act').value = themeCfg.act;
+    } else {
+      const preset = theme.PRESETS[knownPreset || 'signal'];
+      $('theme-temp').value = 50;
+      $('theme-level').value = 10;
+      $('theme-act').value = preset.act;
+    }
+    $('theme-warning').textContent = '';
+  }
+
+  function isObjectWithBase(themeCfg) {
+    return !!themeCfg.base && typeof themeCfg.act === 'string';
+  }
+
   async function openSettings(config, deps) {
     settingsPanes.profile.innerHTML = `
       <h3>Perfil</h3>
@@ -1384,6 +1567,25 @@
         <label for="settings-profile-name">Apelido</label>
         <input id="settings-profile-name" type="text" placeholder="seu apelido" spellcheck="false" />
       </div>`;
+
+    settingsPanes.appearance.innerHTML = `
+      <h3>Predefinições</h3>
+      <div id="theme-presets" class="theme-presets"></div>
+
+      <h3>Personalizar</h3>
+      <div class="settings-field">
+        <label for="theme-temp">Base da interface: frio ↔ quente</label>
+        <input id="theme-temp" type="range" min="0" max="100" value="50" />
+      </div>
+      <div class="settings-field">
+        <label for="theme-level">Base da interface: escuro ↔ claro</label>
+        <input id="theme-level" type="range" min="0" max="100" value="10" />
+      </div>
+      <div class="settings-field">
+        <label for="theme-act">Cor de ação</label>
+        <input id="theme-act" type="color" value="#4F46E5" aria-describedby="theme-warning" />
+      </div>
+      <p id="theme-warning" class="hint" role="alert"></p>`;
 
     settingsPanes.voice.innerHTML = `
       <h3>Câmera</h3>
@@ -1434,6 +1636,21 @@
 
     $('settings-sounds').addEventListener('change', () => {
       deps.onSoundsChange($('settings-sounds').checked);
+    });
+
+    initThemeControls(config);
+    $('theme-presets').addEventListener('click', (event) => {
+      const card = event.target.closest('.theme-preset-card');
+      if (!card) return;
+      Array.from($('theme-presets').children).forEach((c) => {
+        c.classList.toggle('active', c === card);
+        c.setAttribute('aria-pressed', String(c === card));
+      });
+      $('theme-warning').textContent = '';
+      deps.onThemeChange({ preset: card.dataset.preset });
+    });
+    ['theme-temp', 'theme-level', 'theme-act'].forEach((id) => {
+      $(id).addEventListener('input', () => applyCustomThemeFromControls(deps));
     });
 
     $('btn-open-logs').addEventListener('click', () => window.golive.openLogsFolder());
@@ -1828,10 +2045,45 @@
   $('btn-ban-confirm').addEventListener('click', () => { onBanConfirm?.(); closeBan(); });
   dlgBanEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBan(); });
 
+  // ---------- Barra de controle: estado visivel dos toggles ----------
+  // Compartilhar/camera/pausa sabem o proprio estado (app.js ja escrevia
+  // classList direto), mas nada em CSS reagia a isso. Esta e a UNICA funcao
+  // que mexe em classList/aria/disabled desses tres botoes -- app.js so
+  // chama, nunca escreve o DOM deles direto (spec 2026-09-03, secao 3).
+  const TOGGLE_BUTTON_IDS = {
+    share: 'btn-toggle-share',
+    camera: 'btn-toggle-camera',
+    pause: 'btn-pause-share',
+  };
+  const TOGGLE_LABELS = {
+    share: { off: 'Compartilhar tela', on: 'Parar de compartilhar' },
+    camera: { off: 'Câmera', loading: 'Abrindo…', on: 'Desligar câmera' },
+    pause: { off: 'Pausar', on: 'Retomar' },
+  };
+
+  function setToggleState(id, state) {
+    const btn = $(TOGGLE_BUTTON_IDS[id]);
+    if (!btn) return;
+    const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
+    btn.querySelector('.btn-label').textContent = label;
+    btn.querySelector('.icon-off').hidden = state !== 'off';
+    btn.querySelector('.icon-on').hidden = state !== 'on';
+    const spinner = btn.querySelector('.btn-spinner');
+    if (spinner) spinner.hidden = state !== 'loading';
+    btn.classList.toggle('is-on', state === 'on');
+    btn.classList.toggle('loading', state === 'loading');
+    btn.setAttribute('aria-pressed', state === 'on' ? 'true' : 'false');
+    // disabled de verdade, nao so visual -- senao o teclado ainda dispara
+    // um segundo clique enquanto o driver da camera abre (spec, secao 3.3).
+    btn.disabled = state === 'loading';
+    if (state === 'loading') btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+  }
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused },
     rooms: { render: renderRooms, setNetworkStatus: renderNetworkStatus },
     dialogs: {
       openCreateRoom, closeCreateRoom, setCreateRoomError,
@@ -1843,5 +2095,6 @@
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },
     chat: { render, append, setHistory, setEnabled },
+    setToggleState,
   };
 })(window);

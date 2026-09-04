@@ -2,10 +2,11 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
+  theme.apply(cfg.theme); // antes de qualquer render -- e o que evita um flash do tema padrao
   sound.setEnabled(cfg.soundsEnabled); // aplica a preferencia salva antes de qualquer som tocar
 
   // Versao deste app (a do package.json, via IPC). Vale pra tres coisas: o
@@ -552,6 +553,11 @@
         persist();
         sound.setEnabled(enabled);
       },
+      onThemeChange: (themeCfg) => {
+        cfg = { ...cfg, theme: themeCfg };
+        persist();
+        theme.apply(themeCfg);
+      },
     });
   });
 
@@ -914,9 +920,9 @@
       cameraStream.getTracks().forEach((t) => t.stop());
       cameraStream = null;
       ui.grid.removeTile('cam-me', emptyMessage());
-      $('btn-toggle-camera').classList.remove('active');
+      ui.setToggleState('camera', 'off');
     }
-    $('btn-toggle-share').classList.remove('active');
+    ui.setToggleState('share', 'off');
     resetShareState();
   }
 
@@ -1721,9 +1727,11 @@
         // A sala cresceu com a tela ja no ar: o 'broadcast-state {live:true}'
         // so foi mandado uma vez, la no startShare. Quem acabou de entrar
         // recebeu o 'welcome' com peer.live=false pra todos -- sem reenviar
-        // aqui, o "AO VIVO" nunca acende ao nosso lado pra ele. Idempotente
-        // pra quem ja sabia (broadcast-state so regrava peer.live).
-        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true });
+        // aqui, o "AO VIVO" nunca acende ao nosso lado pra ele. `paused:
+        // sharePaused` resolve "entrei durante uma pausa" do mesmo jeito,
+        // sem mensagem nova. Idempotente pra quem ja sabia (broadcast-state
+        // so regrava peer.live/peer.paused).
+        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true, paused: sharePaused });
         break;
       }
       case 'peer-left': {
@@ -1857,8 +1865,17 @@
         const peer = mesh.peers.get(msg.id);
         const wasLive = peer?.live;
         if (peer) peer.live = msg.live;
-        if (!msg.live) ui.grid.removeTile(msg.id, emptyMessage());
-        else if (peer && !wasLive) sound.playLiveSound();
+        if (peer) peer.paused = Boolean(msg.paused);
+        if (!msg.live) {
+          // Tile some por inteiro -- nao ha o que pausar num tile ausente.
+          ui.grid.removeTile(msg.id, emptyMessage());
+        } else {
+          if (!wasLive) sound.playLiveSound();
+          ui.grid.setPaused(msg.id, peer.paused, {
+            title: 'Transmissão pausada',
+            subtitle: `${peer.name || 'Alguém'} pausou a tela`,
+          });
+        }
         renderMembersPanel();
         break;
       }
@@ -2323,8 +2340,8 @@
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
       recomputeTree('screen');
 
-      session.sig.send({ type: 'broadcast-state', live: true });
-      $('btn-toggle-share').classList.add('active');
+      session.sig.send({ type: 'broadcast-state', live: true, paused: false });
+      ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
       renderMembersPanel();
       startStatsLoop();
@@ -2349,7 +2366,7 @@
     forgetOriginTree('screen');
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
-    $('btn-toggle-share').classList.remove('active');
+    ui.setToggleState('share', 'off');
     renderMembersPanel();
     // syncStatsLoop, nao stopStatsLoop: parar de compartilhar nao quer dizer
     // parar de codificar -- este no pode seguir sendo relay de outra pessoa.
@@ -2364,7 +2381,8 @@
     autoQuality = autoquality.initialState();
     lastCaptureKey = '';
     sharePaused = false;
-    $('btn-pause-share').classList.remove('active');
+    ui.grid.setPaused('me', false, {});
+    ui.setToggleState('pause', 'off');
     $('btn-pause-share').classList.add('hidden');
     rxHealthByPeer.clear();
     rxPrevSample.clear();
@@ -2391,7 +2409,12 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
-    $('btn-pause-share').classList.toggle('active', paused);
+    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused });
+    ui.grid.setPaused('me', paused, {
+      title: paused ? 'Você pausou' : '',
+      subtitle: paused ? 'Ninguém está vendo' : '',
+    });
+    ui.setToggleState('pause', paused ? 'on' : 'off');
     showToast(paused ? 'Transmissão pausada — ninguém está vendo sua tela.' : 'Transmissão retomada.');
     renderMembersPanel();
     renderRoomStatus();
@@ -2414,7 +2437,7 @@
     // A camera leva um tempo pra abrir (o driver e quem manda nisso), entao
     // o botao acusa o clique na hora em vez de ficar parecendo que nada
     // aconteceu ate o primeiro frame chegar.
-    $('btn-toggle-camera').classList.add('loading');
+    ui.setToggleState('camera', 'loading');
     try {
       const constraints = config.cameraConstraints(cfg.camera);
       if (cfg.camera.deviceId) constraints.deviceId = { exact: cfg.camera.deviceId };
@@ -2424,6 +2447,7 @@
         stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
       } catch (err) {
         showToast(`Não consegui acessar a câmera: ${err.message}`);
+        ui.setToggleState('camera', 'off');
         return;
       }
 
@@ -2432,7 +2456,7 @@
       if (track) track.addEventListener('ended', stopCamera);
 
       ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, { muted: true, avatar: cfg.avatar || null, kind: 'camera', displayName: cfg.name || 'anônimo' });
-      $('btn-toggle-camera').classList.add('active');
+      ui.setToggleState('camera', 'on');
 
       if (currentSession) {
         // Hoje isto e identico a `{ ...cfg.camera, codec: 'video/VP8' }`,
@@ -2448,7 +2472,6 @@
       }
     } finally {
       cameraStarting = false;
-      $('btn-toggle-camera').classList.remove('loading');
     }
   }
 
@@ -2470,7 +2493,7 @@
     cameraStream = null;
     forgetOriginTree('camera');
     ui.grid.removeTile('cam-me', emptyMessage());
-    $('btn-toggle-camera').classList.remove('active');
+    ui.setToggleState('camera', 'off');
 
     if (currentSession && track) {
       const session = currentSession;

@@ -197,7 +197,50 @@
       // era experimental).
       tree: true,
     },
+    // Preset de tema (spec de 2026-09-03, secao 5). So a FORMA e validada
+    // aqui -- chaves e tipos -- nunca os valores de cor (isso e trabalho de
+    // theme.js, que este arquivo deliberadamente nao importa, pra manter os
+    // dois modulos desacoplados; quem cruza os dois e o app.js).
+    theme: { preset: 'signal' },
   };
+
+  // As seis predefinicoes conhecidas pelo config -- so os NOMES, pra validar
+  // a forma de `theme.preset` sem depender de theme.js (ver o comentario
+  // acima de DEFAULTS.theme). Se um preset novo entrar em theme.js, ele
+  // precisa entrar aqui tambem, senao um config salvo com ele cai no padrao.
+  const THEME_PRESETS = ['signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+
+  function isValidThemeBase(base) {
+    return isObject(base)
+      && typeof base.temp === 'number' && Number.isFinite(base.temp) && base.temp >= 0 && base.temp <= 1
+      && typeof base.level === 'number' && Number.isFinite(base.level) && base.level >= 0 && base.level <= 1;
+  }
+
+  // `#rrggbb` de 6 digitos -- o mesmo formato que theme.js espera; nao
+  // aceita atalho de 3 digitos nem nome de cor, pra o valor salvo bater
+  // direto com o que deriveAction() consome sem conversao extra.
+  function isValidHexColor(v) {
+    return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+  }
+
+  // Le a secao `theme` de um config salvo. `{ preset: <conhecido> }` ou
+  // `{ preset:'custom', base:{temp,level}, act:'#rrggbb' }` validos passam
+  // como estao; qualquer outra coisa (ausente, chave errada, numero fora de
+  // 0-1, hex mal formado, preset desconhecido) cai no padrao -- config
+  // antigo sem `theme` abre no tema de hoje, sem excecao.
+  function loadTheme(incoming) {
+    if (!isObject(incoming)) return DEFAULTS.theme;
+    if (incoming.preset === 'custom') {
+      if (isValidThemeBase(incoming.base) && isValidHexColor(incoming.act)) {
+        return { preset: 'custom', base: { temp: incoming.base.temp, level: incoming.base.level }, act: incoming.act };
+      }
+      return DEFAULTS.theme;
+    }
+    if (typeof incoming.preset === 'string' && THEME_PRESETS.includes(incoming.preset)) {
+      return { preset: incoming.preset };
+    }
+    return DEFAULTS.theme;
+  }
 
   function isObject(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -244,6 +287,7 @@
       quality: loadQuality(parsed.quality),
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
       network: { ...mergeSection(DEFAULTS.network, parsed.network), tree: true },
+      theme: loadTheme(parsed.theme),
     };
   }
 

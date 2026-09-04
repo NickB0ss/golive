@@ -292,6 +292,57 @@ test('fecha o socket que estoura o teto de mensagens por segundo', async () => {
   }
 });
 
+test('broadcast-state: paused atravessa pra sala inteira junto do live', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, paused: true }));
+    const msg = await atB;
+    assert.equal(msg.live, true);
+    assert.equal(msg.paused, true);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('broadcast-state: paused ausente chega como false, nao undefined', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true }));
+    const msg = await atB;
+    assert.equal(msg.paused, false);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('heartbeat derruba o cliente que para de responder o pong', async () => {
   const server = await createSignalingServer({ port: 0, heartbeatMs: 50 });
   try {
