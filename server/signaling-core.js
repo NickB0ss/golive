@@ -623,6 +623,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
                 name: me.name,
                 live: Boolean(msg.live),
                 paused: Boolean(msg.paused),
+                // Se a sala pode rabiscar NESTA tela. Quem assiste so
+                // descobre isso por aqui -- sem o campo, a barra de
+                // ferramentas de rabisco nunca aparece pra ninguem, e sem
+                // erro nenhum no caminho pra denunciar. `=== true` porque o
+                // campo vem de um cliente: qualquer coisa que nao seja o
+                // booleano vira false, como ja acontece com `paused`.
+                annotate: msg.annotate === true,
               });
               break;
             }

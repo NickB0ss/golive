@@ -104,7 +104,7 @@ const { createDiscovery } = require('./main/discovery');
 const { setupAutoUpdater } = require('./main/updater');
 const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
-const { indexSourceDisplays, boundsFor } = require('./main/overlay');
+const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
 
 // Criado cedo (antes de whenReady) pra pegar exceptions que acontecam
 // durante a inicializacao tambem. app.getPath('userData') ja funciona
@@ -447,7 +447,11 @@ ipcMain.handle('sources:list', async (_event, types) => {
   // janela de rabisco vai consultar depois pra saber que monitor cobrir. Sai
   // de graca aqui e nao inventa correspondencia nenhuma (ver
   // src/main/overlay.js pra por que parsear o id nao serviria).
-  sourceDisplays = indexSourceDisplays(sources, displays);
+  //
+  // SOMA, nao substitui: o dialogo chama isto duas vezes em paralelo (telas
+  // e janelas), e a chamada de janelas indexa vazio -- atribuindo, ela
+  // apagava as telas que a outra tinha acabado de achar.
+  sourceDisplays = mergeSourceDisplays(sourceDisplays, sources, displays);
 
   return sources.map((s) => {
     // Casa a fonte de tela com o display pra mostrar a resolucao real.

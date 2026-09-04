@@ -88,9 +88,9 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.10.1` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.10.2` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **455 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **462 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
@@ -248,11 +248,6 @@ após `await`).
   do tema — sobra a predefinição com a cor de ação por cima. A interface da
   sala passa a sumir com o mouse parado, com um timer só pros dois alcances
   e o teclado sempre acordando as barras.
-- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
-  Detalhe por item na auditoria e no histórico do git.
-
-## Na branch, ainda não lançado
-
 - **0.10.1** — **a busca por atualização volta a funcionar**. A v0.10.0 subiu
   no GitHub só com o `.exe`: sem `latest.yml` e sem `.blockmap`. Como o
   `electron-updater` sempre lê o `latest.yml` do release **mais novo**, o 404
@@ -269,6 +264,32 @@ após `await`).
   confere um release **antes** de publicar: exige `.exe`, `.blockmap` e
   `latest.yml`, recusa rascunho e checa se o `latest.yml` aponta pra assets
   que existem de verdade, comparando os nomes normalizados. +16 testes.
+- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
+  Detalhe por item na auditoria e no histórico do git.
+
+## Na branch, ainda não lançado
+
+- **0.10.2** — **o rabisco volta a funcionar de ponta a ponta**. Dois bugs
+  independentes, cada um cortando uma metade do recurso, e nenhum deles
+  fazendo barulho no caminho.
+  **(1) Quem assiste nunca via a barra de ferramentas.** O servidor
+  reconstrói o `broadcast-state` campo a campo e a lista não incluía o
+  `annotate` — o único jeito de quem assiste descobrir que pode rabiscar
+  naquela tela. Quem transmite mandava o campo certo, o servidor o
+  descartava em silêncio, e do outro lado `msg.annotate` chegava `undefined`
+  → `peer.annotate = false` → sem ferramenta, sem erro, sem pista.
+  **(2) Quem compartilhava a tela inteira era avisado de que estava
+  "compartilhando uma janela"** e ficava sem o rabisco na tela real. O
+  diálogo pede as fontes em **duas chamadas paralelas** (`['screen']` e
+  `['window']`) pra que as janelas, que são caras de enumerar, não segurem a
+  lista de telas — mas o main **atribuía** o índice fonte→display a cada
+  chamada, e a listagem de janelas indexa vazio. Como as janelas quase
+  sempre chegam por último, elas apagavam o casamento que a listagem de
+  telas tinha acabado de descobrir: não era um bug intermitente, era quase
+  certo. `mergeSourceDisplays` soma em vez de trocar, então a ordem deixa de
+  importar. Confirmado numa sonda com o Electron de verdade nesta máquina: o
+  `display_id` do Windows sempre casou com o `getAllDisplays()` — antes o
+  índice terminava com 0 entradas, agora termina com as 2 telas. +7 testes.
 
 ## Backlog técnico
 
