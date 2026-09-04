@@ -479,21 +479,33 @@
     return isObject(cfg) && cfg.preset === 'custom' && isValidBase(cfg.base) && isHex(cfg.act);
   }
 
-  /** `themeCfg` -> objeto de tokens. Preset conhecido devolve o conjunto
-   * fixo de PRESETS; `custom` deriva de `base`+`act`; qualquer outra coisa
-   * (preset desconhecido, custom malformado, cfg ausente) cai em
-   * PRESETS.signal sem lancar -- esta funcao roda no boot do app. */
+  /** `themeCfg` -> objeto de tokens. Tres formas, nesta ordem:
+   *
+   *   1. `{ preset: <conhecido>, act: '#rrggbb' }` -- superficies fixas do
+   *      preset, cor de acao trocada. E a unica forma que a interface produz
+   *      hoje: a escolha da pessoa e "qual preset" + "qual acento", nunca
+   *      mais a temperatura e a claridade das superficies.
+   *   2. `{ preset: <conhecido> }` -- o conjunto fixo de PRESETS, intacto.
+   *   3. `{ preset:'custom', base:{temp,level}, act }` -- deriva as
+   *      superficies de `base`. Nao ha mais controle que produza isto, mas
+   *      config ja salvo em disco tem, e continua abrindo igual: ninguem
+   *      perde o proprio tema num update.
+   *
+   * Qualquer outra coisa (preset desconhecido, custom malformado, cfg
+   * ausente) cai em PRESETS.signal sem lancar -- roda no boot do app. */
   function tokensFor(themeCfg) {
     if (isValidCustomCfg(themeCfg)) {
       return { surfaces: deriveSurfaces(themeCfg.base), ...deriveAction(themeCfg.act) };
     }
     if (isObject(themeCfg) && typeof themeCfg.preset === 'string' && PRESETS[themeCfg.preset]) {
-      return PRESETS[themeCfg.preset];
+      const preset = PRESETS[themeCfg.preset];
+      if (isHex(themeCfg.act)) return { surfaces: preset.surfaces, ...deriveAction(themeCfg.act) };
+      return preset;
     }
     return PRESETS.signal;
   }
 
-  const CUSTOM_VAR_MAP = {
+  const SURFACE_VAR_MAP = {
     '--bg': (t) => t.surfaces.bg,
     '--s1': (t) => t.surfaces.s1,
     '--s2': (t) => t.surfaces.s2,
@@ -504,6 +516,11 @@
     '--tx3': (t) => t.surfaces.tx3,
     '--line': (t) => t.surfaces.line,
     '--line2': (t) => t.surfaces.line2,
+  };
+
+  // Separado das superficies porque um preset com acento proprio escreve SO
+  // este bloco: as cinco superficies continuam vindo do bloco CSS do preset.
+  const ACTION_VAR_MAP = {
     '--act': (t) => t.act,
     '--act-hover': (t) => t.actHover,
     '--on-fill': (t) => t.onFill,
@@ -511,6 +528,8 @@
     '--on-text': (t) => t.onText,
     '--on-act': (t) => t.onAct,
   };
+
+  const CUSTOM_VAR_MAP = { ...SURFACE_VAR_MAP, ...ACTION_VAR_MAP };
 
   /** Aplica um tema no `<html>`. Presets sao so um atributo `data-theme`
    * (o CSS ja tem o bloco pronto) -- "signal" remove o atributo, pra
@@ -551,6 +570,19 @@
       d.documentElement.removeAttribute('data-theme');
     } else {
       d.documentElement.setAttribute('data-theme', preset);
+    }
+
+    // Acento proprio por cima do preset: so as variaveis de ACAO vao inline.
+    // As superficies seguem vindo do bloco CSS do preset -- e o que mantem
+    // "Papel" claro e os outros cinco escuros sem duplicar as rampas aqui
+    // dentro, e o que faz a troca de cor de acao valer em qualquer preset.
+    // Um `act` torto (ou preset desconhecido) simplesmente nao escreve nada:
+    // sobra o acento do proprio preset.
+    if (PRESETS[requested] && isObject(themeCfg) && isHex(themeCfg.act)) {
+      const tokens = tokensFor(themeCfg);
+      for (const [varName, getter] of Object.entries(ACTION_VAR_MAP)) {
+        d.documentElement.style.setProperty(varName, getter(tokens));
+      }
     }
   }
 

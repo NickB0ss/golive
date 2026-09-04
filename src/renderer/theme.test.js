@@ -213,3 +213,79 @@ test('apply de um preset APAGA as variaveis inline de um custom anterior', () =>
   assert.equal(props['--bg'], undefined);
   assert.equal(doc.documentElement.attrs['data-theme'], 'paper');
 });
+
+// ---------- Predefinicao com acento proprio ----------
+// Depois que os sliders de temperatura e claridade sairam, esta e a UNICA
+// forma que a interface produz: as superficies vem fixas do preset, so a cor
+// de acao e escolha da pessoa.
+
+test('tokensFor com preset + act usa as superficies do preset e o acento novo', () => {
+  const tokens = tokensFor({ preset: 'paper', act: '#B4275E' });
+  assert.deepEqual(tokens.surfaces, PRESETS.paper.surfaces, 'as superficies sao as do preset, intactas');
+  assert.equal(tokens.act, '#B4275E');
+  assert.notEqual(tokens.act, PRESETS.paper.act);
+  // A forma completa (com os on*) e a mesma que o custom devolvia -- e a que
+  // validate() e o CUSTOM_VAR_MAP esperam.
+  assert.deepEqual(tokens, { surfaces: PRESETS.paper.surfaces, ...deriveAction('#B4275E') });
+});
+
+test('tokensFor com preset + act torto devolve o preset intacto', () => {
+  assert.deepEqual(tokensFor({ preset: 'forest', act: 'verde' }), PRESETS.forest);
+  assert.deepEqual(tokensFor({ preset: 'forest', act: '#abc' }), PRESETS.forest);
+  assert.deepEqual(tokensFor({ preset: 'forest' }), PRESETS.forest);
+});
+
+test('apply de preset + act escreve SO as variaveis de acao, nunca as superficies', () => {
+  // A razao de escrever so a acao: as cinco superficies ja vem do bloco CSS
+  // do `data-theme`. Duplica-las aqui seria uma segunda fonte da verdade.
+  const props = {};
+  const doc = {
+    documentElement: {
+      attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; },
+      removeAttribute(k) { delete this.attrs[k]; },
+      style: {
+        setProperty(k, v) { props[k] = v; },
+        removeProperty(k) { delete props[k]; },
+      },
+    },
+  };
+
+  apply({ preset: 'paper', act: '#B4275E' }, doc);
+  assert.equal(doc.documentElement.attrs['data-theme'], 'paper', 'o preset continua vindo do CSS');
+  assert.equal(props['--act'], '#B4275E');
+  assert.ok(props['--on-act'], 'a cor do texto sobre a acao acompanha');
+  assert.equal(props['--bg'], undefined, 'superficie nenhuma vai inline');
+  assert.equal(props['--tx'], undefined);
+
+  // Trocar pro mesmo preset SEM acento proprio limpa o que foi escrito.
+  apply({ preset: 'paper' }, doc);
+  assert.equal(props['--act'], undefined);
+  assert.equal(doc.documentElement.attrs['data-theme'], 'paper');
+});
+
+test('apply de signal + act mantem o acento e nao poe data-theme', () => {
+  const props = {};
+  const doc = {
+    documentElement: {
+      attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; },
+      removeAttribute(k) { delete this.attrs[k]; },
+      style: {
+        setProperty(k, v) { props[k] = v; },
+        removeProperty(k) { delete props[k]; },
+      },
+    },
+  };
+
+  apply({ preset: 'signal', act: '#22A06B' }, doc);
+  assert.equal(doc.documentElement.attrs['data-theme'], undefined, 'signal e o :root, sem atributo');
+  assert.equal(props['--act'], '#22A06B');
+});
+
+test('custom legado salvo em disco continua abrindo igual', () => {
+  // Ninguem perde o proprio tema num update: nao ha mais controle que produza
+  // esta forma, mas quem ja tinha uma salva continua vendo o mesmo app.
+  const legado = { preset: 'custom', base: { temp: 0.2, level: 0.1 }, act: '#4F8EF7' };
+  assert.deepEqual(tokensFor(legado), { surfaces: deriveSurfaces(legado.base), ...deriveAction(legado.act) });
+});

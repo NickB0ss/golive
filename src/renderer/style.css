@@ -2264,34 +2264,4 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   line-height: 1.5;
   color: var(--tx3);
 }
-/* A trilha do slider MOSTRA o que ele faz: frio->quente e escuro->claro. */
-.settings-field input[type="range"].range-temp,
-.settings-field input[type="range"].range-level {
-  appearance: none;
-  height: 10px;
-  border-radius: var(--r-full);
-  border: 1px solid var(--line);
-}
-.settings-field input[type="range"].range-temp {
-  background: linear-gradient(90deg, #1b2430, #23262c, #2e2a24);
-}
-.settings-field input[type="range"].range-level {
-  background: linear-gradient(90deg, #0c0d10, #2a2e36, #e6e8ec);
-}
-.settings-field input[type="range"].range-temp::-webkit-slider-thumb,
-.settings-field input[type="range"].range-level::-webkit-slider-thumb {
-  appearance: none;
-  width: 16px; height: 16px;
-  border-radius: var(--r-full);
-  background: var(--tx);
-  border: 2px solid var(--bg);
-  box-shadow: var(--shadow-1);
-}
-.range-ends {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3px;
-  font-size: 10px;
-  color: var(--tx3);
-}
 .settings-actions { margin-top: var(--s-4); display: flex; justify-content: flex-start; }

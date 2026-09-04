@@ -2143,32 +2143,29 @@
     $('theme-presets').innerHTML = THEME_PRESET_ORDER.map((id) => renderThemePresetCard(id, activeId)).join('');
   }
 
-  // Modo personalizado: nenhum cartao de preset fica marcado (a pessoa
-  // saiu do conjunto fechado assim que mexeu num slider).
-  function markThemePresetsInactive() {
-    Array.from($('theme-presets').children).forEach((card) => {
-      card.classList.remove('active');
-      card.setAttribute('aria-pressed', 'false');
-    });
+  /** Qual cartao de predefinicao esta marcado agora. A cor de acao e um
+   * acento POR CIMA de uma predefinicao -- nunca um estado sem predefinicao
+   * nenhuma --, entao sempre ha uma resposta; 'signal' e a rede de seguranca
+   * se o DOM ainda nao foi montado. */
+  function selectedThemePreset() {
+    const card = $('theme-presets')?.querySelector('.theme-preset-card.active');
+    return card?.dataset.preset || 'signal';
   }
 
-  /** Le os tres controles de "Personalizar", valida e aplica ao vivo. E
-   * chamada a cada evento `input` (nunca so `change`) -- a pessoa precisa
-   * ver o app mudando enquanto arrasta o slider, que e o unico jeito de
-   * avaliar um tema (spec 5.6). Aplica MESMO quando a validacao reprova --
-   * o aviso abaixo do controle e que carrega a reprovacao, a aplicacao ao
-   * vivo continua sendo o feedback principal. */
+  /** Le a cor de acao, valida e aplica ao vivo. E chamada a cada evento
+   * `input` (nunca so `change`) -- a pessoa precisa ver o app mudando
+   * enquanto arrasta o seletor de cor, que e o unico jeito de avaliar um
+   * tema (spec 5.6). Aplica MESMO quando a validacao reprova -- o aviso
+   * abaixo do controle e que carrega a reprovacao, a aplicacao ao vivo
+   * continua sendo o feedback principal.
+   *
+   * O cartao da predefinicao CONTINUA marcado: trocar o acento nao tira a
+   * pessoa do conjunto fechado, so troca a cor de acao dentro dele. Isso
+   * mudou quando os sliders de superficie sairam -- antes, mexer em
+   * qualquer controle daqui significava sair de todos os presets. */
   function applyCustomThemeFromControls(deps) {
-    const themeCfg = {
-      preset: 'custom',
-      base: {
-        temp: Number($('theme-temp').value) / 100,
-        level: Number($('theme-level').value) / 100,
-      },
-      act: $('theme-act').value,
-    };
+    const themeCfg = { preset: selectedThemePreset(), act: $('theme-act').value };
     const result = theme.validate(theme.tokensFor(themeCfg));
-    markThemePresetsInactive();
     deps.onThemeChange(themeCfg);
 
     const warningEl = $('theme-warning');
@@ -2189,32 +2186,25 @@
     }
   }
 
-  /** Inicializa a aba Aparencia a partir de `cfg.theme` -- preset conhecido
-   * marca o cartao correspondente (sliders/cor ficam num meio-termo, so pra
-   * nao nascer vazios); `custom` preenche sliders e cor com os valores
-   * salvos e deixa nenhum cartao marcado. */
+  /** Inicializa a aba Aparencia a partir de `cfg.theme`. Sempre ha um cartao
+   * marcado; o seletor de cor nasce no `act` salvo, ou no do proprio preset
+   * quando nao ha acento proprio.
+   *
+   * Um `custom` legado (config salvo quando ainda dava pra mexer nas
+   * superficies) nao tem mais controle que o represente: os cartoes caem no
+   * padrao e o seletor mostra o acento salvo. O tema em uso so muda quando a
+   * pessoa mexer em alguma coisa -- abrir as Configuracoes nao repinta nada. */
   function initThemeControls(config) {
     const themeCfg = (config && config.theme) || { preset: 'signal' };
-    const isCustom = themeCfg.preset === 'custom' && isObjectWithBase(themeCfg);
-    const knownPreset = !isCustom && theme.PRESETS[themeCfg.preset] ? themeCfg.preset : null;
+    const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'signal';
 
-    renderThemePresets(isCustom ? null : knownPreset || 'signal');
-
-    if (isCustom) {
-      $('theme-temp').value = Math.round((themeCfg.base.temp ?? 0.5) * 100);
-      $('theme-level').value = Math.round((themeCfg.base.level ?? 0.1) * 100);
-      $('theme-act').value = themeCfg.act;
-    } else {
-      const preset = theme.PRESETS[knownPreset || 'signal'];
-      $('theme-temp').value = 50;
-      $('theme-level').value = 10;
-      $('theme-act').value = preset.act;
-    }
+    renderThemePresets(knownPreset);
+    $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;
     $('theme-warning').textContent = '';
   }
 
-  function isObjectWithBase(themeCfg) {
-    return !!themeCfg.base && typeof themeCfg.act === 'string';
+  function isHexColor(v) {
+    return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
   }
 
   async function openSettings(config, deps) {
@@ -2271,18 +2261,6 @@
       <div id="theme-presets" class="theme-presets"></div>
 
       <h3>Personalizar</h3>
-      <div class="settings-field">
-        <label for="theme-temp">Temperatura do cinza</label>
-        <p class="settings-hint">Muda o fundo e os painéis de um cinza azulado pra um cinza quente. Não mexe no texto nem nas cores de aviso.</p>
-        <input id="theme-temp" type="range" min="0" max="100" value="50" class="range-temp" />
-        <span class="range-ends"><span>frio</span><span>quente</span></span>
-      </div>
-      <div class="settings-field">
-        <label for="theme-level">Claridade do fundo</label>
-        <p class="settings-hint">Sobe ou desce as cinco superfícies de uma vez. No extremo claro, o app inteiro inverte pra tema claro.</p>
-        <input id="theme-level" type="range" min="0" max="100" value="10" class="range-level" />
-        <span class="range-ends"><span>escuro</span><span>claro</span></span>
-      </div>
       <div class="settings-field">
         <label for="theme-act">Cor de ação</label>
         <p class="settings-hint">Botão principal, foco do teclado e seleção. O vermelho de "ao vivo" e o âmbar de aviso não mudam — eles significam uma coisa só.</p>
@@ -2353,15 +2331,17 @@
         c.setAttribute('aria-pressed', String(c === card));
       });
       $('theme-warning').textContent = '';
+      // Trocar de predefinicao ZERA o acento proprio: cada preset foi
+      // desenhado com o seu, e carregar o acento antigo pro novo entregaria
+      // uma combinacao que ninguem escolheu. O seletor de cor acompanha.
+      $('theme-act').value = theme.PRESETS[card.dataset.preset].act;
       deps.onThemeChange({ preset: card.dataset.preset });
     });
-    ['theme-temp', 'theme-level', 'theme-act'].forEach((id) => {
-      $(id).addEventListener('input', () => applyCustomThemeFromControls(deps));
-    });
+    $('theme-act').addEventListener('input', () => applyCustomThemeFromControls(deps));
 
     // Voltar ao padrao: aplica o tema de fabrica E devolve os controles pro
-    // estado inicial. Sem o initThemeControls, os sliders continuariam na
-    // posicao antiga -- mostrando um tema que nao e mais o que esta no ar.
+    // estado inicial. Sem o initThemeControls, o seletor de cor continuaria
+    // na posicao antiga -- mostrando um tema que nao e mais o que esta no ar.
     $('btn-theme-reset').addEventListener('click', () => {
       const padrao = { preset: configApi.DEFAULTS.theme.preset };
       deps.onThemeChange(padrao);

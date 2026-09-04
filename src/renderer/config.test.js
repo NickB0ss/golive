@@ -342,6 +342,25 @@ test('theme: custom sem act cai no padrao', () => {
   assert.deepEqual(load(saved).theme, DEFAULTS.theme);
 });
 
+test('theme: round-trip preserva um preset com acento proprio', () => {
+  // Forma nova, produzida pela aba Aparencia depois que os sliders de
+  // temperatura e claridade sairam: predefinicao + cor de acao.
+  const saved = serialize({ ...DEFAULTS, theme: { preset: 'forest', act: '#B4275E' } });
+  assert.deepEqual(load(saved).theme, { preset: 'forest', act: '#B4275E' });
+});
+
+test('theme: act torto derruba SO o acento, a predefinicao sobrevive', () => {
+  for (const act of ['azul', '#fff', '#gggggg', 123, null]) {
+    const saved = serialize({ ...DEFAULTS, theme: { preset: 'amber', act } });
+    assert.deepEqual(load(saved).theme, { preset: 'amber' }, `act=${JSON.stringify(act)} nao devia levar o preset junto`);
+  }
+});
+
+test('theme: preset desconhecido com act valido ainda cai no padrao', () => {
+  const saved = serialize({ ...DEFAULTS, theme: { preset: 'roxo-brilhante', act: '#B4275E' } });
+  assert.deepEqual(load(saved).theme, DEFAULTS.theme);
+});
+
 test('theme: custom com act em formato invalido cai no padrao', () => {
   for (const act of ['azul', '#fff', '#gggggg', 123, null]) {
     const saved = serialize({ ...DEFAULTS, theme: { preset: 'custom', base: { temp: 0.5, level: 0.5 }, act } });

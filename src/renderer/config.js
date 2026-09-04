@@ -233,11 +233,20 @@
     return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
   }
 
-  // Le a secao `theme` de um config salvo. `{ preset: <conhecido> }` ou
-  // `{ preset:'custom', base:{temp,level}, act:'#rrggbb' }` validos passam
-  // como estao; qualquer outra coisa (ausente, chave errada, numero fora de
-  // 0-1, hex mal formado, preset desconhecido) cai no padrao -- config
-  // antigo sem `theme` abre no tema de hoje, sem excecao.
+  // Le a secao `theme` de um config salvo. Tres formas validas:
+  //
+  //   { preset: <conhecido> }                      -- predefinicao pura
+  //   { preset: <conhecido>, act: '#rrggbb' }      -- predefinicao com acento
+  //                                                   proprio (o que a
+  //                                                   interface produz hoje)
+  //   { preset:'custom', base:{temp,level}, act }  -- legado: config salvo
+  //                                                   quando ainda dava pra
+  //                                                   mexer nas superficies
+  //
+  // Qualquer outra coisa (ausente, chave errada, numero fora de 0-1, hex mal
+  // formado, preset desconhecido) cai no padrao -- config antigo sem `theme`
+  // abre no tema de hoje, sem excecao. Um `act` torto derruba SO o acento: a
+  // predefinicao escolhida sobrevive, que e o dano menor.
   function loadTheme(incoming) {
     if (!isObject(incoming)) return DEFAULTS.theme;
     if (incoming.preset === 'custom') {
@@ -247,6 +256,7 @@
       return DEFAULTS.theme;
     }
     if (typeof incoming.preset === 'string' && THEME_PRESETS.includes(incoming.preset)) {
+      if (isValidHexColor(incoming.act)) return { preset: incoming.preset, act: incoming.act };
       return { preset: incoming.preset };
     }
     return DEFAULTS.theme;
