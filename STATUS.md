@@ -88,7 +88,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.10.2` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.10.3` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **462 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
@@ -264,11 +264,6 @@ após `await`).
   confere um release **antes** de publicar: exige `.exe`, `.blockmap` e
   `latest.yml`, recusa rascunho e checa se o `latest.yml` aponta pra assets
   que existem de verdade, comparando os nomes normalizados. +16 testes.
-- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
-  Detalhe por item na auditoria e no histórico do git.
-
-## Na branch, ainda não lançado
-
 - **0.10.2** — **o rabisco volta a funcionar de ponta a ponta**. Dois bugs
   independentes, cada um cortando uma metade do recurso, e nenhum deles
   fazendo barulho no caminho.
@@ -290,6 +285,23 @@ após `await`).
   importar. Confirmado numa sonda com o Electron de verdade nesta máquina: o
   `display_id` do Windows sempre casou com o `getAllDisplays()` — antes o
   índice terminava com 0 entradas, agora termina com as 2 telas. +7 testes.
+- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
+  Detalhe por item na auditoria e no histórico do git.
+
+## Na branch, ainda não lançado
+
+- **0.10.3** — **só dá pra abrir uma instância do GoLive por máquina**. Antes
+  cada `npm start`/atalho abria um processo novo, cada um tentando subir
+  servidor de sinalização, escuta UDP de descoberta e atalho global
+  (`Ctrl+Alt+P`) próprios — receita pra sala fantasma e comportamento
+  duplicado, sem aviso nenhum. `app.requestSingleInstanceLock()` roda como a
+  primeira coisa do `main.js`, antes de qualquer `commandLine.appendSwitch`;
+  se a trava já está com outro processo, este só sai (`app.quit()` e
+  `return`). `second-instance` traz a janela existente pra frente
+  (restaurando se estiver minimizada) em vez de deixar o SO abrir outra.
+  Confirmado rodando `npm start` duas vezes em sequência e conferindo a
+  árvore de processos: os 5 `electron.exe` continuam todos filhos do PID da
+  primeira instância — a segunda tentativa não cria processo nenhum.
 
 ## Backlog técnico
 

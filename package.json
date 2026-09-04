@@ -1,6 +1,6 @@
 {
   "name": "golive-lan",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Compartilhamento de tela 1080p60 na LAN virtual (Radmin VPN / Tailscale)",
   "main": "src/main.js",
   "author": "Nicolas <nicolasmateusdecastrosilva@gmail.com>",
