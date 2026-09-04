@@ -111,10 +111,14 @@ contextBridge.exposeInMainWorld('golive', {
       callback(captureId, samples, channels, sampleRate)
     ),
 
-  /** Status do updater: { status, manual, version?, progress?, message? },
-   * status em 'checking' | 'available' | 'not-available' | 'downloading' |
+  /** Status do updater:
+   * { status, manual, version?, progress?, message?, reason? }, status em
+   * 'checking' | 'available' | 'not-available' | 'downloading' |
    * 'downloaded' | 'error'. `manual` diz se o ciclo partiu do botao de
-   * buscar. */
+   * buscar. Em 'error', `message` e a mensagem crua do electron-updater (vai
+   * pro log) e `reason` e um codigo estavel do motivo -- 'release-incompleto'
+   * | 'sem-release' | 'sem-rede' | 'limite' | 'feed-quebrado' -- que o
+   * renderer traduz pro toast; ausente quando o erro nao e conhecido. */
   onUpdateStatus: (callback) =>
     ipcRenderer.on('update:status', (_event, payload) => callback(payload)),
 

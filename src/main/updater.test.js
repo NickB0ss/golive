@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { setupAutoUpdater } = require('./updater');
+const { setupAutoUpdater, updateErrorReason } = require('./updater');
 
 // autoUpdater falso: EventEmitter + espioes nos metodos que o wrapper chama.
 function fakeAutoUpdater() {
@@ -105,4 +105,67 @@ test('sem mock e sem build empacotado, checkForUpdates ainda da retorno sintetic
   // nao deve explodir
   u.downloadUpdate();
   u.quitAndInstall();
+});
+
+// --- updateErrorReason: por que a busca falhou, como codigo estavel ------
+// O toast antigo dizia so "Nao consegui verificar a atualizacao", entao um
+// release incompleto no GitHub e um cabo de rede solto eram indistinguiveis
+// pra quem usa -- e pra quem tem de consertar.
+
+test('release sem latest.yml vira o codigo release-incompleto', () => {
+  const err = new Error('Cannot find latest.yml in the latest release artifacts (...)');
+  err.code = 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND';
+  assert.equal(updateErrorReason(err), 'release-incompleto');
+});
+
+test('repositorio sem release publicado vira sem-release', () => {
+  for (const code of ['ERR_UPDATER_LATEST_VERSION_NOT_FOUND', 'ERR_UPDATER_NO_PUBLISHED_VERSIONS']) {
+    const err = new Error('...');
+    err.code = code;
+    assert.equal(updateErrorReason(err), 'sem-release');
+  }
+});
+
+test('feed de releases quebrado vira feed-quebrado', () => {
+  const err = new Error('Cannot parse releases feed');
+  err.code = 'ERR_UPDATER_INVALID_RELEASE_FEED';
+  assert.equal(updateErrorReason(err), 'feed-quebrado');
+});
+
+test('erro de rede vira sem-rede, nao um problema de release', () => {
+  for (const code of ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE']) {
+    const err = new Error('socket hang up');
+    err.code = code;
+    assert.equal(updateErrorReason(err), 'sem-rede');
+  }
+});
+
+test('limite de pedidos do GitHub (403/429) vira limite', () => {
+  for (const statusCode of [403, 429]) {
+    const err = new Error('rate limit');
+    err.statusCode = statusCode;
+    assert.equal(updateErrorReason(err), 'limite');
+  }
+});
+
+test('erro desconhecido nao inventa motivo', () => {
+  assert.equal(updateErrorReason(new Error('vish')), null);
+  assert.equal(updateErrorReason(null), null);
+});
+
+test('o evento de erro carrega o motivo junto da mensagem tecnica', () => {
+  const au = fakeAutoUpdater();
+  const { events, onStatus } = collect();
+  setupAutoUpdater(onStatus, { autoUpdater: au });
+
+  const err = new Error('Cannot find latest.yml in the latest release artifacts');
+  err.code = 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND';
+  au.emit('error', err);
+
+  assert.deepEqual(events[0], {
+    manual: false,
+    status: 'error',
+    message: 'Cannot find latest.yml in the latest release artifacts',
+    reason: 'release-incompleto',
+  });
 });

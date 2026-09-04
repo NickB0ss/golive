@@ -348,7 +348,10 @@ app.whenReady().then(() => {
   ensureDiscoveryStarted().catch((err) => logger.error('descoberta nao iniciou:', err?.message || err));
 
   updater = setupAutoUpdater((payload) => {
-    logger.log(`update: ${payload.status}${payload.message ? ' -- ' + payload.message : ''}`);
+    logger.log(
+      `update: ${payload.status}${payload.reason ? ` [${payload.reason}]` : ''}` +
+        `${payload.message ? ' -- ' + payload.message : ''}`
+    );
     if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
   });
   updater.checkForUpdates(false); // check no boot, mas sem baixar nada
