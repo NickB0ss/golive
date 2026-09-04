@@ -83,6 +83,16 @@ const activeCaptures = new Map();
 let nextCaptureId = 1;
 
 let win = null;
+/** Janela transparente que desenha os rabiscos da sala na tela REAL de quem
+ * esta compartilhando. Nasce so quando a transmissao e de uma TELA inteira
+ * com anotacao ligada -- ver createOverlayWindow. */
+let overlayWin = null;
+/** `Map<sourceId, displayId>` montado a cada `sources:list`. E o unico jeito
+ * honesto de saber que monitor cobrir: o `<n>` de `screen:<n>:0` nao e o id
+ * de display do Electron (ver src/main/overlay.js). */
+let sourceDisplays = new Map();
+/** Display da fonte escolhida agora, ou null se for janela. */
+let selectedDisplayId = null;
 /** Controle do auto-updater, preenchido em whenReady (so em build empacotado). */
 let updater = null;
 
@@ -94,6 +104,7 @@ const { createDiscovery } = require('./main/discovery');
 const { setupAutoUpdater } = require('./main/updater');
 const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
+const { indexSourceDisplays, boundsFor } = require('./main/overlay');
 
 // Criado cedo (antes de whenReady) pra pegar exceptions que acontecam
 // durante a inicializacao tambem. app.getPath('userData') ja funciona
@@ -180,6 +191,11 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  // A janela de rabisco e uma BrowserWindow como outra qualquer: viva depois
+  // que a principal fecha, ela segura o 'window-all-closed' e o app fica
+  // rodando invisivel, sem nada na tela nem na barra de tarefas (ela e
+  // skipTaskbar). Ela morre junto com a principal, sempre.
+  win.on('closed', destroyOverlayWindow);
   win.on('enter-full-screen', () => win?.webContents.send('window:fullscreen-changed', true));
   win.on('leave-full-screen', () => win?.webContents.send('window:fullscreen-changed', false));
 
@@ -354,6 +370,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  destroyOverlayWindow();
 });
 
 app.on('window-all-closed', async () => {
@@ -423,6 +440,12 @@ ipcMain.handle('sources:list', async (_event, types) => {
     fetchWindowIcons: true,
   });
 
+  // Guarda o casamento fonte->display enquanto ele esta na mao: e o que a
+  // janela de rabisco vai consultar depois pra saber que monitor cobrir. Sai
+  // de graca aqui e nao inventa correspondencia nenhuma (ver
+  // src/main/overlay.js pra por que parsear o id nao serviria).
+  sourceDisplays = indexSourceDisplays(sources, displays);
+
   return sources.map((s) => {
     // Casa a fonte de tela com o display pra mostrar a resolucao real.
     const display = displays.find((d) => String(d.id) === String(s.display_id));
@@ -447,6 +470,7 @@ ipcMain.handle('sources:list', async (_event, types) => {
 
 ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
   selectedSourceId = id;
+  selectedDisplayId = sourceDisplays.get(id) || null;
   audioMode = mode === 'system' ? 'system' : 'none';
   return true;
 });
@@ -553,6 +577,110 @@ ipcMain.handle('window:setFullScreen', (_event, enabled) => {
   win?.setFullScreen(!!enabled);
   return true;
 });
+
+// --- Rabisco na tela real (overlay) ------------------------------------
+//
+// Uma janela transparente esticada sobre o monitor compartilhado, desenhando
+// o que a sala rabisca. Tres propriedades a fazem funcionar, e nenhuma e
+// opcional:
+//
+//   click-through  `setIgnoreMouseEvents(true)` -- sem isso a janela come
+//                  TODO clique da tela de quem esta compartilhando. E o
+//                  requisito mais duro: um overlay que rouba o mouse
+//                  transforma a tela da pessoa num quadro morto.
+//   sempre por cima `setAlwaysOnTop(true, 'screen-saver')` -- o nivel comum
+//                  fica abaixo de jogo em fullscreen sem borda, que e
+//                  metade do uso deste app.
+//   fora da captura `setContentProtection(true)` -- sem isso o overlay entra
+//                  na propria captura e quem assiste ve cada traco DUAS
+//                  vezes: o local, no canvas do tile, e o de volta, queimado
+//                  no video. No Windows 10 2004+ isso vira
+//                  WDA_EXCLUDEFROMCAPTURE, que some com a janela pro
+//                  capturador sem pintar nada por cima dela.
+
+function createOverlayWindow(bounds) {
+  destroyOverlayWindow();
+  overlayWin = new BrowserWindow({
+    ...bounds,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    // focusable: false mantem o foco no jogo/documento por baixo -- a janela
+    // nunca deve roubar o Alt+Tab de quem esta compartilhando.
+    focusable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    enableLargerThanScreen: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-overlay.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      // A pagina e estatica e sem interacao; deixar o Chromium hibernar o
+      // renderer dela pararia o requestAnimationFrame que desenha o traco.
+      backgroundThrottling: false,
+    },
+  });
+
+  overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  overlayWin.setAlwaysOnTop(true, 'screen-saver');
+  overlayWin.setContentProtection(true);
+  overlayWin.setMenuBarVisibility(false);
+  overlayWin.on('closed', () => { overlayWin = null; });
+  // showInactive, nao show: aparecer nao pode tirar o foco do que a pessoa
+  // esta fazendo.
+  overlayWin.once('ready-to-show', () => overlayWin?.showInactive());
+  // A promessa so resolve depois que a pagina carregou. Sem isso, o primeiro
+  // `overlay:load` que o renderer mandar logo apos o start cairia num
+  // webContents que ainda nao rodou o script -- `send` nao enfileira, e a
+  // lousa que ja existia sumiria da tela real.
+  return overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
+}
+
+function destroyOverlayWindow() {
+  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy();
+  overlayWin = null;
+}
+
+/** Manda um evento pra janela de rabisco, se ela existir e ja tiver carregado.
+ * Silencioso de proposito: op de anotacao chega ~60x por segundo por pessoa
+ * desenhando, e nenhuma delas vale um erro no log se a janela acabou de
+ * fechar. */
+function sendToOverlay(channel, payload) {
+  if (!overlayWin || overlayWin.isDestroyed()) return false;
+  overlayWin.webContents.send(channel, payload);
+  return true;
+}
+
+/** Abre o overlay pro que esta sendo compartilhado agora. Devolve por que
+ * NAO abriu quando nao abriu -- o renderer usa isso pra avisar em vez de
+ * deixar a pessoa achando que os amigos estao rabiscando no vazio.
+ *   'window'  -> a fonte e uma janela, nao uma tela
+ *   'display' -> o monitor sumiu entre a escolha e o ao vivo */
+ipcMain.handle('overlay:start', async () => {
+  if (!selectedDisplayId) return { ok: false, reason: 'window' };
+  const bounds = boundsFor(selectedDisplayId, screen.getAllDisplays());
+  if (!bounds) return { ok: false, reason: 'display' };
+  try {
+    await createOverlayWindow(bounds);
+  } catch (err) {
+    logger.error('overlay: a janela de rabisco nao carregou:', err?.message || err);
+    destroyOverlayWindow();
+    return { ok: false, reason: 'display' };
+  }
+  return { ok: true };
+});
+
+ipcMain.handle('overlay:stop', () => {
+  destroyOverlayWindow();
+  return true;
+});
+
+ipcMain.handle('overlay:op', (_event, payload) => sendToOverlay('overlay:op', payload));
+ipcMain.handle('overlay:load', (_event, payload) => sendToOverlay('overlay:load', payload));
 
 // Abre a pasta de logs no explorador de arquivos -- pra mandar pra quem for
 // investigar um bug depois (ver golive #12).

@@ -206,10 +206,11 @@ module.exports = [
     languageOptions: { sourceType: 'commonjs', globals: globals.node },
   },
 
-  // O preload roda no processo de renderizacao mas com require() do Electron:
-  // e o unico arquivo que enxerga os dois mundos ao mesmo tempo.
+  // Os preloads rodam no processo de renderizacao mas com require() do
+  // Electron: sao os unicos arquivos que enxergam os dois mundos ao mesmo
+  // tempo. Sao dois -- o do app e o da janela de rabisco.
   {
-    files: ['src/preload.js'],
+    files: ['src/preload.js', 'src/preload-overlay.js'],
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
   },
 

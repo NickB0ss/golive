@@ -134,4 +134,16 @@ contextBridge.exposeInMainWorld('golive', {
   /** Abre a pasta de logs desta instalacao no explorador de arquivos, pra
    * mandar pra quem for investigar um bug depois. */
   openLogsFolder: () => ipcRenderer.invoke('logs:openFolder'),
+
+  /** Janela transparente que desenha o rabisco da sala na tela REAL de quem
+   * esta compartilhando. `startAnnotOverlay` devolve `{ ok: true }` ou
+   * `{ ok: false, reason }` -- 'window' quando a fonte e uma janela (nao da
+   * pra acompanhar o retangulo dela) e 'display' quando o monitor sumiu
+   * entre a escolha e o ao vivo. */
+  startAnnotOverlay: () => ipcRenderer.invoke('overlay:start'),
+  stopAnnotOverlay: () => ipcRenderer.invoke('overlay:stop'),
+  /** Uma op de anotacao (a mesma que o app aplica no proprio deposito). */
+  sendAnnotOverlayOp: (payload) => ipcRenderer.invoke('overlay:op', payload),
+  /** Lousa inteira -- pra janela que nasce com a transmissao ja rabiscada. */
+  sendAnnotOverlayLoad: (payload) => ipcRenderer.invoke('overlay:load', payload),
 });
