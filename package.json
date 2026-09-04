@@ -1,6 +1,6 @@
 {
   "name": "golive-lan",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Compartilhamento de tela 1080p60 na LAN virtual (Radmin VPN / Tailscale)",
   "main": "src/main.js",
   "author": "Nicolas <nicolasmateusdecastrosilva@gmail.com>",
@@ -17,7 +17,8 @@
     "dist": "electron-builder --win",
     "test": "node --test",
     "lint": "eslint .",
-    "build:native": "node-gyp configure && node scripts/patch-clangcl-toolset.js && node-gyp build"
+    "build:native": "node-gyp configure && node scripts/patch-clangcl-toolset.js && node-gyp build",
+    "release:check": "node scripts/check-release.js"
   },
   "devDependencies": {
     "electron": "^32.0.0",
@@ -34,6 +35,7 @@
   "build": {
     "appId": "com.golive.lan",
     "productName": "GoLive LAN",
+    "artifactName": "GoLive-LAN-Setup-${version}.${ext}",
     "publish": [
       {
         "provider": "github",

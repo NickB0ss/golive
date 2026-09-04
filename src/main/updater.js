@@ -28,6 +28,53 @@ function isPackagedApp() {
   }
 }
 
+/*
+ * Por que a busca por atualizacao falhou, como um CODIGO estavel. Quem
+ * traduz pra portugues e o renderer (`app.js`), que ja e o dono de toda a
+ * copia da interface -- aqui em `src/main/` nao entra texto de tela.
+ * `null` quando o erro nao e um dos conhecidos: ai o renderer cai no texto
+ * generico em vez de despejar stack trace na cara de quem usa.
+ *
+ * Os codigos de update vem do proprio electron-updater (`newError(msg,
+ * code)` no GitHubProvider); os de rede vem do sistema, no `err.code` do
+ * socket; o limite de pedidos chega como `statusCode` do HttpError.
+ *
+ * O caso que motivou isto: a v0.10.0 subiu no GitHub so com o `.exe`, sem
+ * `latest.yml`. O provider da 404 no arquivo de canal e joga
+ * ERR_UPDATER_CHANNEL_FILE_NOT_FOUND -- mas o toast dizia apenas "nao
+ * consegui verificar a atualizacao", entao release quebrado e internet
+ * caida ficavam iguais aos olhos de quem reportava o problema.
+ */
+const NETWORK_CODES = new Set([
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EPIPE',
+]);
+
+function updateErrorReason(err) {
+  if (!err) return null;
+
+  if (NETWORK_CODES.has(err.code)) return 'sem-rede';
+  if (err.statusCode === 403 || err.statusCode === 429) return 'limite';
+
+  switch (err.code) {
+    case 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND':
+      return 'release-incompleto';
+    case 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND':
+    case 'ERR_UPDATER_NO_PUBLISHED_VERSIONS':
+      return 'sem-release';
+    case 'ERR_UPDATER_INVALID_RELEASE_FEED':
+      return 'feed-quebrado';
+    default:
+      return null;
+  }
+}
+
 /**
  * Liga o checador de updates e devolve { checkForUpdates, downloadUpdate,
  * quitAndInstall } pro main repassar aos IPCs.
@@ -72,7 +119,10 @@ function setupAutoUpdater(onStatus, deps = {}) {
     emit({ status: 'downloading', progress: Math.round(p?.percent || 0) })
   );
   autoUpdater.on('update-downloaded', (info) => emit({ status: 'downloaded', version: info?.version }));
-  autoUpdater.on('error', (err) => emit({ status: 'error', message: err?.message || String(err) }));
+  autoUpdater.on('error', (err) => {
+    const reason = updateErrorReason(err);
+    emit({ status: 'error', message: err?.message || String(err), ...(reason ? { reason } : {}) });
+  });
 
   return {
     checkForUpdates: (manual) => {
@@ -86,4 +136,4 @@ function setupAutoUpdater(onStatus, deps = {}) {
   };
 }
 
-module.exports = { setupAutoUpdater };
+module.exports = { setupAutoUpdater, updateErrorReason };

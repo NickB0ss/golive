@@ -88,9 +88,9 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.9.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.10.1` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **439 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **455 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
@@ -191,36 +191,9 @@ após `await`).
   vendo". **Temas de cor** em Configurações > Aparência: seis predefinições
   (Superfície e sinal, Meia-noite, Carvão, Âmbar quente, Floresta, Papel — a
   única clara) mais um tema personalizado (dois sliders + cor de ação — os
-  sliders saíram depois, na 0.9.1), com
+  sliders saíram depois, na 0.10.0), com
   trava de contraste que reprova combinações ilegíveis antes de aplicar;
   `--live`/`--warn`/`--danger` ficam travados em todo tema. +29 testes.
-- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
-  Detalhe por item na auditoria e no histórico do git.
-
-## Na branch, ainda não lançado
-
-- **0.9.1** — **rabisco na tela real, papéis na lousa e a interface que sai
-  da frente**
-  (`docs/superpowers/specs/2026-09-05-rabisco-na-tela-real-design.md`).
-  O rabisco passa a aparecer **na tela de verdade** de quem compartilha, por
-  uma janela transparente click-through sobre o monitor compartilhado, fora
-  da própria captura (`setContentProtection`); só pra tela inteira, e
-  `src/main/overlay.js` decide qual monitor cobrir pelo `display_id` do
-  desktopCapturer (o `<n>` de `screen:<n>:0` não é o id de display).
-  A lousa ganha **papéis**: quem assiste rabisca, quem é dono da tela só
-  apaga tudo — garantido em `annotate.opAllowed`, dentro do `apply`, não na
-  interface. A barra de ferramentas fica sempre visível e ganha o
-  **liga/desliga** (o lápis do canto do tile e o `✕` saíram), com o ícone de
-  desfazer virando meio círculo com seta em vez do arco de quase 360°.
-  Três bugs: **o spinner da câmera girava desde o boot** (`hidden` não
-  existe em `SVGElement` e o atributo também não esconde um `<svg>` no
-  Chromium — a classe `.hidden` resolve, e de quebra os três toggles voltam
-  a trocar de ícone); **não dava pra escrever texto** (o campo era focado
-  dentro do `pointerdown` e o `mousedown` seguinte roubava o foco, disparando
-  o `blur` que o apagava); e os **sliders de temperatura e claridade** saem
-  do tema — sobra a predefinição com a cor de ação por cima. A interface da
-  sala passa a sumir com o mouse parado, com um timer só pros dois alcances
-  e o teclado sempre acordando as barras.
 - **0.9.0** — **anotação na tela, liderança e chat rico**
   (`docs/superpowers/specs/2026-09-04-anotacoes-lideranca-e-chat-rico-design.md`).
   **Rabisco e escrita** por cima da tela de quem transmite, opt-in no
@@ -253,6 +226,49 @@ após `await`).
   é decidido num `finally` a partir da captura real, e uma captura que
   termina depois do teardown é descartada em vez de acender a webcam sem
   dono. +81 testes.
+- **0.10.0** — **rabisco na tela real, papéis na lousa e a interface que sai
+  da frente**
+  (`docs/superpowers/specs/2026-09-05-rabisco-na-tela-real-design.md`).
+  O rabisco passa a aparecer **na tela de verdade** de quem compartilha, por
+  uma janela transparente click-through sobre o monitor compartilhado, fora
+  da própria captura (`setContentProtection`); só pra tela inteira, e
+  `src/main/overlay.js` decide qual monitor cobrir pelo `display_id` do
+  desktopCapturer (o `<n>` de `screen:<n>:0` não é o id de display).
+  A lousa ganha **papéis**: quem assiste rabisca, quem é dono da tela só
+  apaga tudo — garantido em `annotate.opAllowed`, dentro do `apply`, não na
+  interface. A barra de ferramentas fica sempre visível e ganha o
+  **liga/desliga** (o lápis do canto do tile e o `✕` saíram), com o ícone de
+  desfazer virando meio círculo com seta em vez do arco de quase 360°.
+  Três bugs: **o spinner da câmera girava desde o boot** (`hidden` não
+  existe em `SVGElement` e o atributo também não esconde um `<svg>` no
+  Chromium — a classe `.hidden` resolve, e de quebra os três toggles voltam
+  a trocar de ícone); **não dava pra escrever texto** (o campo era focado
+  dentro do `pointerdown` e o `mousedown` seguinte roubava o foco, disparando
+  o `blur` que o apagava); e os **sliders de temperatura e claridade** saem
+  do tema — sobra a predefinição com a cor de ação por cima. A interface da
+  sala passa a sumir com o mouse parado, com um timer só pros dois alcances
+  e o teclado sempre acordando as barras.
+- **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
+  Detalhe por item na auditoria e no histórico do git.
+
+## Na branch, ainda não lançado
+
+- **0.10.1** — **a busca por atualização volta a funcionar**. A v0.10.0 subiu
+  no GitHub só com o `.exe`: sem `latest.yml` e sem `.blockmap`. Como o
+  `electron-updater` sempre lê o `latest.yml` do release **mais novo**, o 404
+  ali derrubou a atualização de **todo mundo**, em qualquer versão anterior —
+  daí o "Não consegui verificar a atualização" que todos viam. Três frentes:
+  (a) `build.artifactName` fixa o nome em `GoLive-LAN-Setup-<versão>.exe`, sem
+  espaço — o site do GitHub troca espaço por `.` no upload e o
+  `electron-updater` procura com `-`, então um nome com espaço quebrava o
+  download mesmo com o `latest.yml` no lugar; (b) `src/main/updater.js` passa
+  a classificar o erro num **código** (`release-incompleto`, `sem-rede`,
+  `limite`, `sem-release`, `feed-quebrado`) que o renderer traduz num toast
+  que diz o que houve, em vez do genérico que escondia a causa — o código vai
+  também pro log; (c) `scripts/check-release.js` (`npm run release:check`)
+  confere um release **antes** de publicar: exige `.exe`, `.blockmap` e
+  `latest.yml`, recusa rascunho e checa se o `latest.yml` aponta pra assets
+  que existem de verdade, comparando os nomes normalizados. +16 testes.
 
 ## Backlog técnico
 

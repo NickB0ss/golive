@@ -663,6 +663,21 @@
     }
   };
 
+  // Texto do toast quando a busca por atualizacao falha. O `reason` e um
+  // codigo estavel que vem do main (`src/main/updater.js`); a copia mora
+  // aqui, que e onde vive todo o texto de interface. Sem motivo conhecido,
+  // cai no generico -- melhor que despejar a mensagem crua do updater.
+  const UPDATE_ERROR_TEXT = {
+    'release-incompleto':
+      'A última versão publicada está incompleta (falta o latest.yml). Avise quem cuida do app.',
+    'sem-release': 'Ainda não há nenhuma versão publicada pra atualizar.',
+    'sem-rede': 'Não consegui falar com o GitHub. Confira sua internet e tente de novo.',
+    limite: 'O GitHub limitou os pedidos agora. Tente de novo em alguns minutos.',
+    'feed-quebrado': 'A lista de versões do GitHub veio quebrada. Tente de novo mais tarde.',
+  };
+  const updateErrorText = (reason) =>
+    UPDATE_ERROR_TEXT[reason] || 'Não consegui verificar a atualização. Tente de novo mais tarde.';
+
   function showUpdateBanner({ text, action = false, progress = null, indeterminate = false }) {
     $('update-banner').classList.remove('hidden');
     $('update-banner-text').textContent = text;
@@ -676,7 +691,7 @@
   }
 
   window.golive.onUpdateStatus?.((payload) => {
-    const { status, manual, version, progress } = payload || {};
+    const { status, manual, version, progress, reason } = payload || {};
     switch (status) {
       case 'checking':
         if (manual) spinCheck(true);
@@ -698,7 +713,7 @@
         break;
       case 'error':
         spinCheck(false);
-        if (manual) showToast('Não consegui verificar a atualização. Tente de novo mais tarde.');
+        if (manual) showToast(updateErrorText(reason));
         break;
       default:
         break;
