@@ -61,32 +61,52 @@
     if (enabled) return;
     document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen', 'idle'));
     fullscreenTileId = null;
-    clearTimeout(fullscreenIdleTimer);
+    scheduleIdle();
   });
 
-  // Nome, avatar, "+" do PiP e o botao de sair do fullscreen (`.tile.fullscreen.idle`
-  // no CSS) e o proprio cursor do mouse (`cursor: none`) somem depois de um
-  // tempo parado, tipo player de video, e voltam no primeiro movimento.
-  const FULLSCREEN_IDLE_MS = 3000;
-  let fullscreenIdleTimer = null;
+  // Ociosidade do mouse: a interface sai da frente do video depois de um
+  // tempo parada, tipo player de video, e volta no primeiro movimento.
+  //
+  // UM timer so pros dois alcances, porque e UMA nocao de "parado":
+  //   - `body.room-idle`  -> cabecalho da sala, barra de controles e barra
+  //                          de ferramentas do rabisco (CSS `.room-idle`);
+  //   - `.tile.idle`      -> o que ja sumia dentro do fullscreen (nome,
+  //                          avatar, PiP, botao de sair) e o cursor.
+  // Dois timers dariam duas verdades sobre a mesma coisa, e a chance de a
+  // barra sumir enquanto o nome do tile continua la.
+  const IDLE_MS = 3000;
+  let idleTimer = null;
 
-  function scheduleFullscreenIdle(tile) {
-    clearTimeout(fullscreenIdleTimer);
-    tile.classList.remove('idle');
-    fullscreenIdleTimer = setTimeout(() => tile.classList.add('idle'), FULLSCREEN_IDLE_MS);
+  /** So entra em ocioso com tile na grade. Numa sala vazia a barra de baixo
+   * e a unica saida ("Compartilhar tela", "Sair da sala") -- esconde-la ali
+   * seria deixar a pessoa numa tela preta sem porta. */
+  function canGoIdle() {
+    return !!gridEl?.querySelector('.tile');
   }
 
-  function clearFullscreenIdle(tile) {
-    clearTimeout(fullscreenIdleTimer);
-    fullscreenIdleTimer = null;
-    tile?.classList.remove('idle');
+  function scheduleIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+    document.body.classList.remove('room-idle');
+    if (fullscreenTileId) {
+      document.getElementById(`tile-${fullscreenTileId}`)?.classList.remove('idle');
+    }
+    if (!canGoIdle()) return;
+    idleTimer = setTimeout(() => {
+      document.body.classList.add('room-idle');
+      if (fullscreenTileId) {
+        document.getElementById(`tile-${fullscreenTileId}`)?.classList.add('idle');
+      }
+    }, IDLE_MS);
   }
 
-  document.addEventListener('mousemove', () => {
-    if (!fullscreenTileId) return;
-    const tile = document.getElementById(`tile-${fullscreenTileId}`);
-    if (tile) scheduleFullscreenIdle(tile);
-  });
+  // `focusin` e `keydown` junto do `mousemove`: quem anda de Tab tem de
+  // trazer a barra de volta antes de chegar num botao invisivel. Sem eles, o
+  // foco do teclado pousaria atras de uma barra apagada -- e o que a regra
+  // de "overlay nunca esconde o foco" existe pra impedir.
+  for (const evento of ['mousemove', 'mousedown', 'keydown', 'focusin']) {
+    document.addEventListener(evento, scheduleIdle, true);
+  }
 
   // Volume/mute por tile remoto, roteado via Web Audio pra poder passar de
   // 100% (o <video> nativo so vai ate 1.0) -- ver Step 3 do Task 11 do plano
@@ -200,11 +220,10 @@
       if (entering) {
         fullscreenTileId = id;
         renderPipStrip(tile);
-        scheduleFullscreenIdle(tile);
       } else {
         fullscreenTileId = null;
-        clearFullscreenIdle(tile);
       }
+      scheduleIdle();
     };
 
     if (!document.startViewTransition) return apply(); // fallback: corte seco, como antes
@@ -455,9 +474,12 @@
     tilePaused.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
+    // A grade mudou: se o ultimo tile saiu, a sala nao pode mais ficar
+    // ociosa (a barra de baixo vira a unica saida) -- e scheduleIdle e quem
+    // sabe disso.
+    scheduleIdle();
     if (id === fullscreenTileId) {
       fullscreenTileId = null;
-      clearTimeout(fullscreenIdleTimer);
       window.golive.setFullScreen(false);
     } else if (fullscreenTileId) {
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
@@ -933,14 +955,13 @@
     if (oldId === newId || !tileRegistry.has(newId)) return;
     const newTile = document.getElementById(`tile-${newId}`);
     if (!newTile) return;
-    clearFullscreenIdle(document.getElementById(`tile-${oldId}`));
-    document.getElementById(`tile-${oldId}`)?.classList.remove('fullscreen');
+    document.getElementById(`tile-${oldId}`)?.classList.remove('fullscreen', 'idle');
     newTile.classList.add('fullscreen');
     fullscreenTileId = newId;
     pinnedPip.delete(newId);
     if (oldId) pinnedPip.add(oldId);
     renderPipStrip(newTile);
-    scheduleFullscreenIdle(newTile);
+    scheduleIdle();
   }
 
   // Posicao/tamanho inicial de uma miniatura que ainda nao foi arrastada --

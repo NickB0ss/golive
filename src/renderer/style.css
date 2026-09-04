@@ -777,6 +777,44 @@ button.busy { cursor: default; }
    cima) e o toggle de prefers-reduced-motion global do topo do arquivo
    ja congela a rotacao num traco estatico -- nao ha regra extra aqui. */
 
+/* ---------- A interface sai da frente com o mouse parado ---------- */
+/* Depois de 3s parado (IDLE_MS em ui.js), o que emoldura o video some: o
+   cabecalho da sala, a barra de controles e a barra de ferramentas do
+   rabisco. Volta no primeiro movimento, tecla ou foco.
+   Tres decisoes deliberadas:
+
+   1. `opacity`, nunca `display`/`height`: sumir nao pode reflowar a grade e
+      fazer o video pular de tamanho -- e o mesmo motivo pelo qual o
+      fullscreen ja usava opacity.
+   2. Sair (fade out) e mais lento que entrar (fade in): aparecer responde a
+      um gesto da pessoa e tem de parecer instantaneo; sumir e o app se
+      retirando, e mais suave incomoda menos.
+   3. `:focus-within` cancela: barra apagada nunca pode esconder o foco do
+      teclado. Quem anda de Tab ve o botao aceso mesmo com o mouse parado.
+   O toggle global de prefers-reduced-motion no topo do arquivo ja corta a
+   transicao pra quem pediu menos movimento -- o sumico continua, sem fade. */
+#stage-header,
+.control-bar,
+.tile-annot-bar {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.room-idle #stage-header,
+.room-idle .control-bar,
+.room-idle .tile-annot-bar {
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--dur-slow);
+}
+.room-idle #stage-header:focus-within,
+.room-idle .control-bar:focus-within,
+.room-idle .tile-annot-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* O cursor tambem: sem isso sobra uma setinha parada no meio do video. O
+   fullscreen ja fazia isso no proprio tile; aqui vale pra sala em janela. */
+.room-idle .stage { cursor: none; }
+
 .room-side {
   width: 300px; flex: none; display: flex; flex-direction: column;
   border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
