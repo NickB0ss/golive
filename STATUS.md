@@ -51,6 +51,21 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   com trava de contraste que reprova combinações ilegíveis antes de
   aplicar. `--live`/`--warn`/`--danger` ficam travados em todo tema — só
   superfície e cor de ação são escolha da pessoa.
+- **Rabisco e escrita na tela de quem transmite** (opt-in no diálogo de
+  compartilhar, decidido antes de ir ao vivo). Caneta e texto, uma cor fixa
+  por pessoa, desfazer/limpar os seus, e limpar tudo pra quem é dono da
+  tela. Coordenadas normalizadas sobre a caixa de conteúdo do vídeo (não a
+  do tile), então o mesmo rabisco cai no mesmo pixel em janela, em
+  fullscreen e em quem recebe degradado. Repassado pela sinalização
+  (`annotate` broadcast + `annotate-sync` roteado pra quem chega depois); o
+  servidor não guarda estado nenhum.
+- **Imagem no chat**: clipe, `Ctrl+V` ou arrastar. Reduzida no cliente até
+  caber em 200 KB, miniatura de 240px na linha, tela cheia no clique. O
+  histórico do host guarda no máximo 8 imagens.
+- **Emoji no chat** com busca em português, oito categorias e recentes.
+- **Passar a liderança da sala** pelo `⋮` do membro. Volta sozinha pra quem
+  criou a sala se o líder sair; o host que reconecta depois de passar não
+  vira dono de novo.
 - Painel de estatísticas mostra os dois lados: o que sai e o que está
   **sendo recebido**.
 - Atualização via GitHub Releases, disparada pelo usuário (não baixa sozinha).
@@ -59,9 +74,9 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.8.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.9.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **335 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **416 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
@@ -166,6 +181,41 @@ após `await`).
   `--live`/`--warn`/`--danger` ficam travados em todo tema. +29 testes.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
   Detalhe por item na auditoria e no histórico do git.
+
+## Na branch, ainda não lançado
+
+- **0.9.0** — **anotação na tela, liderança e chat rico**
+  (`docs/superpowers/specs/2026-09-04-anotacoes-lideranca-e-chat-rico-design.md`).
+  **Rabisco e escrita** por cima da tela de quem transmite, opt-in no
+  diálogo de compartilhar: caneta + texto, cor por pessoa derivada do id de
+  conexão, desfazer/limpar, e "limpar tudo" só pra quem é dono da tela.
+  `annotate.js` (paleta, letterbox, depósito de itens) é puro e testado; o
+  canvas por tile só recebe ponteiro no modo de desenho, então os quatro
+  gestos que o tile já tinha continuam intactos. **Imagem no chat** com
+  redução no cliente por uma escada de reencode (qualidade antes de
+  resolução), teto de 200 KB checado dos dois lados e no máximo 8 imagens
+  no histórico do host — 50×200 KB seriam 10 MB pendurados no PC de quem
+  hospeda. **Emoji** com ~380 entradas, busca por prefixo em português e
+  recentes no config. **Passar a liderança** (`transfer-owner`): o
+  `ownerToken` continua sendo a raiz da autoridade, mas `transferredTo`
+  passa a decidir quem é dono no join — é o que impede duas coroas quando o
+  host reconecta depois de passar; se o líder sai, ela volta pra casa.
+  **Menu ⋮ do membro limpo**: "Silenciar" saiu (é local e é sobre uma tela
+  — mora no botão direito do tile, que ganhou cabeçalho com nome e avatar),
+  "Parar transmissão" só aparece pra quem está ao vivo, e quem não é dono
+  não vê mais o botão ⋮. Diálogo de confirmação virou um só (banir e passar
+  liderança). **Aparência ficou visual**: prévia ao vivo de um pedaço de
+  sala montada com os próprios tokens do tema, cartões de predefinição
+  viraram miniaturas do app (a rampa de 5 faixas lia como retângulo vazio
+  num tema escuro), dica embaixo de cada controle e botão **Voltar ao
+  padrão**. Dois bugs corrigidos no caminho: **`theme.apply` não apagava as
+  variáveis inline do tema personalizado** ao voltar pra um preset, então o
+  app ficava preso no último custom até reiniciar; e o **botão da câmera
+  ficava com o spinner girando pra sempre** quando a sessão terminava (ou
+  qualquer coisa falhava) enquanto o driver abria — o estado do botão agora
+  é decidido num `finally` a partir da captura real, e uma captura que
+  termina depois do teardown é descartada em vez de acender a webcam sem
+  dono. +81 testes.
 
 ## Backlog técnico
 

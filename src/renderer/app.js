@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
@@ -152,6 +152,16 @@
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
   let cameraStream = null;
   let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
+  // Sobe a cada teardown de midia. startCamera guarda o valor de quando
+  // comecou e desiste se ele mudou: abrir a camera depende do driver e pode
+  // levar segundos, e nesse meio-tempo a pessoa pode ter saido da sala --
+  // sem isto, a captura terminava DEPOIS do teardown, criava o tile 'cam-me'
+  // numa sala que nao existe mais e deixava a camera ligada.
+  let mediaEpoch = 0;
+  // Esta transmissao aceita rabisco? Decidido no dialogo de compartilhar,
+  // antes de a captura comecar, e valido so enquanto ela durar (spec de
+  // 2026-09-04, secao 5.1). Viaja no 'broadcast-state'.
+  let shareAnnotations = false;
   // Funcoes de parada das capturas nativas de audio por processo (WASAPI
   // Process Loopback) ligadas ao compartilhamento de tela atual, se houver
   // -- ver startShare/stopShare. Vazio quando nao ha nenhuma rodando (sem
@@ -914,14 +924,21 @@
       localStream = null;
       stopNativeAudioFns.forEach((stop) => stop());
       stopNativeAudioFns = [];
+      shareAnnotations = false;
+      ui.annotations.setSurface('me', { allowed: false });
       ui.grid.removeTile('me', emptyMessage());
     }
     if (cameraStream) {
       cameraStream.getTracks().forEach((t) => t.stop());
       cameraStream = null;
       ui.grid.removeTile('cam-me', emptyMessage());
-      ui.setToggleState('camera', 'off');
     }
+    // Fora do `if`: um startCamera EM ANDAMENTO deixou o botao em
+    // 'loading' (que e `disabled`) sem que `cameraStream` exista ainda --
+    // e ai o botao ficava girando pra sempre, sem clique possivel. O
+    // 'share' logo abaixo sempre foi incondicional pelo mesmo motivo.
+    ui.setToggleState('camera', 'off');
+    mediaEpoch += 1;
     ui.setToggleState('share', 'off');
     resetShareState();
   }
@@ -971,6 +988,16 @@
       ui.dialogs.openBan({
         name: targetName,
         onConfirm: () => currentSession.sig.send({ type: 'moderate', action: 'ban', target: targetId }),
+      });
+      return;
+    }
+    // Passar a lideranca e irreversivel pelo SEU lado (so quem recebeu pode
+    // devolver), entao pede confirmacao como o banimento -- mas sem o tom
+    // destrutivo: e uma delegacao, nao uma punicao.
+    if (action === 'transfer-owner') {
+      ui.dialogs.openTransferOwner({
+        name: targetName,
+        onConfirm: () => currentSession.sig.send({ type: 'moderate', action: 'transfer-owner', target: targetId }),
       });
       return;
     }
@@ -1544,7 +1571,100 @@
   // Compose do chat: manda 'chat' pela sessao ativa (server ecoa pra sala
   // inteira, inclusive pra nos -- por isso nao damos append local aqui).
   ui.chat.render({
-    onSend: (text) => currentSession?.sig.send({ type: 'chat', text }),
+    onSend: (text, attachment) => {
+      currentSession?.sig.send({
+        type: 'chat',
+        text,
+        ...(attachment ? { image: attachment.dataUrl, w: attachment.w, h: attachment.h } : {}),
+      });
+    },
+    onPickImage: async (file) => {
+      try {
+        const att = await prepareChatImage(file);
+        if (att) ui.chat.setAttachment(att);
+      } catch (err) {
+        console.error('[chat] preparo da imagem falhou:', err);
+        showToast('Não consegui preparar essa imagem.');
+      }
+    },
+    getEmojiRecents: () => cfg.emojiRecents,
+    onEmojiUsed: (char) => {
+      cfg = { ...cfg, emojiRecents: emoji.pushRecent(cfg.emojiRecents, char) };
+      persist();
+    },
+  });
+
+  /** Reduz a imagem escolhida ate caber no teto do servidor e devolve o
+   * anexo pendente. Desce a escada de chatmedia.ENCODE_LADDER (qualidade
+   * antes de resolucao) e desiste com aviso se nem o degrau mais barato
+   * couber -- melhor recusar do que mandar algo irreconhecivel. */
+  async function prepareChatImage(file) {
+    if (!chatmedia.isAcceptedType(file.type)) {
+      showToast('Só dá pra mandar imagem (PNG, JPEG, GIF ou WebP).');
+      return null;
+    }
+    const limiteKB = Math.round(chatmedia.MAX_IMAGE_CHARS / 1024);
+
+    // GIF nao passa pelo canvas: drawImage captura UM quadro e mataria a
+    // animacao. Vai como esta, ou nao vai.
+    if (!chatmedia.needsCanvas(file.type)) {
+      const dataUrl = await readFileAsDataUrl(file);
+      if (!chatmedia.fitsBudget(dataUrl)) {
+        showToast(`Esse GIF é grande demais (máx. ${limiteKB} KB) — GIF não dá pra reduzir sem perder a animação.`);
+        return null;
+      }
+      const dims = await imageSize(dataUrl);
+      return { dataUrl, w: dims.w, h: dims.h, label: `GIF · ${Math.round(chatmedia.dataUrlBytes(dataUrl) / 1024)} KB` };
+    }
+
+    const bitmap = await loadImageElement(file);
+    for (const degrau of chatmedia.ENCODE_LADDER) {
+      const box = chatmedia.fitBox(bitmap.naturalWidth, bitmap.naturalHeight, degrau.maxDim);
+      const canvas = document.createElement('canvas');
+      canvas.width = box.w;
+      canvas.height = box.h;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, box.w, box.h);
+      const dataUrl = canvas.toDataURL('image/jpeg', degrau.quality);
+      if (chatmedia.fitsBudget(dataUrl)) {
+        return { dataUrl, w: box.w, h: box.h, label: `${box.w}×${box.h} · ${Math.round(chatmedia.dataUrlBytes(dataUrl) / 1024)} KB` };
+      }
+    }
+    showToast(`Não consegui deixar essa imagem abaixo de ${limiteKB} KB.`);
+    return null;
+  }
+
+  function loadImageElement(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('load failed'));
+      };
+      img.src = url;
+    });
+  }
+
+  function imageSize(dataUrl) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve({ w: null, h: null }); // sem dimensao a linha do chat so nao reserva altura
+      img.src = dataUrl;
+    });
+  }
+
+  // Rabisco/escrita saindo daqui pra sala. O ui.js ja aplicou localmente --
+  // o servidor nao devolve a op pra quem mandou.
+  ui.annotations.render({
+    onOp: (surfaceId, op) => {
+      if (!surfaceId) return;
+      currentSession?.sig.send({ type: 'annotate', surface: surfaceId, ...op });
+    },
   });
 
   // Recolher a coluna direita (membros + banidos + chat). O CSS de
@@ -1635,6 +1755,10 @@
     switch (msg.type) {
       case 'welcome': {
         myId = msg.id;
+        // A cor do pincel sai do id de conexao, entao ela so existe depois
+        // do welcome -- e muda numa reconexao, que e o comportamento certo:
+        // o resto da sala tambem passa a te ver com a cor nova.
+        ui.annotations.setSelf(myId);
         showLobbyError(''); // entrou de verdade -- nada de erro pendente no lobby
         ownerId = msg.owner ? 'me' : (msg.peers.find((p) => p.owner)?.id ?? null);
         for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
@@ -1655,6 +1779,10 @@
         // so que pra cada peer do welcome. Numa entrada normal localStream e
         // cameraStream sao nulos e nada disto roda.
         if (localStream) {
+          // O id de conexao muda na reconexao, e a superficie da MINHA tela
+          // e justamente esse id -- sem re-registrar, a sala inteira passa a
+          // desenhar num id que nao existe mais.
+          ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true });
           for (const p of msg.peers) {
             if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
@@ -1731,7 +1859,13 @@
         // sharePaused` resolve "entrei durante uma pausa" do mesmo jeito,
         // sem mensagem nova. Idempotente pra quem ja sabia (broadcast-state
         // so regrava peer.live/peer.paused).
-        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true, paused: sharePaused });
+        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations });
+        // Quem acabou de entrar nao viu o que ja foi desenhado. Sem este
+        // snapshot ele ve a tela limpa enquanto a sala inteira discute uma
+        // seta que, pra ele, nao existe (spec, secao 5.5).
+        if (localStream && shareAnnotations && sig.isOpen()) {
+          sig.send({ type: 'annotate-sync', to: msg.id, surface: myId, items: ui.annotations.snapshot(myId) });
+        }
         break;
       }
       case 'peer-left': {
@@ -1742,6 +1876,7 @@
         for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
         for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
         for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
+        ui.annotations.setSurface(msg.id, { allowed: false });
         dropTile(msg.id);
         dropTile(`cam-${msg.id}`);
         renderMembersPanel();
@@ -1854,6 +1989,33 @@
         }
         break;
       }
+      // Rabisco/escrita de alguem numa tela. `msg.from` e carimbado pelo
+      // servidor: e dele que sai a cor do pincel, entao nao da pra desenhar
+      // com a cor de outra pessoa.
+      case 'annotate': {
+        ui.annotations.applyOp(msg.surface, msg.from, msg);
+        break;
+      }
+      // Snapshot da lousa pra quem entrou no meio. So o DONO da tela manda
+      // (`from === surface`): sem esta checagem, qualquer um podia
+      // reescrever a lousa inteira de qualquer tela com um sync forjado.
+      case 'annotate-sync': {
+        if (String(msg.from) !== String(msg.surface)) break;
+        ui.annotations.load(msg.surface, msg.items);
+        break;
+      }
+      // A lideranca da sala mudou (alguem passou, ou o lider saiu e ela
+      // voltou pro dono original). `id` nulo = sala sem dono.
+      case 'owner-changed': {
+        ownerId = msg.id == null ? null : (msg.id === myId ? 'me' : msg.id);
+        const souEu = ownerId === 'me';
+        if (!souEu) ui.members.renderBanned([], {}); // a lista de banidos e ferramenta de dono
+        if (msg.id != null) {
+          showToast(souEu ? 'Você é o líder da sala agora.' : `${msg.name} é o líder da sala agora.`);
+        }
+        renderMembersPanel();
+        break;
+      }
       // Lista de banidos atualizada (so o dono recebe).
       case 'banned-list': {
         ui.members.renderBanned(msg.list, {
@@ -1866,6 +2028,14 @@
         const wasLive = peer?.live;
         if (peer) peer.live = msg.live;
         if (peer) peer.paused = Boolean(msg.paused);
+        // Quem transmite decide se a sala pode rabiscar na tela dele. Peer
+        // em versao antiga nao manda o campo -> undefined -> falso.
+        if (peer) peer.annotate = msg.live && msg.annotate === true;
+        ui.annotations.setSurface(msg.id, {
+          surfaceId: msg.id,
+          allowed: Boolean(peer?.annotate),
+          canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
+        });
         if (!msg.live) {
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
           ui.grid.removeTile(msg.id, emptyMessage());
@@ -2184,10 +2354,11 @@
       nativeAudioAvailable: await isNativeAudioAvailable(),
       quality: cfg.quality,
       onQualityChange: onQualityPresetChange,
+      allowAnnotations: cfg.annotations.allow,
     });
   });
 
-  async function startShare(sourceId, shareSound, includeDiscord) {
+  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false) {
     if (sharing || localStream) return;
     const session = currentSession;
     if (!session || !session.sig.isOpen()) return;
@@ -2326,6 +2497,17 @@
 
       ui.grid.showTile('me', 'Você (prévia)', localStream, { muted: true, avatar: cfg.avatar || null, kind: 'screen', displayName: cfg.name || 'anônimo' });
 
+      // A escolha vale pra ESTA transmissao e fica lembrada pra proxima.
+      shareAnnotations = Boolean(allowAnnotations);
+      if (cfg.annotations.allow !== shareAnnotations) {
+        cfg = { ...cfg, annotations: { allow: shareAnnotations } };
+        persist();
+      }
+      // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
+      // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
+      // tela e minha -- so o dono da lousa apaga o traco dos outros.
+      ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true });
+
       // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
       // voce entra numa sala que ja tem 4 pessoas e clica "Compartilhar
       // tela". Corrigir depois com applyEncoding nao basta, porque offerTo
@@ -2340,7 +2522,7 @@
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
       recomputeTree('screen');
 
-      session.sig.send({ type: 'broadcast-state', live: true, paused: false });
+      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations });
       ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
       renderMembersPanel();
@@ -2364,6 +2546,10 @@
     // tambem.
     orphanSession?.mesh?.closeAllOut('screen');
     forgetOriginTree('screen');
+    // A lousa morre com a tela (spec, secao 8): parar de compartilhar apaga
+    // o que estava desenhado, aqui e -- via broadcast-state -- em todo mundo.
+    shareAnnotations = false;
+    ui.annotations.setSurface('me', { allowed: false });
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     ui.setToggleState('share', 'off');
@@ -2409,7 +2595,7 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
-    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused });
+    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations });
     ui.grid.setPaused('me', paused, {
       title: paused ? 'Você pausou' : '',
       subtitle: paused ? 'Ninguém está vendo' : '',
@@ -2434,6 +2620,7 @@
   async function startCamera() {
     if (cameraStream || cameraStarting) return;
     cameraStarting = true;
+    const epoch = mediaEpoch;
     // A camera leva um tempo pra abrir (o driver e quem manda nisso), entao
     // o botao acusa o clique na hora em vez de ficar parecendo que nada
     // aconteceu ate o primeiro frame chegar.
@@ -2447,7 +2634,15 @@
         stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
       } catch (err) {
         showToast(`Não consegui acessar a câmera: ${err.message}`);
-        ui.setToggleState('camera', 'off');
+        return; // o finally devolve o botao pro estado real
+      }
+
+      // Saiu da sala (ou trocou de sala) enquanto o driver abria: a captura
+      // que acabou de nascer nao tem mais dono. Para tudo aqui, senao ela
+      // fica ligada -- com a luzinha acesa na webcam -- servindo um tile
+      // numa sala que ja acabou.
+      if (epoch !== mediaEpoch) {
+        stream.getTracks().forEach((t) => t.stop());
         return;
       }
 
@@ -2472,6 +2667,13 @@
       }
     } finally {
       cameraStarting = false;
+      // Uma so linha decide o botao, a partir do estado REAL da captura:
+      // qualquer saida da funcao -- sucesso, permissao negada, sessao
+      // encerrada no meio, ou uma excecao inesperada de showTile/offerTo --
+      // passa por aqui. Antes, cada saida cuidava do botao por conta
+      // propria, e a que faltava deixava o spinner girando pra sempre num
+      // botao desabilitado.
+      ui.setToggleState('camera', cameraStream ? 'on' : 'off');
     }
   }
 

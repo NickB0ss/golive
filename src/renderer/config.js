@@ -202,6 +202,16 @@
     // theme.js, que este arquivo deliberadamente nao importa, pra manter os
     // dois modulos desacoplados; quem cruza os dois e o app.js).
     theme: { preset: 'signal' },
+    // Anotacao na tela (spec de 2026-09-04, secao 5.1). NAO e uma
+    // configuracao global: e a ULTIMA ESCOLHA feita no dialogo de
+    // compartilhar, lembrada pra proxima vez -- exatamente como
+    // `network.advertise` guarda a ultima escolha do dialogo de criar sala.
+    // Desmarcada por padrao: deixar a sala escrever na sua tela e opt-in.
+    annotations: { allow: false },
+    // Emoji usados por ultimo, do mais recente pro mais antigo. Validado
+    // aqui so como "lista de strings" -- quais emoji existem e assunto do
+    // emoji.js, que este arquivo tambem nao importa.
+    emojiRecents: [],
   };
 
   // As seis predefinicoes conhecidas pelo config -- so os NOMES, pra validar
@@ -246,6 +256,20 @@
     return v !== null && typeof v === 'object' && !Array.isArray(v);
   }
 
+  /** Lista de strings curtas vinda de um config salvo, sem repetido e com
+   * teto. Usada pelos emoji recentes -- o que NAO e string (numero, objeto,
+   * null de uma versao futura) some em silencio, igual ao resto do load. */
+  function loadStringList(incoming, max) {
+    if (!Array.isArray(incoming)) return [];
+    const out = [];
+    for (const v of incoming) {
+      if (typeof v !== 'string' || !v || out.includes(v)) continue;
+      out.push(v);
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
   function mergeSection(defaults, incoming) {
     if (!isObject(incoming)) return { ...defaults };
     return { ...defaults, ...incoming };
@@ -288,6 +312,8 @@
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
       network: { ...mergeSection(DEFAULTS.network, parsed.network), tree: true },
       theme: loadTheme(parsed.theme),
+      annotations: { allow: parsed.annotations?.allow === true },
+      emojiRecents: loadStringList(parsed.emojiRecents, 24),
     };
   }
 

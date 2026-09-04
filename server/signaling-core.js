@@ -36,6 +36,33 @@ const MAX_PAYLOAD_BYTES = 512 * 1024;
 const MAX_MSGS_PER_SECOND = 300;
 const RATE_WINDOW_MS = 1000;
 
+// Imagem no chat. O servidor de sinalizacao roda no PC de quem criou a
+// sala, e o historico de chat vive na memoria desse processo -- por isso
+// tem DOIS tetos, e nao um:
+//
+//  - MAX_IMAGE_CHARS: tamanho de UMA imagem (caracteres do data URL, ou
+//    seja ~3/4 disso em bytes). O cliente ja reduz e reencoda ate caber
+//    (ver chatmedia.js); este e o teto que nao depende de o cliente ser
+//    o nosso.
+//  - CHAT_IMAGE_HISTORY_MAX: quantas mensagens COM imagem o historico
+//    guarda. 50 x 200 KB seriam 10 MB pendurados no host so pra quem
+//    entrar depois ver print de meia hora atras; 8 poe o teto real em
+//    ~1,6 MB. Quem ja esta na sala continua vendo tudo -- o corte e so
+//    no que se conta pra quem chega.
+const MAX_IMAGE_CHARS = 200 * 1024;
+const CHAT_IMAGE_HISTORY_MAX = 8;
+
+// Anotacao na tela (rabisco/escrita). Limitador SEPARADO do de sinalizacao
+// e do de chat de proposito: desenhar rapido nao pode fechar o socket (o
+// de sinalizacao fecha em 1008) nem gastar a cota de chat, e uma
+// renegociacao acontecendo junto nao pode ser derrubada por quem esta
+// rabiscando. O cliente manda um lote de pontos por quadro de animacao
+// (~17/s no pior caso), entao 60/s e ~3x de folga.
+const MAX_ANNOTATE_PER_SECOND = 60;
+const MAX_ANNOTATE_POINTS = 200; // pontos por mensagem (lote de um quadro)
+const MAX_ANNOTATE_TEXT = 120; // caracteres de uma escrita
+const MAX_ANNOTATE_SYNC_ITEMS = 400; // itens de um snapshot pra quem chegou depois
+
 /** Contador de taxa por conexao, isolado pra ser testavel sem subir socket.
  * `hit(now)` registra uma mensagem e devolve `true` enquanto a conexao
  * estiver dentro do teto na janela corrente; `false` no primeiro estouro. */
@@ -52,6 +79,71 @@ function createRateLimiter({ limit = MAX_MSGS_PER_SECOND, windowMs = RATE_WINDOW
       return count <= limit;
     },
   };
+}
+
+/** Dimensao de imagem vinda do cliente, so pra reservar a altura da linha
+ * do chat. Qualquer coisa que nao seja um numero util vira `null` -- quem
+ * desenha cai no tamanho natural da imagem. */
+function clampDim(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(Math.round(n), 10000);
+}
+
+/** Coordenada normalizada de anotacao: 0..1, tres casas. Fora disso (NaN,
+ * negativo, 12, string) vira `null`, e a op inteira e descartada. */
+function normPoint(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 1) return null;
+  return Math.round(n * 1000) / 1000;
+}
+
+/** Valida e recorta uma op de anotacao vinda da rede, devolvendo SO os
+ * campos que aquela op usa (ou `null` se ela nao for aproveitavel). Fora
+ * do createSignalingServer pra poder ser testada sem subir socket.
+ *
+ * A cor NAO passa por aqui de proposito: ela e derivada de `from` nos dois
+ * lados (ver annotate.js), entao nao ha campo de cor pra um cliente forjar. */
+function sanitizeAnnotateOp(msg) {
+  const id = typeof msg.id === 'string' && msg.id ? msg.id.slice(0, 64) : null;
+  switch (msg.op) {
+    case 'begin': {
+      const x = normPoint(msg.x);
+      const y = normPoint(msg.y);
+      if (!id || x === null || y === null) return null;
+      const width = Number(msg.width);
+      return { op: 'begin', id, x, y, width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4 };
+    }
+    case 'points': {
+      if (!id || !Array.isArray(msg.points)) return null;
+      const points = [];
+      for (const p of msg.points.slice(0, MAX_ANNOTATE_POINTS)) {
+        if (!Array.isArray(p)) continue;
+        const x = normPoint(p[0]);
+        const y = normPoint(p[1]);
+        if (x === null || y === null) continue;
+        points.push([x, y]);
+      }
+      if (!points.length) return null;
+      return { op: 'points', id, points };
+    }
+    case 'end':
+      return id ? { op: 'end', id } : null;
+    case 'text': {
+      const x = normPoint(msg.x);
+      const y = normPoint(msg.y);
+      const text = typeof msg.text === 'string' ? msg.text.slice(0, MAX_ANNOTATE_TEXT) : '';
+      if (!id || x === null || y === null || !text.trim()) return null;
+      const size = Number(msg.size);
+      return { op: 'text', id, x, y, text, size: Number.isFinite(size) ? Math.min(Math.max(size, 8), 96) : 20 };
+    }
+    case 'undo':
+      return { op: 'undo' };
+    case 'clear':
+      return { op: 'clear', scope: msg.scope === 'all' ? 'all' : 'mine' };
+    default:
+      return null;
+  }
 }
 
 function log(...args) {
@@ -96,13 +188,36 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
     const peers = new Map();
     let nextId = 1;
 
+    // Quem recebeu a lideranca da sala (clientId), ou null enquanto ela
+    // nunca saiu de quem criou a sala. E o que decide `owner` no join --
+    // ver a spec de 2026-09-04, secao 4.1: sem isto, o host que passa a
+    // lideranca e depois reconecta voltaria como dono (o ownerToken dele
+    // continua valido) e a sala teria duas coroas.
+    let transferredTo = null;
+
     const CHAT_HISTORY_MAX = 50;
     const chatHistory = []; // ring buffer -- mensagens de texto e linhas de sistema juntas
     const chatRateLimiters = new Map(); // peerId -> limiter, 5 msg/s
+    const chatImageLimiters = new Map(); // peerId -> limiter, 3 imagens / 5s
+    const annotateLimiters = new Map(); // peerId -> limiter, 60 msg/s
 
     function pushChatEntry(entry) {
       chatHistory.push(entry);
       if (chatHistory.length > CHAT_HISTORY_MAX) chatHistory.shift();
+      if (entry.image) trimImageHistory();
+    }
+
+    /** Mantem no maximo CHAT_IMAGE_HISTORY_MAX mensagens com imagem no
+     * historico, descartando a mais antiga inteira. Roda so quando uma
+     * imagem entra -- mensagem de texto nao mexe nisso. */
+    function trimImageHistory() {
+      let extras = chatHistory.filter((e) => e.image).length - CHAT_IMAGE_HISTORY_MAX;
+      while (extras > 0) {
+        const i = chatHistory.findIndex((e) => e.image);
+        if (i < 0) return;
+        chatHistory.splice(i, 1);
+        extras -= 1;
+      }
     }
 
     /** Linha de sistema (entrada/saida/moderacao). `target` e omitido pra
@@ -179,6 +294,42 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
       for (const [, peer] of peers) {
         if (peer.room === room && peer.owner) send(peer.ws, { type: 'banned-list', list: listBans() });
       }
+    }
+
+    /** Anuncia quem e o dono da sala AGORA. `owner`/`ownerId` nulos dizem
+     * "a sala esta sem dono" -- estado real quando o lider sai e quem criou
+     * a sala nao esta mais nela.
+     *
+     * A lista de banidos migra junto: ela e ferramenta de dono, e quem
+     * deixou de ser recebe uma lista vazia (e assim a secao "Banidos" some
+     * da coluna dele) enquanto o novo recebe a de verdade. */
+    function announceOwner(room, owner, ownerId) {
+      broadcastToRoom(room, null, {
+        type: 'owner-changed',
+        id: ownerId ?? null,
+        name: owner?.name ?? null,
+      });
+      for (const [, peer] of peers) {
+        if (peer.room !== room) continue;
+        if (peer.owner) send(peer.ws, { type: 'banned-list', list: listBans() });
+        else send(peer.ws, { type: 'banned-list', list: [] });
+      }
+    }
+
+    /** O lider saiu da sala. Quem criou a sala continua sendo a raiz da
+     * autoridade (o `ownerToken` nunca deixou a maquina dele), entao a
+     * lideranca volta pra casa -- e se ele nao estiver mais na sala, ela
+     * fica vaga ate ele voltar, que e o que ja acontecia antes desta
+     * feature quando o dono caia. Ver a spec, secao 4.2. */
+    function reclaimOwnership(room) {
+      transferredTo = null;
+      for (const [pid, peer] of peers) {
+        if (peer.room !== room || !peer.tokenHolder) continue;
+        peer.owner = true;
+        announceOwner(room, peer, pid);
+        return;
+      }
+      announceOwner(room, null, null); // sala sem dono
     }
 
     function onError(err) {
@@ -285,8 +436,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               const room = String(msg.room || 'geral').slice(0, 40);
               const name = String(msg.name || 'anonimo').slice(0, 40);
               const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;
-              const owner = Boolean(ownerTok) && msg.ownerToken === ownerTok;
-              peers.set(id, { ws, name, room, avatar, owner, clientId, address: remoteAddress });
+              // `tokenHolder` e um fato imutavel do peer (apresentou o token
+              // de quem criou a sala); `owner` e quem manda AGORA. Enquanto
+              // a lideranca nunca foi passada os dois coincidem -- depois de
+              // passada, quem manda e so quem tem o clientId de destino.
+              const tokenHolder = Boolean(ownerTok) && msg.ownerToken === ownerTok;
+              const owner = transferredTo ? clientId != null && clientId === transferredTo : tokenHolder;
+              peers.set(id, { ws, name, room, avatar, owner, tokenHolder, clientId, address: remoteAddress });
               joined = true;
               log(`+ ${name} (#${id}) entrou na sala "${room}"${owner ? ' (dono)' : ''}`);
               send(ws, {
@@ -318,6 +474,23 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               if (targetId === id) return; // dono nao pode se auto-moderar
               const target = peers.get(targetId);
               if (!target || target.room !== me.room) return;
+
+              // Passar a lideranca. Diferente das outras acoes, esta muda o
+              // estado da SALA (quem pode moderar dai pra frente), nao o do
+              // alvo -- por isso ela mexe em `transferredTo`, que e o que o
+              // join de qualquer reconexao vai ler. Ver a spec, secao 4.
+              if (msg.action === 'transfer-owner') {
+                me.owner = false;
+                target.owner = true;
+                // Devolver pro dono original zera a transferencia em vez de
+                // gravar o clientId dele: assim a sala volta ao estado de
+                // origem (o token manda), e nao a um estado que depende de
+                // um clientId que pode nem existir depois de reinstalar.
+                transferredTo = target.tokenHolder ? null : target.clientId;
+                announceOwner(me.room, target, targetId);
+                pushSystemLine(me.room, 'transfer-owner', me.name, target.name);
+                return;
+              }
 
               if (msg.action === 'stop-share') {
                 send(target.ws, { type: 'moderated', action: 'stop-share', by: me.name });
@@ -372,12 +545,72 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               const limiter = chatRateLimiters.get(id) || createRateLimiter({ limit: 5, windowMs: 1000 });
               chatRateLimiters.set(id, limiter);
               if (!limiter.hit(Date.now())) return; // estoura em silencio, sem fechar o socket (chat nao e flood de sinalizacao)
-              if (typeof msg.text !== 'string') return;
-              const text = msg.text.trim().slice(0, 500);
-              if (!text) return;
-              const entry = { type: 'chat', id: String(nextId++), from: id, name: me.name, text, ts: Date.now() };
+              const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 500) : '';
+              // Imagem: opcional, e a legenda tambem -- o que nao pode e a
+              // mensagem ser vazia dos dois lados. Aceita so data URL de
+              // imagem: uma `http(s)://` viraria o renderer buscando de um
+              // endereco que quem mandou escolheu (e o CSP so permite
+              // `data:`/`blob:` em img-src, entao nem carregaria).
+              const image = typeof msg.image === 'string'
+                && /^data:image\/(png|jpeg|gif|webp);base64,/.test(msg.image)
+                && msg.image.length <= MAX_IMAGE_CHARS
+                ? msg.image
+                : null;
+              if (!text && !image) return;
+              if (image) {
+                // Segunda cota, so pras imagens: 5 msg/s de texto e barato,
+                // 5 imagens/s de 200 KB sao 1 MB/s repassados pra sala
+                // inteira pelo PC de quem hospeda.
+                const imgLimiter = chatImageLimiters.get(id) || createRateLimiter({ limit: 3, windowMs: 5000 });
+                chatImageLimiters.set(id, imgLimiter);
+                if (!imgLimiter.hit(Date.now())) return;
+              }
+              const entry = {
+                type: 'chat', id: String(nextId++), from: id, name: me.name, text, ts: Date.now(),
+                // w/h viajam junto pra linha do chat ja nascer com a altura
+                // certa -- sem isso a lista pula quando a imagem decodifica.
+                ...(image ? { image, w: clampDim(msg.w), h: clampDim(msg.h) } : {}),
+              };
               pushChatEntry(entry);
               broadcastToRoom(me.room, null, entry); // pra sala INTEIRA, inclusive quem mandou
+              break;
+            }
+
+            // Anotacao na tela de alguem (rabisco/escrita). O servidor NAO
+            // guarda estado nenhum de anotacao: ele repassa e pronto -- quem
+            // chega no meio recebe o desenho do proprio dono da tela, via
+            // 'annotate-sync' logo abaixo. `surface` e o dono da tela (nao
+            // quem desenha); `from` e carimbado aqui e e o que decide a cor
+            // do pincel nos dois lados, entao ninguem desenha com a cor de
+            // outro. Ver a spec de 2026-09-04, secao 5.5.
+            case 'annotate': {
+              const me = peers.get(id);
+              if (!me) return;
+              const limiter = annotateLimiters.get(id) || createRateLimiter({ limit: MAX_ANNOTATE_PER_SECOND, windowMs: 1000 });
+              annotateLimiters.set(id, limiter);
+              if (!limiter.hit(Date.now())) return; // estoura em silencio, igual ao chat
+              const surface = peers.get(String(msg.surface));
+              if (!surface || surface.room !== me.room) return; // tela de quem nao esta nesta sala
+              const op = sanitizeAnnotateOp(msg);
+              if (!op) return;
+              broadcastToRoom(me.room, id, { ...op, type: 'annotate', surface: String(msg.surface), from: id });
+              break;
+            }
+
+            // Snapshot da lousa pra UM peer (quem acabou de entrar). Roteado
+            // como offer/answer, nao broadcast: e um estado inteiro, e so
+            // quem chegou depois precisa dele.
+            case 'annotate-sync': {
+              const me = peers.get(id);
+              const target = peers.get(String(msg.to));
+              if (!me || !target || me.room !== target.room) return;
+              if (!Array.isArray(msg.items)) return;
+              send(target.ws, {
+                type: 'annotate-sync',
+                from: id,
+                surface: String(msg.surface),
+                items: msg.items.slice(0, MAX_ANNOTATE_SYNC_ITEMS),
+              });
               break;
             }
 
@@ -425,10 +658,17 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
           if (!me) return;
           peers.delete(id);
           chatRateLimiters.delete(id);
+          chatImageLimiters.delete(id);
+          annotateLimiters.delete(id);
           log(`- ${me.name} (#${id}) saiu da sala "${me.room}"`);
           broadcastToRoom(me.room, id, { type: 'peer-left', id });
           // Expulso/banido ja tem a linha 'kick'/'ban' -- nao duplica com 'leave'.
           if (!me._moderationClose) pushSystemLine(me.room, 'leave', me.name);
+          // O lider (que nao e quem criou a sala) fechou o app: a sala
+          // continua viva -- o servidor roda no processo do host -- mas
+          // ficaria sem ninguem podendo moderar, com a sala aberta pra
+          // rede. A lideranca volta pra quem criou a sala.
+          if (me.owner && transferredTo) reclaimOwnership(me.room);
         });
 
         ws.on('error', () => {});
@@ -462,4 +702,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
   });
 }
 
-module.exports = { createSignalingServer, createRateLimiter };
+module.exports = {
+  createSignalingServer,
+  createRateLimiter,
+  sanitizeAnnotateOp,
+  clampDim,
+  MAX_IMAGE_CHARS,
+  CHAT_IMAGE_HISTORY_MAX,
+};

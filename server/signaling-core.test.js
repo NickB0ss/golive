@@ -1133,3 +1133,539 @@ test('so o dono recebe welcome.banned; quem nao e dono recebe lista vazia', asyn
     await server.close();
   }
 });
+
+// ---------- Passar a lideranca (spec de 2026-09-04, secao 4) ----------
+
+/** Sobe um cliente, entra na sala e devolve { ws, welcome }. Os testes de
+ * lideranca precisam de tres ou quatro peers cada, e repetir o
+ * open+join+welcome em cada um enchia o arquivo de ruido. */
+async function entrar(port, name, extra = {}) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  await new Promise((r) => ws.once('open', r));
+  ws.send(JSON.stringify({ type: 'join', room: 'geral', name, ...extra }));
+  const welcome = await once(ws, 'welcome');
+  return { ws, welcome };
+}
+
+test('transfer-owner: o dono passa a lideranca e a sala inteira e avisada', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const anaId = dono.welcome.peers.length === 0
+      ? (await Promise.resolve(ana.welcome.id))
+      : ana.welcome.id;
+
+    const avisoDono = once(dono.ws, 'owner-changed');
+    const avisoAna = once(ana.ws, 'owner-changed');
+    const avisoBruno = once(bruno.ws, 'owner-changed');
+    const linha = onceChatWhere(bruno.ws, (m) => m.system && m.event === 'transfer-owner');
+
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: anaId }));
+
+    for (const aviso of [avisoDono, avisoAna, avisoBruno]) {
+      const msg = await aviso;
+      assert.equal(msg.id, anaId);
+      assert.equal(msg.name, 'Ana');
+    }
+    const sys = await linha;
+    assert.equal(sys.actor, 'Nicolas');
+    assert.equal(sys.target, 'Ana');
+
+    dono.ws.close();
+    ana.ws.close();
+    bruno.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('transfer-owner: quem recebeu passa a poder moderar e quem passou, nao', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const brunoId = ana.welcome.peers.length >= 0 ? bruno.welcome.id : null;
+
+    const avisoAna = once(ana.ws, 'owner-changed');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: ana.welcome.id }));
+    await avisoAna;
+
+    // A Ana (nova dona) para a transmissao do Bruno: chega.
+    const moderadoBruno = once(bruno.ws, 'moderated');
+    ana.ws.send(JSON.stringify({ type: 'moderate', action: 'stop-share', target: brunoId }));
+    assert.equal((await moderadoBruno).by, 'Ana');
+
+    // O Nicolas (ex-dono) tenta o mesmo: e ignorado em silencio. Prova pela
+    // ausencia -- se chegasse, o `by` seria 'Nicolas'.
+    let chegouDoNicolas = false;
+    bruno.ws.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'moderated' && m.by === 'Nicolas') chegouDoNicolas = true;
+    });
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'stop-share', target: brunoId }));
+    // Uma ida e volta ao servidor: se a moderacao fosse aceita, ela teria
+    // sido enfileirada antes deste chat e chegaria primeiro.
+    const eco = onceChatWhere(bruno.ws, (m) => !m.system && m.text === 'ping');
+    dono.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
+    await eco;
+    assert.equal(chegouDoNicolas, false);
+
+    dono.ws.close();
+    ana.ws.close();
+    bruno.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('transfer-owner: o host que reconecta depois de passar a lideranca NAO volta a ser dono', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+
+    const aviso = once(ana.ws, 'owner-changed');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: ana.welcome.id }));
+    await aviso;
+
+    // O host volta com o MESMO ownerToken (ele nunca deixou a maquina dele).
+    // Duas coroas na sala e o estado que `transferredTo` existe pra impedir.
+    const saida = once(ana.ws, 'peer-left');
+    dono.ws.close();
+    await saida;
+    const voltou = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    assert.equal(voltou.welcome.owner, false);
+    assert.equal(voltou.welcome.peers.find((p) => p.name === 'Ana').owner, true);
+
+    voltou.ws.close();
+    ana.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('transfer-owner: a lideranca volta pro host quando o lider sai da sala', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+
+    const aviso = once(ana.ws, 'owner-changed');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: ana.welcome.id }));
+    await aviso;
+
+    const volta = once(dono.ws, 'owner-changed');
+    ana.ws.close();
+    const msg = await volta;
+    assert.equal(msg.id, dono.welcome.id);
+    assert.equal(msg.name, 'Nicolas');
+
+    // E ele volta a poder moderar de verdade.
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const moderado = once(bruno.ws, 'moderated');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'stop-share', target: bruno.welcome.id }));
+    assert.equal((await moderado).by, 'Nicolas');
+
+    dono.ws.close();
+    bruno.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('transfer-owner: devolver a lideranca pro host zera a transferencia', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+
+    const ida = once(ana.ws, 'owner-changed');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: ana.welcome.id }));
+    await ida;
+
+    const volta = once(dono.ws, 'owner-changed');
+    ana.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: dono.welcome.id }));
+    assert.equal((await volta).id, dono.welcome.id);
+
+    // Com a transferencia zerada, quem entra e o token que manda de novo.
+    const saida = once(dono.ws, 'peer-left');
+    ana.ws.close();
+    await saida;
+    const outraAna = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    assert.equal(outraAna.welcome.owner, false);
+
+    dono.ws.close();
+    outraAna.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('transfer-owner: a lista de banidos migra pro novo dono e some do antigo', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const alvo = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+
+    const listaBan = once(dono.ws, 'banned-list');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'ban', target: alvo.welcome.id }));
+    assert.equal((await listaBan).list.length, 1);
+
+    const listaAna = once(ana.ws, 'banned-list');
+    const listaDono = once(dono.ws, 'banned-list');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: ana.welcome.id }));
+    assert.equal((await listaAna).list.length, 1); // a nova dona recebe a lista de verdade
+    assert.deepEqual((await listaDono).list, []); // o ex-dono recebe vazia (a secao some da coluna)
+
+    dono.ws.close();
+    ana.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('transfer-owner de quem nao e dono e ignorado', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+
+    let mudou = false;
+    dono.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'owner-changed') mudou = true;
+    });
+    ana.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: bruno.welcome.id }));
+    const eco = onceChatWhere(dono.ws, (m) => !m.system && m.text === 'ping');
+    ana.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
+    await eco;
+    assert.equal(mudou, false);
+
+    dono.ws.close();
+    ana.ws.close();
+    bruno.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// ---------- Imagem no chat (spec de 2026-09-04, secao 6) ----------
+
+const { MAX_IMAGE_CHARS, CHAT_IMAGE_HISTORY_MAX } = require('./signaling-core');
+
+/** data URL de imagem com o tamanho pedido (em caracteres). */
+function imagemFalsa(chars = 100, tipo = 'png') {
+  const prefixo = `data:image/${tipo};base64,`;
+  return prefixo + 'A'.repeat(Math.max(1, chars - prefixo.length));
+}
+
+test('chat: imagem atravessa pra sala inteira com as dimensoes', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const recebida = onceChatWhere(b.ws, (m) => !m.system && m.image);
+    a.ws.send(JSON.stringify({ type: 'chat', text: 'olha isso', image: imagemFalsa(300), w: 1280, h: 720 }));
+    const msg = await recebida;
+    assert.equal(msg.text, 'olha isso');
+    assert.equal(msg.w, 1280);
+    assert.equal(msg.h, 720);
+    assert.ok(msg.image.startsWith('data:image/png;base64,'));
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: imagem sozinha (sem legenda) e mensagem valida', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const recebida = onceChatWhere(a.ws, (m) => !m.system && m.image);
+    a.ws.send(JSON.stringify({ type: 'chat', image: imagemFalsa(200) }));
+    assert.equal((await recebida).text, '');
+    a.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: recusa imagem grande demais, tipo nao-imagem e endereco remoto', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+
+    let chegou = 0;
+    a.ws.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'chat' && m.image) chegou += 1;
+    });
+
+    a.ws.send(JSON.stringify({ type: 'chat', image: imagemFalsa(MAX_IMAGE_CHARS + 1) }));
+    a.ws.send(JSON.stringify({ type: 'chat', image: 'data:text/html;base64,PHNjcmlwdD4=' }));
+    a.ws.send(JSON.stringify({ type: 'chat', image: 'https://exemplo.invalido/foto.png' }));
+    a.ws.send(JSON.stringify({ type: 'chat', image: 12345 }));
+
+    const eco = onceChatWhere(a.ws, (m) => !m.system && m.text === 'ping');
+    a.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
+    await eco;
+    assert.equal(chegou, 0);
+
+    a.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: dimensao torta vira null em vez de ir crua pro DOM de quem recebe', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const recebida = onceChatWhere(a.ws, (m) => !m.system && m.image);
+    a.ws.send(JSON.stringify({ type: 'chat', image: imagemFalsa(200), w: 'grande', h: -5 }));
+    const msg = await recebida;
+    assert.equal(msg.w, null);
+    assert.equal(msg.h, null);
+    a.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: o historico guarda no maximo 8 imagens (memoria do host)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    // Uma pessoa por lote de 3: o limitador de rajada e POR PEER, e o que
+    // este teste mede e o teto do HISTORICO. Assim nao ha timer nenhum --
+    // esperar 5s por lote so tornaria o teste lento e instavel.
+    const enviados = [];
+    for (let lote = 0; lote < 4; lote++) {
+      const quem = await entrar(server.port, `Ana${lote}`);
+      for (let i = 0; i < 3; i++) {
+        const texto = `img${lote * 3 + i}`;
+        const recebida = onceChatWhere(quem.ws, (m) => !m.system && m.image && m.text === texto);
+        quem.ws.send(JSON.stringify({ type: 'chat', text: texto, image: imagemFalsa(200) }));
+        await recebida;
+        enviados.push(texto);
+      }
+      quem.ws.close();
+    }
+
+    const bruno = await entrar(server.port, 'Bruno');
+    const comImagem = bruno.welcome.chat.filter((e) => e.image);
+    assert.equal(comImagem.length, CHAT_IMAGE_HISTORY_MAX);
+    // As que sobraram sao as MAIS RECENTES, na ordem em que chegaram.
+    assert.deepEqual(comImagem.map((e) => e.text), enviados.slice(-CHAT_IMAGE_HISTORY_MAX));
+    // E as linhas de texto/sistema continuam la (o corte e so nas imagens).
+    assert.ok(bruno.welcome.chat.some((e) => e.system));
+
+    bruno.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('chat: no maximo 3 imagens a cada 5s por pessoa, sem derrubar o socket', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    let chegou = 0;
+    a.ws.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'chat' && m.image) chegou += 1;
+    });
+    // QUATRO imagens, nao seis: o limitador de chat (5 msg/s) tambem conta
+    // estas mensagens, e o 'ping' que fecha o teste precisa caber na mesma
+    // janela -- com seis, o ping era engolido pela cota de chat e o teste
+    // ficava esperando pra sempre por um eco que nunca vinha.
+    for (let i = 0; i < 4; i++) {
+      a.ws.send(JSON.stringify({ type: 'chat', image: imagemFalsa(200) }));
+    }
+    const eco = onceChatWhere(a.ws, (m) => !m.system && m.text === 'ping');
+    a.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
+    await eco;
+    assert.equal(chegou, 3);
+    assert.equal(a.ws.readyState, WebSocket.OPEN); // estourar imagem nao fecha o socket
+
+    a.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// ---------- Anotacao na tela (spec de 2026-09-04, secao 5) ----------
+
+const { sanitizeAnnotateOp } = require('./signaling-core');
+
+test('sanitizeAnnotateOp aceita as ops conhecidas e recorta os campos', () => {
+  assert.deepEqual(
+    sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0.25, y: 0.5, width: 6 }),
+    { op: 'begin', id: 'a', x: 0.25, y: 0.5, width: 6 }
+  );
+  assert.deepEqual(
+    sanitizeAnnotateOp({ op: 'points', id: 'a', points: [[0.1, 0.2], [0.3, 0.4]] }),
+    { op: 'points', id: 'a', points: [[0.1, 0.2], [0.3, 0.4]] }
+  );
+  assert.deepEqual(sanitizeAnnotateOp({ op: 'end', id: 'a' }), { op: 'end', id: 'a' });
+  assert.deepEqual(sanitizeAnnotateOp({ op: 'undo' }), { op: 'undo' });
+  assert.deepEqual(sanitizeAnnotateOp({ op: 'clear', scope: 'all' }), { op: 'clear', scope: 'all' });
+  assert.deepEqual(sanitizeAnnotateOp({ op: 'clear' }), { op: 'clear', scope: 'mine' }); // sem escopo = so o meu
+});
+
+test('sanitizeAnnotateOp descarta coordenada fora de 0..1 e op desconhecida', () => {
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 1.5, y: 0.5 }), null);
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', id: 'a', x: -0.1, y: 0.5 }), null);
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 'meio', y: 0.5 }), null);
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', x: 0.5, y: 0.5 }), null); // sem id
+  assert.equal(sanitizeAnnotateOp({ op: 'apagar-tudo-de-todos' }), null);
+  assert.equal(sanitizeAnnotateOp({}), null);
+});
+
+test('sanitizeAnnotateOp nao deixa passar cor forjada (a cor vem do from)', () => {
+  const op = sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0.1, y: 0.1, color: '#ff0000', from: 'outro' });
+  assert.equal(op.color, undefined);
+  assert.equal(op.from, undefined);
+});
+
+test('sanitizeAnnotateOp poe teto em pontos, largura e texto', () => {
+  const muitos = Array.from({ length: 500 }, () => [0.5, 0.5]);
+  assert.equal(sanitizeAnnotateOp({ op: 'points', id: 'a', points: muitos }).points.length, 200);
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0, y: 0, width: 999 }).width, 20);
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0, y: 0, width: 0 }).width, 1);
+  const texto = sanitizeAnnotateOp({ op: 'text', id: 't', x: 0, y: 0, text: 'x'.repeat(500), size: 500 });
+  assert.equal(texto.text.length, 120);
+  assert.equal(texto.size, 96);
+});
+
+test('sanitizeAnnotateOp descarta lote de pontos sem nenhum ponto util', () => {
+  assert.equal(sanitizeAnnotateOp({ op: 'points', id: 'a', points: [] }), null);
+  assert.equal(sanitizeAnnotateOp({ op: 'points', id: 'a', points: [[2, 2], 'x', null] }), null);
+  assert.equal(sanitizeAnnotateOp({ op: 'points', id: 'a', points: 'muitos' }), null);
+});
+
+test('sanitizeAnnotateOp descarta texto vazio ou so espaco', () => {
+  assert.equal(sanitizeAnnotateOp({ op: 'text', id: 't', x: 0, y: 0, text: '   ' }), null);
+  assert.equal(sanitizeAnnotateOp({ op: 'text', id: 't', x: 0, y: 0 }), null);
+});
+
+test('annotate: repassa pra sala com o from carimbado, menos pra quem mandou', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    const c = await entrar(server.port, 'Carla');
+
+    let voltouPraQuemMandou = false;
+    a.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'annotate') voltouPraQuemMandou = true;
+    });
+
+    const emB = once(b.ws, 'annotate');
+    const emC = once(c.ws, 'annotate');
+    a.ws.send(JSON.stringify({
+      type: 'annotate', surface: b.welcome.id, op: 'begin', id: 'traco-1', x: 0.2, y: 0.3, width: 4, from: 'forjado',
+    }));
+
+    for (const recebida of [emB, emC]) {
+      const msg = await recebida;
+      assert.equal(msg.surface, b.welcome.id);
+      assert.equal(msg.op, 'begin');
+      assert.equal(msg.x, 0.2);
+      assert.notEqual(msg.from, 'forjado'); // o servidor carimba quem mandou
+    }
+    assert.equal(voltouPraQuemMandou, false); // quem desenha ja desenhou localmente
+
+    a.ws.close();
+    b.ws.close();
+    c.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('annotate: superficie que nao esta na sala e descartada em silencio', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    let chegou = false;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'annotate') chegou = true;
+    });
+    a.ws.send(JSON.stringify({ type: 'annotate', surface: '9999', op: 'begin', id: 'x', x: 0.1, y: 0.1 }));
+
+    const eco = onceChatWhere(b.ws, (m) => !m.system && m.text === 'ping');
+    a.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
+    await eco;
+    assert.equal(chegou, false);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('annotate: estourar a cota de desenho nao fecha o socket (nem gasta a de chat)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    let recebidas = 0;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'annotate') recebidas += 1;
+    });
+    for (let i = 0; i < 90; i++) {
+      a.ws.send(JSON.stringify({ type: 'annotate', surface: b.welcome.id, op: 'begin', id: `t${i}`, x: 0.5, y: 0.5 }));
+    }
+    const eco = onceChatWhere(b.ws, (m) => !m.system && m.text === 'ping');
+    a.ws.send(JSON.stringify({ type: 'chat', text: 'ping' })); // a cota de chat continua intacta
+    await eco;
+    assert.equal(recebidas, 60); // teto de anotacao
+    assert.equal(a.ws.readyState, WebSocket.OPEN);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('annotate-sync: snapshot vai so pro destinatario, com teto de itens', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    const c = await entrar(server.port, 'Carla');
+
+    let chegouNaCarla = false;
+    c.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'annotate-sync') chegouNaCarla = true;
+    });
+
+    const noBruno = once(b.ws, 'annotate-sync');
+    const itens = Array.from({ length: 500 }, (_, i) => ({ kind: 'stroke', id: `i${i}`, from: '1', points: [[0, 0]] }));
+    a.ws.send(JSON.stringify({ type: 'annotate-sync', to: b.welcome.id, surface: a.welcome.id, items: itens }));
+
+    const msg = await noBruno;
+    assert.equal(msg.from, a.welcome.id);
+    assert.equal(msg.surface, a.welcome.id);
+    assert.equal(msg.items.length, 400);
+    assert.equal(chegouNaCarla, false);
+
+    a.ws.close();
+    b.ws.close();
+    c.ws.close();
+  } finally {
+    await server.close();
+  }
+});

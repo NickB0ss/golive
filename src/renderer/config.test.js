@@ -370,3 +370,34 @@ test('theme: valor solto (nao objeto) cai no padrao', () => {
     assert.deepEqual(load(saved).theme, DEFAULTS.theme);
   }
 });
+
+// ---------- Anotacao e emoji (spec de 2026-09-04) ----------
+
+test('annotations.allow nasce desmarcado e so `true` liga', () => {
+  assert.equal(load(null).annotations.allow, false);
+  assert.equal(load(JSON.stringify({ annotations: { allow: true } })).annotations.allow, true);
+  // Qualquer outra coisa e falso -- inclusive o truthy que nao e boolean.
+  assert.equal(load(JSON.stringify({ annotations: { allow: 'sim' } })).annotations.allow, false);
+  assert.equal(load(JSON.stringify({ annotations: 'sim' })).annotations.allow, false);
+  assert.equal(load(JSON.stringify({ annotations: null })).annotations.allow, false);
+});
+
+test('emojiRecents sobrevive ao round-trip e limpa lixo do config', () => {
+  assert.deepEqual(load(null).emojiRecents, []);
+  const cfg = load(JSON.stringify({ emojiRecents: ['🍕', '🍕', 42, '', null, '🎉'] }));
+  assert.deepEqual(cfg.emojiRecents, ['🍕', '🎉']);
+  assert.deepEqual(load(serialize(cfg)).emojiRecents, ['🍕', '🎉']);
+  assert.deepEqual(load(JSON.stringify({ emojiRecents: 'nao e lista' })).emojiRecents, []);
+});
+
+test('emojiRecents para no teto de 24', () => {
+  const muitos = Array.from({ length: 50 }, (_, i) => `e${i}`);
+  assert.equal(load(JSON.stringify({ emojiRecents: muitos })).emojiRecents.length, 24);
+});
+
+test('config antigo (sem annotations nem emojiRecents) abre nos padroes', () => {
+  const antigo = JSON.stringify({ v: 1, name: 'Ana', quality: { preset: '1080p60' } });
+  const cfg = load(antigo);
+  assert.equal(cfg.annotations.allow, false);
+  assert.deepEqual(cfg.emojiRecents, []);
+});
