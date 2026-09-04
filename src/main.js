@@ -165,6 +165,11 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    // Fica fixo mesmo com o tema "Papel" (claro) salvo: cfg.theme vive no
+    // localStorage do renderer, que o processo principal nao enxerga sem
+    // duplicar a logica de storage de config.js so pra isso (fora do
+    // escopo da Frente C -- ver plano C7). O preco e um flash escuro breve
+    // so no boot, ate o CSS do renderer carregar e repintar o body.
     backgroundColor: '#0e1116',
     title: 'GoLive LAN',
     webPreferences: {

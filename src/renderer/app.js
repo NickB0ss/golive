@@ -2,10 +2,11 @@
 'use strict';
 
 (function () {
-  const { config, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
+  theme.apply(cfg.theme); // antes de qualquer render -- e o que evita um flash do tema padrao
   sound.setEnabled(cfg.soundsEnabled); // aplica a preferencia salva antes de qualquer som tocar
 
   // Versao deste app (a do package.json, via IPC). Vale pra tres coisas: o
@@ -551,6 +552,11 @@
         cfg = { ...cfg, soundsEnabled: enabled };
         persist();
         sound.setEnabled(enabled);
+      },
+      onThemeChange: (themeCfg) => {
+        cfg = { ...cfg, theme: themeCfg };
+        persist();
+        theme.apply(themeCfg);
       },
     });
   });

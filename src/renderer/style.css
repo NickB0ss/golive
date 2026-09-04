@@ -1506,6 +1506,29 @@ button.busy { cursor: default; }
 }
 .user-avatar-lg #settings-profile-avatar-fallback { font-size: 28px; }
 
+/* Aba Aparencia (Frente C6) -- cada cartao de predefinicao desenha a
+   propria rampa de superficies em faixas, nunca um quadrado solido da cor
+   de acao com o nome escrito (spec 2026-09-03, 5.6). O anel de ".active"
+   usa --act do tema JA APLICADO (nao o do cartao) -- e o tema atual que
+   deve indicar qual cartao esta selecionado. */
+.theme-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-2); margin-bottom: var(--s-4); }
+.theme-preset-card {
+  display: flex; flex-direction: column; gap: var(--s-2);
+  padding: var(--s-2); border: 1px solid var(--line2); border-radius: var(--r-md);
+  background: var(--s2); cursor: pointer; text-align: left;
+}
+.theme-preset-card:hover { border-color: var(--tx3); }
+.theme-preset-card.active { border-color: var(--act); box-shadow: 0 0 0 1px var(--act); }
+.theme-preset-ramp { display: flex; height: 28px; border-radius: var(--r-xs); overflow: hidden; }
+.theme-preset-ramp span { flex: 1; }
+.theme-preset-label { font-size: 13px; color: var(--tx); }
+
+.theme-warning-fix {
+  background: none; border: none; padding: 0; margin-left: 2px;
+  color: var(--act); text-decoration: underline; cursor: pointer; font: inherit;
+}
+#theme-warning:not(:empty) { color: var(--warn); }
+
 .picker-box {
   width: min(920px, 92vw);
   max-height: 88vh;

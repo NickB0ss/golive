@@ -5,6 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
   const version = root.GoLive.version;
+  const theme = root.GoLive.theme;
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -1295,6 +1296,7 @@
   const settingsCatButtons = Array.from(document.querySelectorAll('.settings-cat'));
   const settingsPanes = {
     profile: $('settings-profile'),
+    appearance: $('settings-appearance'),
     voice: $('settings-voice'),
     stats: $('settings-stats'),
   };
@@ -1451,6 +1453,106 @@
     if (document.activeElement !== nameInput) nameInput.value = config.name || '';
   }
 
+  // Ordem de exibicao dos cartoes de predefinicao (spec 2026-09-03, 5.2):
+  // do escuro neutro ao unico claro. Array explicito, nao
+  // Object.keys(theme.PRESETS) -- ainda que coincidam hoje, a ordem de
+  // exibicao nao deveria depender da ordem de insercao de theme.js.
+  const THEME_PRESET_ORDER = ['signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+
+  /** Um cartao por predefinicao: a rampa das 5 superficies + a cor de acao
+   * em faixas -- nunca um quadrado solido com o nome escrito (spec 5.6). */
+  function renderThemePresetCard(id, activeId) {
+    const preset = theme.PRESETS[id];
+    const s = preset.surfaces;
+    const faixas = [s.bg, s.s1, s.s2, s.s3, s.s4, preset.act]
+      .map((hex) => `<span style="background:${hex}"></span>`)
+      .join('');
+    const active = id === activeId;
+    return `
+      <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
+        <span class="theme-preset-ramp">${faixas}</span>
+        <span class="theme-preset-label">${escapeHtml(preset.label)}</span>
+      </button>`;
+  }
+
+  function renderThemePresets(activeId) {
+    $('theme-presets').innerHTML = THEME_PRESET_ORDER.map((id) => renderThemePresetCard(id, activeId)).join('');
+  }
+
+  // Modo personalizado: nenhum cartao de preset fica marcado (a pessoa
+  // saiu do conjunto fechado assim que mexeu num slider).
+  function markThemePresetsInactive() {
+    Array.from($('theme-presets').children).forEach((card) => {
+      card.classList.remove('active');
+      card.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  /** Le os tres controles de "Personalizar", valida e aplica ao vivo. E
+   * chamada a cada evento `input` (nunca so `change`) -- a pessoa precisa
+   * ver o app mudando enquanto arrasta o slider, que e o unico jeito de
+   * avaliar um tema (spec 5.6). Aplica MESMO quando a validacao reprova --
+   * o aviso abaixo do controle e que carrega a reprovacao, a aplicacao ao
+   * vivo continua sendo o feedback principal. */
+  function applyCustomThemeFromControls(deps) {
+    const themeCfg = {
+      preset: 'custom',
+      base: {
+        temp: Number($('theme-temp').value) / 100,
+        level: Number($('theme-level').value) / 100,
+      },
+      act: $('theme-act').value,
+    };
+    const result = theme.validate(theme.tokensFor(themeCfg));
+    markThemePresetsInactive();
+    deps.onThemeChange(themeCfg);
+
+    const warningEl = $('theme-warning');
+    warningEl.textContent = '';
+    if (result.ok) return;
+
+    warningEl.append(result.failures[0]);
+    if (result.nearestAct) {
+      const fixBtn = document.createElement('button');
+      fixBtn.type = 'button';
+      fixBtn.className = 'theme-warning-fix';
+      fixBtn.textContent = `usar ${result.nearestAct}`;
+      fixBtn.addEventListener('click', () => {
+        $('theme-act').value = result.nearestAct;
+        applyCustomThemeFromControls(deps);
+      });
+      warningEl.append(' ', fixBtn);
+    }
+  }
+
+  /** Inicializa a aba Aparencia a partir de `cfg.theme` -- preset conhecido
+   * marca o cartao correspondente (sliders/cor ficam num meio-termo, so pra
+   * nao nascer vazios); `custom` preenche sliders e cor com os valores
+   * salvos e deixa nenhum cartao marcado. */
+  function initThemeControls(config) {
+    const themeCfg = (config && config.theme) || { preset: 'signal' };
+    const isCustom = themeCfg.preset === 'custom' && isObjectWithBase(themeCfg);
+    const knownPreset = !isCustom && theme.PRESETS[themeCfg.preset] ? themeCfg.preset : null;
+
+    renderThemePresets(isCustom ? null : knownPreset || 'signal');
+
+    if (isCustom) {
+      $('theme-temp').value = Math.round((themeCfg.base.temp ?? 0.5) * 100);
+      $('theme-level').value = Math.round((themeCfg.base.level ?? 0.1) * 100);
+      $('theme-act').value = themeCfg.act;
+    } else {
+      const preset = theme.PRESETS[knownPreset || 'signal'];
+      $('theme-temp').value = 50;
+      $('theme-level').value = 10;
+      $('theme-act').value = preset.act;
+    }
+    $('theme-warning').textContent = '';
+  }
+
+  function isObjectWithBase(themeCfg) {
+    return !!themeCfg.base && typeof themeCfg.act === 'string';
+  }
+
   async function openSettings(config, deps) {
     settingsPanes.profile.innerHTML = `
       <h3>Perfil</h3>
@@ -1465,6 +1567,25 @@
         <label for="settings-profile-name">Apelido</label>
         <input id="settings-profile-name" type="text" placeholder="seu apelido" spellcheck="false" />
       </div>`;
+
+    settingsPanes.appearance.innerHTML = `
+      <h3>Predefinições</h3>
+      <div id="theme-presets" class="theme-presets"></div>
+
+      <h3>Personalizar</h3>
+      <div class="settings-field">
+        <label for="theme-temp">Base da interface: frio ↔ quente</label>
+        <input id="theme-temp" type="range" min="0" max="100" value="50" />
+      </div>
+      <div class="settings-field">
+        <label for="theme-level">Base da interface: escuro ↔ claro</label>
+        <input id="theme-level" type="range" min="0" max="100" value="10" />
+      </div>
+      <div class="settings-field">
+        <label for="theme-act">Cor de ação</label>
+        <input id="theme-act" type="color" value="#4F46E5" aria-describedby="theme-warning" />
+      </div>
+      <p id="theme-warning" class="hint" role="alert"></p>`;
 
     settingsPanes.voice.innerHTML = `
       <h3>Câmera</h3>
@@ -1515,6 +1636,21 @@
 
     $('settings-sounds').addEventListener('change', () => {
       deps.onSoundsChange($('settings-sounds').checked);
+    });
+
+    initThemeControls(config);
+    $('theme-presets').addEventListener('click', (event) => {
+      const card = event.target.closest('.theme-preset-card');
+      if (!card) return;
+      Array.from($('theme-presets').children).forEach((c) => {
+        c.classList.toggle('active', c === card);
+        c.setAttribute('aria-pressed', String(c === card));
+      });
+      $('theme-warning').textContent = '';
+      deps.onThemeChange({ preset: card.dataset.preset });
+    });
+    ['theme-temp', 'theme-level', 'theme-act'].forEach((id) => {
+      $(id).addEventListener('input', () => applyCustomThemeFromControls(deps));
     });
 
     $('btn-open-logs').addEventListener('click', () => window.golive.openLogsFolder());
