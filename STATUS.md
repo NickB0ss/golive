@@ -59,12 +59,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.7.0` (`package.json`) na `main`; a branch
-`claude/screen-share-camera-ui-qppkll` tem as três frentes acima (estado
-visível nos toggles, overlay de pausa, temas de cor) prontas pra virar
-`0.8.0` — ver
-`docs/superpowers/specs/2026-09-03-estado-visivel-e-temas-design.md` e o
-plano irmão. Electron `^32` (fora de suporte — ver backlog),
+`0.8.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **335 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
@@ -157,6 +152,18 @@ após `await`).
   **É a primeira release `latest` da linha do redesign** — quem estava na 0.3.4
   recebe de uma vez tudo de 0.4.0 a 0.7.0 (interface nova, chat, moderação,
   trava de versão, seletor de qualidade).
+- **0.8.0** ([PR #36](https://github.com/NickB0ss/golive/pull/36)) — **estado
+  visível nos toggles**: os botões de compartilhar tela e câmera mudam rótulo,
+  ícone e preenchimento quando ligados ("Parar de compartilhar" / "Desligar
+  câmera"), com estado de carregando enquanto o driver da câmera abre. **Overlay
+  de "Transmissão pausada"** pra quem assiste — bitmap estático de 320px do
+  último quadro borrado (o `<video>` fica pausado e escondido), no lugar de um
+  quadro congelado sem explicação; quem pausou vê "Você pausou — ninguém está
+  vendo". **Temas de cor** em Configurações > Aparência: seis predefinições
+  (Superfície e sinal, Meia-noite, Carvão, Âmbar quente, Floresta, Papel — a
+  única clara) mais um tema personalizado (dois sliders + cor de ação), com
+  trava de contraste que reprova combinações ilegíveis antes de aplicar;
+  `--live`/`--warn`/`--danger` ficam travados em todo tema. +29 testes.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
   Detalhe por item na auditoria e no histórico do git.
 
