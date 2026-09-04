@@ -1519,8 +1519,34 @@ button.busy { cursor: default; }
 }
 .theme-preset-card:hover { border-color: var(--tx3); }
 .theme-preset-card.active { border-color: var(--act); box-shadow: 0 0 0 1px var(--act); }
-.theme-preset-ramp { display: flex; height: 28px; border-radius: var(--r-xs); overflow: hidden; }
-.theme-preset-ramp span { flex: 1; }
+/* Miniatura do app por predefinicao -- substitui a rampa de faixas, que
+   num tema escuro era um retangulo aparentemente vazio (as cinco
+   superficies sao quase o mesmo preto). Ver renderThemePresetCard. */
+.theme-preset-mini {
+  display: flex;
+  flex-direction: column;
+  /* `align-self: stretch`: a regra base de `button` traz `align-items:
+     center`, que num container coluna e o eixo HORIZONTAL -- sem isto a
+     miniatura nasce com a largura do conteudo e fica uma tirinha no meio
+     do cartao (mesma armadilha documentada na 0.5.0). */
+  align-self: stretch;
+  height: 54px;
+  border-radius: var(--r-xs);
+  overflow: hidden;
+}
+.tpm-top {
+  display: flex; align-items: center; gap: 3px;
+  padding: 4px 5px;
+  border-bottom: 1px solid;
+}
+.tpm-top i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.tpm-top b { height: 3px; flex: 1; border-radius: var(--r-full); }
+.tpm-top u { width: 5px; height: 5px; border-radius: var(--r-full); flex: none; }
+.tpm-body { display: flex; gap: 3px; padding: 4px; flex: 1; min-height: 0; }
+.tpm-stage { flex: 1; border-radius: 3px; }
+.tpm-side { width: 22px; display: flex; flex-direction: column; gap: 3px; }
+.tpm-side b { height: 3px; border-radius: var(--r-full); }
+.tpm-cta { margin-top: auto; height: 7px; border-radius: 2px; }
 .theme-preset-label { font-size: 13px; color: var(--tx); }
 
 .theme-warning-fix {
@@ -1880,3 +1906,392 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   animation-duration: var(--t-modal);
   animation-timing-function: var(--ease-enter);
 }
+
+/* ============================================================
+   2026-09-04 — anotacao na tela, chat rico e Aparencia visual
+   Ver docs/superpowers/specs/2026-09-04-anotacoes-lideranca-e-chat-rico-design.md
+   ============================================================ */
+
+/* ---------- Menu do tile: cabecalho de quem e ---------- */
+/* "Silenciar" saiu do menu ⋮ do membro; este virou o unico lugar que o
+   oferece, e um menu de mute sem dizer de QUEM so responde depois do
+   clique. */
+.tile-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.tile-menu-avatar {
+  width: 24px; height: 24px; flex: none;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700; color: var(--on-act);
+}
+.tile-menu-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tile-menu-avatar .peer-avatar-fallback {
+  width: 100%; height: 100%;
+  display: grid; place-items: center;
+}
+.tile-menu-name {
+  font-size: 12.5px; font-weight: 600; color: var(--tx);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- Anotacao: canvas, botao e barrinha ---------- */
+
+/* O canvas cobre o tile inteiro, mas so recebe ponteiro no modo de
+   desenho -- e o que preserva o duplo clique do fullscreen, o botao
+   direito do mute e o arrasto do PiP (spec, secao 5.7). */
+.tile-annot-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+.tile.annot-on .tile-annot-canvas { pointer-events: auto; cursor: crosshair; }
+
+.tile-annot-btn {
+  position: absolute;
+  top: 8px; right: 44px;
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border: none; border-radius: var(--r-sm);
+  background: var(--scrim-3);
+  color: #fff;
+  opacity: 0;
+  z-index: 4;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.tile-annot-btn svg { width: 15px; height: 15px; }
+.tile:hover .tile-annot-btn,
+.tile:focus-within .tile-annot-btn,
+.tile-annot-btn.active { opacity: 1; }
+.tile-annot-btn:hover { background: var(--scrim-5); }
+.tile-annot-btn.active { background: var(--act); }
+.tile.fullscreen.idle .tile-annot-btn { opacity: 0; }
+
+.tile-annot-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-full);
+  background: var(--scrim-tint-2);
+  border: 1px solid var(--line2);
+  box-shadow: var(--shadow-2);
+  z-index: 5;
+}
+.annot-tool {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: none; border-radius: var(--r-full);
+  background: transparent;
+  color: var(--tx);
+  padding: 0;
+}
+.annot-tool svg { width: 15px; height: 15px; }
+.annot-tool em { font-style: normal; font-size: 9px; margin-left: 2px; }
+.annot-tool:hover:not(:disabled) { background: var(--s3); }
+.annot-tool.active { background: var(--act); color: var(--on-act); }
+.annot-tool.warn { width: auto; padding: 0 8px; color: var(--warn); }
+.annot-tool:disabled { opacity: .35; }
+.annot-sep { width: 1px; height: 18px; background: var(--line2); margin: 0 3px; }
+/* Nao e um seletor: e a legenda de quem VOCE e na lousa. */
+.annot-ink {
+  width: 16px; height: 16px;
+  border-radius: var(--r-full);
+  border: 2px solid var(--veil);
+  margin: 0 4px;
+}
+
+.annot-text-input {
+  position: absolute;
+  z-index: 6;
+  /* `width: auto` derruba o `width: 100%` da regra base de input -- aqui o
+     campo flutua no ponto clicado, nao ocupa a largura do tile. */
+  width: auto;
+  min-width: 140px;
+  padding: 3px 6px;
+  font: 600 14px system-ui, sans-serif;
+  background: var(--scrim-tint-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-xs);
+}
+.annot-text-input:focus { outline: none; border-color: var(--act); }
+
+/* ---------- Chat: imagem, anexo e botoes do compose ---------- */
+
+.chat-image {
+  display: block;
+  margin-top: 5px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--video-bg);
+  max-width: 100%;
+  line-height: 0;
+}
+.chat-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chat-image:hover { border-color: var(--line2); }
+
+.chat-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 var(--s-2) var(--s-2);
+  padding: var(--s-2);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.chat-attachment img {
+  width: 44px; height: 44px; flex: none;
+  object-fit: cover;
+  border-radius: var(--r-xs);
+  background: var(--video-bg);
+}
+.chat-attachment-info {
+  flex: 1; min-width: 0;
+  font-size: 11px; color: var(--tx3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.chat-compose-btn {
+  width: 28px; height: 28px; flex: none;
+  display: grid; place-items: center;
+  padding: 0;
+  border: none; border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--tx2);
+  align-self: flex-end;
+}
+.chat-compose-btn svg { width: 16px; height: 16px; }
+.chat-compose-btn:hover { background: var(--s3); color: var(--tx); }
+
+/* Arrastar imagem sobre a coluna do chat. */
+.chat-section.dropping { outline: 2px dashed var(--act); outline-offset: -4px; border-radius: var(--r-sm); }
+
+.image-lightbox { display: grid; place-items: center; background: var(--scrim-6); }
+.image-lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-3);
+}
+
+/* ---------- Painel de emoji ---------- */
+
+.emoji-panel {
+  position: fixed;
+  z-index: 70;
+  width: 292px;
+  height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.emoji-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--tx3);
+}
+.emoji-search svg { width: 14px; height: 14px; flex: none; }
+/* Sobrescreve a regra base de `input[type=text]` (caixa com fundo, borda e
+   9px de respiro): aqui o campo E a linha inteira, e uma caixa dentro de
+   outra caixa lia como um input gigante colado no topo do painel. */
+.emoji-search input {
+  flex: 1; min-width: 0;
+  padding: 2px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--tx);
+  font-size: 12.5px;
+}
+.emoji-search input:focus,
+.emoji-search input:focus-visible { outline: none; box-shadow: none; }
+.emoji-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.emoji-tab {
+  flex: 1;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  opacity: .55;
+}
+.emoji-tab:hover { background: var(--s3); opacity: 1; }
+.emoji-tab.active { background: var(--on-fill); opacity: 1; }
+.emoji-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  align-content: start;
+}
+.emoji-item {
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  font-size: 19px;
+  line-height: 1;
+}
+.emoji-item:hover { background: var(--s3); }
+.emoji-empty {
+  grid-column: 1 / -1;
+  margin: 18px 8px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--tx3);
+}
+
+/* ---------- Configuracoes > Aparencia: previa e dicas ---------- */
+
+/* Uma sala de mentira montada com os MESMOS tokens do tema -- ela muda
+   sozinha quando theme.apply reescreve as variaveis do :root. E a resposta
+   visual pra "o que essa barrinha faz?". */
+.theme-preview { margin-bottom: var(--s-4); }
+/* Teto de largura: a previa e uma ILUSTRACAO, nao um segundo app -- solta
+   num painel largo ela virava um retangulo gigante e vazio. */
+.theme-preview-app {
+  max-width: 420px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--bg);
+}
+.theme-preview-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--line);
+}
+.theme-preview-badge {
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  border-radius: var(--r-xs);
+  background: var(--act);
+  color: var(--on-act);
+  font-size: 8px; font-weight: 800;
+}
+.theme-preview-title { font-size: 11px; font-weight: 600; color: var(--tx); flex: 1; }
+.theme-preview-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--live); }
+.theme-preview-body { display: flex; gap: 8px; padding: 8px; }
+.theme-preview-stage {
+  flex: 1;
+  aspect-ratio: 16/9;
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  position: relative;
+}
+.theme-preview-live {
+  position: absolute;
+  left: 7px; bottom: 7px;
+  padding: 2px 6px;
+  border-radius: var(--r-full);
+  background: var(--live-dim);
+  color: var(--live-soft);
+  font-size: 8px; font-weight: 700; letter-spacing: .04em;
+}
+.theme-preview-side { width: 104px; display: flex; flex-direction: column; gap: 5px; }
+.theme-preview-row { display: flex; align-items: center; gap: 5px; }
+.theme-preview-av { width: 13px; height: 13px; border-radius: var(--r-full); background: var(--s4); flex: none; }
+.theme-preview-row b { height: 5px; flex: 1; border-radius: var(--r-full); background: var(--s3); }
+.theme-preview-row b.short { flex: .6; }
+.theme-preview-msg { height: 5px; border-radius: var(--r-full); background: var(--s2); }
+.theme-preview-msg.short { width: 62%; }
+.theme-preview-cta {
+  margin-top: auto;
+  padding: 5px 0;
+  text-align: center;
+  border-radius: var(--r-xs);
+  background: var(--act);
+  color: var(--on-act);
+  font-size: 9px; font-weight: 600;
+}
+.theme-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 10.5px;
+  color: var(--tx3);
+}
+.theme-legend li { display: flex; align-items: center; gap: 5px; }
+.theme-legend-chip {
+  width: 11px; height: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--line2);
+}
+
+.settings-hint {
+  margin: 0 0 7px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--tx3);
+}
+/* A trilha do slider MOSTRA o que ele faz: frio->quente e escuro->claro. */
+.settings-field input[type="range"].range-temp,
+.settings-field input[type="range"].range-level {
+  appearance: none;
+  height: 10px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+}
+.settings-field input[type="range"].range-temp {
+  background: linear-gradient(90deg, #1b2430, #23262c, #2e2a24);
+}
+.settings-field input[type="range"].range-level {
+  background: linear-gradient(90deg, #0c0d10, #2a2e36, #e6e8ec);
+}
+.settings-field input[type="range"].range-temp::-webkit-slider-thumb,
+.settings-field input[type="range"].range-level::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px; height: 16px;
+  border-radius: var(--r-full);
+  background: var(--tx);
+  border: 2px solid var(--bg);
+  box-shadow: var(--shadow-1);
+}
+.range-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--tx3);
+}
+.settings-actions { margin-top: var(--s-4); display: flex; justify-content: flex-start; }

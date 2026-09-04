@@ -536,6 +536,15 @@
       return;
     }
 
+    // Sair do custom TEM de apagar as variaveis inline que ele escreveu.
+    // Estilo inline ganha de regra de folha, entao um `data-theme="paper"`
+    // por cima de um custom antigo nao mudava um pixel: o app ficava preso
+    // no ultimo tema personalizado ate ser reiniciado. Vale pra qualquer
+    // caminho que volte pra um preset -- clicar num cartao ou o botao
+    // "Voltar ao padrao".
+    for (const varName of Object.keys(CUSTOM_VAR_MAP)) {
+      d.documentElement.style.removeProperty?.(varName);
+    }
     const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'signal';
     const preset = PRESETS[requested] ? requested : 'signal';
     if (preset === 'signal') {

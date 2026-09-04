@@ -100,7 +100,27 @@ Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
 janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
 mesma sala.
 
-Duplo clique em qualquer vídeo expande pra tela cheia.
+Duplo clique em qualquer vídeo expande pra tela cheia. **Clique com o botão
+direito** em cima de uma tela pra **silenciar** aquela pessoa ou mexer no
+volume dela (é só pra você — ninguém fica sabendo).
+
+**Pra deixar a turma rabiscar na sua tela**, marque *"Deixar a sala rabiscar
+na minha tela"* no diálogo de compartilhar, **antes** de ir ao vivo. Aí
+qualquer um clica no lápis no canto do vídeo e ganha caneta e texto, cada
+pessoa com a sua cor. Dá pra desfazer e apagar os seus rabiscos; quem é dono
+da tela pode limpar tudo. Sai do ar junto com a transmissão. A escolha fica
+lembrada pra próxima vez, e **não dá pra ligar no meio** — pare e
+compartilhe de novo.
+
+**No chat** dá pra mandar imagem (botão de clipe, `Ctrl+V` ou arrastando em
+cima da coluna) — ela é reduzida automaticamente e aparece como miniatura,
+que abre em tela cheia no clique. O botão de carinha ao lado abre os emoji,
+com busca em português e os que você mais usa na frente.
+
+**Quem criou a sala pode passar a liderança** pra outra pessoa: `⋮` ao lado
+do nome dela → *"Passar a liderança"*. Quem recebe passa a poder parar
+transmissões, expulsar e banir; quem passou deixa de poder. Se o novo líder
+sair da sala, a liderança volta sozinha pra quem criou.
 
 **Pra pausar a transmissão** sem parar de compartilhar, use o botão de pausa
 no palco ou o atalho global **`Ctrl+Alt+P`** — ele funciona mesmo com o jogo

@@ -182,3 +182,34 @@ test('apply com custom valido seta data-theme="custom" e escreve variaveis, sem 
 test('apply sem document global e sem doc explicito nao lanca (no-op)', () => {
   assert.doesNotThrow(() => apply({ preset: 'signal' }));
 });
+
+test('apply de um preset APAGA as variaveis inline de um custom anterior', () => {
+  // Estilo inline ganha de regra de folha: sem limpar, o `data-theme` novo
+  // nao muda um pixel e o app fica preso no ultimo tema personalizado.
+  const props = {};
+  const doc = {
+    documentElement: {
+      attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; },
+      removeAttribute(k) { delete this.attrs[k]; },
+      style: {
+        setProperty(k, v) { props[k] = v; },
+        removeProperty(k) { delete props[k]; },
+      },
+    },
+  };
+
+  apply({ preset: 'custom', base: { temp: 0.3, level: 0.9 }, act: '#4F8EF7' }, doc);
+  assert.ok(props['--bg'], 'o custom precisa ter escrito --bg');
+
+  apply({ preset: 'signal' }, doc);
+  assert.equal(props['--bg'], undefined);
+  assert.equal(props['--act'], undefined);
+  assert.equal(doc.documentElement.attrs['data-theme'], undefined);
+
+  // E o mesmo vale pra trocar de custom pra outro preset nomeado.
+  apply({ preset: 'custom', base: { temp: 0.3, level: 0.9 }, act: '#4F8EF7' }, doc);
+  apply({ preset: 'paper' }, doc);
+  assert.equal(props['--bg'], undefined);
+  assert.equal(doc.documentElement.attrs['data-theme'], 'paper');
+});

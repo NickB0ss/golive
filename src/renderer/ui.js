@@ -6,6 +6,9 @@
   const configApi = root.GoLive.config;
   const version = root.GoLive.version;
   const theme = root.GoLive.theme;
+  const emoji = root.GoLive.emoji;
+  const chatmedia = root.GoLive.chatmedia;
+  const annotate = root.GoLive.annotate;
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -112,12 +115,11 @@
     return state;
   }
 
-  /** "Silenciar" no menu de membro e LOCAL -- mesmo mecanismo que o menu de
-   * contexto do tile ja usa hoje (getOrCreateAudioState + um GainNode por
-   * tile, sem passar pelo servidor). setMuted() e a peca que faltava pra
-   * reusar isso fora de openTileMenu: as duas UIs (tile e membro) chamam a
-   * mesma funcao sobre o mesmo `state`, entao mutar por um lugar reflete no
-   * outro. */
+  /** Silenciar e LOCAL: um GainNode por tile, sem passar pelo servidor --
+   * ninguem mais na sala fica sabendo, e e por isso que ele nunca esteve no
+   * mesmo menu que expulsar e banir (que vao pro servidor e valem pra sala
+   * inteira). Desde 2026-09-04 o unico lugar que o oferece e o menu de
+   * contexto do tile; estas duas funcoes sao a porta desse estado. */
   function setMuted(id, muted) {
     const state = getOrCreateAudioState(id);
     state.muted = muted;
@@ -363,15 +365,21 @@
       tile.id = `tile-${id}`;
       tile.innerHTML = `
         <video autoplay playsinline></video>
+        <canvas class="tile-annot-canvas"></canvas>
         <span class="tile-avatar"></span>
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
         <div class="tile-watchers empty"></div>
+        <button class="tile-annot-btn" type="button" title="Rabiscar nesta tela" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        </button>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
+        <div class="tile-annot-bar" hidden></div>
         <div class="pip-strip"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
+      wireTileAnnotations(tile, id);
       tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
         event.stopPropagation();
         toggleTileFullscreen(tile, id);
@@ -392,6 +400,13 @@
       // veu, ate a proxima mudanca de estado de pausa.
       const pausedState = tilePaused.get(id);
       if (pausedState?.paused) renderPausedOverlay(tile, tile.querySelector('video'), true, pausedState.opts);
+      // E de novo o mesmo motivo, pela ordem inversa: o 'broadcast-state'
+      // que diz "esta tela aceita rabisco" chega ANTES da primeira track,
+      // entao o setSurface daquele instante nao achou tile pra marcar.
+      const annotInfo = annotSurfaces.get(id);
+      if (annotInfo) {
+        setAnnotSurface(id, { surfaceId: annotInfo.surfaceId, allowed: true, canClearAll: annotInfo.canClearAll });
+      }
     }
 
     const video = tile.querySelector('video');
@@ -432,6 +447,10 @@
 
   function removeTile(id, emptyMessage) {
     document.getElementById(`tile-${id}`)?.remove();
+    // A lousa morre com a tela: parou de compartilhar, o desenho vai junto
+    // (spec de 2026-09-04, secao 8) -- e o observador de tamanho tem de
+    // soltar o elemento que acabou de sair do DOM.
+    releaseTileAnnotations(id);
     syncGridCount();
     releaseTileAudio(id);
     tileRegistry.delete(id);
@@ -450,6 +469,389 @@
     if (!gridEl.children.length) {
       gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
     }
+  }
+
+  // ---------- Anotacao na tela (rabisco e escrita) ----------
+  //
+  // O deposito de itens e a matematica de coordenada moram em annotate.js
+  // (puros, testados). Aqui fica o que precisa de DOM: o canvas por cima do
+  // video, o ponteiro, a barrinha de ferramentas e o lote de pontos por
+  // quadro. Ver a spec de 2026-09-04, secao 5.
+  //
+  // O que sai daqui pra rede sai por `onAnnotOp`; o que chega da rede entra
+  // por `applyAnnotOp`. Os dois passam pelo MESMO `store.apply`, entao nao
+  // existe um formato de item "local" e outro "remoto".
+
+  const annotStore = annotate.createStore();
+  // tileId -> { surfaceId, canClearAll }. Um tile so esta nesta tabela
+  // quando aquela tela aceita anotacao; sair dela e o que apaga a lousa.
+  const annotSurfaces = new Map();
+  const annotObservers = new Map(); // tileId -> ResizeObserver
+  let annotSelfId = 'me'; // id de conexao (o servidor carimba) -- decide a MINHA cor
+  let annotDrawingTile = null; // tile com o modo de desenho ligado (so um por vez)
+  let annotTool = 'pen';
+  let onAnnotOp = null;
+
+  const ANNOT_TOOLS = {
+    pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>',
+    text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+    undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.51 13a9 9 0 1 0 2.13-9.36L3 7"/></svg>',
+    clear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
+    off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  };
+
+  function annotSetSelf(id) {
+    annotSelfId = id == null ? 'me' : String(id);
+    for (const tileId of annotSurfaces.keys()) syncAnnotBar(tileId);
+  }
+
+  /** Liga (ou desliga) a lousa de um tile. `surfaceId` e o dono da tela --
+   * a chave da lousa, igual dos dois lados do fio. `allowed: false` desliga
+   * tudo e apaga: quem parou de compartilhar levou a lousa junto. */
+  function setAnnotSurface(tileId, { surfaceId, allowed, canClearAll = false } = {}) {
+    const tile = document.getElementById(`tile-${tileId}`);
+    if (!allowed || !surfaceId) {
+      if (annotSurfaces.has(tileId)) {
+        const old = annotSurfaces.get(tileId);
+        annotStore.drop(old.surfaceId);
+      }
+      annotSurfaces.delete(tileId);
+      if (annotDrawingTile === tileId) setAnnotDrawing(tileId, false);
+      if (tile) {
+        tile.classList.remove('annotatable');
+        tile.querySelector('.tile-annot-btn').hidden = true;
+        clearAnnotCanvas(tile);
+      }
+      return;
+    }
+    annotSurfaces.set(tileId, { surfaceId: String(surfaceId), canClearAll });
+    if (!tile) return;
+    tile.classList.add('annotatable');
+    tile.querySelector('.tile-annot-btn').hidden = false;
+    syncAnnotBar(tileId);
+    redrawAnnot(tileId);
+  }
+
+  function annotSurfaceOf(tileId) {
+    return annotSurfaces.get(tileId)?.surfaceId || null;
+  }
+
+  /** Aplica uma op vinda da rede. `from` e sempre o carimbo do servidor --
+   * e dele que sai a cor, entao ninguem desenha com a cor de outro. */
+  function applyAnnotOp(surfaceId, from, op) {
+    // `clear all` so vale do dono da tela: o servidor nao guarda estado de
+    // anotacao e nao tem como saber disso, entao a checagem e aqui, do
+    // mesmo jeito cooperativo do resto do app.
+    if (op?.op === 'clear' && op.scope === 'all' && String(from) !== String(surfaceId)) return;
+    if (!annotStore.apply(surfaceId, from, op)) return;
+    for (const [tileId, info] of annotSurfaces) {
+      if (info.surfaceId === String(surfaceId)) {
+        redrawAnnot(tileId);
+        syncAnnotBar(tileId);
+      }
+    }
+  }
+
+  function loadAnnotSnapshot(surfaceId, items) {
+    annotStore.load(surfaceId, items);
+    for (const [tileId, info] of annotSurfaces) {
+      if (info.surfaceId === String(surfaceId)) redrawAnnot(tileId);
+    }
+  }
+
+  function annotSnapshot(surfaceId) {
+    return annotStore.snapshot(surfaceId);
+  }
+
+  /** Manda a op pra rede E aplica localmente. A ordem importa pouco, mas
+   * aplicar aqui e o que faz o traco aparecer sem esperar a volta do
+   * servidor -- o proprio servidor nao devolve a op pra quem mandou. */
+  function emitAnnotOp(tileId, op) {
+    const surfaceId = annotSurfaceOf(tileId);
+    if (!surfaceId) return;
+    applyLocalAnnot(surfaceId, op);
+    onAnnotOp?.(surfaceId, op);
+  }
+
+  function applyLocalAnnot(surfaceId, op) {
+    if (!surfaceId) return; // tile deixou de aceitar anotacao no meio do traco
+    if (!annotStore.apply(surfaceId, annotSelfId, op)) return;
+    for (const [tileId, info] of annotSurfaces) {
+      if (info.surfaceId === String(surfaceId)) {
+        redrawAnnot(tileId);
+        syncAnnotBar(tileId);
+      }
+    }
+  }
+
+  // ---- desenho ----
+
+  function annotCanvasOf(tile) {
+    return tile?.querySelector('.tile-annot-canvas') || null;
+  }
+
+  function clearAnnotCanvas(tile) {
+    const canvas = annotCanvasOf(tile);
+    const ctx = canvas?.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  /** Redesenha a lousa inteira a partir da lista de itens. O canvas nunca e
+   * a fonte da verdade -- e por isso que redimensionar a janela, entrar em
+   * fullscreen ou receber a tela em outra resolucao nao perde nada. */
+  function redrawAnnot(tileId) {
+    const tile = document.getElementById(`tile-${tileId}`);
+    const canvas = annotCanvasOf(tile);
+    const surfaceId = annotSurfaceOf(tileId);
+    if (!tile || !canvas || !surfaceId) return;
+
+    const box = tile.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    // devicePixelRatio: sem isto o traco fica serrilhado em tela 4K, que e
+    // exatamente o publico do app.
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(box.width * dpr);
+    const h = Math.round(box.height * dpr);
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, box.width, box.height);
+
+    const video = tile.querySelector('video');
+    const rect = annotate.contentRect(video?.videoWidth, video?.videoHeight, box.width, box.height);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.textBaseline = 'top';
+    for (const item of annotStore.items(surfaceId)) {
+      const cor = annotate.colorFor(item.from);
+      if (item.kind === 'stroke') {
+        ctx.strokeStyle = cor;
+        ctx.lineWidth = item.width;
+        // Sombra fraca por baixo: tinta clara sobre video claro (uma janela
+        // branca, um documento) sumiria sem um contorno.
+        ctx.shadowColor = 'rgba(0,0,0,.55)';
+        ctx.shadowBlur = 3;
+        ctx.beginPath();
+        item.points.forEach(([x, y], i) => {
+          const p = annotate.toPx(x, y, rect);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        if (item.points.length === 1) {
+          // Um toque sem arrasto e um ponto, nao nada.
+          const p = annotate.toPx(item.points[0][0], item.points[0][1], rect);
+          ctx.arc(p.x, p.y, item.width / 2, 0, Math.PI * 2);
+          ctx.fillStyle = cor;
+          ctx.fill();
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      } else if (item.kind === 'text') {
+        const p = annotate.toPx(item.x, item.y, rect);
+        // O tamanho da fonte acompanha a caixa do video: um texto de 20px
+        // numa previa de 320px e um berro; o mesmo texto em fullscreen
+        // seria uma formiga. Escala pela altura do conteudo.
+        const size = item.size * (rect.height / 540);
+        ctx.font = `600 ${Math.max(10, size)}px system-ui, sans-serif`;
+        ctx.shadowColor = 'rgba(0,0,0,.65)';
+        ctx.shadowBlur = 4;
+        ctx.fillStyle = cor;
+        ctx.fillText(item.text, p.x, p.y);
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  /** Liga/desliga o modo de desenho de um tile. Com ele desligado o canvas
+   * e `pointer-events: none` -- o duplo clique do fullscreen, o botao
+   * direito do mute e o arrasto do PiP continuam funcionando como sempre.
+   * E a razao de o modo ser explicito: o tile ja tem quatro gestos, e
+   * roubar todos eles pra caneta seria pior que um clique a mais. */
+  function setAnnotDrawing(tileId, on) {
+    if (on && annotDrawingTile && annotDrawingTile !== tileId) setAnnotDrawing(annotDrawingTile, false);
+    const tile = document.getElementById(`tile-${tileId}`);
+    if (!tile) return;
+    tile.classList.toggle('annot-on', on);
+    tile.querySelector('.tile-annot-bar').hidden = !on;
+    tile.querySelector('.tile-annot-btn').classList.toggle('active', on);
+    annotDrawingTile = on ? tileId : (annotDrawingTile === tileId ? null : annotDrawingTile);
+    if (on) syncAnnotBar(tileId);
+    else closeAnnotTextInput(tile);
+  }
+
+  function syncAnnotBar(tileId) {
+    const tile = document.getElementById(`tile-${tileId}`);
+    const bar = tile?.querySelector('.tile-annot-bar');
+    const surfaceId = annotSurfaceOf(tileId);
+    if (!bar || !surfaceId) return;
+    const info = annotSurfaces.get(tileId);
+    const temMeu = annotStore.hasFrom(surfaceId, annotSelfId);
+    bar.innerHTML = `
+      <button type="button" class="annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta">${ANNOT_TOOLS.pen}</button>
+      <button type="button" class="annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever">${ANNOT_TOOLS.text}</button>
+      <span class="annot-sep"></span>
+      <button type="button" class="annot-tool" data-act="undo" title="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
+      <button type="button" class="annot-tool" data-act="clear-mine" title="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
+      ${info.canClearAll ? `<button type="button" class="annot-tool warn" data-act="clear-all" title="Apagar tudo (é a sua tela)">${ANNOT_TOOLS.clear}<em>tudo</em></button>` : ''}
+      <span class="annot-sep"></span>
+      <span class="annot-ink" style="background:${annotate.colorFor(annotSelfId)}" title="Esta é a sua cor"></span>
+      <button type="button" class="annot-tool" data-act="off" title="Sair do modo rabisco">${ANNOT_TOOLS.off}</button>`;
+  }
+
+  /** Amarra o tile ao sistema de anotacao, uma vez, na criacao dele. Todo
+   * o resto e delegado (a barra e remontada a cada mudanca de estado, entao
+   * ouvir no container e o que evita religar listener a cada render). */
+  function wireTileAnnotations(tile, tileId) {
+    const canvas = annotCanvasOf(tile);
+    const bar = tile.querySelector('.tile-annot-bar');
+
+    tile.querySelector('.tile-annot-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setAnnotDrawing(tileId, !tile.classList.contains('annot-on'));
+    });
+
+    bar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.dataset.tool) {
+        annotTool = btn.dataset.tool;
+        syncAnnotBar(tileId);
+        return;
+      }
+      switch (btn.dataset.act) {
+        case 'undo': emitAnnotOp(tileId, { op: 'undo' }); break;
+        case 'clear-mine': emitAnnotOp(tileId, { op: 'clear', scope: 'mine' }); break;
+        case 'clear-all': emitAnnotOp(tileId, { op: 'clear', scope: 'all' }); break;
+        case 'off': setAnnotDrawing(tileId, false); break;
+        default: break;
+      }
+    });
+
+    // Um traco por vez por tile. `pending` junta os pontos do quadro
+    // corrente: um `points` por quadro de animacao, nao um por pointermove
+    // (~180 mensagens num traco de 3s viram ~50).
+    let stroke = null;
+    let pending = [];
+    let flushTimer = null;
+
+    function pointOf(event) {
+      const box = tile.getBoundingClientRect();
+      const video = tile.querySelector('video');
+      const rect = annotate.contentRect(video?.videoWidth, video?.videoHeight, box.width, box.height);
+      return annotate.toNorm(event.clientX - box.left, event.clientY - box.top, rect);
+    }
+
+    /** So MANDA -- nao aplica. O ponto ja foi desenhado localmente no
+     * proprio pointermove; aplicar de novo aqui duplicaria cada ponto do
+     * traco no proprio deposito de quem esta desenhando. */
+    function flush() {
+      flushTimer = null;
+      if (!stroke || !pending.length) return;
+      const points = pending;
+      pending = [];
+      onAnnotOp?.(annotSurfaceOf(tileId), { op: 'points', id: stroke, points });
+    }
+
+    canvas.addEventListener('pointerdown', (event) => {
+      if (!tile.classList.contains('annot-on') || event.button !== 0) return;
+      event.stopPropagation();
+      const p = pointOf(event);
+      if (annotTool === 'text') {
+        openAnnotTextInput(tile, tileId, p, event);
+        return;
+      }
+      stroke = `${annotSelfId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      canvas.setPointerCapture(event.pointerId);
+      emitAnnotOp(tileId, { op: 'begin', id: stroke, x: p.x, y: p.y, width: 4 });
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!stroke) return;
+      const p = pointOf(event);
+      // Desenha JA, sem esperar o lote: o traco tem de acompanhar o dedo.
+      applyLocalAnnot(annotSurfaceOf(tileId), { op: 'points', id: stroke, points: [[p.x, p.y]] });
+      // E guarda pro lote que vai pra rede no proximo quadro.
+      pending.push([p.x, p.y]);
+      if (flushTimer === null) flushTimer = requestAnimationFrame(flush);
+    });
+
+    const finish = () => {
+      if (!stroke) return;
+      if (flushTimer !== null) {
+        cancelAnimationFrame(flushTimer);
+        flushTimer = null;
+      }
+      if (pending.length) {
+        onAnnotOp?.(annotSurfaceOf(tileId), { op: 'points', id: stroke, points: pending });
+        pending = [];
+      }
+      onAnnotOp?.(annotSurfaceOf(tileId), { op: 'end', id: stroke });
+      stroke = null;
+    };
+    canvas.addEventListener('pointerup', finish);
+    canvas.addEventListener('pointercancel', finish);
+    canvas.addEventListener('pointerleave', finish);
+
+    // O tile muda de tamanho por muitos caminhos (janela, contagem da
+    // grade, fullscreen). Um observador cobre todos.
+    const observer = new ResizeObserver(() => redrawAnnot(tileId));
+    observer.observe(tile);
+    annotObservers.set(tileId, observer);
+  }
+
+  function releaseTileAnnotations(tileId) {
+    annotObservers.get(tileId)?.disconnect();
+    annotObservers.delete(tileId);
+    const info = annotSurfaces.get(tileId);
+    if (info) annotStore.drop(info.surfaceId);
+    annotSurfaces.delete(tileId);
+    if (annotDrawingTile === tileId) annotDrawingTile = null;
+  }
+
+  /** Escrita: um campo de uma linha no ponto clicado. Enter fecha, Esc
+   * cancela, clicar fora fecha -- e um rotulo, nao um paragrafo. */
+  function openAnnotTextInput(tile, tileId, point, event) {
+    closeAnnotTextInput(tile);
+    const box = tile.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'annot-text-input';
+    input.maxLength = annotate.MAX_TEXT;
+    input.placeholder = 'escreva e dê Enter';
+    input.style.left = `${event.clientX - box.left}px`;
+    input.style.top = `${event.clientY - box.top}px`;
+    input.style.color = annotate.colorFor(annotSelfId);
+    tile.appendChild(input);
+    input.focus();
+
+    const commit = () => {
+      const text = input.value.trim();
+      input.remove();
+      if (!text) return;
+      emitAnnotOp(tileId, {
+        op: 'text',
+        id: `${annotSelfId}-t-${Date.now().toString(36)}`,
+        x: point.x,
+        y: point.y,
+        text,
+        size: 20,
+      });
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // Esc aqui nao pode fechar modal nenhum
+      if (e.key === 'Enter') commit();
+      else if (e.key === 'Escape') input.remove();
+    });
+    input.addEventListener('blur', commit);
+  }
+
+  function closeAnnotTextInput(tile) {
+    tile?.querySelector('.annot-text-input')?.remove();
   }
 
   // ---------- PiP (miniaturas dentro do fullscreen) ----------
@@ -695,17 +1097,30 @@
     document.removeEventListener('click', closeTileMenu);
   }
 
+  /** Menu de contexto do tile: o que e sobre AQUELA TELA -- silenciar e
+   * volume, os dois locais (GainNode, sem passar pelo servidor).
+   *
+   * O cabecalho com nome e avatar nao e enfeite: "Silenciar" saiu do menu ⋮
+   * do membro (2026-09-04, secao 3.2) e este virou o unico lugar onde se
+   * silencia alguem. Sem dizer de QUEM e o menu, a resposta pra "silenciar
+   * quem?" so viria depois do clique. */
   function openTileMenu(id, x, y) {
     closeTileMenu();
     const state = getOrCreateAudioState(id);
+    const entry = tileRegistry.get(id);
+    const nome = entry?.displayName || entry?.label || 'esta tela';
 
     const menu = document.createElement('div');
     menu.className = 'tile-menu';
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
     menu.innerHTML = `
+      <div class="tile-menu-head">
+        <span class="tile-menu-avatar">${avatarInnerHtml(entry?.displayName || id, nome, entry?.avatar || null)}</span>
+        <span class="tile-menu-name" title="${escapeHtml(nome)}">${escapeHtml(nome)}</span>
+      </div>
       <label class="check compact tile-menu-mute-row">
-        <input type="checkbox" class="tile-menu-mute" ${state.muted ? 'checked' : ''} />
+        <input type="checkbox" class="tile-menu-mute" ${isMuted(id) ? 'checked' : ''} />
         <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
         <span class="check-text"><span class="check-title">Silenciar</span></span>
       </label>
@@ -723,8 +1138,10 @@
 
     const muteCheckbox = menu.querySelector('.tile-menu-mute');
     muteCheckbox.addEventListener('change', () => {
-      state.muted = muteCheckbox.checked;
-      applyGain();
+      // setMuted (e nao `state.muted = ...`) pra que exista UM caminho de
+      // codigo pra silenciar, agora que este e o unico lugar da UI que o
+      // oferece.
+      setMuted(id, muteCheckbox.checked);
     });
 
     const range = menu.querySelector('input[type=range]');
@@ -1010,36 +1427,37 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMemberMenu(); });
 
   const MODERATE_ICONS = {
-    mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>',
     'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
+    'transfer-owner': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l4.5 4L12 5l4.5 6L21 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>',
     kick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>',
     ban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
   };
 
-  /** Abre o menu do membro `id` ancorado no botao clicado. `isOwner` decide
-   * se aparecem os tres poderes de moderacao ou so "Silenciar" (ver a spec,
-   * secao 8.2 -- item desabilitado nao aparece, so ensina o que falta).
-   * `onModerate` so e chamado pras acoes que passam pelo servidor
-   * (stop-share/kick/ban); "Silenciar" nunca chega la. */
-  function openMemberMenu(btn, id, name, isOwner, onModerate) {
+  /** Abre o menu do membro `id` ancorado no botao clicado.
+   *
+   * Este menu e SO sobre a pessoa na sala: moderar. "Silenciar" saiu daqui
+   * (2026-09-04, secao 3) -- ele e local, so meu, e so faz sentido sobre uma
+   * TELA; mora no botao direito do tile, junto do volume, onde sempre
+   * esteve. E "Parar transmissão" so aparece pra quem esta ao vivo AGORA:
+   * pedir pra parar uma transmissao que nao existe e um item que nao faz
+   * nada.
+   *
+   * Todo item daqui passa pelo servidor, entao todo item chama `onModerate`.
+   * Quem nao e dono nao chega ate aqui -- `buildMemberRow` nem desenha o
+   * botao ⋮ (menu sem item nao abre). */
+  function openMemberMenu(btn, id, name, { live = false, targetIsOwner = false, onModerate } = {}) {
     const rect = btn.getBoundingClientRect();
     memberMenuEl.innerHTML = `
-      <div class="member-menu-item" role="menuitem" data-mute="1">${MODERATE_ICONS.mute} ${isMuted(id) ? 'Reativar som' : 'Silenciar'}</div>
-      ${isOwner ? `
-        <div class="member-menu-sep"></div>
-        <div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>
-        <div class="member-menu-item" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</div>
-        <div class="member-menu-item danger" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</div>
-        <div class="member-menu-hint">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
-      ` : ''}
+      ${live ? `<div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>` : ''}
+      ${targetIsOwner ? '' : `<div class="member-menu-item" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</div>`}
+      ${live || !targetIsOwner ? '<div class="member-menu-sep"></div>' : ''}
+      <div class="member-menu-item" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</div>
+      <div class="member-menu-item danger" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</div>
+      <div class="member-menu-hint">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
     `;
     memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
     memberMenuEl.style.top = `${rect.bottom + 4}px`;
     memberMenuEl.classList.remove('hidden');
-    memberMenuEl.querySelector('[data-mute]').addEventListener('click', () => {
-      setMuted(id, !isMuted(id));
-      closeMemberMenu();
-    });
     for (const item of memberMenuEl.querySelectorAll('[data-action]')) {
       item.addEventListener('click', () => {
         onModerate?.(item.dataset.action, id, name);
@@ -1053,6 +1471,10 @@
   // saturado do tema). Sem anel no estado normal -- "conectado" e "ao vivo"
   // sao a mesma afirmacao neste tema.
   function buildMemberRow({ id, name, avatar, live, isSelf, pulsing, qualityTag, isOwner, canModerate, onModerate }) {
+    // O ⋮ so existe quando ha o que fazer: pra quem nao e dono da sala, o
+    // menu inteiro ficou vazio quando "Silenciar" saiu dele, e um botao que
+    // abre um menu vazio e pior do que botao nenhum.
+    const showMenu = !isSelf && canModerate;
     const li = document.createElement('li');
     if (isSelf) li.classList.add('self');
     li.innerHTML = `
@@ -1067,12 +1489,12 @@
         ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
         : ''
       }
-      ${!isSelf ? `<button class="member-menu-btn" type="button" aria-label="Opções de ${escapeHtml(name)}">⋮</button>` : ''}
+      ${showMenu ? `<button class="member-menu-btn" type="button" aria-label="Moderar ${escapeHtml(name)}">⋮</button>` : ''}
     `;
-    if (!isSelf) {
+    if (showMenu) {
       li.querySelector('.member-menu-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        openMemberMenu(e.currentTarget, id, name, canModerate, onModerate);
+        openMemberMenu(e.currentTarget, id, name, { live, targetIsOwner: isOwner, onModerate });
       });
     }
     return li;
@@ -1182,6 +1604,20 @@
     lastChatAuthorId = null; // proxima mensagem de texto nao agrupa com o que veio antes de uma linha de sistema
   }
 
+  /** Miniatura de imagem da linha do chat. As dimensoes viajam na mensagem
+   * (ver o servidor), entao a caixa ja nasce com a altura certa e a lista
+   * nao "pula" quando o bitmap decodifica.
+   *
+   * `src` sempre vem de um data URL validado (chatmedia.isImageDataUrl) --
+   * o atributo e montado com o valor cru de proposito: escapar um data URL
+   * o quebraria, e a validacao ja garantiu que ele nao e outra coisa. */
+  function chatImageHtml(entry) {
+    if (!chatmedia.isImageDataUrl(entry.image)) return '';
+    const box = chatmedia.thumbBox(entry.w, entry.h);
+    const dims = box ? ` style="width:${box.w}px;height:${box.h}px"` : '';
+    return `<button class="chat-image" type="button" title="Ver em tela cheia"${dims}><img src="${entry.image}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
+  }
+
   function appendMessage(entry) {
     const grouped = lastChatAuthorId === entry.from;
     lastChatAuthorId = entry.from;
@@ -1191,11 +1627,37 @@
       <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
       <span class="chat-body">
         ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
-        <span class="chat-text">${escapeHtml(entry.text)}</span>
+        ${entry.text ? `<span class="chat-text">${escapeHtml(entry.text)}</span>` : ''}
+        ${chatImageHtml(entry)}
       </span>
     `;
+    const imgBtn = div.querySelector('.chat-image');
+    if (imgBtn) imgBtn.addEventListener('click', () => openImageLightbox(entry.image));
     chatMessagesEl.appendChild(div);
   }
+
+  // ---------- Imagem em tela cheia ----------
+  const lightboxEl = $('image-lightbox');
+  const lightboxImgEl = $('image-lightbox-img');
+
+  function openImageLightbox(src) {
+    lightboxImgEl.src = src;
+    lightboxEl.classList.remove('hidden');
+    lastFocusedBeforeModal = document.activeElement;
+    $('image-lightbox-close').focus();
+  }
+  function closeImageLightbox() {
+    lightboxEl.classList.add('hidden');
+    // `src=''` e o que solta o bitmap: sem isso a imagem aberta por ultimo
+    // fica decodificada na memoria enquanto o app estiver aberto.
+    lightboxImgEl.src = '';
+    restoreFocusAfterModal();
+  }
+  $('image-lightbox-close').addEventListener('click', closeImageLightbox);
+  lightboxEl.addEventListener('click', (e) => { if (e.target !== lightboxImgEl) closeImageLightbox(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !lightboxEl.classList.contains('hidden')) closeImageLightbox();
+  });
 
   function appendEntry(entry) {
     if (entry.system) appendSystemLine(entry);
@@ -1219,16 +1681,55 @@
     chatOfflineBarEl.classList.toggle('hidden', enabled);
   }
 
+  // ---------- Anexo de imagem (previa antes de mandar) ----------
+  //
+  // A imagem escolhida espera aqui ate a pessoa mandar, em vez de sair
+  // sozinha: colar imagem por engano e comum e o chat nao tem apagar (spec
+  // de 2026-09-04, secao 6.1). Ela pode ir com legenda, ou sozinha.
+  const attachmentEl = $('chat-attachment');
+  const attachmentImgEl = $('chat-attachment-img');
+  const attachmentInfoEl = $('chat-attachment-info');
+  let pendingAttachment = null; // { dataUrl, w, h, label } | null
+  let onChatPickImage = null;
+
+  function setAttachment(att) {
+    pendingAttachment = att || null;
+    if (!pendingAttachment) {
+      attachmentEl.classList.add('hidden');
+      attachmentImgEl.src = '';
+      return;
+    }
+    attachmentImgEl.src = pendingAttachment.dataUrl;
+    attachmentInfoEl.textContent = pendingAttachment.label || '';
+    attachmentEl.classList.remove('hidden');
+    chatInputEl.focus();
+  }
+  function clearAttachment() {
+    setAttachment(null);
+  }
+  $('chat-attachment-remove').addEventListener('click', clearAttachment);
+
   function sendCurrentInput() {
     const text = chatInputEl.value.trim();
-    if (!text) return;
-    onChatSend?.(text);
+    if (!text && !pendingAttachment) return;
+    onChatSend?.(text, pendingAttachment);
     chatInputEl.value = '';
     chatCountEl.classList.add('hidden');
+    clearAttachment();
   }
 
-  function render({ onSend }) {
+  /** Passa o arquivo pro app.js reduzir e devolver via setAttachment. O
+   * primeiro arquivo so: mandar cinco imagens de uma vez estouraria a cota
+   * de rajada do servidor e ninguem entenderia por que so tres chegaram. */
+  function offerFiles(files) {
+    const file = Array.from(files || []).find((f) => chatmedia.isAcceptedType(f.type));
+    if (file) onChatPickImage?.(file);
+  }
+
+  function render({ onSend, onPickImage, getEmojiRecents, onEmojiUsed }) {
     onChatSend = onSend;
+    onChatPickImage = onPickImage;
+    initEmojiPanel({ getEmojiRecents, onEmojiUsed });
     // #chat-compose e um <form> sem action -- um submit acidental (Enter num
     // futuro <input>, extensao) navegaria o renderer pra file://.../?. Corta.
     chatComposeEl.addEventListener('submit', (e) => e.preventDefault());
@@ -1243,6 +1744,149 @@
       chatCountEl.textContent = `${len}/500`;
       chatCountEl.classList.toggle('hidden', len < 400);
     });
+
+    // Colar (Ctrl+V): print de tela vem como `image/png` nos itens da area
+    // de transferencia. Sem preventDefault -- colar TEXTO tem de continuar
+    // funcionando; so intercepta quando ha imagem de fato.
+    chatInputEl.addEventListener('paste', (e) => {
+      const files = Array.from(e.clipboardData?.files || []);
+      if (!files.some((f) => chatmedia.isAcceptedType(f.type))) return;
+      e.preventDefault();
+      offerFiles(files);
+    });
+
+    // Arrastar em cima da coluna do chat.
+    const dropZone = chatMessagesEl.closest('.chat-section') || chatMessagesEl;
+    dropZone.addEventListener('dragover', (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+      e.preventDefault();
+      dropZone.classList.add('dropping');
+    });
+    dropZone.addEventListener('dragleave', (e) => {
+      if (e.target === dropZone) dropZone.classList.remove('dropping');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      if (!e.dataTransfer?.files?.length) return;
+      e.preventDefault();
+      dropZone.classList.remove('dropping');
+      offerFiles(e.dataTransfer.files);
+    });
+
+    const fileInput = $('chat-file');
+    $('btn-chat-attach').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      offerFiles(fileInput.files);
+      fileInput.value = ''; // escolher a MESMA imagem duas vezes seguidas tem de disparar o change de novo
+    });
+  }
+
+  // ---------- Painel de emoji ----------
+
+  const emojiPanelEl = $('emoji-panel');
+  const emojiListEl = $('emoji-list');
+  const emojiTabsEl = $('emoji-tabs');
+  const emojiSearchEl = $('emoji-search-input');
+  const emojiBtnEl = $('btn-chat-emoji');
+  let emojiGroup = 'recentes';
+  let emojiDeps = { getEmojiRecents: () => [], onEmojiUsed: () => {} };
+
+  function initEmojiPanel(deps) {
+    emojiDeps = { getEmojiRecents: () => [], onEmojiUsed: () => {}, ...deps };
+    emojiTabsEl.innerHTML = [
+      { id: 'recentes', icon: '🕐', label: 'Recentes' },
+      ...emoji.GROUPS.map((g) => ({ id: g.id, icon: g.icon, label: g.label })),
+    ]
+      .map((t) => `<button type="button" class="emoji-tab" data-group="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}">${t.icon}</button>`)
+      .join('');
+    emojiTabsEl.addEventListener('click', (e) => {
+      const tab = e.target.closest('.emoji-tab');
+      if (!tab) return;
+      emojiGroup = tab.dataset.group;
+      emojiSearchEl.value = '';
+      renderEmojiList();
+    });
+    emojiSearchEl.addEventListener('input', renderEmojiList);
+    emojiBtnEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (emojiPanelEl.classList.contains('hidden')) openEmojiPanel();
+      else closeEmojiPanel();
+    });
+    emojiPanelEl.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => closeEmojiPanel());
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !emojiPanelEl.classList.contains('hidden')) {
+        closeEmojiPanel();
+        chatInputEl.focus();
+      }
+    });
+  }
+
+  function renderEmojiList() {
+    const query = emojiSearchEl.value.trim();
+    let chars;
+    let vazio = '';
+    if (query) {
+      chars = emoji.search(query);
+      vazio = 'nenhum emoji com esse nome';
+    } else if (emojiGroup === 'recentes') {
+      chars = emoji.loadRecents(emojiDeps.getEmojiRecents());
+      vazio = 'os que você usar aparecem aqui';
+    } else {
+      chars = (emoji.GROUPS.find((g) => g.id === emojiGroup)?.items || []).map(([c]) => c);
+    }
+    for (const tab of emojiTabsEl.children) {
+      const ativo = !query && tab.dataset.group === emojiGroup;
+      tab.classList.toggle('active', ativo);
+    }
+    emojiListEl.innerHTML = chars.length
+      ? chars.map((c) => `<button type="button" class="emoji-item" data-emoji="${c}" title="${escapeHtml(emoji.labelFor(c))}">${c}</button>`).join('')
+      : `<p class="emoji-empty">${vazio}</p>`;
+  }
+
+  function openEmojiPanel() {
+    // Ancorado ACIMA do compose, alinhado a direita do botao -- o painel tem
+    // altura fixa, entao da pra posicionar sem medir o conteudo.
+    const rect = emojiBtnEl.getBoundingClientRect();
+    emojiSearchEl.value = '';
+    emojiGroup = emoji.loadRecents(emojiDeps.getEmojiRecents()).length ? 'recentes' : emoji.GROUPS[0].id;
+    renderEmojiList();
+    emojiPanelEl.classList.remove('hidden');
+    const width = emojiPanelEl.offsetWidth;
+    const height = emojiPanelEl.offsetHeight;
+    emojiPanelEl.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))}px`;
+    emojiPanelEl.style.top = `${Math.max(8, rect.top - height - 8)}px`;
+    emojiBtnEl.setAttribute('aria-expanded', 'true');
+    emojiSearchEl.focus();
+  }
+
+  function closeEmojiPanel() {
+    emojiPanelEl.classList.add('hidden');
+    emojiBtnEl.setAttribute('aria-expanded', 'false');
+  }
+
+  emojiListEl?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.emoji-item');
+    if (!btn) return;
+    insertAtCursor(chatInputEl, btn.dataset.emoji);
+    emojiDeps.onEmojiUsed?.(btn.dataset.emoji);
+    // O painel NAO fecha: mandar tres emoji seguidos e o caso comum, e
+    // reabrir a cada um seria trabalho pra quem so queria "😂😂😂".
+    if (emojiGroup === 'recentes' && !emojiSearchEl.value.trim()) renderEmojiList();
+  });
+
+  /** Insere no CURSOR, nao no fim: quem parou no meio da frase pra pegar um
+   * emoji espera que ele caia onde o cursor estava. Mantem o desfazer do
+   * campo funcionando via execCommand quando disponivel. */
+  function insertAtCursor(input, text) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.focus();
+    input.setSelectionRange(start, end);
+    if (!document.execCommand?.('insertText', false, text)) {
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      input.setSelectionRange(start + text.length, start + text.length);
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   // ---------- Cabecalho da sala ----------
@@ -1459,18 +2103,38 @@
   // exibicao nao deveria depender da ordem de insercao de theme.js.
   const THEME_PRESET_ORDER = ['signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
 
-  /** Um cartao por predefinicao: a rampa das 5 superficies + a cor de acao
-   * em faixas -- nunca um quadrado solido com o nome escrito (spec 5.6). */
+  /** Um cartao por predefinicao: o app EM MINIATURA, com as cores daquela
+   * predefinicao aplicadas inline -- nao um quadrado solido com o nome
+   * escrito (spec 2026-09-03, 5.6), e nao mais a rampa de cinco faixas que
+   * havia aqui: num tema escuro as cinco superficies sao quase o mesmo
+   * preto, e a rampa lia como um retangulo vazio. A miniatura mostra a
+   * mesma coisa (a escada de superficies) DENTRO da forma do app, entao a
+   * diferenca aparece como o olho vai encontra-la depois: barra, palco,
+   * coluna e o botao de acao.
+   *
+   * Cores inline, nao `var(--...)`: as variaveis do tema sao globais, e
+   * aqui sao seis temas na tela ao mesmo tempo. */
   function renderThemePresetCard(id, activeId) {
     const preset = theme.PRESETS[id];
     const s = preset.surfaces;
-    const faixas = [s.bg, s.s1, s.s2, s.s3, s.s4, preset.act]
-      .map((hex) => `<span style="background:${hex}"></span>`)
-      .join('');
     const active = id === activeId;
     return `
       <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
-        <span class="theme-preset-ramp">${faixas}</span>
+        <span class="theme-preset-mini" style="background:${s.bg}">
+          <span class="tpm-top" style="background:${s.s1};border-color:${s.line2}">
+            <i style="background:${preset.act}"></i>
+            <b style="background:${s.s3}"></b>
+            <u style="background:var(--live)"></u>
+          </span>
+          <span class="tpm-body">
+            <span class="tpm-stage" style="background:${s.s2}"></span>
+            <span class="tpm-side">
+              <b style="background:${s.s3}"></b>
+              <b style="background:${s.s3}"></b>
+              <span class="tpm-cta" style="background:${preset.act}"></span>
+            </span>
+          </span>
+        </span>
         <span class="theme-preset-label">${escapeHtml(preset.label)}</span>
       </button>`;
   }
@@ -1568,24 +2232,66 @@
         <input id="settings-profile-name" type="text" placeholder="seu apelido" spellcheck="false" />
       </div>`;
 
+    // A previa e um pedaco de sala DE MENTIRA montado com os mesmos tokens
+    // do tema (`var(--s1)`, `var(--act)`, `var(--live)`...). Como theme.apply
+    // escreve esses tokens no `:root`, ela muda sozinha enquanto a pessoa
+    // arrasta o slider -- sem uma linha de codigo pra sincroniza-la. E a
+    // resposta pra "o que essa barrinha faz, afinal?".
     settingsPanes.appearance.innerHTML = `
+      <h3>Prévia</h3>
+      <div class="theme-preview" aria-hidden="true">
+        <div class="theme-preview-app">
+          <div class="theme-preview-top">
+            <span class="theme-preview-badge">GL</span>
+            <span class="theme-preview-title">GoLive LAN</span>
+            <span class="theme-preview-dot"></span>
+          </div>
+          <div class="theme-preview-body">
+            <div class="theme-preview-stage">
+              <span class="theme-preview-live">● AO VIVO</span>
+            </div>
+            <div class="theme-preview-side">
+              <span class="theme-preview-row"><i class="theme-preview-av"></i><b></b></span>
+              <span class="theme-preview-row"><i class="theme-preview-av"></i><b class="short"></b></span>
+              <span class="theme-preview-msg"></span>
+              <span class="theme-preview-msg short"></span>
+              <span class="theme-preview-cta">Compartilhar tela</span>
+            </div>
+          </div>
+        </div>
+        <ul class="theme-legend">
+          <li><span class="theme-legend-chip" style="background:var(--bg)"></span>fundo</li>
+          <li><span class="theme-legend-chip" style="background:var(--s2)"></span>painéis</li>
+          <li><span class="theme-legend-chip" style="background:var(--act)"></span>ação</li>
+          <li><span class="theme-legend-chip" style="background:var(--live)"></span>ao vivo</li>
+        </ul>
+      </div>
+
       <h3>Predefinições</h3>
       <div id="theme-presets" class="theme-presets"></div>
 
       <h3>Personalizar</h3>
       <div class="settings-field">
-        <label for="theme-temp">Base da interface: frio ↔ quente</label>
-        <input id="theme-temp" type="range" min="0" max="100" value="50" />
+        <label for="theme-temp">Temperatura do cinza</label>
+        <p class="settings-hint">Muda o fundo e os painéis de um cinza azulado pra um cinza quente. Não mexe no texto nem nas cores de aviso.</p>
+        <input id="theme-temp" type="range" min="0" max="100" value="50" class="range-temp" />
+        <span class="range-ends"><span>frio</span><span>quente</span></span>
       </div>
       <div class="settings-field">
-        <label for="theme-level">Base da interface: escuro ↔ claro</label>
-        <input id="theme-level" type="range" min="0" max="100" value="10" />
+        <label for="theme-level">Claridade do fundo</label>
+        <p class="settings-hint">Sobe ou desce as cinco superfícies de uma vez. No extremo claro, o app inteiro inverte pra tema claro.</p>
+        <input id="theme-level" type="range" min="0" max="100" value="10" class="range-level" />
+        <span class="range-ends"><span>escuro</span><span>claro</span></span>
       </div>
       <div class="settings-field">
         <label for="theme-act">Cor de ação</label>
+        <p class="settings-hint">Botão principal, foco do teclado e seleção. O vermelho de "ao vivo" e o âmbar de aviso não mudam — eles significam uma coisa só.</p>
         <input id="theme-act" type="color" value="#4F46E5" aria-describedby="theme-warning" />
       </div>
-      <p id="theme-warning" class="hint" role="alert"></p>`;
+      <p id="theme-warning" class="hint" role="alert"></p>
+      <div class="settings-actions">
+        <button id="btn-theme-reset" type="button" class="ghost small">Voltar ao padrão</button>
+      </div>`;
 
     settingsPanes.voice.innerHTML = `
       <h3>Câmera</h3>
@@ -1651,6 +2357,15 @@
     });
     ['theme-temp', 'theme-level', 'theme-act'].forEach((id) => {
       $(id).addEventListener('input', () => applyCustomThemeFromControls(deps));
+    });
+
+    // Voltar ao padrao: aplica o tema de fabrica E devolve os controles pro
+    // estado inicial. Sem o initThemeControls, os sliders continuariam na
+    // posicao antiga -- mostrando um tema que nao e mais o que esta no ar.
+    $('btn-theme-reset').addEventListener('click', () => {
+      const padrao = { preset: configApi.DEFAULTS.theme.preset };
+      deps.onThemeChange(padrao);
+      initThemeControls({ theme: padrao });
     });
 
     $('btn-open-logs').addEventListener('click', () => window.golive.openLogsFolder());
@@ -1980,7 +2695,7 @@
     }
   });
 
-  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange }) {
+  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange, allowAnnotations = false }) {
     selectedSourceId = null;
     btnGoLiveEl.disabled = true;
     pickerTab = 'screen';
@@ -1993,6 +2708,9 @@
     syncQualityAxes(quality.preset, false);
     pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
     shareSoundEl.checked = true;
+    // Vem da ULTIMA escolha (config), nao de um padrao fixo: e a mesma
+    // regra do "anunciar na rede" no dialogo de criar sala.
+    $('allow-annotations').checked = Boolean(allowAnnotations);
     shareDiscordEl.checked = false;
     shareDiscordRowEl.classList.remove('hidden');
     // Sem o addon nativo (Windows apenas), nao ha como excluir o Discord do
@@ -2006,7 +2724,7 @@
     btnGoLiveEl.onclick = async () => {
       closePicker();
       try {
-        await onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked);
+        await onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked, $('allow-annotations').checked);
       } catch (err) {
         console.error('[picker] onGoLive falhou:', err);
       }
@@ -2022,28 +2740,59 @@
     loadPickerSources();
   }
 
-  // ---------- Dialogo: Banir ----------
-  const dlgBanEl = $('dialog-ban');
-  let onBanConfirm = null;
+  // ---------- Dialogo: confirmacao (banir, passar a lideranca) ----------
+  //
+  // UM dialogo pros dois: eram dois quase iguais, e dois dialogos de
+  // confirmacao divergindo em detalhe de foco e de estilo e divida
+  // nascendo (spec de 2026-09-04, secao 4.4). O que varia e rotulo e tom
+  // do botao de confirmar; o foco nasce SEMPRE no Cancelar.
+  const dlgConfirmEl = $('dialog-confirm');
+  let onConfirmAccept = null;
+
+  function openConfirm({ title, text, confirmLabel = 'Confirmar', tone = 'destructive', onConfirm }) {
+    $('dialog-confirm-title').textContent = title;
+    $('dialog-confirm-text').textContent = text;
+    const okBtn = $('btn-confirm-ok');
+    okBtn.textContent = confirmLabel;
+    okBtn.className = tone === 'destructive' ? 'destructive' : 'primary';
+    onConfirmAccept = onConfirm;
+    dlgConfirmEl.classList.remove('hidden');
+    // Guarda o foco anterior pra restaura-lo no close (restoreFocusAfterModal).
+    lastFocusedBeforeModal = document.activeElement;
+    // Foco no Cancelar, nunca no botao que age (ver a spec de 2026-09-02, 8.3).
+    $('btn-confirm-cancel').focus();
+  }
+  function closeConfirm() {
+    dlgConfirmEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onConfirmAccept = null;
+  }
+  $('btn-confirm-cancel').addEventListener('click', closeConfirm);
+  $('btn-confirm-ok').addEventListener('click', () => { onConfirmAccept?.(); closeConfirm(); });
+  dlgConfirmEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConfirm(); });
 
   function openBan({ name, onConfirm }) {
-    $('dialog-ban-title').textContent = `Banir ${name} da sala?`;
-    $('dialog-ban-text').textContent = `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de membros.`;
-    onBanConfirm = onConfirm;
-    dlgBanEl.classList.remove('hidden');
-    // Guarda o foco anterior pra restaura-lo no closeBan (restoreFocusAfterModal).
-    lastFocusedBeforeModal = document.activeElement;
-    // Foco no Cancelar, nao no botao destrutivo (ver a spec, secao 8.3).
-    $('btn-ban-cancel').focus();
+    openConfirm({
+      title: `Banir ${name} da sala?`,
+      text: `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de membros.`,
+      confirmLabel: 'Banir',
+      tone: 'destructive',
+      onConfirm,
+    });
   }
-  function closeBan() {
-    dlgBanEl.classList.add('hidden');
-    restoreFocusAfterModal();
-    onBanConfirm = null;
+
+  /** Passar a lideranca nao e destrutivo -- e uma delegacao -- entao o botao
+   * e o de acao (primary), nao o vermelho. Irreversivel pelo lado de quem
+   * passa, o que e exatamente o que o texto diz. */
+  function openTransferOwner({ name, onConfirm }) {
+    openConfirm({
+      title: `Passar a liderança para ${name}?`,
+      text: `${name} passa a poder parar transmissões, expulsar e banir. Você deixa de poder — só ${name} pode devolver.`,
+      confirmLabel: 'Passar a liderança',
+      tone: 'primary',
+      onConfirm,
+    });
   }
-  $('btn-ban-cancel').addEventListener('click', closeBan);
-  $('btn-ban-confirm').addEventListener('click', () => { onBanConfirm?.(); closeBan(); });
-  dlgBanEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBan(); });
 
   // ---------- Barra de controle: estado visivel dos toggles ----------
   // Compartilhar/camera/pausa sabem o proprio estado (app.js ja escrevia
@@ -2084,17 +2833,26 @@
   root.GoLive.ui = {
     escapeHtml,
     grid: { showTile, removeTile, setPainting, setWatchers, setPaused },
+    annotations: {
+      setSelf: annotSetSelf,
+      setSurface: setAnnotSurface,
+      applyOp: applyAnnotOp,
+      load: loadAnnotSnapshot,
+      snapshot: annotSnapshot,
+      render: ({ onOp }) => { onAnnotOp = onOp; },
+      colorFor: annotate.colorFor,
+    },
     rooms: { render: renderRooms, setNetworkStatus: renderNetworkStatus },
     dialogs: {
       openCreateRoom, closeCreateRoom, setCreateRoomError,
       openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,
-      openBan, closeBan,
+      openBan, openTransferOwner, openConfirm, closeConfirm,
     },
     stageHeader: { set: setStageHeader, clear: clearStageHeader, setStatus: setStageStatus },
     settings: { open: openSettings, close: closeSettings, setStatsHtml },
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },
-    chat: { render, append, setHistory, setEnabled },
+    chat: { render, append, setHistory, setEnabled, setAttachment, clearAttachment },
     setToggleState,
   };
 })(window);
