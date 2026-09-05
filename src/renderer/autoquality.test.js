@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { initialState, next, worstHealth, LIMITS } = require('./autoquality');
+const { initialState, next, worstHealth, isBad, budgetMsFor, LIMITS } = require('./autoquality');
 
 const OK = { softwareEncoder: false, msPerFrame: 4 };
 const RUIM = { softwareEncoder: false, msPerFrame: 40 };
@@ -128,4 +128,57 @@ test('worstHealth: lista vazia ou so de nulos devolve null', () => {
 
 test('worstHealth ignora entradas invalidas sem lancar', () => {
   assert.equal(worstHealth([null, undefined, OK]).msPerFrame, 4);
+});
+
+// --- Orcamento por quadro proporcional ao fps do alvo ---
+//
+// BUDGET_MS_60 e o intervalo entre quadros A 60fps. Compara-lo com o
+// msPerFrame de um alvo de 30fps e cobrar do encoder o dobro da velocidade
+// que o stream precisa: a 30fps ha 33,3ms entre quadros, nao 16,6.
+//
+// Log de 2026-09-05, 04:54:50-55, maquina do nicol, duas quedas em CINCO
+// segundos:
+//   out=1920x1080@43fps realKbps=9481 msFrame=22.3 limite=nenhum -> g1
+//   out=1920x1080@29fps realKbps=4638 msFrame=20.6 limite=nenhum -> g2
+// 1080p sendo entregue a 9,5 Mbps, sem o Chromium reclamar de nada, e a
+// escada derrubando o alvo de 12000 pra 2500 kbps. A 30fps, 22,3ms cabe
+// folgado. Com o numero fixo, todo preset de 30fps nasce marcado como ruim
+// e a escada nunca para de oscilar.
+
+test('budgetMsFor: o orcamento e o intervalo entre quadros do alvo', () => {
+  assert.equal(Math.round(budgetMsFor(60) * 10) / 10, 16.7);
+  assert.equal(Math.round(budgetMsFor(30) * 10) / 10, 33.3);
+});
+
+test('budgetMsFor: nunca mais apertado que o de 60fps', () => {
+  // Alvo acima de 60fps nao torna a regra mais dura -- o custo por quadro ja
+  // e o piso do que a maquina consegue.
+  assert.ok(budgetMsFor(144) >= LIMITS.BUDGET_MS_60);
+  assert.ok(budgetMsFor(120) >= LIMITS.BUDGET_MS_60);
+});
+
+test('budgetMsFor: fps ausente ou torto cai no orcamento de 60fps', () => {
+  assert.equal(budgetMsFor(undefined), LIMITS.BUDGET_MS_60);
+  assert.equal(budgetMsFor(0), LIMITS.BUDGET_MS_60);
+  assert.equal(budgetMsFor(-5), LIMITS.BUDGET_MS_60);
+  assert.equal(budgetMsFor('trinta'), LIMITS.BUDGET_MS_60);
+});
+
+test('22,3 ms/quadro e RUIM a 60fps e SAUDAVEL a 30fps', () => {
+  const real = { softwareEncoder: true, msPerFrame: 22.3 };
+  assert.equal(isBad(real, budgetMsFor(60)), true);
+  assert.equal(isBad(real, budgetMsFor(30)), false);
+});
+
+test('cpuLimited segue derrubando mesmo com orcamento folgado', () => {
+  // O sinal autoritativo do Chromium nao depende do orcamento.
+  assert.equal(isBad({ cpuLimited: true, msPerFrame: 1 }, budgetMsFor(30)), true);
+});
+
+test('a 30fps, o caso real do log nao degrada nenhum degrau', () => {
+  const real = { softwareEncoder: true, msPerFrame: 22.3 };
+  const opts = { budgetMs: budgetMsFor(30) };
+  let s = initialState();
+  for (let i = 0; i < 60; i += 1) s = next(s, { atMs: i * 1000, health: real }, opts);
+  assert.equal(s.steps, 0);
 });

@@ -23,7 +23,32 @@
   const FREEZE_PER_MIN = 6;
   const LOSS_PCT_MAX = 2;
 
-  const LIMITS = { MAX_PEER_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, FREEZE_PER_MIN, LOSS_PCT_MAX };
+  // Carencia de um sender RECEM-CRIADO, contada da primeira amostra dele.
+  //
+  // Uma conexao que acabou de nascer ainda nao mandou pacote nenhum: o
+  // estimador de banda do WebRTC (GCC) parte do piso e sobe ao longo de
+  // alguns segundos. `qualityLimitationReason='bandwidth'` nesse intervalo
+  // e o ESTADO NORMAL de quem esta subindo, nao sinal de link ruim -- mas a
+  // escada lia como sofrimento e derrubava dois degraus antes de o primeiro
+  // quadro chegar do outro lado.
+  //
+  // Log de 2026-09-05, maquina do nicol, o caso mais limpo que aparece:
+  //   04:58:09 tela->gg out=960x540@0fps limite=bandwidth realKbps=0  p0
+  //   04:58:12 MUDOU                                                  p1
+  //   04:58:19 MUDOU out=853x480                                      p2
+  //   04:58:22 MUDOU out=1280x720 limite=nenhum realKbps=565          p2
+  // Treze segundos depois de nascer ja estava tudo bem -- e a essa altura
+  // ela ja estava no piso, com 40s de folga CONTINUA pela frente pra
+  // voltar. Toda conexao nova comecava estrangulada.
+  //
+  // 15s cobre a rampa tipica do GCC com folga. O custo, num link de fato
+  // ruim, e adiar a primeira queda em 15 segundos; o beneficio e nao punir
+  // TODA conexao nova por uma coisa que ia se resolver sozinha.
+  const WARMUP_MS = 15000;
+
+  const LIMITS = {
+    MAX_PEER_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, FREEZE_PER_MIN, LOSS_PCT_MAX, WARMUP_MS,
+  };
 
   /** Ruim = qualquer um: link limitado por banda, encoder do peer saturado
    * (relay afogado), ou travar muito sem que a rede explique.
@@ -52,7 +77,7 @@
   }
 
   function initialState() {
-    return { steps: 0, badSinceMs: null, goodSinceMs: null };
+    return { steps: 0, badSinceMs: null, goodSinceMs: null, startedAtMs: null };
   }
 
   /** Avanca a escada de UM peer com UMA amostra. Puro: relogio via
@@ -66,22 +91,36 @@
     const badMsToDegrade = o.badMsToDegrade ?? BAD_MS_TO_DEGRADE;
     const goodMsToRecover = o.goodMsToRecover ?? GOOD_MS_TO_RECOVER;
 
+    const warmupMs = o.warmupMs ?? WARMUP_MS;
+
     const prev = state || initialState();
     const atMs = Number(signals?.atMs) || 0;
+    // A PRIMEIRA amostra deste sender ancora o relogio da carencia -- nao o
+    // zero. updateStats roda desde que a sala abriu, e um sender pode nascer
+    // minutos depois; contar do zero daria carencia nenhuma pra ele.
+    const startedAtMs = prev.startedAtMs ?? atMs;
+
+    // Dentro da carencia a escada nao anda pra lado nenhum: nem desce (o
+    // sinal ainda nao vale), nem sobe (senao a carencia viraria folga
+    // observada de graca pra um peer que ja estava degradado). Os dois
+    // relogios zerados: quando ela acabar, a contagem comeca limpa.
+    if (atMs - startedAtMs < warmupMs) {
+      return { steps: prev.steps, badSinceMs: null, goodSinceMs: null, startedAtMs };
+    }
 
     if (isBad(signals, o)) {
       const badSinceMs = prev.badSinceMs ?? atMs;
       if (prev.steps < maxSteps && atMs - badSinceMs >= badMsToDegrade) {
-        return { steps: prev.steps + 1, badSinceMs: atMs, goodSinceMs: null };
+        return { steps: prev.steps + 1, badSinceMs: atMs, goodSinceMs: null, startedAtMs };
       }
-      return { steps: prev.steps, badSinceMs, goodSinceMs: null };
+      return { steps: prev.steps, badSinceMs, goodSinceMs: null, startedAtMs };
     }
 
     const goodSinceMs = prev.goodSinceMs ?? atMs;
     if (prev.steps > 0 && atMs - goodSinceMs >= goodMsToRecover) {
-      return { steps: prev.steps - 1, badSinceMs: null, goodSinceMs: atMs };
+      return { steps: prev.steps - 1, badSinceMs: null, goodSinceMs: atMs, startedAtMs };
     }
-    return { steps: prev.steps, badSinceMs: null, goodSinceMs };
+    return { steps: prev.steps, badSinceMs: null, goodSinceMs, startedAtMs };
   }
 
   const api = { initialState, next, isBad, LIMITS };
