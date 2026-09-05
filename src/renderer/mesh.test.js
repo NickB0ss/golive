@@ -226,12 +226,30 @@ function installFakeWebRTC() {
     createOffer() {
       return Promise.resolve({ type: 'offer', sdp: 'v=0' });
     }
+    // As transicoes de signalingState sao as do navegador de verdade, e
+    // setRemoteDescription LANCA fora de estado, como o navegador. Um fake
+    // permissivo aqui escondia o bug de 2026-09-05: uma 'answer' aplicada
+    // numa pc que nao esperava por ela lanca InvalidStateError e mata a
+    // conexao em silencio.
     setLocalDescription(desc) {
       this.localDescription = desc;
+      this.signalingState = desc.type === 'offer' ? 'have-local-offer' : 'stable';
       return Promise.resolve();
     }
     setRemoteDescription(desc) {
+      const ok = desc.type === 'offer'
+        ? this.signalingState === 'stable' || this.signalingState === 'have-remote-offer'
+        : this.signalingState === 'have-local-offer';
+      if (!ok) {
+        const err = new Error(
+          `Failed to execute 'setRemoteDescription' on 'RTCPeerConnection': `
+          + `Called in wrong state: ${this.signalingState}`
+        );
+        err.name = 'InvalidStateError';
+        return Promise.reject(err);
+      }
       this.remoteDescription = desc;
+      this.signalingState = desc.type === 'offer' ? 'have-remote-offer' : 'stable';
       return Promise.resolve();
     }
     createAnswer() {
@@ -778,4 +796,95 @@ test('opus: convive com o start bitrate de video na mesma sdp', () => {
   const out = withOpusParams(withStartBitrate(SDP, 6000), {});
   assert.match(out, /a=fmtp:98 .*x-google-start-bitrate=6000/);
   assert.match(out, /a=fmtp:111 .*stereo=1/);
+});
+
+// --- Negociacao que falha nao pode virar conexao morta em silencio ---
+//
+// Log de 2026-09-05, 04:57:21-22, na maquina do mateu, no instante exato em
+// que um peer reentrou na sala:
+//
+//   [signaling] falha processando 'offer'  de #1 (kind=screen):   [object DOMException]
+//   [signaling] falha processando 'answer' de #8 (kind=screen@1): [object DOMException]
+//
+// O catch de app.js logava e parava ai. A pc ficava aberta, sem
+// remoteDescription, sem nunca conectar -- e como connectionstatechange
+// nunca chega em 'failed', a maquina de recuperacao (onPeerState com
+// failed:true) nunca rodava. Pra quem estava na sala isso e "a tela de
+// alguem simplesmente sumiu e nao voltou".
+
+const QUALIDADE = { bitrate: 1_000_000, fps: 30, codec: 'video/H264' };
+
+function streamFalsa() {
+  const track = { kind: 'video' };
+  return { getTracks: () => [track], getVideoTracks: () => [track] };
+}
+
+test("'answer' fora de have-local-offer e ignorada, sem lancar e sem matar a pc", async () => {
+  installFakeWebRTC();
+  const estados = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, info) => estados.push({ peerId, ...info }),
+  });
+  mesh.addPeer('8', 'Carla');
+  await mesh.offerTo('8', streamFalsa(), QUALIDADE, 'screen');
+  const pc = mesh.peers.get('8').outConns.screen;
+
+  // A primeira resposta fecha a negociacao: a pc volta pra 'stable'.
+  await mesh.handleAnswer('8', { type: 'answer', sdp: 'v=0' }, 'screen');
+  assert.equal(pc.signalingState, 'stable');
+
+  // A segunda (duplicada, ou atrasada de uma oferta ja substituida) nao
+  // pode lancar nem derrubar a conexao que esta funcionando.
+  await assert.doesNotReject(() => mesh.handleAnswer('8', { type: 'answer', sdp: 'v=0' }, 'screen'));
+  assert.equal(pc.closed, undefined, 'a pc boa continua aberta');
+  assert.equal(mesh.peers.get('8').outConns.screen, pc, 'e continua no slot');
+  assert.equal(estados.some((e) => e.failed === true), false, 'nada de recuperacao: nao houve falha');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test("'answer' valida segue sendo aplicada", async () => {
+  installFakeWebRTC();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('8', 'Carla');
+  await mesh.offerTo('8', streamFalsa(), QUALIDADE, 'screen');
+
+  await mesh.handleAnswer('8', { type: 'answer', sdp: 'v=0' }, 'screen');
+
+  const pc = mesh.peers.get('8').outConns.screen;
+  assert.equal(pc.remoteDescription.type, 'answer');
+  assert.equal(pc.signalingState, 'stable');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test("'offer' que nao aplica derruba a conexao e pede recuperacao", async () => {
+  installFakeWebRTC();
+  const estados = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, info) => estados.push({ peerId, ...info }),
+  });
+  mesh.addPeer('1', 'Ana');
+
+  // SDP que a pc recusa (aqui: tipo trocado -- no mundo real, SDP de uma
+  // negociacao que ja nao existe mais). O importante e o QUE ACONTECE
+  // DEPOIS, nao a causa.
+  await assert.rejects(() => mesh.handleOffer('1', { type: 'answer', sdp: 'v=0' }, 'screen', false));
+
+  const falha = estados.find((e) => e.failed === true);
+  assert.ok(falha, 'a falha tem de chegar em onPeerState');
+  assert.equal(falha.peerId, '1');
+  assert.equal(falha.kind, 'screen');
+  assert.equal(falha.dir, 'in');
+  assert.equal(falha.removedTile, true, 'o tile morto sai da tela');
+  assert.equal(mesh.peers.get('1').inConns.screen, null, 'o slot fica livre pra uma conexao nova');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
 });
