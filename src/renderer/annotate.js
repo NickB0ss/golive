@@ -40,6 +40,64 @@
   const MAX_POINTS_PER_STROKE = 2000;
   const MAX_TEXT = 120;
 
+  // ---------- Chave de superficie ----------
+  //
+  // A chave era so o id de quem transmite. Com isso a tela e a camera da
+  // MESMA pessoa caiam na mesma lousa -- desenhar na camera dela faria o
+  // traco aparecer tambem na tela compartilhada. A chave passa a ser
+  // '<dono>:<kind>'.
+  //
+  // O corte tela/camera nao e so arrumacao interna: e ele que decide onde o
+  // rabisco aparece. Rabisco na TELA vai pra tela de verdade de quem
+  // compartilha (a janela de overlay); rabisco na CAMERA fica dentro do
+  // app. Ver pushToAnnotOverlay em app.js.
+  const SURFACE_KINDS = new Set(['screen', 'camera']);
+
+  function surfaceKey(ownerId, kind) {
+    return `${String(ownerId ?? '')}:${SURFACE_KINDS.has(kind) ? kind : 'screen'}`;
+  }
+
+  /** Chave -> { ownerId, kind }. Chave SEM kind vale como tela: e o formato
+   * que um cliente em versao antiga manda, e tela e o que ele sabia
+   * rabiscar. Sufixo desconhecido tambem cai em tela COM a chave inteira
+   * como dono -- inventar um corte ali daria um dono que nao existe. */
+  function parseSurface(surfaceId) {
+    const raw = String(surfaceId ?? '');
+    const at = raw.lastIndexOf(':');
+    if (at < 0) return { ownerId: raw, kind: 'screen' };
+    const kind = raw.slice(at + 1);
+    if (!SURFACE_KINDS.has(kind)) return { ownerId: raw, kind: 'screen' };
+    return { ownerId: raw.slice(0, at), kind };
+  }
+
+  // ---------- Cor ----------
+  //
+  // Ate 2026-09-05 a cor era DERIVADA do id (colorFor) e nao existia no
+  // fio -- ninguem podia desenhar com a cor de outro porque nao havia campo
+  // pra forjar. Agora quem desenha escolhe, entao a cor viaja, e por isso
+  // passa pelo mesmo tratamento de tudo que vem da rede: ou e um #rrggbb,
+  // ou nao existe. Nada de "consertar" o que veio torto -- item torto e
+  // descartado, nunca remendado com valor inventado.
+  //
+  // A troca esta declarada: a cor deixa de dizer QUEM desenhou. Quem nao
+  // escolher continua com a cor da paleta, entao no uso normal a
+  // identificacao por cor sobrevive.
+  const COLOR_RE = /^#[0-9a-f]{6}$/;
+
+  function normalizeColor(raw) {
+    if (typeof raw !== 'string') return null;
+    const c = raw.trim().toLowerCase();
+    return COLOR_RE.test(c) ? c : null;
+  }
+
+  /** Cor com que um item e desenhado: a escolhida, ou a de quem desenhou.
+   * Uma so funcao pros dois canvas (o do tile em ui.js e o da tela real em
+   * overlay.js) -- duas copias dessa regra seriam duas chances de o mesmo
+   * traco sair de cor diferente em cada lugar. */
+  function colorOf(item) {
+    return normalizeColor(item?.color) || colorFor(item?.from);
+  }
+
   /** Cor do pincel de um participante. O id de conexao e atribuido pelo
    * servidor em sequencia ('1', '2', '3'...), entao indexar a paleta por
    * ele da cores DISTINTAS numa sala real (~4-6 pessoas) e a MESMA tabela
@@ -128,18 +186,30 @@
       }
       if (!points.length) return null;
       const width = Number(raw.width);
-      return { kind: 'stroke', id, from, width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4, points };
+      const item = {
+        kind: 'stroke', id, from,
+        width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4,
+        points,
+      };
+      // A cor so entra quando e valida: item SEM o campo cai em colorFor na
+      // hora de desenhar (ver colorOf), que e o comportamento de sempre.
+      const color = normalizeColor(raw.color);
+      if (color) item.color = color;
+      return item;
     }
 
     if (raw.kind === 'text') {
       const text = typeof raw.text === 'string' ? raw.text.slice(0, MAX_TEXT) : '';
       if (!text.trim() || !isNorm(raw.x) || !isNorm(raw.y)) return null;
       const size = Number(raw.size);
-      return {
+      const item = {
         kind: 'text', id, from, text,
         x: round3(raw.x), y: round3(raw.y),
         size: Number.isFinite(size) ? Math.min(Math.max(size, 8), 96) : 20,
       };
+      const color = normalizeColor(raw.color);
+      if (color) item.color = color;
+      return item;
     }
     return null;
   }
@@ -171,7 +241,9 @@
    * nao guarda estado de anotacao nenhum, e nao vai passar a guardar). */
   function opAllowed(surfaceId, from, op) {
     if (!op || typeof op !== 'object' || Array.isArray(op)) return false;
-    const isOwner = String(surfaceId) === String(from);
+    // O DONO sai da chave composta, nao da chave inteira: '7:camera' e do
+    // peer 7 tanto quanto '7:screen'.
+    const isOwner = String(parseSurface(surfaceId).ownerId) === String(from);
     if (op.op === 'clear' && op.scope === 'all') return isOwner;
     return !isOwner;
   }
@@ -214,13 +286,19 @@
         case 'begin': {
           if (!op.id || !isNorm(op.x) || !isNorm(op.y)) return false;
           const width = Number(op.width);
-          list.push({
+          const stroke = {
             kind: 'stroke',
             id: String(op.id).slice(0, 64),
             from: author,
             width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4,
             points: [[round3(op.x), round3(op.y)]],
-          });
+          };
+          // A cor viaja no 'begin' e vale pro traco inteiro -- os 'points'
+          // seguintes so estendem. Cor invalida some e o traco cai na cor de
+          // quem desenhou.
+          const color = normalizeColor(op.color);
+          if (color) stroke.color = color;
+          list.push(stroke);
           trim(list);
           return true;
         }
@@ -245,7 +323,7 @@
           const text = typeof op.text === 'string' ? op.text.slice(0, MAX_TEXT) : '';
           if (!op.id || !text.trim() || !isNorm(op.x) || !isNorm(op.y)) return false;
           const size = Number(op.size);
-          list.push({
+          const item = {
             kind: 'text',
             id: String(op.id).slice(0, 64),
             from: author,
@@ -253,7 +331,10 @@
             x: round3(op.x),
             y: round3(op.y),
             size: Number.isFinite(size) ? Math.min(Math.max(size, 8), 96) : 20,
-          });
+          };
+          const color = normalizeColor(op.color);
+          if (color) item.color = color;
+          list.push(item);
           trim(list);
           return true;
         }
@@ -335,6 +416,10 @@
     MAX_POINTS_PER_STROKE,
     MAX_TEXT,
     colorFor,
+    colorOf,
+    normalizeColor,
+    surfaceKey,
+    parseSurface,
     contentRect,
     toNorm,
     toPx,

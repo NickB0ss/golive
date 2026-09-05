@@ -634,6 +634,29 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               break;
             }
 
+            // Estado da CAMERA. Existe separado do 'broadcast-state'
+            // (que e sobre a tela) porque camera e tela sao independentes:
+            // da pra estar com a camera ligada sem compartilhar tela
+            // nenhuma, e nesse caso o broadcast-state nunca sai. Sem esta
+            // mensagem, a permissao de rabiscar na camera nao teria como
+            // chegar em ninguem.
+            //
+            // `id` e carimbado AQUI, do lado do servidor, como em todo o
+            // resto: o cliente nao escolhe por quem fala. E `annotate`
+            // segue a mesma regra do broadcast-state -- `=== true`, porque
+            // o campo vem de um cliente e qualquer outra coisa vira false.
+            case 'camera-state': {
+              const me = peers.get(id);
+              if (!me) return;
+              broadcastToRoom(me.room, id, {
+                type: 'camera-state',
+                id,
+                on: Boolean(msg.on),
+                annotate: msg.annotate === true,
+              });
+              break;
+            }
+
             // Quem esta transmitindo avisa a SALA INTEIRA (nao so quem
             // pediu) quem esta de fato assistindo aquele kind agora -- e o
             // que permite ao dono de qualquer tile (nao so o host) desenhar

@@ -1749,3 +1749,88 @@ test('annotate-sync: snapshot vai so pro destinatario, com teto de itens', async
     await server.close();
   }
 });
+
+// A camera nao passa pelo broadcast-state (que e sobre a TELA): da pra
+// estar com a camera ligada sem compartilhar tela nenhuma, e nesse caso o
+// broadcast-state nunca sai. Sem o repasse desta mensagem, a permissao de
+// rabiscar na camera nao chegaria em ninguem -- e, como no caso do
+// `annotate` acima, sem erro nenhum no meio do caminho pra denunciar.
+test('camera-state: on e annotate atravessam pra sala inteira', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const bemVindaA = await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'camera-state');
+    a.send(JSON.stringify({ type: 'camera-state', on: true, annotate: true }));
+    const msg = await atB;
+    assert.equal(msg.on, true);
+    assert.equal(msg.annotate, true);
+    // O `id` e carimbado pelo SERVIDOR, nao aceito do cliente.
+    assert.equal(String(msg.id), String(bemVindaA.id));
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('camera-state: campo torto vira false, nao passa cru', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'camera-state');
+    // 'annotate' como string nao e permissao concedida.
+    a.send(JSON.stringify({ type: 'camera-state', on: 1, annotate: 'sim' }));
+    const msg = await atB;
+    assert.equal(msg.on, true); // Boolean(1)
+    assert.equal(msg.annotate, false);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('camera-state: quem tenta forjar o id de outro nao consegue', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    const bemVindaA = await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    const bemVindaB = await once(b, 'welcome');
+
+    const atA = onceWithin(a, 'camera-state');
+    b.send(JSON.stringify({ type: 'camera-state', id: bemVindaA.id, on: true, annotate: true }));
+    const msg = await atA;
+    assert.equal(String(msg.id), String(bemVindaB.id), 'o id e o de quem mandou, nao o que ele pediu');
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
