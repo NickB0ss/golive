@@ -61,6 +61,7 @@
     if (enabled) return;
     document.querySelectorAll('.tile.fullscreen').forEach((t) => t.classList.remove('fullscreen', 'idle'));
     fullscreenTileId = null;
+    syncPainting(); // a grade voltou a aparecer: religa quem estava atras
     scheduleIdle();
   });
 
@@ -219,9 +220,10 @@
       window.golive.setFullScreen(entering);
       if (entering) {
         fullscreenTileId = id;
-        renderPipStrip(tile);
+        renderPipStrip(tile); // ja termina em syncPainting
       } else {
         fullscreenTileId = null;
+        syncPainting(); // a grade reaparece: religa quem estava atras
       }
       scheduleIdle();
     };
@@ -243,15 +245,40 @@
   // 2026-08-23, F1.4.
   let paintingEnabled = true;
 
+  /** Este video esta atras do fullscreen de OUTRO tile?
+   *
+   * `.tile.fullscreen` e `position: fixed; inset: 0` -- ele COBRE a grade,
+   * mas nao a remove: sem isto, entrar em tela cheia adicionava uma camada
+   * de viewport inteiro por cima e a grade toda seguia decodificando e
+   * compondo por baixo, invisivel. Numa sala de 3 pessoas transmitindo isso
+   * e meia duzia de videos pintados a toa, exatamente no momento de maior
+   * carga da aplicacao (captura de 1080p60 + um encoder de software por
+   * espectador). Ver a analise dos logs de 2026-09-05.
+   *
+   * As miniaturas do PiP ficam DENTRO do tile em fullscreen (`.pip-strip`),
+   * entao `closest('.tile')` devolve o proprio tile de fullscreen e elas
+   * seguem pintando -- que e o que a pessoa esta de fato olhando. */
+  function isOccludedByFullscreen(video) {
+    if (!fullscreenTileId) return false;
+    const tile = video.closest?.('.tile');
+    return !!tile && tile.id !== `tile-${fullscreenTileId}`;
+  }
+
   function applyPainting(video) {
     if (!video) return;
-    if (paintingEnabled) video.play().catch(() => {});
+    if (paintingEnabled && !isOccludedByFullscreen(video)) video.play().catch(() => {});
     else video.pause();
   }
 
-  function setPainting(enabled) {
-    if (paintingEnabled === enabled) return;
-    paintingEnabled = enabled;
+  /** Reavalia a pintura de todos os videos da grade. Chamada em TODA
+   * mudanca de `fullscreenTileId` -- entrar, sair, e trocar o foco pra uma
+   * miniatura -- alem da visibilidade da janela.
+   *
+   * Nao mexe em audio: tile remoto tem `video.muted = true` e o som dele
+   * corre por fora, no grafo de Web Audio montado em ensureTileAudio
+   * (MediaStreamSource -> GainNode -> destination). Pausar o elemento para
+   * de PINTAR, nao de ouvir -- mesmo fundamento do F1.4. */
+  function syncPainting() {
     gridEl.querySelectorAll('video').forEach((video) => {
       // O veu de pausa ja mandou o video pausar e sumir -- a janela
       // ficar visivel de novo nao pode religar a decodificacao por baixo
@@ -259,6 +286,12 @@
       if (video.closest('.tile')?.classList.contains('is-paused')) return;
       applyPainting(video);
     });
+  }
+
+  function setPainting(enabled) {
+    if (paintingEnabled === enabled) return;
+    paintingEnabled = enabled;
+    syncPainting();
   }
 
   // Quem esta assistindo cada tile agora (F1.3 + o broadcast de
@@ -479,11 +512,14 @@
     // sabe disso.
     scheduleIdle();
     if (id === fullscreenTileId) {
+      // Quem estava em tela cheia parou de transmitir: a grade reaparece e
+      // todo mundo que estava atras volta a ser pintado.
       fullscreenTileId = null;
       window.golive.setFullScreen(false);
+      syncPainting();
     } else if (fullscreenTileId) {
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
-      if (fsTile) renderPipStrip(fsTile);
+      if (fsTile) renderPipStrip(fsTile); // ja termina em syncPainting
     }
     if (!gridEl.children.length) {
       gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
@@ -509,7 +545,16 @@
   let annotSelfId = 'me'; // id de conexao (o servidor carimba) -- decide a MINHA cor
   let annotDrawingTile = null; // tile com o modo de desenho ligado (so um por vez)
   let annotTool = 'pen';
+  // Cor do pincel. Nasce na cor da paleta derivada do meu id -- quem nunca
+  // abrir o seletor continua desenhando na "sua" cor, como antes de a
+  // escolha existir. Vale pra todos os tiles: e a MINHA tinta, nao uma
+  // propriedade da lousa de alguem.
+  let annotBrushColor = null;
   let onAnnotOp = null;
+
+  function brushColor() {
+    return annotBrushColor || annotate.colorFor(annotSelfId);
+  }
 
   const ANNOT_TOOLS = {
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>',
@@ -578,7 +623,11 @@
     // `clear all` so vale do dono da tela: o servidor nao guarda estado de
     // anotacao e nao tem como saber disso, entao a checagem e aqui, do
     // mesmo jeito cooperativo do resto do app.
-    if (op?.op === 'clear' && op.scope === 'all' && String(from) !== String(surfaceId)) return;
+    // O dono sai da chave COMPOSTA ('7:screen'), nao da chave inteira:
+    // comparar com a chave toda faria o "apagar tudo" do proprio dono ser
+    // descartado aqui em silencio.
+    if (op?.op === 'clear' && op.scope === 'all'
+        && String(from) !== String(annotate.parseSurface(surfaceId).ownerId)) return;
     if (!annotStore.apply(surfaceId, from, op)) return;
     for (const [tileId, info] of annotSurfaces) {
       if (info.surfaceId === String(surfaceId)) {
@@ -663,7 +712,10 @@
     ctx.lineJoin = 'round';
     ctx.textBaseline = 'top';
     for (const item of annotStore.items(surfaceId)) {
-      const cor = annotate.colorFor(item.from);
+      // colorOf e nao colorFor: a cor agora viaja no item. Sem cor escolhida
+      // cai na de quem desenhou -- mesma regra, e o mesmo codigo, que o
+      // canvas da tela real usa (overlay.js).
+      const cor = annotate.colorOf(item);
       if (item.kind === 'stroke') {
         ctx.strokeStyle = cor;
         ctx.lineWidth = item.width;
@@ -765,7 +817,8 @@
       <button type="button" class="annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
       <button type="button" class="annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
       <span class="annot-sep"></span>
-      <span class="annot-ink" style="background:${annotate.colorFor(annotSelfId)}" title="Esta é a sua cor"></span>`;
+      <input type="color" class="annot-ink" data-act="ink" value="${brushColor()}"
+             title="Cor do seu pincel" aria-label="Cor do seu pincel"${travado}>`;
 
     // O par de icones do toggle segue a mesma regra do resto do app: classe
     // `.hidden`, nunca o atributo -- `hidden` nao esconde um <svg>.
@@ -780,6 +833,17 @@
   function wireTileAnnotations(tile, tileId) {
     const canvas = annotCanvasOf(tile);
     const bar = tile.querySelector('.tile-annot-bar');
+
+    // O seletor de cor e um <input>, nao um <button>: ouve 'input' (dispara
+    // a cada arrasto dentro do seletor nativo), e de proposito NAO chama
+    // syncAnnotBar -- ela reescreve o innerHTML da barra e fecharia o
+    // seletor no meio da escolha. O proprio input ja mostra a cor nova, e
+    // `annotBrushColor` e o unico estado que precisa mudar.
+    bar.addEventListener('input', (e) => {
+      const ink = e.target.closest('.annot-ink');
+      if (!ink) return;
+      annotBrushColor = annotate.normalizeColor(ink.value) || null;
+    });
 
     bar.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -846,7 +910,7 @@
       }
       stroke = `${annotSelfId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
       canvas.setPointerCapture(event.pointerId);
-      emitAnnotOp(tileId, { op: 'begin', id: stroke, x: p.x, y: p.y, width: 4 });
+      emitAnnotOp(tileId, { op: 'begin', id: stroke, x: p.x, y: p.y, width: 4, color: brushColor() });
     });
 
     canvas.addEventListener('pointermove', (event) => {
@@ -922,6 +986,7 @@
         y: point.y,
         text,
         size: 20,
+        color: brushColor(),
       });
     };
     input.addEventListener('keydown', (e) => {
@@ -960,7 +1025,7 @@
     fullscreenTileId = newId;
     pinnedPip.delete(newId);
     if (oldId) pinnedPip.add(oldId);
-    renderPipStrip(newTile);
+    renderPipStrip(newTile); // ja termina em syncPainting
     scheduleIdle();
   }
 
@@ -1172,6 +1237,12 @@
       openPipPicker(addBtn, id);
     });
     strip.appendChild(addBtn);
+    // As miniaturas sao <video> NOVOS, criados com autoplay: sem isto elas
+    // comecariam a tocar mesmo com a janela minimizada (F1.4). Aqui, no fim
+    // de renderPipStrip, cobre todos os caminhos que remontam a faixa --
+    // entrar em fullscreen, trocar o foco, e adicionar ou remover uma
+    // miniatura pelo seletor.
+    syncPainting();
   }
 
   let openMenuEl = null;

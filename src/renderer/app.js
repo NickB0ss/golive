@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay } = window.GoLive;
 
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
@@ -145,6 +145,14 @@
     ownerId = null;
   }
   let localStream = null;
+  /** Track de CAPTURA de tela, crua. Quando o relay esta ligado ela NAO e a
+   * track que vai pros senders (essa e a do canvas) -- mas continua sendo a
+   * unica que `applyConstraints` sabe reconfigurar, entao a escada de
+   * qualidade fala com esta aqui. Ver screenrelay.js. */
+  let captureTrack = null;
+  /** Relay por canvas, ou null quando ele nao pode ser montado (browser sem
+   * MediaStreamTrackProcessor) e a captura vai crua pros senders. */
+  let screenRelay = null;
   // Pausa da transmissao: a tela continua capturada e as conexoes de pe, so
   // param de receber quadro. Diferente de parar de compartilhar, que fecha
   // tudo e obriga a escolher a fonte de novo.
@@ -393,7 +401,10 @@
       // A CAPTURA continua guiada pelo piso global -- ela e comum a todas as
       // conexoes, entao segue o denominador comum.
       const key = `${floor.width}x${floor.height}@${floor.fps}`;
-      const track = localStream.getVideoTracks()[0];
+      // A track de CAPTURA, nao a do relay: reconfigurar o canvas nao faz
+      // nada, e e a captura que precisa parar de produzir 1080p60 quando a
+      // escada desce. O relay acompanha o tamanho sozinho (screenrelay.js).
+      const track = captureTrack || localStream.getVideoTracks()[0];
       if (track && track.readyState === 'live' && key !== lastCaptureKey) {
         lastCaptureKey = key;
         track.applyConstraints(config.videoConstraints(floor)).catch((err) => {
@@ -572,7 +583,7 @@
   });
 
   async function applyLiveQuality() {
-    const track = localStream.getVideoTracks()[0];
+    const track = captureTrack || localStream.getVideoTracks()[0]; // ver reapplyAudienceQuality
     if (track) {
       await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
     }
@@ -935,6 +946,10 @@
   // desistencia do retry chamam isto.
   function teardownMedia() {
     if (localStream) {
+      screenRelay?.stop();
+      screenRelay = null;
+      captureTrack?.stop(); // fora do localStream quando o relay esta ligado
+      captureTrack = null;
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
       stopNativeAudioFns.forEach((stop) => stop());
@@ -1710,7 +1725,8 @@
       // parar de transmitir mantem o que a sala ja tinha rabiscado. Mandar o
       // snapshot e o que faz a janela nova comecar de onde a lousa esta, em
       // vez de de onde ela estaria se ninguem tivesse desenhado ainda.
-      window.golive.sendAnnotOverlayLoad?.({ surface: String(myId), items: ui.annotations.snapshot(myId) });
+      const minhaTela = annotate.surfaceKey(myId, 'screen');
+      window.golive.sendAnnotOverlayLoad?.({ surface: minhaTela, items: ui.annotations.snapshot(minhaTela) });
       return;
     }
     if (r?.reason === 'window') {
@@ -1726,11 +1742,19 @@
     window.golive.stopAnnotOverlay?.();
   }
 
-  /** Repassa uma op pro overlay, mas SO quando a superficie e a minha tela:
-   * a janela desenha na tela desta maquina, e rabisco na tela de outra
-   * pessoa nao tem nada que fazer nela. */
+  /** Repassa uma op pro overlay, mas SO quando a superficie e a MINHA
+   * TELA: a janela desenha na tela desta maquina, e rabisco na tela de
+   * outra pessoa nao tem nada que fazer nela.
+   *
+   * O `kind === 'screen'` e a outra metade da regra, e vale mesmo pra
+   * superficie minha: rabisco na minha CAMERA fica dentro do app. Pintar na
+   * tela de verdade o que alguem desenhou na imagem da minha webcam nao tem
+   * onde aterrissar -- as coordenadas sao do quadro da camera, nao do
+   * monitor. */
   function pushToAnnotOverlay(surfaceId, from, op) {
-    if (!annotOverlayOn || String(surfaceId) !== String(myId)) return;
+    if (!annotOverlayOn) return;
+    const { ownerId, kind } = annotate.parseSurface(surfaceId);
+    if (String(ownerId) !== String(myId) || kind !== 'screen') return;
     window.golive.sendAnnotOverlayOp?.({ surface: String(surfaceId), from: String(from), op });
   }
 
@@ -1849,7 +1873,7 @@
           // O id de conexao muda na reconexao, e a superficie da MINHA tela
           // e justamente esse id -- sem re-registrar, a sala inteira passa a
           // desenhar num id que nao existe mais.
-          ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
+          ui.annotations.setSurface('me', { surfaceId: annotate.surfaceKey(myId, 'screen'), allowed: shareAnnotations, canClearAll: true, canDraw: false });
           for (const p of msg.peers) {
             if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
@@ -1927,11 +1951,19 @@
         // sem mensagem nova. Idempotente pra quem ja sabia (broadcast-state
         // so regrava peer.live/peer.paused).
         if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations });
+        // Mesmo motivo, pra camera: ela nao passa pelo broadcast-state, e
+        // sem isto quem entrou depois nunca saberia que pode rabiscar nela.
+        if (cameraStream) sendCameraState(session);
         // Quem acabou de entrar nao viu o que ja foi desenhado. Sem este
         // snapshot ele ve a tela limpa enquanto a sala inteira discute uma
         // seta que, pra ele, nao existe (spec, secao 5.5).
         if (localStream && shareAnnotations && sig.isOpen()) {
-          sig.send({ type: 'annotate-sync', to: msg.id, surface: myId, items: ui.annotations.snapshot(myId) });
+          sig.send({
+            type: 'annotate-sync',
+            to: msg.id,
+            surface: annotate.surfaceKey(myId, 'screen'),
+            items: ui.annotations.snapshot(annotate.surfaceKey(myId, 'screen')),
+          });
         }
         break;
       }
@@ -1944,6 +1976,7 @@
         for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
         for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
         ui.annotations.setSurface(msg.id, { allowed: false });
+        ui.annotations.setSurface(`cam-${msg.id}`, { allowed: false });
         dropTile(msg.id);
         dropTile(`cam-${msg.id}`);
         renderMembersPanel();
@@ -2068,7 +2101,10 @@
       // (`from === surface`): sem esta checagem, qualquer um podia
       // reescrever a lousa inteira de qualquer tela com um sync forjado.
       case 'annotate-sync': {
-        if (String(msg.from) !== String(msg.surface)) break;
+        // O dono sai da chave COMPOSTA ('7:screen'), nao da chave inteira --
+        // senao um sync legitimo seria descartado. parseSurface aceita
+        // tambem a chave sem kind, que e o que um cliente antigo manda.
+        if (String(msg.from) !== String(annotate.parseSurface(msg.surface).ownerId)) break;
         ui.annotations.load(msg.surface, msg.items);
         break;
       }
@@ -2091,6 +2127,20 @@
         });
         break;
       }
+      // Camera de outro peer: ligada/desligada e se a sala pode rabiscar
+      // nela. Separado do broadcast-state porque camera e tela sao
+      // independentes -- ver sendCameraState.
+      case 'camera-state': {
+        const peer = mesh.peers.get(msg.id);
+        if (peer) peer.cameraAnnotate = msg.on && msg.annotate === true;
+        ui.annotations.setSurface(`cam-${msg.id}`, {
+          surfaceId: annotate.surfaceKey(msg.id, 'camera'),
+          allowed: Boolean(peer?.cameraAnnotate),
+          canClearAll: false, // a camera e da outra pessoa
+          canDraw: true,
+        });
+        break;
+      }
       case 'broadcast-state': {
         const peer = mesh.peers.get(msg.id);
         const wasLive = peer?.live;
@@ -2100,7 +2150,7 @@
         // em versao antiga nao manda o campo -> undefined -> falso.
         if (peer) peer.annotate = msg.live && msg.annotate === true;
         ui.annotations.setSurface(msg.id, {
-          surfaceId: msg.id,
+          surfaceId: annotate.surfaceKey(msg.id, 'screen'),
           allowed: Boolean(peer?.annotate),
           canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
           canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
@@ -2222,7 +2272,16 @@
       // catch a rejeicao virava unhandledrejection sem contexto nenhum de
       // qual mensagem causou -- so o texto solto do erro no log. Ver a
       // auditoria de 2026-08-27, item A6.
-      console.error(`[signaling] falha processando '${msg.type}' de #${msg.from ?? '?'} (kind=${msg.kind ?? '-'}):`, err);
+      // `err` interpolado direto vira "[object DOMException]" no
+      // console-message do Electron, e o log de 2026-09-05 tem exatamente
+      // isso: duas falhas de negociacao sem nome nem mensagem, ou seja, sem
+      // como saber QUAL erro foi. name + message de proposito, nos dois:
+      // `name` diz a classe (InvalidStateError, OperationError) e `message`
+      // diz o estado em que a pc estava.
+      const causa = err instanceof Error || err?.name
+        ? `${err.name || 'Erro'}: ${err.message || '(sem mensagem)'}`
+        : String(err);
+      console.error(`[signaling] falha processando '${msg.type}' de #${msg.from ?? '?'} (kind=${msg.kind ?? '-'}): ${causa}`);
     }
   }
 
@@ -2549,8 +2608,8 @@
       lastCaptureKey = `${cfg.quality.width}x${cfg.quality.height}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
       const track = localStream.getVideoTracks()[0];
+      captureTrack = track || null;
       if (track) {
-        track.contentHint = 'motion';
         track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
         track.addEventListener('ended', stopShare);
         // Diagnostico: uma track de captura que entra em 'mute' para de
@@ -2561,6 +2620,31 @@
         track.addEventListener('mute', () => console.warn('[diag] captura de tela: MUTE -- parou de entregar quadros'));
         track.addEventListener('unmute', () => console.log('[diag] captura de tela: UNMUTE -- voltou a entregar quadros'));
       }
+
+      // RELAY: troca a track de video que vai pros senders por uma de canvas.
+      //
+      // Sem isto o `contentHint = 'motion'` numa track de getDisplayMedia
+      // derruba o encoder de hardware (medido: HW.Status 16, zero quadros) e
+      // a tela codifica sempre em OpenH264. Com o relay o mesmo 'motion'
+      // vive numa track de canvas e o MediaFoundation aceita: 28,7% -> 12,8%
+      // de CPU com 3 espectadores, mesmo framerate. Ver screenrelay.js pro
+      // porque de cada detalhe.
+      //
+      // Entra ANTES da primeira oferta de proposito: `replaceTrack` NAO faz
+      // o WebRTC reavaliar o encoder, entao ligar o relay depois nao
+      // resgataria um sender que ja caiu em software.
+      screenRelay = track ? screenrelay.create(track, {
+        onFrameError: (err) => console.error('[diag] relay de tela falhou:', err?.message || err),
+      }) : null;
+      if (screenRelay) {
+        localStream.removeTrack(track);
+        localStream.addTrack(screenRelay.track);
+        console.log('[diag] relay de tela: ligado (canvas -> encoder)');
+      } else {
+        // Sem relay a track crua segue pros senders, e ela precisa do hint.
+        if (track) track.contentHint = 'motion';
+        console.warn('[diag] relay de tela: indisponivel -- encode deve cair em software');
+      }
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) audioTrack.contentHint = 'music';
 
@@ -2568,6 +2652,9 @@
 
       // A escolha vale pra ESTA transmissao e fica lembrada pra proxima.
       shareAnnotations = Boolean(allowAnnotations);
+      // A permissao mudou: a camera anuncia por conta propria (a tela vai
+      // no broadcast-state logo abaixo, no startShare).
+      if (cameraStream) sendCameraState();
       if (cfg.annotations.allow !== shareAnnotations) {
         cfg = { ...cfg, annotations: { allow: shareAnnotations } };
         persist();
@@ -2575,7 +2662,7 @@
       // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
-      ui.annotations.setSurface('me', { surfaceId: myId, allowed: shareAnnotations, canClearAll: true, canDraw: false });
+      ui.annotations.setSurface('me', { surfaceId: annotate.surfaceKey(myId, 'screen'), allowed: shareAnnotations, canClearAll: true, canDraw: false });
       await startAnnotOverlay();
 
       // qualityFor, nao cfg.quality: este e o cenario principal do H4 --
@@ -2604,6 +2691,10 @@
 
   function stopShare() {
     if (!localStream) return;
+    screenRelay?.stop();
+    screenRelay = null;
+    captureTrack?.stop(); // fora do localStream quando o relay esta ligado
+    captureTrack = null;
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
     stopNativeAudioFns.forEach((stop) => stop());
@@ -2750,6 +2841,15 @@
 
       ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, { muted: true, avatar: cfg.avatar || null, kind: 'camera', displayName: cfg.name || 'anônimo' });
       ui.setToggleState('camera', 'on');
+      // Mesmos papeis do tile da propria tela: a camera e minha, entao eu
+      // limpo a lousa inteira e nao desenho nela.
+      ui.annotations.setSurface('cam-me', {
+        surfaceId: annotate.surfaceKey(myId, 'camera'),
+        allowed: annotationsAllowed(),
+        canClearAll: true,
+        canDraw: false,
+      });
+      sendCameraState();
 
       if (currentSession) {
         // Hoje isto e identico a `{ ...cfg.camera, codec: 'video/VP8' }`,
@@ -2786,6 +2886,24 @@
   // como o compartilhamento de tela). Sem isso, o peer remoto continuava
   // vendo o ultimo frame da camera congelado indefinidamente mesmo depois
   // de desligada aqui — a conexao WebRTC seguia "viva" com aquela track.
+  /** "Deixar a sala rabiscar" e uma preferencia PERSISTIDA do usuario
+   * (cfg.annotations.allow), nao um estado da transmissao de tela. A tela
+   * le ela via `shareAnnotations`, que nasce no startShare e morre no
+   * stopShare; a camera le direto daqui, porque camera e tela sao
+   * independentes -- da pra estar so com a camera ligada. Uma chave so pro
+   * usuario, dois consumidores. */
+  function annotationsAllowed() {
+    return Boolean(cfg.annotations?.allow);
+  }
+
+  /** Avisa a sala do estado da camera. Idempotente: quem ja sabia so
+   * regrava. Sai em toda mudanca que altere a resposta -- ligar/desligar a
+   * camera, mexer na permissao, e alguem entrar na sala depois. */
+  function sendCameraState(session = currentSession) {
+    if (!session?.sig?.isOpen()) return;
+    session.sig.send({ type: 'camera-state', on: Boolean(cameraStream), annotate: annotationsAllowed() });
+  }
+
   async function stopCamera() {
     if (!cameraStream) return;
     const track = cameraStream.getVideoTracks()[0];
@@ -2794,6 +2912,8 @@
     forgetOriginTree('camera');
     ui.grid.removeTile('cam-me', emptyMessage());
     ui.setToggleState('camera', 'off');
+    ui.annotations.setSurface('cam-me', { allowed: false });
+    sendCameraState();
 
     if (currentSession && track) {
       const session = currentSession;
@@ -3472,6 +3592,13 @@
       autoQuality = autoquality.next(autoQuality, {
         atMs: now,
         health: autoquality.worstHealth([myEncodeHealth]),
+      }, {
+        // Orcamento por quadro do ALVO que esta valendo agora, nao um 16,6
+        // fixo: a 30fps ha 33,3ms entre quadros. Ver autoquality.budgetMsFor
+        // e o log de 2026-09-05, 04:54:50 (1080p a 43fps e 9,5 Mbps, o
+        // Chromium sem reclamar de nada, e a escada derrubando dois degraus
+        // em cinco segundos).
+        budgetMs: autoquality.budgetMsFor(qualityFor('screen').fps),
       });
       if (autoQuality.steps !== before) {
         console.log(`[qualidade] escada global: ${before} -> ${autoQuality.steps} degraus`);
@@ -3553,8 +3680,12 @@
           // true pra sempre e a escada de tela dele desceria ate o piso sem
           // nunca voltar. Encode saturado so e problema NOSSO quando aquele
           // peer re-codifica o que mandamos pra ele.
+          // Mesmo orcamento por-fps do ramo global acima: o relay codifica a
+          // tela DESTA sala, entao o alvo de fps dele e o mesmo nosso.
+          // Cobrar 16,6ms de um alvo de 30fps marcava como "afogado" um
+          // relay que estava dando conta.
           peerEncodeSaturated: originTree.screen.assignments.get(peerId)?.role === 'relay'
-            && autoquality.isBad(peer?.encodeHealth, autoquality.LIMITS.BUDGET_MS_60),
+            && autoquality.isBad(peer?.encodeHealth, autoquality.budgetMsFor(qualityFor('screen').fps)),
         });
         if (nextSt.steps !== st.steps) {
           anyPeerChanged = true;

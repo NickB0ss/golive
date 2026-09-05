@@ -3,7 +3,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   PALETTE, MAX_ITEMS, MAX_POINTS_PER_STROKE, MAX_TEXT,
-  colorFor, contentRect, toNorm, toPx, opAllowed, sanitizeItems, createStore,
+  colorFor, colorOf, contentRect, toNorm, toPx, opAllowed, sanitizeItem, sanitizeItems, createStore,
+  surfaceKey, parseSurface,
 } = require('./annotate');
 
 // ---------- cor por pessoa ----------
@@ -304,4 +305,99 @@ test('store.apply: o dono da tela limpa tudo, inclusive o que nao e dele', () =>
   assert.equal(s.items('7').length, 2);
   assert.equal(s.apply('7', '7', { op: 'clear', scope: 'all' }), true);
   assert.equal(s.items('7').length, 0);
+});
+
+// --- Superficie composta: tela e camera sao lousas separadas ---
+//
+// A chave era so o id de quem transmite, entao a tela e a camera da MESMA
+// pessoa caiam na mesma lousa: desenhar na camera dela faria o traco
+// aparecer na tela compartilhada tambem. A chave passa a ser
+// '<dono>:<kind>'.
+
+test('surfaceKey monta a chave e parseSurface desmonta', () => {
+  assert.equal(surfaceKey('7', 'screen'), '7:screen');
+  assert.equal(surfaceKey('7', 'camera'), '7:camera');
+  assert.deepEqual(parseSurface('7:screen'), { ownerId: '7', kind: 'screen' });
+  assert.deepEqual(parseSurface('7:camera'), { ownerId: '7', kind: 'camera' });
+});
+
+test('chave sem kind vale como TELA -- e o que um cliente antigo manda', () => {
+  assert.deepEqual(parseSurface('7'), { ownerId: '7', kind: 'screen' });
+  // Kind desconhecido nao inventa superficie nova: cai em tela, e o id
+  // inteiro vira o dono (nao da pra adivinhar onde estava o corte).
+  assert.deepEqual(parseSurface('7:sonho'), { ownerId: '7:sonho', kind: 'screen' });
+  assert.equal(surfaceKey('7', 'sonho'), '7:screen');
+});
+
+test('opAllowed le o dono da chave composta, nao a chave inteira', () => {
+  const traco = { op: 'begin', id: 'a', x: 0.5, y: 0.5 };
+  // O dono nao desenha na propria superficie -- nem na tela, nem na camera.
+  assert.equal(opAllowed('7:screen', '7', traco), false);
+  assert.equal(opAllowed('7:camera', '7', traco), false);
+  // Quem assiste desenha nas duas.
+  assert.equal(opAllowed('7:screen', '8', traco), true);
+  assert.equal(opAllowed('7:camera', '8', traco), true);
+});
+
+test('"clear all" da camera tambem e so do dono', () => {
+  const limpar = { op: 'clear', scope: 'all' };
+  assert.equal(opAllowed('7:camera', '7', limpar), true);
+  assert.equal(opAllowed('7:camera', '8', limpar), false);
+});
+
+test('a lousa da tela e a da camera da mesma pessoa nao se misturam', () => {
+  const store = createStore();
+  store.apply('7:screen', '8', { op: 'begin', id: 'na-tela', x: 0.1, y: 0.1 });
+  store.apply('7:camera', '8', { op: 'begin', id: 'na-camera', x: 0.2, y: 0.2 });
+
+  assert.deepEqual(store.items('7:screen').map((i) => i.id), ['na-tela']);
+  assert.deepEqual(store.items('7:camera').map((i) => i.id), ['na-camera']);
+
+  // Limpar uma nao toca na outra.
+  store.apply('7:camera', '7', { op: 'clear', scope: 'all' });
+  assert.equal(store.items('7:screen').length, 1);
+  assert.equal(store.items('7:camera').length, 0);
+});
+
+// --- Cor escolhida por quem desenha ---
+//
+// Ate aqui a cor era DERIVADA do id (colorFor) e nao existia no fio. Agora
+// viaja junto, e por isso passa pelo mesmo tratamento de todo o resto que
+// vem da rede: ou e um #rrggbb, ou nao existe.
+
+test('cor valida entra no item, normalizada pra minuscula', () => {
+  const store = createStore();
+  store.apply('7:screen', '8', { op: 'begin', id: 'a', x: 0.1, y: 0.1, color: '#FF00AA' });
+  assert.equal(store.items('7:screen')[0].color, '#ff00aa');
+});
+
+test('cor torta e DESCARTADA, nao "consertada"', () => {
+  const store = createStore();
+  const ruins = ['red', '#GGG', '#ff00a', 'javascript:alert(1)', '', '#ff00aa; x', 42, null, {}];
+  ruins.forEach((color, i) => {
+    store.apply('7:screen', '8', { op: 'begin', id: `t${i}`, x: 0.1, y: 0.1, color });
+  });
+  for (const item of store.items('7:screen')) {
+    assert.equal(item.color, undefined, `cor ${JSON.stringify(item)} nao devia ter passado`);
+  }
+});
+
+test('item sem cor cai na cor de quem desenhou -- o comportamento de sempre', () => {
+  assert.equal(colorOf({ from: '1' }), colorFor('1'));
+  assert.equal(colorOf({ from: '1', color: '#123456' }), '#123456');
+  // Cor invalida que tenha escapado ate aqui nao vira strokeStyle torto.
+  assert.equal(colorOf({ from: '1', color: 'red' }), colorFor('1'));
+});
+
+test('texto tambem carrega cor', () => {
+  const store = createStore();
+  store.apply('7:screen', '8', { op: 'text', id: 'x', text: 'oi', x: 0.5, y: 0.5, color: '#00ff00' });
+  assert.equal(store.items('7:screen')[0].color, '#00ff00');
+});
+
+test('sanitizeItem valida a cor do snapshot igual a do vivo', () => {
+  const bom = sanitizeItem({ kind: 'stroke', id: 'a', from: '8', points: [[0.1, 0.1]], color: '#ABCDEF' });
+  assert.equal(bom.color, '#abcdef');
+  const torto = sanitizeItem({ kind: 'stroke', id: 'a', from: '8', points: [[0.1, 0.1]], color: 'chartreuse' });
+  assert.equal(torto.color, undefined);
 });

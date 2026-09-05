@@ -88,13 +88,26 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.10.3` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.11.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **462 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **507 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.11.0** — a tela volta a codificar em **hardware**. Uma track de
+  `getDisplayMedia` com `contentHint='motion'` derrubava o encoder de
+  hardware em silêncio (`HW.Status=16`, zero quadros) e tudo caía no
+  OpenH264; o relay por canvas do `screenrelay.js` mantém o hint numa track
+  que o MediaFoundation aceita — **28,7% → 12,8% de CPU** com 3
+  espectadores, mesmo framerate. Junto: log síncrono com marca de
+  encerramento (crash deixava de deixar rastro), dump do `chrome://gpu` que
+  não sai mais calado, negociação que falha derrubando a conexão em vez de
+  virar zumbi, escada de qualidade com orçamento proporcional ao fps e
+  carência pra sender novo, `scrollbar-gutter` matando a tremedeira da grade
+  com 3+ transmitindo, tiles de fundo parando de pintar em tela cheia, e
+  rabisco na câmera com cor escolhida por quem desenha.
 
 - **0.2.0** — qualidade adaptativa **por espectador**: escada de histerese por
   conexão, `receiveHealth` do espectador viajando no view-state, e a escada

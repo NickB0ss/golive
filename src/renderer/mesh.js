@@ -449,23 +449,75 @@
       send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate });
     }
 
+    /** Negociacao que morreu no meio: derruba a conexao e AVISA, pra que a
+     * recuperacao que ja existe (onPeerState com failed:true) rode.
+     *
+     * Sem isto a pc ficava aberta e vazia -- sem remoteDescription, sem
+     * nunca conectar. Como ela nunca chega em 'failed' no
+     * connectionstatechange (ela nao falhou: ela nunca comecou), nada
+     * disparava a maquina de recuperacao, e o unico rastro era uma linha no
+     * log. Pra quem estava na sala, "a tela de alguem sumiu e nao voltou".
+     * Ver o log de 2026-09-05, 04:57:21-22. */
+    function failNegotiation(peerId, kind, dir, err) {
+      const peer = peers.get(peerId);
+      const slot = dir === 'in' ? peer?.inConns : peer?.outConns;
+      const pc = slot?.[kind];
+      if (pc) {
+        try {
+          pc.close();
+        } catch {
+          /* ja fechada */
+        }
+        slot[kind] = null;
+      }
+      if (dir === 'in') clearInStream(peerId, kind);
+      console.error(
+        `[mesh] negociacao de ${dir} com #${peerId} (kind=${kind}) falhou, derrubando a conexao:`,
+        `${err?.name || 'Erro'}: ${err?.message || err}`
+      );
+      onPeerState(peerId, { removedTile: dir === 'in', kind, dir, failed: true });
+    }
+
     async function handleOffer(fromId, sdp, kind, renegotiate) {
       const pc = ensureInConn(fromId, kind, renegotiate);
-      await pc.setRemoteDescription(sdp);
-      await drainIce(pc);
-      const answer = await pc.createAnswer();
-      // Estereo se negocia dos dois lados: sem declarar aqui tambem, o par
-      // cai pra mono mesmo com a oferta pedindo estereo.
-      await pc.setLocalDescription({ type: answer.type, sdp: withOpusParams(answer.sdp) });
+      try {
+        await pc.setRemoteDescription(sdp);
+        await drainIce(pc);
+        const answer = await pc.createAnswer();
+        // Estereo se negocia dos dois lados: sem declarar aqui tambem, o par
+        // cai pra mono mesmo com a oferta pedindo estereo.
+        await pc.setLocalDescription({ type: answer.type, sdp: withOpusParams(answer.sdp) });
+      } catch (err) {
+        failNegotiation(fromId, kind, 'in', err);
+        throw err; // quem chamou ainda loga a mensagem original
+      }
       return pc.localDescription;
     }
 
     async function handleAnswer(fromId, sdp, kind) {
       const peer = peers.get(fromId);
-      if (!peer?.outConns[kind]) return;
-      const pc = peer.outConns[kind];
-      await pc.setRemoteDescription(sdp);
-      await drainIce(pc);
+      const pc = peer?.outConns[kind];
+      if (!pc) return;
+      // Uma 'answer' so pode ser aplicada numa pc que esta ESPERANDO por
+      // ela. Em qualquer outro estado -- resposta duplicada, resposta
+      // atrasada de uma oferta que ja foi substituida, pc fechada no meio
+      // do caminho -- setRemoteDescription lanca InvalidStateError. E era
+      // uma conexao SA sendo morta por uma mensagem tardia: ignorar e o
+      // certo, nao derrubar.
+      if (pc.signalingState !== 'have-local-offer') {
+        console.warn(
+          `[mesh] 'answer' de #${fromId} (kind=${kind}) ignorada:`
+          + ` a conexao esta em '${pc.signalingState}', nao esperava resposta`
+        );
+        return;
+      }
+      try {
+        await pc.setRemoteDescription(sdp);
+        await drainIce(pc);
+      } catch (err) {
+        failNegotiation(fromId, kind, 'out', err);
+        throw err;
+      }
     }
 
     async function handleIce(fromId, dir, candidate, kind) {

@@ -18,11 +18,35 @@
   // quebrou e a escada vira um oscilador.
   const GOOD_MS_TO_RECOVER = 30000;
 
-  // Orcamento de encode por quadro a 60fps, somando todos os senders --
-  // mesmo numero que a aba Estatisticas ja usa como limiar.
-  const BUDGET_MS_60 = 16.6;
+  // Orcamento de encode por quadro a 60fps -- mesmo numero que a aba
+  // Estatisticas ja usa como limiar. E o PISO do orcamento, nao o orcamento
+  // de todo mundo: ver budgetMsFor.
+  const BUDGET_MS_60 = 1000 / 60;
 
   const LIMITS = { MAX_AUTO_STEPS, BAD_MS_TO_DEGRADE, GOOD_MS_TO_RECOVER, BUDGET_MS_60 };
+
+  /** Orcamento de encode por quadro pra um alvo de `fps`: o intervalo entre
+   * quadros. A 60fps sao 16,6ms; a 30fps sao 33,3ms.
+   *
+   * Usar 16,6 pra TODO alvo era cobrar do encoder o dobro da velocidade que
+   * o stream precisa. Efeito medido no log de 2026-09-05 (04:54:50-55, duas
+   * quedas em cinco segundos): 1080p entregue a 43fps e 9,5 Mbps, com
+   * `limite=nenhum` -- o Chromium nao reclamando de NADA -- e a escada
+   * derrubando o alvo de 12000 pra 2500 kbps porque msPerFrame era 22,3.
+   * A 30fps, 22,3ms cabe com folga. Com o numero fixo, qualquer preset de
+   * 30fps nasce permanentemente marcado como ruim: a escada desce, o fps
+   * desce junto, o msPerFrame continua acima de 16,6, e ela nunca fecha a
+   * conta -- o oscilador que o comentario de GOOD_MS_TO_RECOVER temia.
+   *
+   * Nunca fica mais APERTADO que o de 60fps: acima disso o custo por quadro
+   * ja e o piso do que a maquina consegue, e apertar mais so gera falso
+   * positivo. Fps ausente ou torto cai no mesmo piso -- a regra so relaxa
+   * com um alvo conhecido. */
+  function budgetMsFor(fps) {
+    const n = Number(fps);
+    if (!Number.isFinite(n) || n <= 0) return BUDGET_MS_60;
+    return Math.max(1000 / n, BUDGET_MS_60);
+  }
 
   /** Saude ausente NAO e ruim: quem nao reportou nada nao esta acusado.
    * Mesmo criterio neutro que tree.js usa pra eleger relay.
@@ -104,7 +128,7 @@
     return { steps: prev.steps, badSinceMs: null, goodSinceMs };
   }
 
-  const api = { initialState, next, worstHealth, isBad, LIMITS };
+  const api = { initialState, next, worstHealth, isBad, budgetMsFor, LIMITS };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.autoquality = api;

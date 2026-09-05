@@ -1021,6 +1021,26 @@ button.busy { cursor: default; }
   padding: 16px;
   overflow-y: auto;
   overflow-x: clip;
+  /* Reserva a calha da barra de rolagem SEMPRE, mesmo sem barra.
+   *
+   * Sem isto a grade oscila sozinha a partir de 3 tiles (2 colunas, DUAS
+   * linhas -- ver data-count abaixo). O ciclo, relatado como "o tamanho
+   * fica tremendo, como se nao soubesse que tamanho ter":
+   *
+   *   conteudo passa da altura -> barra aparece -> a grade perde 12px de
+   *   largura -> as colunas estreitam -> os tiles encolhem (aspect-ratio
+   *   16/9) -> agora cabe -> a barra some -> a largura volta -> os tiles
+   *   crescem -> conteudo passa da altura -> ...
+   *
+   * Com 1 ou 2 tiles e uma linha so e nunca estoura, por isso so aparecia
+   * com 3+ pessoas transmitindo. `stable` tira a largura da equacao e o
+   * laco nao fecha.
+   *
+   * `stable` e nao `stable both-edges`: both-edges manteria a grade
+   * perfeitamente centrada (reserva dos dois lados) ao custo de 24px de
+   * largura em vez de 12. Num mural de video 6px de deslocamento nao se
+   * ve; 12px de largura a menos, em tile de 16/9, se ve. */
+  scrollbar-gutter: stable;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   /* minmax(0, 1fr) em vez de "auto" -- com auto, o algoritmo de sizing das
@@ -2040,13 +2060,25 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
    dos outros por uma linha, e nunca desabilitado. */
 .annot-toggle.active { background: var(--act); color: var(--on-act); }
 .annot-sep { width: 1px; height: 18px; background: var(--line2); margin: 0 3px; }
-/* Nao e um seletor: e a legenda de quem VOCE e na lousa. */
+/* Passou a ser um <input type="color">: a cor do pincel e escolhida, nao
+   so exibida. O input nativo vem com moldura e preenchimento proprios em
+   toda plataforma -- as regras de ::-webkit-color-swatch tiram os dois pra
+   que ele volte a ser a mesma pastilha redonda que era como legenda. */
 .annot-ink {
   width: 16px; height: 16px;
   border-radius: var(--r-full);
   border: 2px solid var(--veil);
   margin: 0 4px;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
+.annot-ink::-webkit-color-swatch-wrapper { padding: 0; }
+.annot-ink::-webkit-color-swatch { border: none; border-radius: var(--r-full); }
+.annot-ink:disabled { cursor: not-allowed; opacity: .5; }
+.annot-ink:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
 
 .annot-text-input {
   position: absolute;
