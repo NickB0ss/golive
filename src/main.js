@@ -142,6 +142,25 @@ if (audioAddonLoadError) {
 process.on('uncaughtException', (err) => logger.error('uncaughtException no main:', err?.stack || err));
 process.on('unhandledRejection', (err) => logger.error('unhandledRejection no main:', err?.stack || err));
 
+// Encerramento LIMPO deixa marca. E o par que faltava do log sincrono (ver
+// o cabecalho de main/logger.js): nos logs de 2026-09-05 duas maquinas
+// somem no meio de uma linha de diag e reaparecem num arquivo novo minutos
+// depois. Sem uma linha de saida nao da pra distinguir "a pessoa fechou o
+// app" de "o app morreu" -- e essa e a primeira pergunta em toda
+// investigacao de crash. Com isto a regra de leitura vira uma so:
+//
+//     log que termina SEM 'encerrando' terminou em crash.
+//
+// before-quit e will-quit disparam os dois no mesmo encerramento; a
+// primeira linha e a que interessa (a que sabe o motivo).
+let encerrandoPor = null;
+function logEncerramento(motivo) {
+  if (encerrandoPor) return;
+  encerrandoPor = motivo;
+  logger.log(`encerrando: ${motivo}`);
+}
+app.on('before-quit', () => logEncerramento('before-quit'));
+
 // Processo de GPU caindo repetidamente e o Chromium desligando a
 // aceleracao em silencio depois -- exatamente o quadro do log de
 // 2026-08-29 (tudo "disabled_software" numa RTX 3060). `render-process-gone`
@@ -259,10 +278,104 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
+/** Secoes do chrome://gpu que valem log, na ordem em que sao emitidas.
+ *
+ * "Video Acceleration Information" entrou em 2026-09-05: e a unica que diz
+ * COM QUE TETO o encoder de hardware e oferecido. "Graphics Feature Status"
+ * so diz "Video Encode: Hardware accelerated", que e verdade e nao ajuda --
+ * informa que existe algum encoder, nao o que ele aceita.
+ *
+ * Numa RTX 3060 ela veio com "Encode h264 ... 32x32 to 1920x1088 pixels,
+ * and/or 30.000 fps". CUIDADO com a leitura obvia: isso NAO e a capacidade
+ * da placa (o NVENC de uma 3060 faz 1080p60 sem esforco, e o Discord usa
+ * exatamente isso na mesma maquina) e, medido em 2026-09-05, TAMBEM nao e
+ * o motivo do OpenH264 -- um teste local de loopback com H264 forcado deu o
+ * mesmo custo de encode a 1080p30 e a 1080p60 (7,83 e 7,88 ms/quadro). Se o
+ * teto de fps fosse o portao, a rodada de 30 teria trocado de caminho.
+ *
+ * Ou seja: a causa do OpenH264 segue DESCONHECIDA. Estas linhas ficam no log
+ * porque sao dado bruto util (e o teto pode ser diferente em outra maquina),
+ * nao porque a pergunta esteja respondida. */
+const SECOES_GPU = ['Problems Detected', 'Graphics Feature Status', 'Video Acceleration Information'];
+
+/** Quanto de cada secao vai pro log. A pagina inteira passa de 60 KB. */
+const GPU_SECAO_MAX_LINHAS = 40;
+
+/** Script injetado no chrome://gpu pra extrair o relatorio.
+ *
+ * NAO usa innerText, de proposito. innerText exige LAYOUT, e esta janela e
+ * `show: false` -- ela so foi diagramada por acaso, porque a janela
+ * principal do app estava visivel na hora. Com o app minimizado o innerText
+ * volta vazio, a leitura cai no textContent do shadow root, e o <style>
+ * minificado da pagina vai junto: o log encheria de CSS.
+ *
+ * E desce em shadow roots ANINHADOS. O chrome://gpu poe o <info-view> num
+ * shadow root e o conteudo de verdade em shadow roots DENTRO dele -- ler so
+ * o primeiro nivel devolve 116 caracteres de casca.
+ *
+ * Sem sequencia de escape nenhuma no corpo (a quebra de linha vem de
+ * fromCharCode): este texto atravessa um template literal antes de virar
+ * codigo, e cada camada de escape e uma chance de o script morrer com
+ * SyntaxError -- que foi exatamente o que travou esta investigacao. */
+const GPU_EXTRACTOR = `(() => {
+  try {
+    const NL = String.fromCharCode(10);
+    const BLOCO = /^(DIV|H1|H2|H3|LI|TR|P|SECTION|UL)$/;
+    const ler = (no) => {
+      let out = '';
+      for (const f of no.childNodes) {
+        if (f.nodeType === 3) { out += f.nodeValue; continue; }
+        if (f.nodeType !== 1) continue;
+        const tag = f.tagName;
+        if (tag === 'STYLE' || tag === 'SCRIPT' || tag === 'LINK') continue;
+        if (f.shadowRoot) out += ler(f.shadowRoot);
+        out += ler(f);
+        if (BLOCO.test(tag)) out += NL;
+        else if (tag === 'TD' || tag === 'TH') out += ' | ';
+      }
+      return out;
+    };
+    const linhas = ler(document.body).split(NL).map((l) => l.trim()).filter(Boolean);
+    return { ok: true, texto: linhas.join(NL) };
+  } catch (e) {
+    return { ok: false, erro: String((e && e.stack) || e) };
+  }
+})()`;
+
 /** Abre chrome://gpu numa janela escondida, extrai o "Problems Detected" e
  * o resumo de status, joga no log e fecha. Envolto em try/catch por todo
- * lado: e diagnostico, nao pode atrapalhar nada. */
+ * lado: e diagnostico, nao pode atrapalhar nada.
+ *
+ * NUNCA sai calado. A versao anterior podia: ela filtrava as linhas com
+ * `.filter(Boolean)` e, se o texto extraido viesse vazio, o array esvaziava
+ * e a funcao terminava sem logar NADA -- nem sucesso, nem erro. Foi o que
+ * aconteceu: 24 arquivos de log, 4 maquinas, zero linha `[gpu]`. Justo o
+ * diagnostico que existe pra responder "por que a GPU esta desligada"
+ * (tudo "disabled_software" numa RTX 3060) era o unico que nao aparecia.
+ *
+ * A causa provavel do texto vazio esta corrigida junto: o chrome://gpu
+ * monta o conteudo dentro de shadow roots, e `document.body.innerText` nao
+ * atravessa shadow DOM -- devolve string vazia. Agora a varredura desce
+ * pelos shadow roots, e o que nao der certo vira linha de erro COM o
+ * tamanho do que foi lido, pra diferenciar "nao carregou" de "carregou
+ * vazio" de "carregou e o texto nao tem as secoes". */
 function logGpuProblems() {
+  // Segunda leitura do feature status, agora com o processo de GPU no ar.
+  //
+  // A primeira (la em whenReady) sai ~100ms depois do start e devolve o
+  // estado INICIAL, pessimista: tudo "disabled_software". Foi essa leitura
+  // que abriu a investigacao de "aceleracao desligada" na v0.3.3 e
+  // apareceu identica nos 24 logs de 2026-09-05 -- inclusive numa RTX 3060
+  // em que o chrome://gpu, 5 segundos depois, reporta "Hardware
+  // accelerated" em tudo. As duas linhas ficam no log de proposito: a
+  // diferenca entre elas e o dado, e sem as duas ninguem descobre que a
+  // primeira nao vale.
+  try {
+    logger.log(`GPU feature status (apos subir): ${JSON.stringify(app.getGPUFeatureStatus())}`);
+  } catch (err) {
+    logger.error('diag GPU: getGPUFeatureStatus tardio falhou:', err?.message || err);
+  }
+  logger.log('diag GPU: consultando chrome://gpu');
   let w;
   try {
     w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
@@ -270,24 +383,37 @@ function logGpuProblems() {
     logger.error('diag GPU: nao abriu janela:', err?.message || err);
     return;
   }
+  let respondeu = false;
   const fechar = () => { try { if (w && !w.isDestroyed()) w.destroy(); } catch { /* ja fechou */ } };
-  const timer = setTimeout(fechar, 15000); // trava de seguranca
+  // Trava de seguranca: se nem did-finish-load nem did-fail-load dispararem
+  // (o silencio total que a gente viu), isto e o que sobra pra registrar.
+  const timer = setTimeout(() => {
+    if (!respondeu) logger.error('diag GPU: chrome://gpu nao respondeu em 15s (nenhum evento de carga)');
+    fechar();
+  }, 15000);
   w.webContents.once('did-finish-load', async () => {
+    respondeu = true;
     try {
-      const texto = await w.webContents.executeJavaScript(
-        `(() => {
-          const t = (document.body && document.body.innerText) || '';
-          const i = t.indexOf('Problems Detected');
-          const j = t.indexOf('Graphics Feature Status');
-          const ini = j >= 0 && (i < 0 || j < i) ? j : (i >= 0 ? i : 0);
-          return t.slice(ini, ini + 2500);
-        })()`
-      );
-      String(texto)
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .forEach((l) => logger.log(`[gpu] ${l}`));
+      const lido = await w.webContents.executeJavaScript(GPU_EXTRACTOR);
+      if (!lido?.ok) {
+        logger.error('diag GPU: o extrator falhou dentro da pagina:', lido?.erro || '(sem erro)');
+        return;
+      }
+      const texto = String(lido.texto || '');
+      if (!texto.trim()) {
+        logger.error('diag GPU: chrome://gpu carregou mas veio vazio (o processo de GPU pode nao ter subido)');
+        return;
+      }
+      let achouAlguma = false;
+      for (const secao of SECOES_GPU) {
+        const i = texto.indexOf(secao);
+        if (i < 0) continue; // 'Problems Detected' so existe quando HA problemas
+        achouAlguma = true;
+        texto.slice(i).split('\n').slice(0, GPU_SECAO_MAX_LINHAS).forEach((l) => logger.log(`[gpu] ${l}`));
+      }
+      if (!achouAlguma) {
+        logger.error(`diag GPU: nenhuma secao conhecida na pagina (${texto.length} chars lidos)`);
+      }
     } catch (err) {
       logger.error('diag GPU: leitura de chrome://gpu falhou:', err?.message || err);
     } finally {
@@ -296,11 +422,13 @@ function logGpuProblems() {
     }
   });
   w.webContents.once('did-fail-load', (_e, code, desc) => {
+    respondeu = true;
     logger.error(`diag GPU: chrome://gpu nao carregou (${code} ${desc})`);
     clearTimeout(timer);
     fechar();
   });
   w.loadURL('chrome://gpu').catch((err) => {
+    respondeu = true;
     logger.error('diag GPU: loadURL falhou:', err?.message || err);
     clearTimeout(timer);
     fechar();
@@ -308,12 +436,20 @@ function logGpuProblems() {
 }
 
 app.whenReady().then(() => {
-  // Diagnostico de "encoder em software / fps baixo": se video_encode nao
-  // vier 'enabled', o Chromium nao tem encoder de hardware nesta maquina
-  // (GPU na blocklist, driver velho, ou Optimus rodando na iGPU) e a tela
-  // vai SEMPRE cair pro OpenH264. Uma linha, no start.
+  // Leitura PRECOCE do feature status. NAO tire conclusao dela.
+  //
+  // Aqui estamos ~100ms depois do start e o processo de GPU ainda nao
+  // reportou nada, entao isto devolve o estado inicial, que e pessimista
+  // por construcao: tudo "disabled_software". Nao quer dizer que a maquina
+  // esta sem aceleracao. Medido em 2026-09-05, mesma sessao, mesma RTX
+  // 3060: esta linha disse video_encode "disabled_software" e o
+  // chrome://gpu, 5s depois, disse "Video Encode: Hardware accelerated".
+  //
+  // Fica no log so como marco de inicio e pra dar a diferenca contra a
+  // leitura tardia (ver logGpuProblems). Quem responde "tem aceleracao?" e
+  // a linha `GPU feature status (apos subir)` e as linhas `[gpu]`.
   try {
-    logger.log(`GPU feature status: ${JSON.stringify(app.getGPUFeatureStatus())}`);
+    logger.log(`GPU feature status (no start, pode estar pessimista): ${JSON.stringify(app.getGPUFeatureStatus())}`);
   } catch (err) {
     logger.error('getGPUFeatureStatus falhou:', err?.message || err);
   }
@@ -393,11 +529,18 @@ app.whenReady().then(() => {
 }).catch((err) => logger.error('bootstrap (app.whenReady) falhou:', err?.message || err));
 
 app.on('will-quit', () => {
+  logEncerramento('will-quit');
   globalShortcut.unregisterAll();
   destroyOverlayWindow();
+  // Ultima linha da sessao: depois disto o logger vira no-op de arquivo (o
+  // console segue), entao um handler atrasado nao lanca nem escreve num fd
+  // fechado.
+  logger.log('sessao encerrada');
+  logger.close();
 });
 
 app.on('window-all-closed', async () => {
+  logEncerramento('window-all-closed');
   // Fecha o servidor embutido ANTES de sair: o close() dele avisa os
   // clientes ('room-closed' + close limpo) pra que voltem pro lobby em vez
   // de ficar presos numa sala fantasma. `await` garante que os frames saiam
