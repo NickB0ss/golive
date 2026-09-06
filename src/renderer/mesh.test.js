@@ -888,3 +888,95 @@ test("'offer' que nao aplica derruba a conexao e pede recuperacao", async () => 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
 });
+
+// --- Uma negociacao de saida por vez, por conexao ---
+//
+// Log de 2026-09-05, 18:47:35 / 18:51:27 / 18:52:15, sala de 4 pessoas:
+//
+//   [signaling] falha processando 'offer' de #4 (kind=screen): InvalidAccessError:
+//   Failed to set local offer sdp: The order of m-lines in subsequent offer
+//   doesn't match order from previous offer/answer.
+//
+// A causa nao estava na 'offer' que o log nomeia. Ao processar uma 'offer' da
+// origem, app.js dispara flushPendingRelay DUAS vezes com os mesmos
+// argumentos: uma de dentro do onTrack (que o Chromium chama durante o
+// setRemoteDescription, antes da promise resolver) e outra no fim do
+// case 'offer'. A guarda `state.relayed` e lida antes do await e escrita
+// depois, entao as duas passam e chamam relayTo pro MESMO filho.
+//
+// Dois offerTo concorrentes na mesma pc fazem addTransceiver duas vezes: dois
+// encoders pro mesmo filho, duas ofertas, e duas createOffer cujas SDP
+// descrevem numeros diferentes de m-lines. Aplicada fora de ordem, a menor
+// leva o InvalidAccessError acima -- e a pc fica aberta, meio negociada, com
+// um encoder orfao. Pra quem esta na sala: "entrei e a tela ficou preta, e
+// continuou preta mesmo ele reiniciando o compartilhamento".
+
+test('offerTo concorrente na mesma conexao nao empilha um segundo encoder', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('folha', 'gg');
+
+  await Promise.all([
+    mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen@origem'),
+    mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen@origem'),
+  ]);
+
+  const pc = mesh.peers.get('folha').outConns['screen@origem'];
+  assert.equal(pc.getSenders().length, 1, 'um encoder por filho, nao dois');
+  assert.equal(sent.filter((m) => m.type === 'offer').length, 1, 'uma oferta, nao duas');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('offerTo volta a ser aceito depois que a negociacao anterior fecha', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('folha', 'gg');
+
+  // Uma renegociacao DE VERDADE (religar a camera, trocar a track) continua
+  // valendo: o bloqueio e so enquanto ha oferta em voo.
+  await mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen');
+  await mesh.handleAnswer('folha', { type: 'answer', sdp: 'v=0' }, 'screen');
+  await mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen');
+
+  assert.equal(sent.filter((m) => m.type === 'offer').length, 2, 'a segunda oferta sai');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('offerTo que nao aplica derruba a conexao e pede recuperacao', async () => {
+  installFakeWebRTC();
+  const estados = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, info) => estados.push({ peerId, ...info }),
+  });
+  mesh.addPeer('folha', 'gg');
+
+  // A pc recusa a SDP local -- no mundo real, a oferta que perdeu a corrida
+  // de m-lines. Sem tratamento, offerTo deixava a pc ABERTA e meio
+  // negociada: nenhum connectionstatechange, nenhuma recuperacao, e um
+  // encoder pago por um filho que nunca recebeu um frame.
+  const err = new Error('Failed to set local offer sdp: The order of m-lines...');
+  err.name = 'InvalidAccessError';
+  global.RTCPeerConnection.prototype.setLocalDescription = () => Promise.reject(err);
+
+  await assert.rejects(() => mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen@origem'));
+
+  const falha = estados.find((e) => e.failed === true);
+  assert.ok(falha, 'a falha tem de chegar em onPeerState');
+  assert.equal(falha.dir, 'out');
+  assert.equal(falha.kind, 'screen@origem');
+  assert.equal(
+    mesh.peers.get('folha').outConns['screen@origem'], null,
+    'o slot fica livre pra uma conexao nova, sem encoder orfao'
+  );
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});

@@ -233,6 +233,9 @@
     // por peer que saiu.
     const pendingIce = new WeakMap();
 
+    // Negociacoes de saida em voo, por `${peerId}|${kind}`. Ver offerTo.
+    const negotiating = new Set();
+
     // Esvazia, na ordem de chegada, os candidatos guardados pra `pc`. Uma
     // falha individual (candidato malformado do outro lado) nao pode
     // impedir a entrega dos demais -- basta UM candidato bom pra rota fechar.
@@ -409,6 +412,47 @@
     }
 
     async function offerTo(peerId, stream, quality, kind) {
+      // UMA negociacao de saida por vez, por conexao.
+      //
+      // `createOffer` tira um RETRATO dos m-lines que existem no instante em
+      // que e chamado, e so `setLocalDescription` o aplica. Duas chamadas
+      // concorrentes na mesma pc, portanto, addTransceiver duas vezes (dois
+      // encoders pro mesmo espectador) e produzem duas SDP com contagens
+      // diferentes de m-line; aplicada fora de ordem, a menor e recusada com
+      // InvalidAccessError ("The order of m-lines in subsequent offer doesn't
+      // match order from previous offer/answer") e a conexao fica meio
+      // negociada, sem nunca entregar um frame.
+      //
+      // A guarda e SINCRONA de proposito: o primeiro await ja seria tarde --
+      // e exatamente entre ensureOutConn e setLocalDescription que a segunda
+      // chamada entrava. Ver o log de 2026-09-05, 18:47:35.
+      //
+      // Quem chega com a negociacao em voo desiste em vez de esperar: o unico
+      // caminho que corre de verdade e o repasse disparado duas vezes pra
+      // mesma origem (flushPendingRelay, via onTrack e via case 'offer'), e
+      // ali a segunda chamada e literalmente a mesma oferta -- enfileira-la
+      // so devolveria o transceiver duplicado por outro caminho.
+      const emVoo = `${peerId}|${kind}`;
+      if (negotiating.has(emVoo)) {
+        console.warn(`[mesh] oferta pra #${peerId} (kind=${kind}) ignorada: ja ha uma negociacao em voo`);
+        return;
+      }
+      negotiating.add(emVoo);
+      try {
+        await negotiateOffer(peerId, stream, quality, kind);
+      } catch (err) {
+        // Sem isto a pc ficava ABERTA e meio negociada: como ela nunca chega
+        // em 'failed' no connectionstatechange (nao falhou -- nunca comecou),
+        // nada disparava a recuperacao, e sobrava um encoder pago por um
+        // espectador que so via tela preta. Mesmo racional do handleOffer.
+        failNegotiation(peerId, kind, 'out', err);
+        throw err;
+      } finally {
+        negotiating.delete(emVoo);
+      }
+    }
+
+    async function negotiateOffer(peerId, stream, quality, kind) {
       // Ofertar numa outConn que JA existia e renegociacao (religar a camera
       // logo depois de stopCamera, por exemplo): sem avisar, o outro lado
       // derrubaria a conexao que continua de pe deste lado. Ver ensureInConn.

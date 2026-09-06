@@ -37,7 +37,14 @@
   function line(row, ctx) {
     const steps = ctx.steps || {};
     const marca = ctx.changed ? 'MUDOU ' : '';
-    return `[diag] ${marca}tela->${row.name} enc=${row.encoder || '?'} ${ctx.software ? 'SOFTWARE(CPU)' : 'hardware'}`
+    // ctx.relayOf (sourceId de quem e a tela ORIGINAL) so vem preenchido
+    // quando este sender e um repasse (F2), nao a captura direta. Sem isto
+    // "tela->gg" nao dizia se gg via a nossa captura ou uma stream de
+    // outro peer que so estamos revendendo -- e depurar a falha de
+    // negociacao de saida de 2026-09-05 exigiu cruzar 3 logs de 2 maquinas
+    // so pra descobrir que "screen" ali era "screen@4" por baixo.
+    const repasse = ctx.relayOf != null ? ` (repasse de #${ctx.relayOf})` : '';
+    return `[diag] ${marca}tela->${row.name}${repasse} enc=${row.encoder || '?'} ${ctx.software ? 'SOFTWARE(CPU)' : 'hardware'}`
       + ` efic=${row.powerEfficient === false ? 'nao' : 'sim'}`
       + ` cap=${row.captureFps != null ? Math.round(row.captureFps) : '?'}fps`
       + ` out=${row.width || 0}x${row.height || 0}@${Math.round(row.fps || 0)}fps`

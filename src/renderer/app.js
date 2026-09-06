@@ -3356,9 +3356,26 @@
     const childKind = relayKindFor(kind, sourcePeerId);
     for (const childId of state.filhosIds) {
       if (state.relayed.has(childId)) continue;
-      const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, childKind));
+      // RESERVA antes do await, nao depois. Esta funcao roda duas vezes com
+      // os mesmos argumentos ao processar uma 'offer' da origem: uma de
+      // dentro do onTrack (que o Chromium dispara DURANTE o
+      // setRemoteDescription, antes de a promise resolver) e outra no fim do
+      // case 'offer'. Escrevendo `relayed` so depois do await, as duas
+      // passavam pela guarda e repassavam pro MESMO filho -- dois
+      // transceivers, dois encoders e duas SDP concorrentes na mesma pc.
+      // Ver o log de 2026-09-05, 18:47:35, e a guarda de offerTo em mesh.js,
+      // que segura o caso pela outra ponta.
+      state.relayed.add(childId);
+      let ok = false;
+      try {
+        ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, childKind));
+      } finally {
+        // Repasse que nao aconteceu (stream ainda nao chegou) ou que falhou
+        // no meio nao pode ficar reservado: seria um filho sem video que
+        // nenhum flush futuro tentaria de novo.
+        if (!ok) state.relayed.delete(childId);
+      }
       if (ok) {
-        state.relayed.add(childId);
         // Um filho novo e um espectador novo daquela tela, e so NOS sabemos
         // disso -- a origem nao tem conexao com ele.
         broadcastWatchers(kind, sourcePeerId);
@@ -3632,6 +3649,9 @@
           global: autoQuality.steps,
           peer: peerQuality.get(`${r.peerId}:screen`)?.steps || 0,
         },
+        // kind composto ('screen@<origem>') so existe em linha de repasse
+        // (F2) -- ver relayKindFor. null pra captura direta, o caso comum.
+        relayOf: parseKind(r.kind).sourceId,
       };
       const key = `${r.peerId}:${r.kind}`;
       const sig = encodediag.signature(r, ctx);
