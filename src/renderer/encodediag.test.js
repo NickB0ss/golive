@@ -63,3 +63,19 @@ test('line: hardware sem msPerFrame nem changed', () => {
   assert.match(s, /degraus=g0\/p0/);
   assert.doesNotMatch(s, /MUDOU/);
 });
+
+// --- Log de 2026-09-05: "tela->gg" nao dizia se gg via a captura direta ou
+// um repasse (F2) -- nem de QUEM era a tela repassada. Pra depurar a falha
+// de negociacao de saida foi preciso cruzar 3 arquivos de log de 2 maquinas
+// so pra descobrir que "screen" ali era, na verdade, "screen@4": um repasse.
+// ctx.relayOf carrega esse sourceId (parseKind ja faz esse trabalho em
+// app.js) -- ausente/null pro caso comum, captura direta.
+test('line: sender direto nao ganha marca de repasse', () => {
+  const s = line(ROW, CTX);
+  assert.doesNotMatch(s, /repasse/);
+});
+
+test('line: repasse marca de quem e a tela original', () => {
+  const s = line(ROW, { ...CTX, relayOf: '4' });
+  assert.match(s, /tela->Nubanho \(repasse de #4\)/);
+});

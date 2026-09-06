@@ -3649,6 +3649,9 @@
           global: autoQuality.steps,
           peer: peerQuality.get(`${r.peerId}:screen`)?.steps || 0,
         },
+        // kind composto ('screen@<origem>') so existe em linha de repasse
+        // (F2) -- ver relayKindFor. null pra captura direta, o caso comum.
+        relayOf: parseKind(r.kind).sourceId,
       };
       const key = `${r.peerId}:${r.kind}`;
       const sig = encodediag.signature(r, ctx);
