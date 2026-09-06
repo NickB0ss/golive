@@ -104,13 +104,62 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.11.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **514 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.0** — **o rabisco volta a sair da máquina, e a audiência para de
+  mentir**. Quatro frentes, três delas bugs que não faziam barulho nenhum.
+
+  **(1) Rabiscar não funcionava — de novo, e o servidor era o culpado.**
+  Na 0.11.0 a chave da lousa virou `'<dono>:<kind>'` (`surfaceKey`, pra tela
+  e câmera da mesma pessoa serem duas superfícies), e o `case 'annotate'` do
+  servidor continuou fazendo `peers.get(String(msg.surface))`. `peers.get('7:screen')`
+  não acha ninguém, e a op caía no `return` que existe pra barrar "tela de
+  quem não está na sala": **toda** op de rabisco era descartada em silêncio.
+  Os testes do servidor mandavam o id cru como superfície, então nenhum deles
+  passava pela chave real. `surfaceOwner` no servidor é o espelho do
+  `parseSurface` do cliente — sufixo desconhecido devolve a chave inteira como
+  dono, senão inventar um corte ali aprovaria superfície forjada.
+  **(2) A cor escolhida não viajava.** `sanitizeAnnotateOp` reconstrói a op
+  campo a campo e `color` (também nova na 0.11.0) não estava na lista: quem
+  desenhava via a própria cor, a sala via a cor derivada do id. Mesma classe
+  do bug do `annotate` no `broadcast-state` (0.10.2) — reconstruir campo a
+  campo é o que barra lixo e é o que faz campo novo sumir calado.
+  **(3) "Quem está assistindo" quase nunca aparecia inteiro**, por dois
+  motivos independentes. O primeiro é de uma linha: `showTile` fazia
+  `gridEl.querySelector('.empty')?.remove()` pra tirar o cartão de sala
+  vazia, e esse seletor varria a subárvore — o primeiro `.empty` que ele
+  achava era o `.tile-watchers` sem audiência de um tile já existente, e ele
+  **apagava o elemento inteiro**. Bastava um segundo tile aparecer pra matar
+  o overlay do primeiro. Agora é `:scope > .empty`, e o estado do overlay se
+  chama `is-empty`, pra colisão não voltar por outro caminho. O segundo é de
+  topologia: com a árvore de retransmissão ligada (fanout 1 na origem), quem
+  serve uma folha é o **relay**, e a origem só contava quem ela mesma servia
+  — numa sala de três já faltava alguém. A mensagem `watchers` ganhou
+  `origin` (de quem é a tela, separado de `from`, que é quem está contando),
+  cada nó anuncia o pedaço que serve, e o cliente **funde por tile**. O
+  `looking` novo no `view-state` completa: um relay que repassa uma tela que
+  ele mesmo não escolheu assistir continua mandando `watching: true` (tem
+  gente atrás dele) e some da lista.
+  **(4) Assistir uma tela por vez.** Ver todas ao mesmo tempo nunca foi
+  escolha de ninguém — era o que sobrava de não haver escolha, e cada tela é
+  um decode aqui e um encoder inteiro na máquina de quem transmite. Agora a
+  primeira tela é escolhida sozinha (o caso de um transmissor só não muda em
+  nada) e "+ Ver junto" empilha as outras. A economia sai pelo caminho que já
+  existia pra janela minimizada (`setPeerDemand`, F1.3), agora com duas
+  causas em vez de uma.
+  Junto: o **"Apagar tudo"** de quem é dono da tela encolheu pela metade (a
+  regra base de `button` põe `min-height: 44px`, que ganha de `height` — sem
+  zerar, o botão não encolhia, só o conteúdo dentro dele), e o **aviso do
+  palco ganhou um X**: o de firewall ficava a sessão inteira na frente da
+  sala mesmo pra quem já tinha liberado a porta na mão. A dispensa vale pra
+  aquele texto, não pro elemento, então um aviso novo (o encoder caindo pra
+  software) volta a aparecer.
 
 - **0.11.0** — a tela volta a codificar em **hardware**. Uma track de
   `getDisplayMedia` com `contentHint='motion'` derrubava o encoder de
@@ -124,6 +173,19 @@ após `await`).
   carência pra sender novo, `scrollbar-gutter` matando a tremedeira da grade
   com 3+ transmitindo, tiles de fundo parando de pintar em tela cheia, e
   rabisco na câmera com cor escolhida por quem desenha.
+
+- **0.10.3** — **só dá pra abrir uma instância do GoLive por máquina**. Antes
+  cada `npm start`/atalho abria um processo novo, cada um tentando subir
+  servidor de sinalização, escuta UDP de descoberta e atalho global
+  (`Ctrl+Alt+P`) próprios — receita pra sala fantasma e comportamento
+  duplicado, sem aviso nenhum. `app.requestSingleInstanceLock()` roda como a
+  primeira coisa do `main.js`, antes de qualquer `commandLine.appendSwitch`;
+  se a trava já está com outro processo, este só sai (`app.quit()` e
+  `return`). `second-instance` traz a janela existente pra frente
+  (restaurando se estiver minimizada) em vez de deixar o SO abrir outra.
+  Confirmado rodando `npm start` duas vezes em sequência e conferindo a
+  árvore de processos: os 5 `electron.exe` continuam todos filhos do PID da
+  primeira instância — a segunda tentativa não cria processo nenhum.
 
 - **0.2.0** — qualidade adaptativa **por espectador**: escada de histerese por
   conexão, `receiveHealth` do espectador viajando no view-state, e a escada
@@ -316,70 +378,6 @@ após `await`).
   índice terminava com 0 entradas, agora termina com as 2 telas. +7 testes.
 - **0.1.x** — F2 (árvore sempre ligada), A1–A7, B4/B5, C1–C3, C6, G4, H1–H4.
   Detalhe por item na auditoria e no histórico do git.
-
-## Na branch, ainda não lançado
-
-- **0.12.0** — **o rabisco volta a sair da máquina, e a audiência para de
-  mentir**. Quatro frentes, três delas bugs que não faziam barulho nenhum.
-
-  **(1) Rabiscar não funcionava — de novo, e o servidor era o culpado.**
-  Na 0.11.0 a chave da lousa virou `'<dono>:<kind>'` (`surfaceKey`, pra tela
-  e câmera da mesma pessoa serem duas superfícies), e o `case 'annotate'` do
-  servidor continuou fazendo `peers.get(String(msg.surface))`. `peers.get('7:screen')`
-  não acha ninguém, e a op caía no `return` que existe pra barrar "tela de
-  quem não está na sala": **toda** op de rabisco era descartada em silêncio.
-  Os testes do servidor mandavam o id cru como superfície, então nenhum deles
-  passava pela chave real. `surfaceOwner` no servidor é o espelho do
-  `parseSurface` do cliente — sufixo desconhecido devolve a chave inteira como
-  dono, senão inventar um corte ali aprovaria superfície forjada.
-  **(2) A cor escolhida não viajava.** `sanitizeAnnotateOp` reconstrói a op
-  campo a campo e `color` (também nova na 0.11.0) não estava na lista: quem
-  desenhava via a própria cor, a sala via a cor derivada do id. Mesma classe
-  do bug do `annotate` no `broadcast-state` (0.10.2) — reconstruir campo a
-  campo é o que barra lixo e é o que faz campo novo sumir calado.
-  **(3) "Quem está assistindo" quase nunca aparecia inteiro**, por dois
-  motivos independentes. O primeiro é de uma linha: `showTile` fazia
-  `gridEl.querySelector('.empty')?.remove()` pra tirar o cartão de sala
-  vazia, e esse seletor varria a subárvore — o primeiro `.empty` que ele
-  achava era o `.tile-watchers` sem audiência de um tile já existente, e ele
-  **apagava o elemento inteiro**. Bastava um segundo tile aparecer pra matar
-  o overlay do primeiro. Agora é `:scope > .empty`, e o estado do overlay se
-  chama `is-empty`, pra colisão não voltar por outro caminho. O segundo é de
-  topologia: com a árvore de retransmissão ligada (fanout 1 na origem), quem
-  serve uma folha é o **relay**, e a origem só contava quem ela mesma servia
-  — numa sala de três já faltava alguém. A mensagem `watchers` ganhou
-  `origin` (de quem é a tela, separado de `from`, que é quem está contando),
-  cada nó anuncia o pedaço que serve, e o cliente **funde por tile**. O
-  `looking` novo no `view-state` completa: um relay que repassa uma tela que
-  ele mesmo não escolheu assistir continua mandando `watching: true` (tem
-  gente atrás dele) e some da lista.
-  **(4) Assistir uma tela por vez.** Ver todas ao mesmo tempo nunca foi
-  escolha de ninguém — era o que sobrava de não haver escolha, e cada tela é
-  um decode aqui e um encoder inteiro na máquina de quem transmite. Agora a
-  primeira tela é escolhida sozinha (o caso de um transmissor só não muda em
-  nada) e "+ Ver junto" empilha as outras. A economia sai pelo caminho que já
-  existia pra janela minimizada (`setPeerDemand`, F1.3), agora com duas
-  causas em vez de uma.
-  Junto: o **"Apagar tudo"** de quem é dono da tela encolheu pela metade (a
-  regra base de `button` põe `min-height: 44px`, que ganha de `height` — sem
-  zerar, o botão não encolhia, só o conteúdo dentro dele), e o **aviso do
-  palco ganhou um X**: o de firewall ficava a sessão inteira na frente da
-  sala mesmo pra quem já tinha liberado a porta na mão. A dispensa vale pra
-  aquele texto, não pro elemento, então um aviso novo (o encoder caindo pra
-  software) volta a aparecer.
-
-- **0.10.3** — **só dá pra abrir uma instância do GoLive por máquina**. Antes
-  cada `npm start`/atalho abria um processo novo, cada um tentando subir
-  servidor de sinalização, escuta UDP de descoberta e atalho global
-  (`Ctrl+Alt+P`) próprios — receita pra sala fantasma e comportamento
-  duplicado, sem aviso nenhum. `app.requestSingleInstanceLock()` roda como a
-  primeira coisa do `main.js`, antes de qualquer `commandLine.appendSwitch`;
-  se a trava já está com outro processo, este só sai (`app.quit()` e
-  `return`). `second-instance` traz a janela existente pra frente
-  (restaurando se estiver minimizada) em vez de deixar o SO abrir outra.
-  Confirmado rodando `npm start` duas vezes em sequência e conferindo a
-  árvore de processos: os 5 `electron.exe` continuam todos filhos do PID da
-  primeira instância — a segunda tentativa não cria processo nenhum.
 
 ## Backlog técnico
 
