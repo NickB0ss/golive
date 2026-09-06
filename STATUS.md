@@ -104,13 +104,34 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.1` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.2` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **514 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **519 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.2** — **tela preta ao entrar numa sala com repasse (F2) — e não
+  saía nem reiniciando o compartilhamento.** Ao processar uma `offer` da
+  origem, `flushPendingRelay` disparava duas vezes com os mesmos
+  argumentos — de dentro do `onTrack` (que o Chromium chama *durante* o
+  `setRemoteDescription`, antes da promise resolver) e de novo no fim do
+  `case 'offer'` — e a guarda contra repasse duplicado (`state.relayed`)
+  era lida antes do `await` e só escrita depois, então as duas passavam e
+  repassavam pro MESMO filho. Dois `offerTo` concorrentes na mesma conexão
+  chamam `addTransceiver` duas vezes (dois encoders pro mesmo espectador,
+  esgotando o encoder de hardware) e produzem duas SDP com contagem
+  diferente de m-line; aplicada fora de ordem, a menor levava
+  `InvalidAccessError` e a conexão ficava aberta e meio negociada pra
+  sempre — sem tratamento de erro em `offerTo`, o `connectionstatechange`
+  nunca chegava em `failed` e nenhuma recuperação rodava. `mesh.js` agora
+  recusa uma segunda negociação de saída enquanto a primeira está em voo
+  (por peer+kind), e a que falha derruba a conexão e pede recuperação como
+  `handleOffer`/`handleAnswer` já faziam; `flushPendingRelay` reserva o
+  filho antes do `await`, não depois. De brinde, a linha de diagnóstico de
+  encode agora marca `(repasse de #N)` quando o sender é um relay — sem
+  isso, depurar exigiu cruzar 3 logs de 2 máquinas.
 
 - **0.12.1** — **os sons voltam a sair quando a janela está em segundo
   plano**. `sound.js` criava um `AudioContext` uma vez e nunca o retomava:
