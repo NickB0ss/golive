@@ -1228,29 +1228,83 @@ button.busy { cursor: default; }
 .tile-paused-title { font-weight: 650; font-size: 15px; }
 .tile-paused-subtitle { font-size: 13px; color: var(--tx2); }
 
-/* "Quem esta assistindo": aparece ao mirar o mouse no tile, no canto
-   superior direito -- qualquer um na sala pode estar transmitindo (nao so
-   o host), entao isto vive no tile de quem transmite, nao numa lista fixa
-   na coluna de membros. Some quando ninguem esta assistindo (`.empty`),
-   nao so quando o mouse sai, senao um tile sem nenhum espectador mostraria
-   um balao vazio. */
+/* "Quem esta assistindo": um OLHO com o numero no canto superior ESQUERDO
+   do tile de quem transmite (qualquer um na sala pode estar transmitindo,
+   nao so o host -- por isso vive no tile, e nao numa lista fixa na coluna
+   de membros). A lista de nomes so abre com o mouse parado no olho.
+
+   Era o painel inteiro aparecendo no hover do TILE: com quatro nomes ele
+   cobria um pedaco do video toda vez que o mouse passava por perto, e sem
+   jeito de evitar. O selo responde de relance a pergunta frequente
+   ("quantos estao vendo?") e guarda a rara ("quem?") atras de um gesto.
+
+   Some por inteiro quando ninguem esta assistindo (`.empty`): um olho com
+   zero do lado seria pior que olho nenhum. */
 .tile-watchers {
   position: absolute;
-  top: 10px; right: 10px;
+  top: 10px; left: 10px;
   max-width: calc(100% - 20px);
+  /* Acima do card de "esta ao vivo" (`.tile-gate`, z-index 6) de proposito:
+     saber que TRES pessoas ja estao vendo aquela tela e parte do que decide
+     se voce vai clicar em "Assistir". */
+  z-index: 7;
+}
+/* Estado vazio com nome PROPRIO (`is-empty`, nao `empty`): a classe `empty`
+   crua e a do cartao de "sala vazia" da grade, e um `querySelector('.empty')`
+   pela subarvore da grade -- que existia em showTile -- casava com este
+   elemento e o apagava. Dois estados diferentes nao podem dividir o nome. */
+.tile-watchers.is-empty { display: none; }
+.tile-watchers-eye {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  /* A regra base de `button` poe `min-height: 44px` (alvo de toque), e
+     min-height ganha de height -- sem zerar aqui o selo sairia com 44px de
+     altura, do tamanho de um botao de barra, que e exatamente o que ele
+     deixou de ser. Alvo de toque nao se aplica: e um app de desktop e o
+     gesto e passar o mouse, nao acertar com o dedo. */
+  min-height: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--r-full);
+  background: var(--scrim-tint-2);
+  box-shadow: var(--shadow-1);
+  color: var(--text-1);
+  opacity: .72;
+  transition: opacity var(--t-tint) var(--ease-move);
+}
+.tile-watchers-eye svg { width: 14px; height: 14px; }
+.tile-watchers-count { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile:hover .tile-watchers-eye,
+.tile-watchers:focus-within .tile-watchers-eye { opacity: 1; }
+.tile.fullscreen.idle .tile-watchers { opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+
+/* O painel pende do olho. `visibility` (e nao so `opacity`) pra que ele nao
+   roube clique nem foco enquanto esta fechado. */
+.tile-watchers-panel {
+  position: absolute;
+  top: calc(100% + 6px); left: 0;
+  min-width: 150px;
+  max-width: 220px;
   padding: 6px 10px;
   background: var(--scrim-tint-2);
   border: 1px solid var(--line-subtle);
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-1);
   opacity: 0;
-  transition: opacity var(--t-tint) var(--ease-move);
-  pointer-events: none;
-  z-index: 1;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition: opacity var(--t-tint) var(--ease-move),
+              transform var(--t-tint) var(--ease-move),
+              visibility var(--t-tint);
 }
-.tile:hover .tile-watchers:not(.empty) { opacity: 1; }
-.tile.fullscreen .tile-watchers:not(.empty) { opacity: 1; transition: opacity 0.25s; }
-.tile.fullscreen.idle .tile-watchers { opacity: 0; }
+.tile-watchers:hover .tile-watchers-panel,
+.tile-watchers:focus-within .tile-watchers-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
 
 .tile-watchers-label {
   display: block;
@@ -1440,6 +1494,90 @@ button.busy { cursor: default; }
 .tile-fullscreen-btn:hover { background: var(--scrim-6); }
 .tile.fullscreen .tile-fullscreen-btn { top: 16px; right: 16px; opacity: 1; transition: opacity 0.25s; }
 .tile.fullscreen.idle .tile-fullscreen-btn { opacity: 0; pointer-events: none; }
+
+/* ---------- Tela que voce ainda NAO pediu pra assistir ----------
+
+   Card no lugar do video: avatar, nome e os dois botoes. Cobre o tile
+   inteiro porque nao ha video por baixo -- quem transmite soltou o encoder
+   deste espectador assim que o `view-state {watching:false}` chegou, entao o
+   que esta ali embaixo e o ultimo quadro congelado (ou nada). Deixar isso a
+   mostra pareceria travamento. */
+.tile-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  background: var(--video-bg);
+  border-radius: inherit;
+  animation: tile-paused-in var(--t-tint) var(--ease-move);
+}
+.tile-gate-avatar {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid; place-items: center;
+  font-size: 17px; font-weight: 700;
+  box-shadow: 0 0 0 2px var(--scrim-3);
+}
+.tile-gate-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tile-gate-title { margin: 0; font-weight: 650; font-size: 15px; }
+.tile-gate-sub {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-2);
+  max-width: 34ch;
+  line-height: 1.45;
+}
+.tile-gate-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; flex: none; }
+/* Onde o tile fica baixo, a explicacao e a primeira a sair: o que nao pode
+   faltar e o nome (de quem e a tela) e os botoes (o que se clica). Grade
+   cheia e janela baixa levam ao mesmo lugar por dois caminhos, entao os dois
+   cortam o mesmo pedaco. */
+.grid[data-count="5"] .tile-gate-sub,
+.grid[data-count="6"] .tile-gate-sub,
+.grid[data-count="many"] .tile-gate-sub { display: none; }
+@media (max-height: 720px) {
+  .tile-gate-sub { display: none; }
+  .tile-gate-avatar { width: 34px; height: 34px; font-size: 14px; }
+}
+/* Depois de tudo isso ainda cabe uma janela absurdamente baixa: o corte fica
+   no texto, nunca nos botoes (por isso `flex: none` neles). */
+.tile-gate { overflow: hidden; }
+
+/* Sem video nao ha o que rabiscar nem o que por em tela cheia. */
+.tile.is-unwatched .tile-annot-bar,
+.tile.is-unwatched .tile-annot-canvas,
+.tile.is-unwatched .tile-fullscreen-btn,
+.tile.is-unwatched .tile-label { display: none; }
+
+/* Largar UMA das telas assistidas. Vizinho do botao de tela cheia, no mesmo
+   canto e com o mesmo comportamento de aparecer no hover -- e uma acao do
+   mesmo tipo (o que ESTE tile faz), nao um estado do video. */
+.tile-unwatch-btn {
+  position: absolute;
+  top: 10px; right: 46px;
+  width: 30px; height: 30px;
+  padding: 0;
+  background: var(--scrim-4);
+  color: var(--on-act);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 2;
+}
+.tile-unwatch-btn svg { width: 16px; height: 16px; }
+.tile:hover .tile-unwatch-btn { opacity: 1; }
+.tile-unwatch-btn:hover { background: var(--scrim-6); }
+.tile.fullscreen .tile-unwatch-btn { top: 16px; right: 52px; opacity: 1; transition: opacity 0.25s; }
+.tile.fullscreen.idle .tile-unwatch-btn { opacity: 0; pointer-events: none; }
 
 .tile-menu {
   position: fixed;
@@ -1917,6 +2055,24 @@ button.busy { cursor: default; }
   opacity: 1;
 }
 #stage-warning > * { min-height: 0; overflow: hidden; }
+/* Abre espaco a direita pro X sem posicionar nada em cima do texto: o botao
+   e `float: right` no proprio fluxo, entao um aviso de tres linhas nao passa
+   por baixo dele. */
+.warn-inner { padding-right: 4px; }
+.warn-dismiss {
+  float: right;
+  margin: -2px 0 0 var(--s-2);
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 17px;
+  line-height: 1;
+}
+.warn-dismiss:hover { background: var(--surface-4); color: var(--text-1); }
 @starting-style {
   #stage-warning { grid-template-rows: 0fr; opacity: 0; }
 }
@@ -2053,9 +2209,29 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 /* O unico botao da barra de quem e DONO da tela. Rotulo por extenso porque
    ele aparece sozinho: sem vizinhos, um icone de lixeira solto nao diz o que
    apaga. `inline-flex` derruba o `grid` da regra base -- em grade o icone e
-   o rotulo empilhavam em duas linhas. */
-.annot-tool.wide { display: inline-flex; align-items: center; width: auto; padding: 0 12px; gap: 6px; }
-.annot-tool.wide em { font-size: 12px; font-weight: 600; margin-left: 0; }
+   o rotulo empilhavam em duas linhas.
+
+   Menor que os botoes de quem assiste, de proposito: a barra de quem assiste
+   e uma ferramenta em uso o tempo todo; esta e um botao de emergencia que
+   fica pendurado sobre a PROPRIA tela da pessoa a transmissao inteira. Do
+   tamanho de antes ele competia com o video que existe pra ser visto. */
+.annot-tool.wide {
+  display: inline-flex;
+  align-items: center;
+  width: auto; height: 22px;
+  /* `min-height: 0` e o que faz a altura acima valer: a regra base de
+     `button` poe 44px de alvo de toque, e min-height ganha de height. Sem
+     isto o botao continuava com 44px de altura, so que com o icone e o
+     rotulo menores dentro -- ou seja, nao encolhia nada. */
+  min-height: 0;
+  padding: 0 8px;
+  gap: 5px;
+}
+.annot-tool.wide svg { width: 12px; height: 12px; }
+.annot-tool.wide em { font-size: 10.5px; font-weight: 600; margin-left: 0; letter-spacing: .01em; }
+/* A pilula encolhe junto: com 4px de folga em volta de um botao de 22px a
+   barra parecia um botao de 30px de novo. */
+.tile-annot-bar:has(.annot-tool.wide:only-child) { padding: 2px; }
 /* O toggle e a raiz da barra: e ele que decide se o resto responde. Separado
    dos outros por uma linha, e nunca desabilitado. */
 .annot-toggle.active { background: var(--act); color: var(--on-act); }

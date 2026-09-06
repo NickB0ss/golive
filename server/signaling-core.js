@@ -98,12 +98,45 @@ function normPoint(v) {
   return Math.round(n * 1000) / 1000;
 }
 
+// Superficies de anotacao sao indexadas por '<dono>:<kind>' desde a 0.11.0
+// (ver surfaceKey/parseSurface em src/renderer/annotate.js) -- a tela e a
+// camera da MESMA pessoa sao duas lousas. Aqui o servidor so precisa de uma
+// coisa da chave: DE QUEM e a superficie, pra conferir que essa pessoa esta
+// nesta sala.
+//
+// Esta funcao e o espelho de `parseSurface` do cliente e tem de continuar
+// sendo: chave sem kind vale como tela (formato de um cliente antigo), e
+// sufixo desconhecido devolve a chave INTEIRA como dono -- inventar um
+// corte ali daria um dono que nao existe, e a checagem de sala passaria a
+// aprovar uma superficie forjada.
+const SURFACE_KINDS = new Set(['screen', 'camera']);
+
+function surfaceOwner(surfaceId) {
+  const raw = String(surfaceId == null ? '' : surfaceId);
+  const at = raw.lastIndexOf(':');
+  if (at < 0) return raw;
+  return SURFACE_KINDS.has(raw.slice(at + 1)) ? raw.slice(0, at) : raw;
+}
+
+// Cor do pincel: ou e um #rrggbb, ou o campo nao existe e o traco cai na cor
+// derivada de quem desenhou (colorOf em annotate.js). Nada de "consertar" o
+// que veio torto -- valor invalido some, nunca vira um valor inventado.
+const ANNOTATE_COLOR_RE = /^#[0-9a-f]{6}$/;
+
+function normColor(raw) {
+  if (typeof raw !== 'string') return null;
+  const c = raw.trim().toLowerCase();
+  return ANNOTATE_COLOR_RE.test(c) ? c : null;
+}
+
 /** Valida e recorta uma op de anotacao vinda da rede, devolvendo SO os
  * campos que aquela op usa (ou `null` se ela nao for aproveitavel). Fora
  * do createSignalingServer pra poder ser testada sem subir socket.
  *
- * A cor NAO passa por aqui de proposito: ela e derivada de `from` nos dois
- * lados (ver annotate.js), entao nao ha campo de cor pra um cliente forjar. */
+ * Reconstruir campo a campo e o que barra lixo -- e tambem o que faz um
+ * campo NOVO desaparecer em silencio se ninguem o adicionar aqui. Foi o que
+ * aconteceu com `annotate` no broadcast-state (0.10.2) e de novo com
+ * `color` (0.11.0): quem desenhava via a propria cor, a sala via outra. */
 function sanitizeAnnotateOp(msg) {
   const id = typeof msg.id === 'string' && msg.id ? msg.id.slice(0, 64) : null;
   switch (msg.op) {
@@ -112,7 +145,12 @@ function sanitizeAnnotateOp(msg) {
       const y = normPoint(msg.y);
       if (!id || x === null || y === null) return null;
       const width = Number(msg.width);
-      return { op: 'begin', id, x, y, width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4 };
+      const op = { op: 'begin', id, x, y, width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4 };
+      // A cor viaja no 'begin' e vale pro traco inteiro -- os 'points'
+      // seguintes so estendem, entao ela nao se repete neles.
+      const color = normColor(msg.color);
+      if (color) op.color = color;
+      return op;
     }
     case 'points': {
       if (!id || !Array.isArray(msg.points)) return null;
@@ -135,7 +173,10 @@ function sanitizeAnnotateOp(msg) {
       const text = typeof msg.text === 'string' ? msg.text.slice(0, MAX_ANNOTATE_TEXT) : '';
       if (!id || x === null || y === null || !text.trim()) return null;
       const size = Number(msg.size);
-      return { op: 'text', id, x, y, text, size: Number.isFinite(size) ? Math.min(Math.max(size, 8), 96) : 20 };
+      const op = { op: 'text', id, x, y, text, size: Number.isFinite(size) ? Math.min(Math.max(size, 8), 96) : 20 };
+      const color = normColor(msg.color);
+      if (color) op.color = color;
+      return op;
     }
     case 'undo':
       return { op: 'undo' };
@@ -589,7 +630,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
               const limiter = annotateLimiters.get(id) || createRateLimiter({ limit: MAX_ANNOTATE_PER_SECOND, windowMs: 1000 });
               annotateLimiters.set(id, limiter);
               if (!limiter.hit(Date.now())) return; // estoura em silencio, igual ao chat
-              const surface = peers.get(String(msg.surface));
+              // A chave e '<dono>:<kind>', nao o id cru: procurar a chave
+              // inteira na tabela de peers nunca acha ninguem, e TODA op cai
+              // neste `return` -- o rabisco parava aqui, em silencio, com a
+              // cara de "tela de quem nao esta na sala". Ver surfaceOwner.
+              const surface = peers.get(surfaceOwner(msg.surface));
               if (!surface || surface.room !== me.room) return; // tela de quem nao esta nesta sala
               const op = sanitizeAnnotateOp(msg);
               if (!op) return;
@@ -673,6 +718,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, pin = null, ownerTok
                 // milhares de watchers veria isso amplificado por N. A
                 // sala real nao passa de ~6; 64 e teto folgado.
                 kind: String(msg.kind == null ? '' : msg.kind).slice(0, 64),
+                // De quem e a TELA que estes espectadores estao vendo. Nem
+                // sempre e quem manda: com a arvore de retransmissao ligada
+                // quem serve uma folha e o RELAY, e sem este campo a folha
+                // sumia da lista -- a origem so conseguia contar quem ela
+                // mesma servia. Ausente vale como "a minha propria", que e
+                // o que um cliente de versao antiga quer dizer.
+                origin: msg.origin == null ? id : String(msg.origin).slice(0, 64),
                 watchers: Array.isArray(msg.watchers) ? msg.watchers.slice(0, 64) : [],
               });
               break;

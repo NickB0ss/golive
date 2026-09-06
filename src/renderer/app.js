@@ -269,9 +269,15 @@
   }
 
   /** Id do tile de um peer naquele kind. `kind` aqui e sempre o kind BASE
-   * ('screen'/'camera'), nunca o composto de repasse -- ver parseKind. */
+   * ('screen'/'camera'), nunca o composto de repasse -- ver parseKind.
+   *
+   * O proprio id de conexao cai em 'me'/'cam-me': e como showTile chama os
+   * tiles locais, e sem esta traducao um relay contando os filhos dele da
+   * NOSSA tela escreveria a audiencia num tile que nao existe. */
   function tileIdFor(peerId, kind) {
-    return kind === 'camera' ? `cam-${peerId}` : peerId;
+    const meu = myId != null && String(peerId) === String(myId);
+    if (kind === 'camera') return meu ? 'cam-me' : `cam-${peerId}`;
+    return meu ? 'me' : String(peerId);
   }
 
   // Qual conexao (peer + kind EXATO, composto inclusive) esta alimentando
@@ -849,6 +855,21 @@
   // host (endereco/firewall, definidos ao criar a sala) e o aviso derivado
   // das estatisticas (encoder caiu pra software). Elas nao se anulam --
   // podem estar ativas ao mesmo tempo -- entao o texto e a juncao das duas.
+  // O aviso do palco pode ser DISPENSADO. O de firewall e o pior caso: ele
+  // fica na frente da sala a sessao inteira quando a elevacao falhou, e para
+  // quem entra por endereco direto (ou ja liberou a porta na mao, pelo
+  // PowerShell) ele nao tem mais nada a dizer -- so ocupa o topo do palco.
+  //
+  // A dispensa vale pra ESTE texto, nao pro elemento: guardar a assinatura
+  // do que foi dispensado e o que faz um aviso NOVO (o encoder caindo pra
+  // software no meio da sessao, por exemplo) voltar a aparecer, em vez de
+  // herdar o "ja vi" de um aviso que era sobre outra coisa.
+  let dismissedWarning = null;
+
+  function warningSignature(parts, firewallBroken) {
+    return `${firewallBroken ? 'fw' : ''}|${parts.join(' ')}`;
+  }
+
   function renderHostWarning() {
     const el = $('stage-warning');
     if (!el) return;
@@ -860,7 +881,7 @@
 
     const firewallBroken = !!(hostInfo?.firewall && !hostInfo.firewall.ok);
 
-    if (!parts.length && !firewallBroken) {
+    if ((!parts.length && !firewallBroken) || warningSignature(parts, firewallBroken) === dismissedWarning) {
       el.classList.add('hidden');
       el.textContent = '';
       return;
@@ -878,6 +899,27 @@
       inner.appendChild(span);
     }
     if (firewallBroken) inner.appendChild(buildFirewallFix());
+
+    // O X vai DENTRO do mesmo filho unico do container: a abertura anima
+    // `grid-template-rows: 0fr -> 1fr` e so o filho direto tem o
+    // `min-height: 0; overflow: hidden` que faz o corte funcionar. Um
+    // segundo filho direto quebraria a animacao (ver o comentario acima).
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'warn-dismiss';
+    close.title = 'Dispensar este aviso';
+    close.setAttribute('aria-label', 'Dispensar este aviso');
+    close.textContent = '×';
+    close.addEventListener('click', () => {
+      dismissedWarning = warningSignature(parts, firewallBroken);
+      renderHostWarning();
+    });
+    // PRIMEIRO filho: sendo `float: right`, ele so sobe pro alto da caixa se
+    // vier antes do texto no fluxo. Depois dele, o float desce pra linha em
+    // que o botao aparece -- e o X terminava pendurado embaixo do aviso, em
+    // vez de no canto.
+    inner.insertBefore(close, inner.firstChild);
+    inner.classList.add('warn-inner');
 
     el.appendChild(inner);
     el.classList.remove('hidden');
@@ -982,9 +1024,13 @@
         session.mesh.removePeer(peerId);
         dropTile(peerId);
         dropTile(`cam-${peerId}`);
+        ui.grid.forgetWatched(peerId);
       }
     }
     tileSource.clear();
+    watchedScreens.clear();
+    watchersByTile.clear();
+    lookingByViewer.clear();
   }
 
   function teardownSession(session) {
@@ -1979,10 +2025,23 @@
         ui.annotations.setSurface(`cam-${msg.id}`, { allowed: false });
         dropTile(msg.id);
         dropTile(`cam-${msg.id}`);
+        // Ele levou junto duas coisas: as telas dele (e a audiencia delas) e
+        // tudo que ele CONTAVA sobre a tela dos outros, se era relay.
+        dropWatchers(msg.id);
+        dropWatchers(`cam-${msg.id}`);
+        dropReporter(msg.id);
+        unwatchScreen(msg.id);
+        // Ele some das duas pontas: como espectador de qualquer tela, e como
+        // tela de qualquer espectador.
+        for (const k of lookingByViewer.keys()) {
+          const [espectador, origem] = k.split('|');
+          if (espectador === msg.id || origem === msg.id) lookingByViewer.delete(k);
+        }
         renderMembersPanel();
         sound.playLeaveSound();
-        broadcastWatchers('screen'); // quem saiu pode ter sido um espectador na lista
-        broadcastWatchers('camera');
+        // Quem saiu pode ter sido um espectador -- em qualquer uma das
+        // telas que esta maquina serve, propria ou repassada.
+        broadcastAllWatchers();
         // A sala encolheu: quem ficou pode voltar pro preset de cima.
         reapplyAudienceQuality();
         for (const kind of KINDS) {
@@ -2158,6 +2217,8 @@
         if (!msg.live) {
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
           ui.grid.removeTile(msg.id, emptyMessage());
+          dropWatchers(msg.id);
+          unwatchScreen(msg.id);
         } else {
           if (!wasLive) sound.playLiveSound();
           ui.grid.setPaused(msg.id, peer.paused, {
@@ -2165,6 +2226,10 @@
             subtitle: `${peer.name || 'Alguém'} pausou a tela`,
           });
         }
+        // A sala mudou de "quantas telas ha pra escolher": pode ser a
+        // primeira (que vira a escolhida sozinha), ou a que estava sendo
+        // assistida saindo do ar.
+        syncWatchedScreens();
         renderMembersPanel();
         break;
       }
@@ -2192,25 +2257,43 @@
         // 'screen@<origem>' que retransmitimos pra outro: pausar a propria
         // transmissao nao pode congelar o que a gente so repassa.
         const wanted = Boolean(msg.watching) && !(sharePaused && msg.kind === 'screen');
+        // A lista de "quem esta assistindo" e da ORIGEM daquela tela -- mas
+        // quem serve o espectador que acabou de mudar pode ser um RELAY, e
+        // ai a contagem certa e a dele. Anunciar so no kind cru (o que se
+        // fazia aqui) escondia toda folha da arvore.
+        const { baseKind: vsBase, sourceId: vsOrigem } = parseKind(msg.kind);
+        const vsOrigemId = vsOrigem || myId;
+        if (KINDS.includes(vsBase)) {
+          // `looking` e ausente em cliente antigo: ai vale o `watching`, que
+          // era o unico sinal que existia e queria dizer as duas coisas.
+          const olhando = msg.looking === undefined ? Boolean(msg.watching) : msg.looking === true;
+          const chave = lookingKey(msg.from, vsOrigemId, vsBase);
+          // Fora do `if (setPeerDemand)` de proposito: um relay que larga a
+          // tela mas continua repassando pros filhos NAO muda a demanda de
+          // encode -- e e exatamente esse o caso em que a lista muda.
+          if (lookingByViewer.get(chave) !== olhando) {
+            lookingByViewer.set(chave, olhando);
+            broadcastWatchers(vsBase, vsOrigemId);
+          }
+        }
         if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
           renderMembersPanel();
-          // A lista de "quem esta assistindo" e da ORIGEM. Num kind
-          // composto quem suspendeu foi um filho NOSSO, e nos somos relay,
-          // nao origem -- nao ha tile local pra atualizar nem lista pra
-          // anunciar. O que muda rio acima vai no broadcastViewState.
-          if (!parseKind(msg.kind).sourceId) broadcastWatchers(msg.kind);
+          if (KINDS.includes(vsBase)) broadcastWatchers(vsBase, vsOrigemId);
           broadcastViewState(); // se formos relay, isto pode mudar o que reportamos rio acima
         }
         break;
       }
-      // Recebido de QUALQUER peer da sala que esteja transmitindo (nao so o
-      // host) -- desenha a lista de quem esta assistindo no tile daquele
-      // kind. O tile local (nosso proprio) usa 'me'/'cam-me' e nunca chega
-      // por aqui -- ver broadcastWatchers, que aplica localmente antes de
-      // mandar pro servidor.
+      // Recebido de QUALQUER peer da sala que esteja servindo video (nao so
+      // de quem transmite: um relay tambem conta os filhos dele). `origin`
+      // diz de quem e a TELA; `from`, carimbado pelo servidor, diz quem esta
+      // contando -- e a lista final e a uniao dos dois. Cliente antigo nao
+      // manda `origin`, e ai ele so pode estar falando da propria tela.
+      //
+      // Inclusive sobre a NOSSA tela: um relay contando os filhos dele cai
+      // no tile 'me'/'cam-me', que ate agora so era escrito localmente.
       case 'watchers': {
-        const tileId = msg.kind === 'camera' ? `cam-${msg.from}` : msg.from;
-        ui.grid.setWatchers(tileId, msg.watchers);
+        const origin = msg.origin == null ? msg.from : String(msg.origin);
+        applyWatchers(tileIdFor(origin, msg.kind === 'camera' ? 'camera' : 'screen'), msg.from, msg.watchers);
         break;
       }
       // Atribuicao de papel na arvore de retransmissao (F2), mandada pela
@@ -2250,6 +2333,9 @@
           mesh.closeOut(childId, relayKindFor(kind, origem));
           state.relayed.delete(childId);
         }
+        // A sub-arvore mudou de tamanho: a contagem que anunciamos daquela
+        // tela mudou junto.
+        if (dropped.length) broadcastWatchers(kind, origem);
 
         state.epoch = msg.epoch;
         state.paiId = msg.paiId;
@@ -2973,6 +3059,92 @@
     return stream?.getVideoTracks()[0] || null;
   }
 
+  // ---------- Qual tela eu estou assistindo ----------
+  //
+  // Ate aqui todo mundo recebia TODAS as telas ao mesmo tempo, e isso nunca
+  // foi uma escolha de ninguem: era o que sobrava de nao haver escolha. Cada
+  // tela a mais e um decode de 1080p60 aqui E um encoder inteiro na maquina
+  // de quem transmite (cada RTCRtpSender do Chromium instancia o seu). Numa
+  // sala em que tres pessoas compartilham, quem assiste paga tres.
+  //
+  // Agora e escolha: uma tela por padrao, e o botao "+ Ver junto" empilha as
+  // que a pessoa quiser. Sem teto -- o teto e a decisao dela, e ela ja tem a
+  // conta na frente (o quadro some, o botao volta).
+  //
+  // SO TELAS. Camera continua sempre ligada: e 720p num tile pequeno, e
+  // some-la enquanto se olha a tela de outro tira justamente o rosto de quem
+  // esta explicando.
+  //
+  // A economia nao acontece aqui, e sim do outro lado: a tela nao escolhida
+  // vira `view-state {watching:false}` no broadcastViewState logo abaixo, e
+  // quem transmite solta o encoder daquele espectador (mesh.setPeerDemand,
+  // F1.3). O caminho ja existia -- era usado so pra janela minimizada.
+  const watchedScreens = new Set(); // ids de quem transmite a tela que eu assisto
+
+  /** Telas ao vivo agora, na ordem em que a sala as conhece. */
+  function liveScreenIds() {
+    const session = currentSession;
+    if (!session?.mesh) return [];
+    return [...session.mesh.peers.values()].filter((p) => p.live).map((p) => p.id);
+  }
+
+  function watchingScreen(originId) {
+    return watchedScreens.has(String(originId));
+  }
+
+  /** Toda mudanca de escolha passa por aqui: poda o que nao esta mais no ar,
+   * garante que sempre haja UMA tela escolhida quando ha tela no ar, e so
+   * entao redesenha e conta pra quem transmite.
+   *
+   * A auto-escolha e o que preserva o caso comum: uma pessoa compartilhando
+   * numa sala de quatro nao pode virar um card com um botao "Assistir" --
+   * seria uma etapa nova pra todo mundo em troca de uma economia que, com
+   * uma tela so, nem existe. */
+  function syncWatchedScreens() {
+    const vivas = liveScreenIds();
+    const vivasSet = new Set(vivas);
+    for (const id of [...watchedScreens]) if (!vivasSet.has(id)) watchedScreens.delete(id);
+    if (!watchedScreens.size && vivas.length) watchedScreens.add(vivas[0]);
+
+    const session = currentSession;
+    for (const id of vivas) {
+      const peer = session?.mesh?.peers.get(id);
+      const assistindo = watchingScreen(id);
+      ui.grid.setWatched(id, assistindo, {
+        name: peer?.name || 'Alguém',
+        avatar: peer?.avatar || null,
+        // "+ Ver junto" so faz sentido havendo outra tela ja no ar; largar
+        // uma so faz sentido havendo outra pra ficar.
+        canAdd: watchedScreens.size > 0,
+        canDrop: watchedScreens.size > 1,
+      });
+    }
+    broadcastViewState();
+  }
+
+  /** A tela de alguem saiu do ar (parou de transmitir, ou a pessoa saiu). */
+  function unwatchScreen(originId) {
+    watchedScreens.delete(String(originId));
+    ui.grid.forgetWatched(String(originId));
+  }
+
+  ui.grid.onWatchIntent((tileId, mode) => {
+    const id = String(tileId);
+    if (mode === 'only') {
+      watchedScreens.clear();
+      watchedScreens.add(id);
+    } else if (mode === 'add') {
+      watchedScreens.add(id);
+    } else if (mode === 'remove') {
+      // Nunca ficar sem nenhuma: syncWatchedScreens reporia outra qualquer,
+      // e "cliquei pra sair desta e caí na de outro" e pior que o botao nao
+      // ter aparecido. Por isso o botao so existe com duas ou mais.
+      if (watchedScreens.size <= 1) return;
+      watchedScreens.delete(id);
+    }
+    syncWatchedScreens();
+  });
+
   // Avisa cada transmissor de quem estamos recebendo se ainda estamos ou nao
   // olhando. Peer que nunca recebeu um 'view-state' conta como assistindo --
   // padrao seguro. Quando esta sessao e RELAY do peer em questao (F2), o
@@ -2999,11 +3171,24 @@
       const childKind = relayKindFor(baseKind, peerId);
       const anyFolhaWatching = state?.role === 'relay'
         && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
-      const watching = isAppVisible() || Boolean(anyFolhaWatching);
+      // A escolha de assistir e por TELA, e a chave dela e sempre a ORIGEM:
+      // num kind composto quem esta rio acima e o relay, mas a tela continua
+      // sendo a de `sourceId`. Camera nao entra na escolha.
+      const querendo = baseKind === 'camera' || watchingScreen(sourceId || peerId);
+      // Um relay que nao esta assistindo continua RECEBENDO: cortar aqui
+      // cortaria junto os filhos que estao. E o mesmo motivo de a janela
+      // minimizada nao poder cortar -- so que agora vale pra duas causas.
+      const watching = (isAppVisible() && querendo) || Boolean(anyFolhaWatching);
+      // `watching` e sobre o ENCODER (mantenha mandando, alguem atras de mim
+      // precisa). `looking` e sobre MEUS OLHOS. Eram a mesma coisa enquanto o
+      // unico motivo de parar era minimizar a janela; deixaram de ser quando
+      // um relay passou a poder repassar uma tela que ele mesmo nao escolheu
+      // assistir. Sem separar os dois, esse relay aparecia na lista de "quem
+      // esta assistindo" de uma tela que ele nao esta vendo.
       // H2: carona no canal que ja existe -- a origem daquele kind usa isto
       // pra eleger relay por saude de encode, nao so por RTT. null quando
       // nao estamos codificando nada.
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null });
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking: isAppVisible() && querendo, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null });
     }
   }
 
@@ -3013,19 +3198,118 @@
     onVisibilityChanged();
   });
 
-  // Quem esta transmitindo (tela OU camera -- qualquer um na sala pode
-  // compartilhar, nao so o host) manda pra SALA INTEIRA quem esta de fato
-  // assistindo aquele kind agora. E o que deixa o overlay "assistindo" no
-  // proprio tile funcionar pra qualquer espectador, nao so pra quem enviou
-  // o view-state que mudou a lista.
-  function broadcastWatchers(kind) {
+  // ---------- Quem esta assistindo cada tela ----------
+  //
+  // A lista de um tile e a UNIAO do que varios remetentes reportam, e nao a
+  // ultima mensagem que chegou. Com a arvore de retransmissao (fanout 1 na
+  // origem) uma sala de tres ja tem uma folha que a ORIGEM nao serve: quem
+  // manda video pra ela e o relay. A origem, que so olhava a propria tabela
+  // de conexoes, anunciava um espectador so -- e o outro simplesmente nao
+  // aparecia. Nao era intermitente: era todo mundo alem do primeiro.
+  //
+  // Entao cada no anuncia o pedaco que ele mesmo serve (`origin` diz de quem
+  // e a tela; `from`, carimbado pelo servidor, diz quem esta contando), e
+  // cada cliente funde por tile. Guardar por REMETENTE e o que faz um relay
+  // que perde os filhos apagar so a contribuicao dele.
+  const watchersByTile = new Map(); // tileId -> Map<reporterId, watcher[]>
+
+  // Quem, entre os que RECEBEM video desta maquina, esta de fato olhando.
+  // Chave `${espectador}|${origem}|${kind}` -- a mesma pessoa pode estar
+  // olhando a tela de um e nao a de outro, e e disso que a lista trata.
+  // Ausente vale como olhando: cliente de versao antiga nao manda o campo, e
+  // "assistindo" sempre foi o padrao seguro (ver broadcastViewState).
+  const lookingByViewer = new Map();
+
+  function lookingKey(viewerId, originId, baseKind) {
+    return `${viewerId}|${originId}|${baseKind}`;
+  }
+
+  function isLooking(viewerId, originId, baseKind) {
+    return lookingByViewer.get(lookingKey(viewerId, originId, baseKind)) !== false;
+  }
+
+  function ownerOfTile(tileId) {
+    if (tileId === 'me' || tileId === 'cam-me') return String(myId);
+    return tileId.startsWith('cam-') ? tileId.slice(4) : tileId;
+  }
+
+  function applyWatchers(tileId, reporterId, list) {
+    let porRemetente = watchersByTile.get(tileId);
+    if (!porRemetente) watchersByTile.set(tileId, (porRemetente = new Map()));
+    porRemetente.set(String(reporterId), Array.isArray(list) ? list : []);
+    ui.grid.setWatchers(tileId, mergeWatchers(tileId));
+  }
+
+  /** Uniao das listas, sem repetido e sem o dono da tela. O dono aparecia
+   * quando ele proprio era relay de outra pessoa e a fusao nao filtrava --
+   * "voce esta assistindo a sua propria tela" nao e informacao. */
+  function mergeWatchers(tileId) {
+    const dono = ownerOfTile(tileId);
+    const vistos = new Map();
+    for (const lista of watchersByTile.get(tileId)?.values() || []) {
+      for (const w of lista) {
+        const id = w?.id == null ? null : String(w.id);
+        if (!id || id === dono || vistos.has(id)) continue;
+        vistos.set(id, w);
+      }
+    }
+    return [...vistos.values()];
+  }
+
+  /** Esquece tudo que se sabia sobre a audiencia de um tile (a tela saiu do
+   * ar, ou a pessoa saiu da sala). */
+  function dropWatchers(tileId) {
+    watchersByTile.delete(tileId);
+    ui.grid.setWatchers(tileId, []);
+  }
+
+  /** Esquece o que UM remetente dizia de todos os tiles -- ele saiu da sala,
+   * e com ele os filhos que ele servia. */
+  function dropReporter(reporterId) {
+    for (const [tileId, porRemetente] of watchersByTile) {
+      if (porRemetente.delete(String(reporterId))) ui.grid.setWatchers(tileId, mergeWatchers(tileId));
+    }
+  }
+
+  /** Anuncia pra sala inteira quem ESTA MAQUINA esta servindo daquela tela
+   * agora. Dois papeis chamam isto:
+   *
+   *   - a ORIGEM, pelos peers que ela serve direto (kind cru);
+   *   - cada RELAY, pelos filhos que ele serve (kind composto
+   *     'screen@<origem>') -- `originId` e quem transmite, nao quem conta.
+   */
+  function broadcastWatchers(baseKind, originId = myId) {
     const session = currentSession;
     if (!session?.mesh) return;
-    const hasStream = kind === 'camera' ? Boolean(cameraStream) : Boolean(localStream);
-    if (!hasStream) return;
-    const watchers = session.mesh.watchersOf(kind);
-    ui.grid.setWatchers(kind === 'camera' ? 'cam-me' : 'me', watchers);
-    if (session.sig.isOpen()) session.sig.send({ type: 'watchers', kind, watchers });
+    const souAOrigem = String(originId) === String(myId);
+    if (souAOrigem) {
+      const hasStream = baseKind === 'camera' ? Boolean(cameraStream) : Boolean(localStream);
+      if (!hasStream) return;
+    }
+    const kind = souAOrigem ? baseKind : relayKindFor(baseKind, originId);
+    // O filtro por `looking` vem DEPOIS de watchersOf, e nao dentro dele:
+    // watchersOf responde "pra quem estou mandando video" (transporte), e um
+    // relay que nao esta olhando continua recebendo. Sao duas perguntas.
+    const watchers = session.mesh.watchersOf(kind)
+      .filter((w) => isLooking(w.id, originId, baseKind));
+    applyWatchers(tileIdFor(originId, baseKind), myId, watchers);
+    if (session.sig.isOpen()) {
+      session.sig.send({ type: 'watchers', kind: baseKind, origin: String(originId), watchers });
+    }
+  }
+
+  /** Reanuncia a audiencia de tudo que esta maquina serve: a propria tela e
+   * camera, e cada origem de que somos relay. Chamado quando a topologia
+   * pode ter mudado sem passar por um caminho especifico (entrou gente,
+   * saiu gente, a arvore foi recalculada). */
+  function broadcastAllWatchers() {
+    broadcastWatchers('screen');
+    broadcastWatchers('camera');
+    for (const kind of KINDS) {
+      for (const [origemId, state] of myRole[kind]) {
+        if (state?.role === 'relay') broadcastWatchers(kind, origemId);
+      }
+    }
   }
 
   // ---------- Arvore de retransmissao (F2, spec de 2026-08-23) ----------
@@ -3068,7 +3352,12 @@
     for (const childId of state.filhosIds) {
       if (state.relayed.has(childId)) continue;
       const ok = await session.mesh.relayTo(childId, sourcePeerId, kind, qualityForPeer(childId, childKind));
-      if (ok) state.relayed.add(childId);
+      if (ok) {
+        state.relayed.add(childId);
+        // Um filho novo e um espectador novo daquela tela, e so NOS sabemos
+        // disso -- a origem nao tem conexao com ele.
+        broadcastWatchers(kind, sourcePeerId);
+      }
     }
   }
 

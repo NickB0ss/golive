@@ -1608,9 +1608,12 @@ test('sanitizeAnnotateOp descarta coordenada fora de 0..1 e op desconhecida', ()
   assert.equal(sanitizeAnnotateOp({}), null);
 });
 
-test('sanitizeAnnotateOp nao deixa passar cor forjada (a cor vem do from)', () => {
+// A cor DEIXOU de vir do `from` na 0.11.0 -- quem desenha escolhe, e por
+// isso ela viaja (ver o teste de cor mais abaixo). O que continua valendo, e
+// e o que este teste guarda, e que o cliente nao escolhe POR QUEM fala: `from`
+// e carimbado pelo servidor no repasse e nunca sai de dentro da op.
+test('sanitizeAnnotateOp nao deixa o cliente carimbar o proprio from', () => {
   const op = sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0.1, y: 0.1, color: '#ff0000', from: 'outro' });
-  assert.equal(op.color, undefined);
   assert.equal(op.from, undefined);
 });
 
@@ -1830,6 +1833,175 @@ test('camera-state: quem tenta forjar o id de outro nao consegue', async () => {
 
     a.close();
     b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// --- Regressao 2026-09-05: a chave de superficie ganhou o kind ----------
+//
+// A partir de 0.11.0 o cliente indexa a lousa por '<dono>:<kind>' (annotate.js
+// surfaceKey) -- e o servidor continuou procurando a superficie inteira na
+// tabela de peers. `peers.get('7:screen')` nunca acha nada, entao TODA op de
+// rabisco era descartada em silencio, exatamente pelo ramo que existe pra
+// barrar tela de quem nao esta na sala. Rabisco parou de sair da maquina de
+// quem desenha, sem erro nenhum no caminho.
+test('annotate: chave de superficie com kind ("<id>:screen") chega na sala', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const emB = once(b.ws, 'annotate');
+    a.ws.send(JSON.stringify({
+      type: 'annotate', surface: `${b.welcome.id}:screen`, op: 'begin', id: 't1', x: 0.2, y: 0.3,
+    }));
+    const msg = await emB;
+    assert.equal(msg.surface, `${b.welcome.id}:screen`); // repassada INTEIRA, com o kind
+    assert.equal(msg.op, 'begin');
+
+    const emB2 = once(b.ws, 'annotate');
+    a.ws.send(JSON.stringify({
+      type: 'annotate', surface: `${b.welcome.id}:camera`, op: 'begin', id: 't2', x: 0.4, y: 0.5,
+    }));
+    assert.equal((await emB2).surface, `${b.welcome.id}:camera`);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('annotate: kind desconhecido na chave nao vira um dono que nao existe', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    let chegou = false;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'annotate') chegou = true;
+    });
+    // '<id>:sei-la' nao e uma superficie: parseSurface trata a chave INTEIRA
+    // como dono, e esse dono nao esta na sala.
+    a.ws.send(JSON.stringify({ type: 'annotate', surface: `${b.welcome.id}:sei-la`, op: 'begin', id: 'x', x: 0.1, y: 0.1 }));
+
+    const eco = onceChatWhere(b.ws, (m) => !m.system && m.text === 'ping');
+    a.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
+    await eco;
+    assert.equal(chegou, false);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// --- Regressao 2026-09-05: a cor escolhida nao viajava ------------------
+//
+// sanitizeAnnotateOp reconstroi a op campo a campo, e `color` (novo em
+// 0.11.0) nao estava na lista. Quem desenhava via a propria cor; a sala
+// inteira via a cor derivada do id. Mesma classe do bug do `annotate` no
+// broadcast-state, corrigido na 0.10.2.
+test('sanitizeAnnotateOp deixa a cor passar em begin e text, so #rrggbb', () => {
+  assert.equal(sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0, y: 0, color: '#FF00aa' }).color, '#ff00aa');
+  assert.equal(sanitizeAnnotateOp({ op: 'text', id: 't', x: 0, y: 0, text: 'oi', color: '#4ade80' }).color, '#4ade80');
+  for (const torto of ['red', '#GGGGGG', '#fff', 'javascript:alert(1)', 42, null, {}]) {
+    assert.ok(!('color' in sanitizeAnnotateOp({ op: 'begin', id: 'a', x: 0, y: 0, color: torto })));
+  }
+});
+
+// --- 2026-09-05: a audiencia de uma tela tem mais de um contador ---------
+//
+// Com a arvore de retransmissao ligada (fanout 1 na origem), quem serve uma
+// FOLHA e o relay, nao a origem. Sem dizer de quem e a tela, o 'watchers' do
+// relay era lido como "a audiencia da tela DO RELAY", e a folha sumia da
+// lista da tela de verdade -- a origem so conseguia contar quem ela mesma
+// servia.
+test('watchers: `origin` diz de quem e a tela, e nao muda quem manda', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    const c = await entrar(server.port, 'Carla');
+
+    // Bruno e RELAY da tela da Ana: quem ele serve (Carla) e audiencia da
+    // tela da ANA, nao da dele.
+    const emC = once(c.ws, 'watchers');
+    b.ws.send(JSON.stringify({
+      type: 'watchers', kind: 'screen', origin: a.welcome.id, watchers: [{ id: c.welcome.id, name: 'Carla' }],
+    }));
+    const msg = await emC;
+    assert.equal(msg.origin, a.welcome.id);
+    assert.equal(msg.from, b.welcome.id); // quem CONTA continua sendo carimbado pelo servidor
+    assert.equal(msg.kind, 'screen');
+
+    a.ws.close();
+    b.ws.close();
+    c.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('watchers: sem `origin` a tela e a de quem mandou (cliente de versao antiga)', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const emB = once(b.ws, 'watchers');
+    a.ws.send(JSON.stringify({ type: 'watchers', kind: 'screen', watchers: [] }));
+    assert.equal((await emB).origin, a.welcome.id);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('watchers: `origin` forjado gigante chega cortado, igual ao kind', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const emB = once(b.ws, 'watchers');
+    a.ws.send(JSON.stringify({ type: 'watchers', kind: 'screen', origin: 'x'.repeat(5000), watchers: [] }));
+    assert.equal((await emB).origin.length, 64);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// 'view-state' e encaminhado inteiro (o servidor nao interpreta nada ali),
+// entao o campo `looking` -- que separa "meus olhos estao nisto" de "continue
+// mandando, tem gente atras de mim" -- nao precisou de mudanca no servidor.
+// Este teste guarda esse encaminhamento: um campo novo silenciosamente
+// descartado ali seria o mesmo bug que ja aconteceu no broadcast-state.
+test('view-state chega inteiro no destino, com campos que o servidor nao conhece', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const emB = once(b.ws, 'view-state');
+    a.ws.send(JSON.stringify({
+      type: 'view-state', to: b.welcome.id, kind: 'screen', watching: true, looking: false,
+    }));
+    const msg = await emB;
+    assert.equal(msg.watching, true);
+    assert.equal(msg.looking, false);
+    assert.equal(msg.from, a.welcome.id);
+
+    a.ws.close();
+    b.ws.close();
   } finally {
     await server.close();
   }
