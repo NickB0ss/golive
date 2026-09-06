@@ -15,6 +15,12 @@
   function tone(freqFrom, freqTo, duration, gainPeak) {
     if (!enabled) return;
     const ctx = getAudioContext();
+    // O Chromium suspende o AudioContext sempre que a janela do GoLive fica
+    // minimizada/oculta -- e e exatamente ai que estes sons importam (chat e
+    // "alguem foi live" so tocam com o app em segundo plano). Sem retomar, o
+    // relogio de ctx.currentTime nao anda e o oscilador agendado nunca soa.
+    // Mesmo remedio que ui.js ja aplica no contexto de playback de tiles.
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     const now = ctx.currentTime;
@@ -65,6 +71,13 @@
     tone(587, 392, 0.22, 0.16);
   }
 
+  // Alguem da sala encerrou a propria transmissao -- espelho do playLiveSound
+  // (quinta descendo, mais curto e discreto), pra toda a sala. Distinto do
+  // playStoppedSound acima, que so o alvo de uma acao de moderacao ouve.
+  function playPeerStoppedSound() {
+    tone(784, 523, 0.16, 0.13);
+  }
+
   // Voce foi expulso ou banido -- grave e o mais longo do conjunto, porque
   // a tela pode voltar pro lobby sozinha enquanto voce olhava outra coisa.
   function playRemovedSound() {
@@ -82,6 +95,7 @@
     playChatSound,
     playLiveSound,
     playStoppedSound,
+    playPeerStoppedSound,
     playRemovedSound,
     setEnabled,
   };

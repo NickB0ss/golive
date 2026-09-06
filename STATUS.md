@@ -104,13 +104,26 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.0` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.1` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **514 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.1** — **os sons voltam a sair quando a janela está em segundo
+  plano**. `sound.js` criava um `AudioContext` uma vez e nunca o retomava:
+  o Chromium suspende esse contexto sempre que a janela do GoLive fica
+  minimizada ou oculta, e é exatamente aí que o som de chat (só toca fora
+  de foco, por design) e o de "alguém foi live" (feito pra quem está no
+  jogo) precisam soar — o oscilador era agendado num relógio parado e nada
+  saía. `tone()` agora faz `ctx.resume()` quando o estado é `suspended`,
+  o mesmo remédio que `ui.js` já aplicava no contexto de playback dos
+  tiles. Junto veio um som novo, `playPeerStoppedSound` (espelho
+  descendente do "foi live"), que toca pra sala inteira quando qualquer
+  tela sai do ar — antes só existia som quando o dono da sala forçava
+  alguém a parar, nunca quando a pessoa parava sozinha.
 
 - **0.12.0** — **o rabisco volta a sair da máquina, e a audiência para de
   mentir**. Quatro frentes, três delas bugs que não faziam barulho nenhum.

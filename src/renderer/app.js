@@ -2215,6 +2215,11 @@
           canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
         });
         if (!msg.live) {
+          // So soa na transicao live -> parou (wasLive), nunca num
+          // broadcast-state repetido nem no estado inicial de quem entra. O
+          // alvo de uma acao de moderacao nao tem entrada propria em
+          // mesh.peers, entao nao ha risco de dobrar com o playStoppedSound.
+          if (wasLive) sound.playPeerStoppedSound();
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
           ui.grid.removeTile(msg.id, emptyMessage());
           dropWatchers(msg.id);
