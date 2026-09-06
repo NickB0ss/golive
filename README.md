@@ -104,6 +104,19 @@ Duplo clique em qualquer vídeo expande pra tela cheia. **Clique com o botão
 direito** em cima de uma tela pra **silenciar** aquela pessoa ou mexer no
 volume dela (é só pra você — ninguém fica sabendo).
 
+**Você assiste uma tela por vez.** Com uma pessoa transmitindo, nada muda: a
+tela dela abre sozinha. Quando aparece uma segunda, ela chega como um card
+com o nome e dois botões — *"Assistir"* troca a tela que você está vendo,
+*"+ Ver junto"* põe as duas na grade ao mesmo tempo (e a terceira, e a
+quarta, se você quiser). Pra largar uma delas, o ícone de olho cortado no
+canto do vídeo. Não é só arrumação da tela: a tela que você não pediu **não é
+codificada** na máquina de quem transmite — é um encoder de 1080p60 a menos
+rodando lá, ao lado do jogo. A câmera fica de fora dessa conta: ela aparece
+sempre.
+
+**O olho no canto de cima à esquerda** de cada vídeo diz quantas pessoas
+estão assistindo aquela tela; passe o mouse nele pra ver quem são.
+
 **Pra deixar a turma rabiscar na sua tela**, marque *"Deixar a sala rabiscar
 na minha tela"* no diálogo de compartilhar, **antes** de ir ao vivo. Uma
 barrinha aparece embaixo do vídeo; o primeiro botão dela liga e desliga a
@@ -111,7 +124,7 @@ caneta, e aí vêm caneta e texto, cada pessoa com a sua cor. Você desfaz e
 apaga **os seus** rabiscos — ninguém apaga o traço de outro.
 
 Quem é **dono da tela** não rabisca na própria tela: a barra dele tem um
-botão só, *"Apagar tudo"*, que limpa a lousa inteira. Em compensação, é na
+botão só e pequeno, *"Apagar tudo"*, que limpa a lousa inteira. Em compensação, é na
 tela dele que a coisa acontece de verdade — **compartilhando uma tela
 inteira, os rabiscos aparecem por cima da tela real**, não só dentro do
 GoLive, e sem atrapalhar o mouse nem entrar na transmissão (ninguém vê o
@@ -268,7 +281,10 @@ automática falhar, aparece um aviso acima da grade de vídeo com um botão
 **"Permitir acesso à rede"**, que re-dispara o pedido de elevação do Windows
 pra mesma porta da sala. Só se essa tentativa também falhar é que o comando
 manual do `netsh` aparece como texto, pra rodar como administrador na máquina
-que criou a sala.
+que criou a sala. Se você já resolveu a porta por fora — ou se todo mundo
+entra por endereço direto e o aviso deixou de dizer alguma coisa —, o **`×`
+no canto do aviso** o dispensa pelo resto da sessão. Um aviso *novo* (o
+encoder caindo pra software, por exemplo) volta a aparecer normalmente.
 
 **"Essa sala está na versão X e você está na Y"** — a sala recusa quem não
 está na mesma versão do app (o protocolo de sinalização e a árvore de

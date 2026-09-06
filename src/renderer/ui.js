@@ -300,35 +300,150 @@
   // tile existir (renegociacao) ou depois dele ter sido recriado.
   const tileWatchers = new Map();
 
+  const EYE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+  /** A audiencia virou um OLHO no canto superior esquerdo, com o numero ao
+   * lado. Antes era o painel inteiro que aparecia no hover do tile: com
+   * quatro nomes ele cobria um pedaco do video sempre que o mouse passava
+   * por perto, e era a unica coisa naquele canto que nao dava pra evitar.
+   *
+   * Agora o que fica sempre visivel e do tamanho de um selo -- "3 pessoas
+   * estao vendo isto" e a informacao que se quer de relance --, e QUEM sao
+   * elas so abre quando o mouse para no olho. `:focus-within` abre pelo
+   * teclado, entao a lista nao e exclusiva de quem usa mouse. */
   function renderTileWatchers(tile, watchers) {
     const el = tile?.querySelector('.tile-watchers');
     if (!el) return;
     if (!watchers?.length) {
-      el.classList.add('empty');
+      el.classList.add('is-empty');
       el.innerHTML = '';
       return;
     }
-    el.classList.remove('empty');
+    el.classList.remove('is-empty');
+    const n = watchers.length;
+    const rotulo = `${n} ${n === 1 ? 'pessoa assistindo' : 'pessoas assistindo'}`;
     el.innerHTML = `
-      <span class="tile-watchers-label">assistindo</span>
-      <ul class="tile-watchers-list">
-        ${watchers
-          .map(
-            (w) => `<li>
-              <span class="tile-watchers-avatar">${avatarInnerHtml(w.id, w.name, w.avatar)}</span>
-              <span class="tile-watchers-name">${escapeHtml(w.name || '?')}</span>
-            </li>`
-          )
-          .join('')}
-      </ul>`;
+      <button type="button" class="tile-watchers-eye" title="${rotulo}" aria-label="${rotulo}">
+        ${EYE_ICON}<span class="tile-watchers-count">${n}</span>
+      </button>
+      <div class="tile-watchers-panel">
+        <span class="tile-watchers-label">assistindo</span>
+        <ul class="tile-watchers-list">
+          ${watchers
+            .map(
+              (w) => `<li>
+                <span class="tile-watchers-avatar">${avatarInnerHtml(w.id, w.name, w.avatar)}</span>
+                <span class="tile-watchers-name">${escapeHtml(w.name || '?')}</span>
+              </li>`
+            )
+            .join('')}
+        </ul>
+      </div>`;
   }
 
   /** `tileId` e o id usado em showTile ('me'/'cam-me' pro proprio, peerId ou
-   * `cam-${peerId}` pro de um peer). `watchers` e a lista devolvida por
-   * mesh.watchersOf, ja carimbada com quem mandou (ver app.js). */
+   * `cam-${peerId}` pro de um peer). `watchers` e a lista JA fundida pelo
+   * app.js -- com a arvore de retransmissao ligada, quem serve uma folha e o
+   * relay, entao a lista de um tile vem de mais de um remetente. */
   function setWatchers(tileId, watchers) {
     tileWatchers.set(tileId, watchers || []);
     renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
+  }
+
+  // ---------- Escolher qual tela assistir ----------
+  //
+  // Assistir a TODAS as telas ao mesmo tempo era a decisao do app, nao de
+  // quem assiste: cada tela extra e um decode de 1080p60 aqui e um encoder
+  // inteiro na maquina de quem transmite. Agora e escolha -- uma tela por
+  // padrao, e um botao ao lado pra ver duas (ou mais) juntas.
+  //
+  // A economia nao mora aqui: uma tela nao escolhida vira `view-state
+  // {watching:false}`, e quem transmite SOLTA o encoder daquele espectador
+  // (mesh.setPeerDemand). Este modulo so cuida do que se ve e do que se
+  // clica; quem faz a conta e o app.js.
+  //
+  // Estado por tile (nao so no DOM) pelo mesmo motivo do tileWatchers e do
+  // tilePaused: renegociacao destroi e recria o `<div class="tile">`.
+  const tileWatch = new Map(); // tileId -> { watched, opts }
+  let onWatchIntent = null; // (tileId, 'only' | 'add' | 'remove') => void
+
+  function renderWatchGate(tile, tileId) {
+    if (!tile) return;
+    const state = tileWatch.get(tileId);
+    // Sem estado registrado o tile e assistido -- e o caso de todo tile que
+    // nao e tela de outra pessoa (o proprio, as cameras).
+    const watched = !state || state.watched;
+    const opts = state?.opts || {};
+    tile.classList.toggle('is-unwatched', !watched);
+
+    let gate = tile.querySelector('.tile-gate');
+    if (watched) {
+      gate?.remove();
+    } else {
+      if (!gate) {
+        gate = document.createElement('div');
+        gate.className = 'tile-gate';
+        // Fica no caminho do duplo-clique de fullscreen e do arrasto do PiP
+        // de proposito: nao ha o que por em tela cheia enquanto nao se esta
+        // assistindo.
+        gate.addEventListener('dblclick', (e) => e.stopPropagation());
+        gate.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-watch]');
+          if (!btn) return;
+          e.stopPropagation();
+          onWatchIntent?.(tileId, btn.dataset.watch);
+        });
+        tile.appendChild(gate);
+      }
+      const nome = opts.name || 'Alguém';
+      gate.innerHTML = `
+        <span class="tile-gate-avatar">${avatarInnerHtml(tileId, nome, opts.avatar || null)}</span>
+        <p class="tile-gate-title">${escapeHtml(nome)} está ao vivo</p>
+        <p class="tile-gate-sub">A tela só chega quando você pede — é um encoder a menos rodando na máquina de quem transmite.</p>
+        <div class="tile-gate-actions">
+          <button type="button" class="primary small" data-watch="only">Assistir</button>
+          ${opts.canAdd ? '<button type="button" class="ghost small" data-watch="add" title="Ver esta tela sem largar a que você já assiste">+ Ver junto</button>' : ''}
+        </div>`;
+    }
+
+    // O botao de largar uma tela so existe quando ha OUTRA sendo assistida:
+    // sozinho ele seria um jeito de ficar sem ver nada, e a saida pra isso
+    // ja e sair da sala ou pedir outra tela.
+    let off = tile.querySelector('.tile-unwatch-btn');
+    if (watched && opts.canDrop) {
+      if (!off) {
+        off = document.createElement('button');
+        off.type = 'button';
+        off.className = 'tile-unwatch-btn';
+        off.title = 'Parar de assistir esta tela';
+        off.setAttribute('aria-label', 'Parar de assistir esta tela');
+        off.innerHTML = EYE_OFF_ICON;
+        off.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onWatchIntent?.(tileId, 'remove');
+        });
+        tile.appendChild(off);
+      }
+    } else {
+      off?.remove();
+    }
+  }
+
+  /** `watched` false poe o card de "está ao vivo" no lugar do video. `opts`
+   * traz `{ name, avatar, canAdd, canDrop }` -- `canAdd` e `canDrop` sao
+   * decisao do app.js (ele e quem sabe quantas telas estao escolhidas). */
+  function setWatched(tileId, watched, opts = {}) {
+    tileWatch.set(tileId, { watched: Boolean(watched), opts });
+    renderWatchGate(document.getElementById(`tile-${tileId}`), tileId);
+  }
+
+  function forgetWatched(tileId) {
+    tileWatch.delete(tileId);
+  }
+
+  function setWatchIntentHandler(fn) {
+    onWatchIntent = fn;
   }
 
   // Ultimo estado de pausa por tile ({ paused, opts }), pro overlay
@@ -408,7 +523,15 @@
   }
 
   function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
-    gridEl.querySelector('.empty')?.remove();
+    // `:scope >` e obrigatorio, nao arrumacao: o `.empty` que tem de sair e
+    // o cartao de "sala vazia", filho DIRETO da grade. Sem o escopo, este
+    // querySelector varria a subarvore e encontrava primeiro o `.empty` de
+    // um `.tile-watchers` sem audiencia -- e apagava, do tile de outra
+    // pessoa, o elemento inteiro em que a lista de "quem esta assistindo"
+    // e desenhada. Bastava um segundo tile aparecer pra matar o overlay do
+    // primeiro, e nada o trazia de volta ate o tile ser recriado: era esta
+    // a audiencia que "as vezes nao aparecia".
+    gridEl.querySelector(':scope > .empty')?.remove();
 
     let tile = document.getElementById(`tile-${id}`);
     if (!tile) {
@@ -421,7 +544,7 @@
         <span class="tile-avatar"></span>
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
-        <div class="tile-watchers empty"></div>
+        <div class="tile-watchers is-empty"></div>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
@@ -456,6 +579,9 @@
       if (annotInfo) {
         setAnnotSurface(id, { surfaceId: annotInfo.surfaceId, allowed: true, canClearAll: annotInfo.canClearAll });
       }
+      // E pelo mesmo motivo de novo: a escolha de assistir (ou nao) aquela
+      // tela e anterior a chegada da primeira track.
+      renderWatchGate(tile, id);
     }
 
     const video = tile.querySelector('video');
@@ -505,6 +631,7 @@
     tileRegistry.delete(id);
     tileWatchers.delete(id);
     tilePaused.delete(id);
+    tileWatch.delete(id);
     pinnedPip.delete(id);
     pipLayout.delete(id);
     // A grade mudou: se o ultimo tile saiu, a sala nao pode mais ficar
@@ -2976,7 +3103,7 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers, setPaused },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler },
     annotations: {
       setSelf: annotSetSelf,
       setSurface: setAnnotSurface,
