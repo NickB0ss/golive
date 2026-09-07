@@ -104,13 +104,17 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.5` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.6` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **521 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.6** — **a faixa de título perdeu o texto "GoLive LAN".** Ficava
+  repetido com o cabeçalho do lobby logo abaixo. Sobra só a marca (SVG) à
+  esquerda + área de arrasto + os três botões. Ajuste visual isolado.
 
 - **0.12.5** — **controles de janela próprios, estilo Discord.** No Windows a
   janela perde a barra de título nativa (`titleBarStyle: 'hidden'`) e ganha
