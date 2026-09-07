@@ -223,6 +223,10 @@ function createWindow() {
     // so no boot, ate o CSS do renderer carregar e repintar o body.
     backgroundColor: '#0e1116',
     title: 'GoLive LAN',
+    // No pacote Windows o ícone do .exe (build.win.icon) já vira o ícone da
+    // janela; isto cobre o `npm start`, que senão mostra o ícone padrão do
+    // Electron. O .ico traz os tamanhos pequenos que a barra de tarefas usa.
+    icon: path.join(__dirname, 'renderer', 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

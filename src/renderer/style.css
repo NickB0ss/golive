@@ -494,11 +494,12 @@ input[type="range"] { accent-color: var(--live); }
   height: 56px; width: 100%; padding: 0 var(--s-4);
 }
 
-.app-brand-badge {
-  width: 30px; height: 30px; border-radius: var(--r-sm);
-  background: var(--act); color: var(--on-act); font-weight: 700; font-size: 13px;
-  display: flex; align-items: center; justify-content: center; flex: none;
-}
+/* A marca da árvore de retransmissão, a mesma do site. Os traços seguem
+   var(--tx) (currentColor); o nó de origem é o único ponto que gasta
+   --live -- ele É o "ao vivo" da marca, o mesmo pacto do site
+   (.logo-origem lá). */
+.app-brand-mark { width: 26px; height: 26px; flex: none; color: var(--tx); }
+.app-brand-origin { fill: var(--live); }
 .app-brand-name { font-weight: 700; font-size: 15px; }
 .app-version {
   font-size: 11px; color: var(--tx3); font-variant-numeric: tabular-nums;
@@ -2454,12 +2455,8 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   border-bottom: 1px solid var(--line);
 }
 .theme-preview-badge {
-  width: 18px; height: 18px;
-  display: grid; place-items: center;
-  border-radius: var(--r-xs);
-  background: var(--act);
-  color: var(--on-act);
-  font-size: 8px; font-weight: 800;
+  width: 16px; height: 16px; flex: none;
+  color: var(--tx);
 }
 .theme-preview-title { font-size: 11px; font-weight: 600; color: var(--tx); flex: 1; }
 .theme-preview-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--live); }
