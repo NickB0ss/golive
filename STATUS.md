@@ -104,13 +104,24 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.3` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.4` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **521 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.4** — **o app ganhou marca própria.** A mesma do site: dois pares
+  de espectadores ligados ao nó de origem. Substitui o badge de texto "GL"
+  na barra do lobby (SVG inline, traços em `var(--tx)`, nó de origem em
+  `var(--live)` — o mesmo pacto do site) e a prévia de tema em
+  Configurações > Aparência. O app enfim tem ícone próprio
+  (`src/renderer/assets/icon.{svg,png,ico}`, a marca sobre um quadrado
+  escuro): `BrowserWindow({icon})` cobre o `npm start`, `build.win.icon`
+  cobre o `.exe` e o instalador NSIS — antes os dois usavam o ícone padrão
+  do Electron. Só visual: nenhuma mudança de protocolo, sinalização ou
+  árvore. PR #48.
 
 - **0.12.3** — **parar de assistir uma tela ou câmera pelo menu de botão
   direito, e rabisco órfão some com quem sai.** (1) O menu de contexto do
