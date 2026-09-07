@@ -2517,3 +2517,63 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   color: var(--tx3);
 }
 .settings-actions { margin-top: var(--s-4); display: flex; justify-content: flex-start; }
+
+/* ============ Faixa de titulo propria (Windows) ============
+   Janela sem moldura no win32: esta faixa e a area de arrasto + os tres
+   botoes de janela. hidden por padrao (macOS/Linux e antes de titlebar.js
+   rodar). Ver spec 2026-09-07. */
+.titlebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 32px;
+  z-index: 9999;
+  display: flex;
+  align-items: stretch;
+  background: var(--s1);
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  color: var(--tx2);
+  pointer-events: none;
+}
+.titlebar-mark { width: 16px; height: 16px; flex: none; }
+.titlebar-name { font-size: 12px; font-weight: 550; }
+.titlebar-drag { flex: 1; }
+.titlebar-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+.titlebar-btn {
+  width: 46px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--tx2);
+  display: grid;
+  place-items: center;
+}
+.titlebar-btn svg { width: 16px; height: 16px; }
+.titlebar-btn:hover { background: var(--s3); color: var(--tx); }
+.titlebar-btn:active { background: var(--s4); }
+.titlebar-btn-close:hover { background: #e81123; color: #fff; }
+.titlebar-btn-close:active { background: #f1707a; color: #fff; }
+/* O botao maximizar mostra so um dos dois icones conforme o estado. */
+.titlebar-btn .icon-restore { display: none; }
+.titlebar-btn.is-maximized .icon-maximize { display: none; }
+.titlebar-btn.is-maximized .icon-restore { display: block; }
+/* Empurra o conteudo pra baixo da faixa (so quando ela existe). */
+body.has-titlebar .lobby,
+body.has-titlebar #room-view {
+  padding-top: 32px;
+}
+/* Tile em tela cheia (win.setFullScreen): a faixa some. */
+body:has(.tile.fullscreen) .titlebar { display: none; }

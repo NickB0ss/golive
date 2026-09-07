@@ -9,6 +9,36 @@
 </head>
 <body>
 
+<!-- Faixa de titulo propria (Windows, janela sem moldura). Fica hidden por
+     padrao; titlebar.js remove o hidden so no win32. Ver spec 2026-09-07. -->
+<div id="titlebar" class="titlebar" hidden>
+  <div class="titlebar-brand">
+    <svg class="titlebar-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <path d="M20.71 14.20 L11.35 9.06" />
+        <path d="M20.71 17.80 L11.35 22.94" />
+        <circle cx="8.5" cy="7.5" r="3.25" />
+        <circle cx="8.5" cy="24.5" r="3.25" />
+      </g>
+      <circle cx="24" cy="16" r="3.75" fill="currentColor" />
+    </svg>
+    <span class="titlebar-name">GoLive LAN</span>
+  </div>
+  <div class="titlebar-drag"></div>
+  <div class="titlebar-controls">
+    <button id="tb-min" class="titlebar-btn" type="button" aria-label="Minimizar">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8 H13" stroke="currentColor" stroke-width="1.2" /></svg>
+    </button>
+    <button id="tb-max" class="titlebar-btn" type="button" aria-label="Maximizar">
+      <svg class="icon-maximize" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+      <svg class="icon-restore" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 H10 V12 H4 Z M6 6 V4 H12 V10 H10" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+    </button>
+    <button id="tb-close" class="titlebar-btn titlebar-btn-close" type="button" aria-label="Fechar">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4 L12 12 M12 4 L4 12" stroke="currentColor" stroke-width="1.2" /></svg>
+    </button>
+  </div>
+</div>
+
 <div id="update-banner" class="update-banner hidden">
   <span id="update-banner-text"></span>
   <button id="update-banner-action" class="primary small hidden" type="button">Reiniciar e instalar</button>
@@ -380,6 +410,7 @@
 <script src="autoquality.js"></script>
 <script src="rxstats.js"></script>
 <script src="peerquality.js"></script>
+<script src="titlebar.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
