@@ -2559,7 +2559,7 @@
       <div class="theme-preview" aria-hidden="true">
         <div class="theme-preview-app">
           <div class="theme-preview-top">
-            <span class="theme-preview-badge">GL</span>
+            <svg class="theme-preview-badge" viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20.71 14.20 L11.35 9.06"/><path d="M20.71 17.80 L11.35 22.94"/><circle cx="8.5" cy="7.5" r="3.25"/><circle cx="8.5" cy="24.5" r="3.25"/></g><circle class="app-brand-origin" cx="24" cy="16" r="3.75"/></svg>
             <span class="theme-preview-title">GoLive LAN</span>
             <span class="theme-preview-dot"></span>
           </div>

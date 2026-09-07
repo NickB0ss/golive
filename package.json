@@ -55,7 +55,8 @@
       "build/Release/golive_audio.node"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "src/renderer/assets/icon.ico"
     },
     "nsis": {
       "oneClick": true,
