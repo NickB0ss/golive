@@ -397,10 +397,15 @@
         tile.appendChild(gate);
       }
       const nome = opts.name || 'Alguém';
+      const ehCamera = opts.kind === 'camera';
+      const titulo = ehCamera ? escapeHtml(nome) : `${escapeHtml(nome)} está ao vivo`;
+      const sub = ehCamera
+        ? 'A câmera só chega quando você pede.'
+        : 'A tela só chega quando você pede — é um encoder a menos rodando na máquina de quem transmite.';
       gate.innerHTML = `
         <span class="tile-gate-avatar">${avatarInnerHtml(tileId, nome, opts.avatar || null)}</span>
-        <p class="tile-gate-title">${escapeHtml(nome)} está ao vivo</p>
-        <p class="tile-gate-sub">A tela só chega quando você pede — é um encoder a menos rodando na máquina de quem transmite.</p>
+        <p class="tile-gate-title">${titulo}</p>
+        <p class="tile-gate-sub">${sub}</p>
         <div class="tile-gate-actions">
           <button type="button" class="primary small" data-watch="only">Assistir</button>
           ${opts.canAdd ? '<button type="button" class="ghost small" data-watch="add" title="Ver esta tela sem largar a que você já assiste">+ Ver junto</button>' : ''}
@@ -773,6 +778,23 @@
 
   function annotSnapshot(surfaceId) {
     return annotStore.snapshot(surfaceId);
+  }
+
+  /** Um peer saiu da sala: apaga o que ele rabiscou na tela de todo mundo
+   * que ficou. Redesenha so as superficies que de fato mudaram e devolve os
+   * surfaceIds -- o app.js usa isso pra saber se precisa recarregar o
+   * overlay da tela real. */
+  function forgetAnnotAuthor(peerId) {
+    const changed = annotStore.dropAuthor(peerId);
+    if (!changed.length) return [];
+    const alvo = new Set(changed.map(String));
+    for (const [tileId, info] of annotSurfaces) {
+      if (alvo.has(String(info.surfaceId))) {
+        redrawAnnot(tileId);
+        syncAnnotBar(tileId);
+      }
+    }
+    return changed;
   }
 
   /** Manda a op pra rede E aplica localmente. A ordem importa pouco, mas
@@ -1393,6 +1415,22 @@
     const entry = tileRegistry.get(id);
     const nome = entry?.displayName || entry?.label || 'esta tela';
 
+    // Parar (ou voltar) de assistir. Camera e opt-out: sem estado
+    // registrado ela conta como assistida, entao o menu oferece "parar".
+    // Tela e opt-in: so oferece "parar" quando de fato se esta assistindo
+    // (quando nao, o proprio cartao do tile ja tem o "Assistir").
+    const isCam = String(id).startsWith('cam-');
+    const ws = tileWatch.get(id);
+    const watched = !ws || ws.watched;
+    let watchItem = '';
+    if (isCam) {
+      watchItem = watched
+        ? '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta câmera</button>'
+        : '<button type="button" class="tile-menu-watch" data-watch="only">Assistir câmera</button>';
+    } else if (watched && ws) {
+      watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
+    }
+
     const menu = document.createElement('div');
     menu.className = 'tile-menu';
     menu.style.left = `${x}px`;
@@ -1402,6 +1440,7 @@
         <span class="tile-menu-avatar">${avatarInnerHtml(entry?.displayName || id, nome, entry?.avatar || null)}</span>
         <span class="tile-menu-name" title="${escapeHtml(nome)}">${escapeHtml(nome)}</span>
       </div>
+      ${watchItem}
       <label class="check compact tile-menu-mute-row">
         <input type="checkbox" class="tile-menu-mute" ${isMuted(id) ? 'checked' : ''} />
         <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
@@ -1418,6 +1457,11 @@
     function applyGain() {
       if (state.gain) state.gain.gain.value = state.muted ? 0 : state.volume;
     }
+
+    menu.querySelector('.tile-menu-watch')?.addEventListener('click', (event) => {
+      onWatchIntent?.(id, event.currentTarget.dataset.watch);
+      closeTileMenu();
+    });
 
     const muteCheckbox = menu.querySelector('.tile-menu-mute');
     muteCheckbox.addEventListener('change', () => {
@@ -3110,6 +3154,7 @@
       applyOp: applyAnnotOp,
       load: loadAnnotSnapshot,
       snapshot: annotSnapshot,
+      forgetAuthor: forgetAnnotAuthor,
       render: ({ onOp }) => { onAnnotOp = onOp; },
       colorFor: annotate.colorFor,
     },

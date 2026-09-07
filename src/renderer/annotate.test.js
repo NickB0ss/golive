@@ -216,6 +216,28 @@ test('hasFrom diz se ha o que desfazer', () => {
   assert.equal(s.hasFrom('tela', '3'), false);
 });
 
+test('dropAuthor tira o traco de um autor de todas as superficies e diz quais mudaram', () => {
+  const s = store();
+  s.apply('tela-a', '2', { op: 'begin', id: 'a', x: 0, y: 0 });
+  s.apply('tela-a', '3', { op: 'begin', id: 'b', x: 0, y: 0 });
+  s.apply('tela-b', '2', { op: 'begin', id: 'c', x: 0, y: 0 });
+  s.apply('tela-c', '3', { op: 'begin', id: 'd', x: 0, y: 0 });
+
+  const changed = s.dropAuthor('2');
+  assert.deepEqual(changed.sort(), ['tela-a', 'tela-b']);
+  assert.deepEqual(s.items('tela-a').map((i) => i.from), ['3']); // o traco do 3 fica
+  assert.equal(s.items('tela-b').length, 0);
+  assert.equal(s.items('tela-c').length, 1); // superficie so com o 3: intacta
+});
+
+test('dropAuthor de quem nao desenhou nada nao muda nem cria superficie', () => {
+  const s = store();
+  s.apply('tela', '2', { op: 'begin', id: 'a', x: 0, y: 0 });
+  assert.deepEqual(s.dropAuthor('9'), []);
+  assert.deepEqual(s.dropAuthor('naoexiste'), []);
+  assert.equal(s.items('tela').length, 1);
+});
+
 // ---------- snapshot / sync ----------
 
 test('snapshot copia os pontos (quem recebe nao segura o traco vivo)', () => {
