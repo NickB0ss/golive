@@ -150,4 +150,16 @@ contextBridge.exposeInMainWorld('golive', {
   sendAnnotOverlayOp: (payload) => ipcRenderer.invoke('overlay:op', payload),
   /** Lousa inteira -- pra janela que nasce com a transmissao ja rabiscada. */
   sendAnnotOverlayLoad: (payload) => ipcRenderer.invoke('overlay:load', payload),
+
+  /** Controles da janela sem moldura (Windows). `platform` deixa o renderer
+   * decidir se mostra a faixa propria ou deixa a barra nativa (macOS/Linux).
+   * `onMaximizeChange` troca o icone do botao maximizar/restaurar. */
+  win: {
+    platform: process.platform,
+    minimize: () => ipcRenderer.send('window:minimize'),
+    toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
+    close: () => ipcRenderer.send('window:close'),
+    onMaximizeChange: (callback) =>
+      ipcRenderer.on('window:maximize-changed', (_event, isMax) => callback(isMax)),
+  },
 });
