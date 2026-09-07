@@ -1029,6 +1029,8 @@
     }
     tileSource.clear();
     watchedScreens.clear();
+    autoWatchSuppressed = false;
+    unwatchedCameras.clear();
     watchersByTile.clear();
     lookingByViewer.clear();
   }
@@ -1544,6 +1546,10 @@
           avatar: owner?.avatar || null,
           kind: baseKind,
         });
+        // Camera tambem tem portao de "assistir": se o usuario ja optou sair
+        // desta camera, o tile nasce com o cartao em vez do video, e o
+        // view-state que sai daqui avisa quem transmite pra soltar o encoder.
+        if (baseKind === 'camera') syncWatchedCamera(ownerId);
         // A stream chegou: se somos relay dela, e a hora de repassar. Este
         // e o gatilho CERTO pro repasse -- antes ele dependia de a
         // mensagem 'tree' ou uma 'offer' chegarem depois da stream, e como
@@ -1612,6 +1618,10 @@
           ].some((pc) => pc && pc.connectionState === 'connected');
           if (!stillConnected) {
             session.mesh.removePeer(peerId);
+            // Igual ao 'peer-left': o rabisco dele na tela dos outros vai
+            // junto. Sem o bloco do overlay -- uma orfa nao esta negociando
+            // repasse, e a janela se corrige no proximo overlay:load normal.
+            ui.annotations.forgetAuthor(peerId);
             dropTile(peerId);
             dropTile(`cam-${peerId}`);
           }
@@ -2023,6 +2033,17 @@
         for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
         ui.annotations.setSurface(msg.id, { allowed: false });
         ui.annotations.setSurface(`cam-${msg.id}`, { allowed: false });
+        // O que ele rabiscou na tela dos OUTROS sai com ele (a tela dele ja
+        // some com o tile logo abaixo). Se algum traco apagado estava na
+        // MINHA tela real, o overlay tem a copia -- recarrega do snapshot ja
+        // podado, pelo caminho overlay:load que ja existe.
+        const surfacesLimpas = ui.annotations.forgetAuthor(msg.id);
+        if (annotOverlayOn) {
+          const minhaTela = annotate.surfaceKey(myId, 'screen');
+          if (surfacesLimpas.some((s) => String(s) === minhaTela)) {
+            window.golive.sendAnnotOverlayLoad?.({ surface: minhaTela, items: ui.annotations.snapshot(minhaTela) });
+          }
+        }
         dropTile(msg.id);
         dropTile(`cam-${msg.id}`);
         // Ele levou junto duas coisas: as telas dele (e a audiencia delas) e
@@ -2031,6 +2052,7 @@
         dropWatchers(`cam-${msg.id}`);
         dropReporter(msg.id);
         unwatchScreen(msg.id);
+        unwatchedCameras.delete(msg.id); // id reaproveitado nao herda a opcao
         // Ele some das duas pontas: como espectador de qualquer tela, e como
         // tela de qualquer espectador.
         for (const k of lookingByViewer.keys()) {
@@ -3086,6 +3108,35 @@
   // F1.3). O caminho ja existia -- era usado so pra janela minimizada.
   const watchedScreens = new Set(); // ids de quem transmite a tela que eu assisto
 
+  // Uma vez que o usuario para de assistir DE PROPOSITO (menu de botao
+  // direito) e fica sem nenhuma tela, a auto-escolha nao repoe outra: ele
+  // pediu pra nao ver nada. Volta a repor quando ele escolhe uma tela de
+  // novo (`only`/`add`). Resetado a cada sessao em teardownPeers.
+  let autoWatchSuppressed = false;
+
+  // Camera e opt-OUT: por padrao a gente assiste (e 720p num tile pequeno).
+  // Este Set guarda os donos de camera de que o usuario optou SAIR pelo
+  // menu de botao direito. Resetado em teardownPeers.
+  const unwatchedCameras = new Set();
+
+  function watchingCamera(originId) {
+    return !unwatchedCameras.has(String(originId));
+  }
+
+  /** Reaplica o portao do tile de uma camera e reconta pra quem transmite.
+   * Chamado quando a track da camera chega (onTrack) e quando o usuario
+   * muda a escolha pelo menu. */
+  function syncWatchedCamera(ownerId) {
+    const id = String(ownerId);
+    const peer = currentSession?.mesh?.peers.get(id);
+    ui.grid.setWatched(`cam-${id}`, watchingCamera(id), {
+      name: peer?.name || 'Alguém',
+      avatar: peer?.avatar || null,
+      kind: 'camera',
+    });
+    broadcastViewState();
+  }
+
   /** Telas ao vivo agora, na ordem em que a sala as conhece. */
   function liveScreenIds() {
     const session = currentSession;
@@ -3109,7 +3160,7 @@
     const vivas = liveScreenIds();
     const vivasSet = new Set(vivas);
     for (const id of [...watchedScreens]) if (!vivasSet.has(id)) watchedScreens.delete(id);
-    if (!watchedScreens.size && vivas.length) watchedScreens.add(vivas[0]);
+    if (!watchedScreens.size && !autoWatchSuppressed && vivas.length) watchedScreens.add(vivas[0]);
 
     const session = currentSession;
     for (const id of vivas) {
@@ -3135,17 +3186,30 @@
 
   ui.grid.onWatchIntent((tileId, mode) => {
     const id = String(tileId);
+
+    // Camera: tile 'cam-<dono>', escolha binaria (sem 'add', sem
+    // multi-watch). 'only' volta a assistir, 'remove' para.
+    if (id.startsWith('cam-')) {
+      const dono = id.slice(4);
+      if (mode === 'remove') unwatchedCameras.add(dono);
+      else unwatchedCameras.delete(dono); // 'only' (e qualquer outro) religa
+      syncWatchedCamera(dono);
+      return;
+    }
+
     if (mode === 'only') {
       watchedScreens.clear();
       watchedScreens.add(id);
+      autoWatchSuppressed = false;
     } else if (mode === 'add') {
       watchedScreens.add(id);
+      autoWatchSuppressed = false;
     } else if (mode === 'remove') {
-      // Nunca ficar sem nenhuma: syncWatchedScreens reporia outra qualquer,
-      // e "cliquei pra sair desta e caí na de outro" e pior que o botao nao
-      // ter aparecido. Por isso o botao so existe com duas ou mais.
-      if (watchedScreens.size <= 1) return;
       watchedScreens.delete(id);
+      // Ficou sem nenhuma tela: foi uma escolha explicita de nao ver nada
+      // (o menu de botao direito, ou largar a ultima). A auto-escolha para
+      // de repor ate o usuario pedir uma tela de novo.
+      if (!watchedScreens.size) autoWatchSuppressed = true;
     }
     syncWatchedScreens();
   });
@@ -3176,10 +3240,12 @@
       const childKind = relayKindFor(baseKind, peerId);
       const anyFolhaWatching = state?.role === 'relay'
         && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
-      // A escolha de assistir e por TELA, e a chave dela e sempre a ORIGEM:
-      // num kind composto quem esta rio acima e o relay, mas a tela continua
-      // sendo a de `sourceId`. Camera nao entra na escolha.
-      const querendo = baseKind === 'camera' || watchingScreen(sourceId || peerId);
+      // A escolha de assistir e por ORIGEM: num kind composto quem esta rio
+      // acima e o relay, mas o video continua sendo o de `sourceId`. Tela e
+      // camera tem defaults opostos -- tela e opt-in (watchedScreens),
+      // camera e opt-out (unwatchedCameras) -- mas dos dois da pra sair.
+      const origem = sourceId || peerId;
+      const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
       // Um relay que nao esta assistindo continua RECEBENDO: cortar aqui
       // cortaria junto os filhos que estao. E o mesmo motivo de a janela
       // minimizada nao poder cortar -- so que agora vale pra duas causas.

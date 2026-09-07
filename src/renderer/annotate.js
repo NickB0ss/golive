@@ -397,6 +397,27 @@
       surfaces.delete(String(surfaceId));
     }
 
+    /** Remove tudo que `author` desenhou, em TODAS as superficies. Devolve
+     * os surfaceIds que mudaram, pra quem chama redesenhar so esses.
+     *
+     * Chamado quando um peer sai da sala: o que ele rabiscou na tela dos
+     * OUTROS sai com ele. A tela DELE ja morre por outro caminho (o tile
+     * some e leva a lousa junto), entao aqui o que importa e o traco orfao
+     * espalhado pelas superficies de quem ficou. */
+    function dropAuthor(author) {
+      const a = String(author);
+      const changed = [];
+      for (const [surfaceId, list] of surfaces) {
+        const kept = list.filter((it) => it.from !== a);
+        if (kept.length !== list.length) {
+          list.length = 0;
+          list.push(...kept);
+          changed.push(surfaceId);
+        }
+      }
+      return changed;
+    }
+
     function clearAll() {
       surfaces.clear();
     }
@@ -407,7 +428,7 @@
       return items(surfaceId).some((it) => it.from === String(author));
     }
 
-    return { apply, items, snapshot, load, drop, clearAll, hasFrom };
+    return { apply, items, snapshot, load, drop, dropAuthor, clearAll, hasFrom };
   }
 
   const api = {
