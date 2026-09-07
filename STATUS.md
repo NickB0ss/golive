@@ -104,13 +104,30 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.2` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.3` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **519 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **521 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.3** — **parar de assistir uma tela ou câmera pelo menu de botão
+  direito, e rabisco órfão some com quem sai.** (1) O menu de contexto do
+  tile ganhou "Parar de assistir esta tela/câmera" (e "Assistir câmera"
+  quando já se optou sair). Antes só dava pra largar uma tela assistindo
+  duas ou mais, e câmera não tinha como desligar. Largar a última tela
+  agora chega a zero e liga `autoWatchSuppressed` — a auto-escolha para de
+  repor uma tela até o usuário pedir de novo. Câmera virou opt-out
+  (`unwatchedCameras`): o `view-state {watching:false}` que sai daí faz
+  quem transmite soltar o encoder daquele espectador, pelo mesmo caminho
+  que a tela já usava. (2) Quando um peer sai da sala, `annotate`
+  `dropAuthor` apaga o que ele rabiscou na tela de todo mundo que ficou —
+  a tela dele já morria com o tile, mas o traço nas telas dos outros
+  ficava órfão. Cada cliente processa o `peer-left` sozinho; nenhuma
+  mensagem de rede nova. Se o traço apagado estava na tela real de quem
+  compartilha, a janela de overlay recarrega o snapshot já podado.
+  Spec: `docs/superpowers/specs/2026-09-06-parar-de-assistir-e-rabisco-orfao-design.md`.
 
 - **0.12.2** — **tela preta ao entrar numa sala com repasse (F2) — e não
   saía nem reiniciando o compartilhamento.** Ao processar uma `offer` da
