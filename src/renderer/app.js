@@ -4,6 +4,10 @@
 (function () {
   const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay } = window.GoLive;
 
+  // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
+  // haver salto de layout quando o padding-top entra.
+  window.GoLive.titlebar.init(window.golive.win, document);
+
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
   theme.apply(cfg.theme); // antes de qualquer render -- e o que evita um flash do tema padrao

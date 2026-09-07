@@ -104,13 +104,23 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.4` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.12.5` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
 Testes: `npm test` → **521 passando**. `npm run lint` → 0 erros, 10 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
 ## Já lançado (em release com tag)
+
+- **0.12.5** — **controles de janela próprios, estilo Discord.** No Windows a
+  janela perde a barra de título nativa (`titleBarStyle: 'hidden'`) e ganha
+  uma faixa própria de 32px no topo: marca à esquerda, área de arrasto, e os
+  botões de minimizar / maximizar-restaurar / fechar à direita (fechar fica
+  vermelho no hover, o ícone do maximizar alterna com o estado). macOS/Linux
+  seguem com a barra nativa. F11 não alterna mais o fullscreen nativo (o app
+  tem o próprio, via tile em tela cheia). IPC novo em `window.golive.win`,
+  módulo `src/renderer/titlebar.js`. Só janela: nenhuma mudança de protocolo.
+  PR #49.
 
 - **0.12.4** — **o app ganhou marca própria.** A mesma do site: dois pares
   de espectadores ligados ao nó de origem. Substitui o badge de texto "GL"

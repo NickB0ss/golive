@@ -227,6 +227,9 @@ function createWindow() {
     // janela; isto cobre o `npm start`, que senão mostra o ícone padrão do
     // Electron. O .ico traz os tamanhos pequenos que a barra de tarefas usa.
     icon: path.join(__dirname, 'renderer', 'assets', 'icon.ico'),
+    // Windows: sem barra de titulo nativa -- o app desenha a propria faixa
+    // de controles (ver spec 2026-09-07). macOS/Linux ficam com a nativa.
+    ...(process.platform === 'win32' ? { titleBarStyle: 'hidden' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -235,6 +238,33 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+
+  // Controles de janela proprios (Windows, janela sem moldura). fire-and-forget:
+  // nada a devolver. Ver spec 2026-09-07.
+  ipcMain.on('window:minimize', () => {
+    if (win && !win.isDestroyed()) win.minimize();
+  });
+  ipcMain.on('window:toggle-maximize', () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.on('window:close', () => {
+    if (win && !win.isDestroyed()) win.close();
+  });
+  const sendMaxState = () => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('window:maximize-changed', win.isMaximized());
+    }
+  };
+  win.on('maximize', sendMaxState);
+  win.on('unmaximize', sendMaxState);
+  // F11 nao alterna fullscreen nativo: o app tem o proprio (tile em tela
+  // cheia, via win.setFullScreen no renderer).
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'F11') event.preventDefault();
+  });
+
   // A janela de rabisco e uma BrowserWindow como outra qualquer: viva depois
   // que a principal fecha, ela segura o 'window-all-closed' e o app fica
   // rodando invisivel, sem nada na tela nem na barra de tarefas (ela e
