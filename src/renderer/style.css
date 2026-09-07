@@ -2543,7 +2543,6 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   pointer-events: none;
 }
 .titlebar-mark { width: 16px; height: 16px; flex: none; }
-.titlebar-name { font-size: 12px; font-weight: 550; }
 .titlebar-drag { flex: 1; }
 .titlebar-controls {
   display: flex;
