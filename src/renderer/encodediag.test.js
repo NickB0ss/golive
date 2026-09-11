@@ -15,7 +15,10 @@ const ROW = {
   mbps: 1.8,
   msPerFrame: 41.3,
 };
-const CTX = { software: true, targetBitrate: 2_500_000, steps: { global: 2, peer: 0 } };
+const CTX = {
+  software: true, targetBitrate: 2_500_000, scaleDownBy: 1.5, resolutionHeight: 720, bweBps: 2_000_000,
+  steps: { global: 2, peer: 0 },
+};
 
 test('signature ignora numeros, reage a campos categoricos', () => {
   const base = signature(ROW, CTX);
@@ -48,7 +51,7 @@ test('line: NVENC caiu pra OpenH264 aparece legivel', () => {
   assert.match(s, /efic=nao/);
   assert.match(s, /cap=60fps out=1280x720@24fps/);
   assert.match(s, /limite=nenhum/);
-  assert.match(s, /alvoKbps=2500 realKbps=1800/);
+  assert.match(s, /alvoKbps=2500 escala=1\.5 res=720 bwe=2000 realKbps=1800/);
   assert.match(s, /msFrame=41\.3/);
   assert.match(s, /degraus=g2\/p0/);
 });
@@ -62,6 +65,16 @@ test('line: hardware sem msPerFrame nem changed', () => {
   assert.match(s, /msFrame=-/);
   assert.match(s, /degraus=g0\/p0/);
   assert.doesNotMatch(s, /MUDOU/);
+});
+
+test('line: encoder ausente fica desconhecido, com alvo e escala por peer', () => {
+  const s = line(
+    { ...ROW, encoder: '', powerEfficient: true },
+    { software: false, targetBitrate: 2_500_000, scaleDownBy: 2, steps: {} }
+  );
+  assert.match(s, /enc=desconhecido desconhecido efic=sim/);
+  assert.match(s, /alvoKbps=2500/);
+  assert.match(s, /escala=2/);
 });
 
 // --- Log de 2026-09-05: "tela->gg" nao dizia se gg via a captura direta ou

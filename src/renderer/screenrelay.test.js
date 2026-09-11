@@ -110,6 +110,31 @@ test('captureStream e pedido com 0 -- entrega manual, nao amostragem', () => {
   assert.equal(canvas.fpsPedido, 0);
 });
 
+test('relay arredonda o canvas inicial e o frame impar para baixo ate par', async () => {
+  const canvas = fakeCanvas();
+  const source = { getSettings: () => ({ width: 1203, height: 847 }) };
+  create(source, {
+    escopo: montarEscopo([fakeFrame(1203, 847)]),
+    document: fakeDoc(canvas),
+  });
+  await proximoTick();
+  assert.equal(canvas.width, 1202);
+  assert.equal(canvas.height, 846);
+  assert.deepEqual(canvas.desenhos.map(({ w, h }) => ({ w, h })), [{ w: 1202, h: 846 }]);
+});
+
+test('relay conserva o tamanho par do canvas', async () => {
+  const canvas = fakeCanvas();
+  const source = { getSettings: () => ({ width: 1202, height: 846 }) };
+  create(source, {
+    escopo: montarEscopo([fakeFrame(1202, 846)]),
+    document: fakeDoc(canvas),
+  });
+  await proximoTick();
+  assert.equal(canvas.width, 1202);
+  assert.equal(canvas.height, 846);
+});
+
 test('cada quadro lido vira um desenho e um requestFrame', async () => {
   const canvas = fakeCanvas();
   const frames = [fakeFrame(1920, 1080), fakeFrame(1920, 1080), fakeFrame(1920, 1080)];

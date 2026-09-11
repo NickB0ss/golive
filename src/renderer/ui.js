@@ -21,7 +21,6 @@
   const QUALITY_PRESET_NOTE = {
     '720p30': 'o mais leve',
     '1080p60': 'padrão',
-    '1440p60': 'exige bastante upload',
   };
 
   function escapeHtml(str) {
@@ -2816,7 +2815,7 @@
     const i = opcoes.findIndex((o) => o.classList.contains('selected'));
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
     // Setas PARAM nas pontas em vez de dar a volta: numa escada ordenada,
-    // "de 1440p pra direita" nao existe, e pular pro 720p desfaz exatamente
+    // "de 1080p pra direita" nao existe, e pular pro 720p desfaz exatamente
     // a ordem que este controle existe pra mostrar.
     let destino = null;
     if (step) destino = Math.min(opcoes.length - 1, Math.max(0, Math.max(0, i) + step));

@@ -193,11 +193,11 @@ texto ilegível. `--live`, `--warn` e `--danger` (os sinais de "ao vivo",
 só o acento é escolha sua.
 
 A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
-tela" → "O que você quer compartilhar?"), numa grade de seis presets
-fechados: `720p · 30 fps` até `1440p · 60 fps`, com `1080p · 60 fps` (12 Mbps)
-como padrão. Cada preset é um pacote fechado de resolução + fps + bitrate —
-sem sliders soltos. Ao lado, uma linha mostra o upload que aquele preset
-exige por espectador.
+tela" → "O que você quer compartilhar?"), numa grade de quatro presets
+fechados: `720p · 30 fps` até `1080p · 60 fps` (12 Mbps), este último como
+padrão. Cada preset é um pacote fechado de resolução + fps + bitrate — sem
+sliders soltos. Ao lado, uma linha mostra o upload que aquele preset exige
+por espectador.
 
 - **Codec** — a tela é sempre codificada em **H.264**, normalmente no encoder
   de hardware da GPU (NVENC/AMF/QuickSync — a escolha final é do

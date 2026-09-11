@@ -64,6 +64,7 @@
     if (!health) return false;
     // Sinal autoritativo: o Chromium marcou o encode como limitado por CPU.
     if (health.cpuLimited === true) return true;
+    if (typeof health.load === 'number') return health.load > 1;
     return typeof health.msPerFrame === 'number' && health.msPerFrame > budgetMs;
   }
 
@@ -79,6 +80,7 @@
           softwareEncoder: h.softwareEncoder === true,
           cpuLimited: h.cpuLimited === true,
           msPerFrame: h.msPerFrame ?? null,
+          load: h.load ?? null,
         };
         continue;
       }
@@ -87,6 +89,7 @@
       if (typeof h.msPerFrame === 'number' && (worst.msPerFrame == null || h.msPerFrame > worst.msPerFrame)) {
         worst.msPerFrame = h.msPerFrame;
       }
+      if (typeof h.load === 'number' && (worst.load == null || h.load > worst.load)) worst.load = h.load;
     }
     return worst;
   }

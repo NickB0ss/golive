@@ -8,7 +8,8 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, crashReporter } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 // So pode existir UM GoLive rodando por maquina: dois processos tentando abrir
@@ -132,6 +133,50 @@ const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
 // aqui -- so depende do appId, fixado no topo deste arquivo via app info
 // implicita do Electron.
 const logger = setupLogger();
+// O crashpad precisa nascer antes do ready e antes de qualquer renderer; sem
+// upload, ele so deixa os .dmp locais para a proxima investigacao.
+try {
+  crashReporter.start({ uploadToServer: false });
+} catch (err) {
+  logger.error('crashReporter local nao iniciou:', err?.message || err);
+}
+
+// Conta somente nomes e datas: abrir dump aqui pode vazar dados e atrasar boot.
+function logCrashDumpsLocais() {
+  let quantidade = 0;
+  let maisRecente = null;
+  const visitar = (diretorio, nivel) => {
+    let entradas;
+    try {
+      entradas = fs.readdirSync(diretorio, { withFileTypes: true });
+    } catch (err) {
+      logger.error('crash dumps locais: leitura de diretorio falhou, seguindo boot:', err?.message || err);
+      return;
+    }
+    for (const entrada of entradas) {
+      const arquivo = path.join(diretorio, entrada.name);
+      if (entrada.isDirectory() && nivel < 2) {
+        visitar(arquivo, nivel + 1);
+      } else if (entrada.isFile() && entrada.name.toLowerCase().endsWith('.dmp')) {
+        try {
+          const mtime = fs.statSync(arquivo).mtime;
+          quantidade += 1;
+          if (!maisRecente || mtime > maisRecente) maisRecente = mtime;
+        } catch (err) {
+          logger.error('crash dumps locais: leitura de arquivo falhou, seguindo boot:', err?.message || err);
+        }
+      }
+    }
+  };
+  try {
+    visitar(app.getPath('crashDumps'), 0);
+    logger.log(`crash dumps locais: quantidade=${quantidade} maisRecente=${maisRecente ? maisRecente.toISOString() : '-'}`);
+  } catch (err) {
+    logger.error('crash dumps locais: caminho falhou, seguindo boot:', err?.message || err);
+  }
+}
+
+logCrashDumpsLocais();
 logger.log(`GoLive iniciando -- versao ${app.getVersion()}, log em ${logger.path}`);
 if (audioAddonLoadError) {
   logger.error(
@@ -170,11 +215,15 @@ app.on('child-process-gone', (_event, details) => {
   logger[grave ? 'error' : 'log'](
     `processo filho encerrou: type=${details.type} name=${details.name || details.serviceName || '-'}`
     + ` reason=${details.reason} exitCode=${details.exitCode}`
+    + ` salaHospedada=${embeddedServer ? 'sim' : 'nao'}`
   );
 });
 
 /** Servidor de sinalizacao embutido, quando este processo esta hospedando. */
 let embeddedServer = null;
+/** Fechamento em andamento, pra eventos de encerramento concorrentes usarem
+ * a mesma promessa e nao fecharem o servidor duas vezes. */
+let embeddedServerClosing = null;
 /** Nome do host da sala ativa, pra reusar no beacon quando o anuncio e
  * refeito (discovery:refresh) sem o renderer reenviar o nome. */
 let hostedRoomName = 'anônimo';
@@ -204,10 +253,22 @@ async function ensureDiscoveryStarted() {
 }
 
 async function closeEmbeddedServer() {
+  if (embeddedServerClosing) return embeddedServerClosing;
   if (!embeddedServer) return;
-  await embeddedServer.close();
+  const server = embeddedServer;
   embeddedServer = null;
   hostedRoomPin = null;
+  // Limpa a referencia antes do await: session-end e will-quit podem chegar
+  // quase juntos, e os dois precisam compartilhar este mesmo fechamento.
+  try {
+    embeddedServerClosing = Promise.resolve(server.close());
+  } catch (err) {
+    embeddedServerClosing = Promise.reject(err);
+  }
+  embeddedServerClosing = embeddedServerClosing.finally(() => {
+    embeddedServerClosing = null;
+  });
+  return embeddedServerClosing;
 }
 
 function createWindow() {
@@ -270,6 +331,18 @@ function createWindow() {
   // rodando invisivel, sem nada na tela nem na barra de tarefas (ela e
   // skipTaskbar). Ela morre junto com a principal, sempre.
   win.on('closed', destroyOverlayWindow);
+  // No logoff/desligamento do Windows o Electron pode morrer sem before-quit
+  // nem will-quit. Fecha ja aqui para o servidor avisar room-closed antes do
+  // processo sumir; closeEmbeddedServer e idempotente para a sequencia normal.
+  if (process.platform === 'win32') {
+    win.on('query-session-end', () => logger.log('query-session-end recebido'));
+    win.on('session-end', () => {
+      logEncerramento('session-end');
+      closeEmbeddedServer().catch(() => {
+        /* best-effort: o Windows pode encerrar o processo agora */
+      });
+    });
+  }
   win.on('enter-full-screen', () => win?.webContents.send('window:fullscreen-changed', true));
   win.on('leave-full-screen', () => win?.webContents.send('window:fullscreen-changed', false));
 
@@ -470,6 +543,12 @@ function logGpuProblems() {
 }
 
 app.whenReady().then(() => {
+  // powerMonitor so pode ser usado depois do ready; registrar uma vez aqui
+  // mantem o diagnostico de energia sem arriscar falha no carregamento.
+  for (const evento of ['suspend', 'resume', 'lock-screen', 'unlock-screen', 'shutdown']) {
+    powerMonitor.on(evento, () => logger.log(`powerMonitor: ${evento}`));
+  }
+
   // Leitura PRECOCE do feature status. NAO tire conclusao dela.
   //
   // Aqui estamos ~100ms depois do start e o processo de GPU ainda nao
@@ -682,7 +761,7 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 
 ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) => {
   try {
-    if (embeddedServer) await closeEmbeddedServer();
+    if (embeddedServer || embeddedServerClosing) await closeEmbeddedServer();
     // PIN de 4 digitos gerado com a sala (B3). Nao e cripto -- so corta o
     // entrar-por-acidente. `Math.random` basta: nao ha modelo de ameaca de
     // forca bruta aqui (o servidor derruba o socket a cada tentativa, e a
@@ -693,7 +772,13 @@ ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) =>
     const ownerToken = require('crypto').randomUUID();
     // A versao entra na sala junto com o PIN e o token de dono: o servidor
     // barra no 'join' quem nao estiver exatamente nela (ver signaling-core).
-    embeddedServer = await findFreeServer((port) => createSignalingServer({ port, pin, ownerToken, appVersion: app.getVersion() }));
+    embeddedServer = await findFreeServer((port) => createSignalingServer({
+      port,
+      pin,
+      ownerToken,
+      appVersion: app.getVersion(),
+      log: (...a) => logger.log('[servidor]', ...a),
+    }));
     hostedRoomPin = pin;
 
     const firewall = await ensureFirewallRule(embeddedServer.port);

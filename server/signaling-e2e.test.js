@@ -355,7 +355,7 @@ test('saida de peer avisa o resto da sala, e so ele', async (t) => {
   await ana.esperaTipo('peer-joined');
   assert.equal(servidor.getPeerCount(), 3);
 
-  bruno.ws.close();
+  bruno.ws.close(1000);
   const saiu = await ana.esperaTipo('peer-left');
   assert.equal(saiu.id, welcomeBruno.id);
   // O 'peer-left' so sai depois do `peers.delete`, entao ele proprio e a
@@ -372,7 +372,7 @@ test('saida de peer avisa o resto da sala, e so ele', async (t) => {
 
 test('frame acima do maxPayload derruba so quem mandou (B4)', async (t) => {
   const p = palco(t);
-  const servidor = await p.servidor();
+  const servidor = await p.servidor({ resumeGraceMs: 0 });
   const ana = await p.cliente(servidor, 'ana');
   const bruno = await p.cliente(servidor, 'bruno');
 
@@ -410,7 +410,7 @@ test('avatar grande passa no limite de payload e chega cortado em 256 KB', async
 
 test('flood derruba so o cliente em loop e a sala e avisada (B4)', async (t) => {
   const p = palco(t);
-  const servidor = await p.servidor();
+  const servidor = await p.servidor({ resumeGraceMs: 0 });
   const ana = await p.cliente(servidor, 'ana');
   const bruno = await p.cliente(servidor, 'bruno');
 

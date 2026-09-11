@@ -84,7 +84,7 @@ test('getPeerCount reflete entradas e saidas', async () => {
     await once(a, 'welcome');
     assert.equal(server.getPeerCount(), 1);
 
-    a.close();
+    a.close(1000);
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(server.getPeerCount(), 0);
   } finally {
@@ -423,8 +423,8 @@ test('broadcast-state: paused ausente chega como false, nao undefined', async ()
   }
 });
 
-test('heartbeat derruba o cliente que para de responder o pong', async () => {
-  const server = await createSignalingServer({ port: 0, heartbeatMs: 50 });
+test('heartbeat suspende o cliente que para de responder o pong antes da expiracao', async () => {
+  const server = await createSignalingServer({ port: 0, heartbeatMs: 50, resumeGraceMs: 80 });
   try {
     // autoPong: false = o cliente ignora o ping do servidor, simulando um
     // socket morto de rede (a ponta sumiu sem handshake de close).
@@ -435,7 +435,8 @@ test('heartbeat derruba o cliente que para de responder o pong', async () => {
     assert.equal(server.getPeerCount(), 1);
 
     await new Promise((r) => a.once('close', r)); // terminado pelo servidor
-    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(server.getPeerCount(), 1, 'heartbeat tambem entra na janela de retomada');
+    await new Promise((r) => setTimeout(r, 100));
     assert.equal(server.getPeerCount(), 0);
   } finally {
     await server.close();
@@ -486,10 +487,13 @@ test('watchers e broadcast pra sala inteira, com o from carimbado', async () => 
     assert.equal(msgB.from, '1');
     assert.equal(msgC.from, '1');
     assert.equal(msgB.kind, 'screen');
-    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno' }]);
+    // O item volta refeito pela tabela de peers do servidor (nome e avatar
+    // do join de Bruno), por isso traz `avatar: null` mesmo sem o cliente
+    // mandar -- ver o teste "watchers refaz os itens pela tabela de peers".
+    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno', avatar: null }]);
 
     a.close();
-    b.close();
+    b.close(1000);
     c.close();
   } finally {
     await server.close();
@@ -546,6 +550,35 @@ test('watchers e kind chegam limitados no rebroadcast (anti-amplificacao)', asyn
 
     a.close();
     b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// Os itens sao refeitos pela tabela de peers do servidor, nao cortados: o
+// avatar e um data URL de ate 256 KB que a lista de quem assiste desenha, e
+// cortar em N caracteres quebraria a imagem. O que o cliente manda so indica
+// QUEM esta assistindo.
+test('watchers refaz os itens pela tabela de peers e descarta o que nao e da sala', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    const emB = onceWithin(b.ws, 'watchers');
+    a.ws.send(JSON.stringify({
+      type: 'watchers', kind: 'screen', watchers: [
+        { id: b.welcome.id, name: 'forjado', avatar: 'x'.repeat(100000), ignorado: 'nao viaja' },
+        { id: 'x'.repeat(65), name: 'id que nao existe' },
+        { id: b.welcome.id, name: 'repetido' },
+        { id: 3, name: 'id nao e string' },
+        null,
+      ],
+    }));
+    const msg = await emB;
+    assert.deepEqual(msg.watchers, [{ id: b.welcome.id, name: 'Bruno', avatar: null }]);
+
+    a.ws.close();
+    b.ws.close();
   } finally {
     await server.close();
   }
@@ -1314,7 +1347,7 @@ test('transfer-owner: o host que reconecta depois de passar a lideranca NAO volt
     // O host volta com o MESMO ownerToken (ele nunca deixou a maquina dele).
     // Duas coroas na sala e o estado que `transferredTo` existe pra impedir.
     const saida = once(ana.ws, 'peer-left');
-    dono.ws.close();
+    dono.ws.close(1000);
     await saida;
     const voltou = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
     assert.equal(voltou.welcome.owner, false);
@@ -1338,7 +1371,7 @@ test('transfer-owner: a lideranca volta pro host quando o lider sai da sala', as
     await aviso;
 
     const volta = once(dono.ws, 'owner-changed');
-    ana.ws.close();
+    ana.ws.close(1000);
     const msg = await volta;
     assert.equal(msg.id, dono.welcome.id);
     assert.equal(msg.name, 'Nicolas');
@@ -1372,7 +1405,7 @@ test('transfer-owner: devolver a lideranca pro host zera a transferencia', async
 
     // Com a transferencia zerada, quem entra e o token que manda de novo.
     const saida = once(dono.ws, 'peer-left');
-    ana.ws.close();
+    ana.ws.close(1000);
     await saida;
     const outraAna = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
     assert.equal(outraAna.welcome.owner, false);
@@ -2003,6 +2036,426 @@ test('view-state chega inteiro no destino, com campos que o servidor nao conhece
     a.ws.close();
     b.ws.close();
   } finally {
+    await server.close();
+  }
+});
+
+// ---------- Retomada com credencial: o peer conserva o id ----------
+
+/** Guarda toda mensagem que o socket receber, na ordem -- os testes de
+ * retomada precisam afirmar a AUSENCIA de saida/entrada e contar
+ * duplicatas, coisa que o `once` nao da. */
+function coletar(ws) {
+  const msgs = [];
+  ws.on('message', (raw) => msgs.push(JSON.parse(raw.toString())));
+  return msgs;
+}
+
+/** Barreira: `quem` manda um chat e espera o eco chegar em `ouvinte`. O
+ * servidor processa em ordem e o socket entrega em ordem, entao quando o eco
+ * chega tudo o que o servidor mandou antes pro ouvinte ja chegou tambem. */
+async function barreira(quem, ouvinte, texto) {
+  const eco = onceChatWhere(ouvinte, (m) => !m.system && m.text === texto);
+  quem.send(JSON.stringify({ type: 'chat', text: texto }));
+  await eco;
+}
+
+test('close anormal suspende o peer ate a janela expirar', async () => {
+  const linhas = [];
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 80, log: (...a) => linhas.push(a.join(' ')) });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const vistoPeloBruno = coletar(bruno.ws);
+    const saiuAposJanela = onceWithin(bruno.ws, 'peer-left', 500);
+    const leaveAposJanela = onceChatWhere(bruno.ws, (m) => m.system && m.event === 'leave' && m.actor === 'Ana');
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate(); // 1006 no servidor: a rota some sem handshake.
+    await fechou;
+
+    await new Promise((r) => setTimeout(r, 25));
+    assert.equal(server.getPeerCount(), 2, 'suspenso continua membro durante a janela');
+    assert.equal(vistoPeloBruno.some((m) => m.type === 'peer-left'), false);
+
+    const saiu = await saiuAposJanela;
+    assert.equal(saiu.id, ana.welcome.id);
+    const leave = await leaveAposJanela;
+    assert.equal(leave.actor, 'Ana');
+    assert.equal(server.getPeerCount(), 1);
+    assert.ok(linhas.some((l) => l.includes(`suspenso #${ana.welcome.id} (code=1006)`)), linhas.join('\n'));
+    assert.ok(linhas.some((l) => l.includes(`retomada expirou #${ana.welcome.id}`)), linhas.join('\n'));
+
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('retomada dentro da janela conserva o id, nao anuncia entrada ou saida e volta a rotear', async () => {
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 250 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const vistoPeloBruno = coletar(bruno.ws);
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fechou;
+
+    const retomouNoBruno = once(bruno.ws, 'peer-resumed');
+    const ana2ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => ana2ws.once('open', r));
+    const vistoPelaAna2 = coletar(ana2ws);
+    const welcomeAna2 = once(ana2ws, 'welcome');
+    ana2ws.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana de volta', clientId: 'c-ana', resumeToken: ana.welcome.resumeToken }));
+    const ana2 = { ws: ana2ws, welcome: await welcomeAna2 };
+    assert.equal(ana2.welcome.id, ana.welcome.id);
+    assert.equal(ana2.welcome.resumed, true);
+    assert.notEqual(ana2.welcome.resumeToken, ana.welcome.resumeToken, 'o token gira a cada retomada');
+    assert.deepEqual(await retomouNoBruno, { type: 'peer-resumed', id: ana.welcome.id });
+    await barreira(ana2.ws, bruno.ws, 'retomou-sem-anuncio');
+    assert.equal(vistoPeloBruno.some((m) => m.type === 'peer-left' || m.type === 'peer-joined'), false);
+    assert.equal(vistoPelaAna2.some((m) => m.type === 'peer-resumed'), false);
+
+    const offerNaAna = once(ana2.ws, 'offer');
+    bruno.ws.send(JSON.stringify({ type: 'offer', to: ana.welcome.id, sdp: 'depois-da-retomada' }));
+    assert.equal((await offerNaAna).sdp, 'depois-da-retomada');
+
+    ana2.ws.close(1000);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('retomada carimba estado e watchers com o id original do peer', async () => {
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 250 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fechou;
+
+    const ana2 = await entrar(server.port, 'Ana', { clientId: 'c-ana', resumeToken: ana.welcome.resumeToken });
+    assert.equal(ana2.welcome.id, ana.welcome.id);
+
+    const estado = once(bruno.ws, 'broadcast-state');
+    ana2.ws.send(JSON.stringify({ type: 'broadcast-state', live: true, paused: false }));
+    assert.equal((await estado).id, ana.welcome.id);
+
+    const camera = once(bruno.ws, 'camera-state');
+    ana2.ws.send(JSON.stringify({ type: 'camera-state', on: true }));
+    assert.equal((await camera).id, ana.welcome.id);
+
+    const watchers = once(bruno.ws, 'watchers');
+    ana2.ws.send(JSON.stringify({ type: 'watchers', kind: 'screen', watchers: [] }));
+    const audiencia = await watchers;
+    assert.equal(audiencia.from, ana.welcome.id);
+    assert.equal(audiencia.origin, ana.welcome.id);
+
+    ana2.ws.close(1000);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('retomada derruba o socket fantasma e o close tardio nao remove o peer retomado', async () => {
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 250 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const vistoPeloBruno = coletar(bruno.ws);
+    const fantasmaCaiu = new Promise((r) => ana.ws.once('close', r));
+
+    const ana2 = await entrar(server.port, 'Ana', { clientId: 'c-ana', resumeToken: ana.welcome.resumeToken });
+    assert.equal(ana2.welcome.id, ana.welcome.id);
+    assert.equal(ana2.welcome.resumed, true);
+    await fantasmaCaiu;
+    await barreira(ana2.ws, bruno.ws, 'close-tardio-do-fantasma');
+    assert.equal(server.getPeerCount(), 2);
+    assert.equal(vistoPeloBruno.some((m) => m.type === 'peer-left' || m.type === 'peer-joined'), false);
+
+    ana2.ws.close(1000);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+// O Desconectar do app chama `ws.close()` sem codigo, que chega no servidor
+// como 1005. Janela longa de proposito: se o 1005 caisse na suspensao, o
+// peer-left so viria depois de 60 s e o onceWithin estouraria.
+test('close sem codigo (1005, o Desconectar do app) remove o peer na hora', async () => {
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 60000 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const saiu = onceWithin(bruno.ws, 'peer-left');
+    ana.ws.close();
+    assert.equal((await saiu).id, ana.welcome.id);
+    assert.equal(server.getPeerCount(), 1);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('close deliberado 1000 remove o peer sem esperar a janela', async () => {
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 250 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const saiu = onceWithin(bruno.ws, 'peer-left');
+    ana.ws.close(1000, 'tchau');
+    assert.equal((await saiu).id, ana.welcome.id);
+    assert.equal(server.getPeerCount(), 1);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('lider suspenso que retoma conserva a lideranca sem owner-changed', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo' });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const aviso = once(dono.ws, 'owner-changed');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: ana.welcome.id }));
+    await aviso;
+
+    const vistoPeloDono = coletar(dono.ws);
+    const fantasmaCaiu = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fantasmaCaiu;
+    const ana2 = await entrar(server.port, 'Ana', { clientId: 'c-ana', resumeToken: ana.welcome.resumeToken });
+    assert.equal(ana2.welcome.owner, true);
+    assert.equal(ana2.welcome.resumed, true);
+
+    // Manda de verdade (e o close tardio do fantasma nao devolveu a coroa).
+    const moderado = once(dono.ws, 'moderated');
+    ana2.ws.send(JSON.stringify({ type: 'moderate', action: 'stop-share', target: dono.welcome.id }));
+    assert.equal((await moderado).by, 'Ana');
+    // A coroa nao foi pro host e voltou: nenhum owner-changed desde a reconexao.
+    assert.equal(vistoPeloDono.some((m) => m.type === 'owner-changed'), false);
+
+    dono.ws.close(1000);
+    ana2.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('token errado ou ausente nao retoma nem expulsa o peer com o mesmo clientId', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const vistoPeloBruno = coletar(bruno.ws);
+    // clientId nao e segredo (o dono o ve na lista de bans), portanto so a
+    // credencial rotativa autoriza derrubar/substituir este socket.
+    const ana2 = await entrar(server.port, 'Copia da Ana', { clientId: 'c-ana' });
+    const ana3 = await entrar(server.port, 'Intrusa', { clientId: 'c-ana', resumeToken: 'token-errado' });
+    await barreira(ana3.ws, bruno.ws, 'mesmo-id-sem-credencial');
+
+    assert.notEqual(ana2.welcome.id, ana.welcome.id);
+    assert.notEqual(ana3.welcome.id, ana.welcome.id);
+    assert.equal(ana2.welcome.resumed, undefined);
+    assert.equal(ana3.welcome.resumed, undefined);
+    assert.equal(vistoPeloBruno.some((m) => m.type === 'peer-left'), false);
+    assert.equal(vistoPeloBruno.some((m) => m.type === 'peer-resumed'), false);
+    assert.equal(server.getPeerCount(), 4);
+
+    ana.ws.close(1000);
+    ana2.ws.close(1000);
+    ana3.ws.close(1000);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('token antigo nao retoma novamente depois que a retomada o rotacionou', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fechou;
+    const ana2 = await entrar(server.port, 'Ana', { clientId: 'c-ana', resumeToken: ana.welcome.resumeToken });
+    const ana3 = await entrar(server.port, 'Tentativa velha', { clientId: 'c-ana', resumeToken: ana.welcome.resumeToken });
+
+    assert.equal(ana2.welcome.resumed, true);
+    assert.notEqual(ana3.welcome.id, ana.welcome.id);
+    assert.equal(ana3.welcome.resumed, undefined);
+    assert.equal(server.getPeerCount(), 3);
+
+    ana2.ws.close(1000);
+    ana3.ws.close(1000);
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('resumeToken so aparece no welcome do proprio peer, nunca no protocolo ou no log', async () => {
+  const linhas = [];
+  const server = await createSignalingServer({ port: 0, log: (...a) => linhas.push(a.join(' ')) });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno' });
+    const entrouNoBruno = once(bruno.ws, 'peer-joined');
+    const carla = await entrar(server.port, 'Carla', { clientId: 'c-carla' });
+    const peerJoined = await entrouNoBruno;
+
+    assert.equal(typeof ana.welcome.resumeToken, 'string');
+    assert.equal(typeof bruno.welcome.resumeToken, 'string');
+    assert.equal(typeof carla.welcome.resumeToken, 'string');
+    assert.equal(JSON.stringify(bruno.welcome).includes(ana.welcome.resumeToken), false);
+    assert.equal(Object.hasOwn(peerJoined, 'resumeToken'), false);
+    assert.equal(bruno.welcome.peers.some((p) => Object.hasOwn(p, 'resumeToken')), false);
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fechou;
+    const ana2 = await entrar(server.port, 'Ana', { clientId: 'c-ana', resumeToken: ana.welcome.resumeToken });
+    assert.equal(ana2.welcome.resumed, true);
+    for (const linha of linhas) {
+      assert.equal(linha.includes(ana.welcome.resumeToken), false);
+      assert.equal(linha.includes(ana2.welcome.resumeToken), false);
+      assert.equal(linha.includes(bruno.welcome.resumeToken), false);
+      assert.equal(linha.includes(carla.welcome.resumeToken), false);
+    }
+
+    ana2.ws.close(1000);
+    bruno.ws.close(1000);
+    carla.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('kick remove o peer suspenso na hora e close() cancela a retomada pendente', async () => {
+  const server = await createSignalingServer({ port: 0, ownerToken: 'segredo', resumeGraceMs: 80 });
+  try {
+    const dono = await entrar(server.port, 'Nicolas', { ownerToken: 'segredo', clientId: 'c-host' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fechou;
+    assert.equal(server.getPeerCount(), 2);
+
+    const saiu = onceWithin(dono.ws, 'peer-left');
+    dono.ws.send(JSON.stringify({ type: 'moderate', action: 'kick', target: ana.welcome.id }));
+    assert.equal((await saiu).id, ana.welcome.id);
+    assert.equal(server.getPeerCount(), 1);
+
+    dono.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+test('close() limpa o timer de retomada pendente', async () => {
+  const linhas = [];
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 80, log: (...a) => linhas.push(a.join(' ')) });
+  const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+  const fechou = new Promise((r) => ana.ws.once('close', r));
+  ana.ws.terminate();
+  await fechou;
+
+  await server.close();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(linhas.some((l) => l.includes(`retomada expirou #${ana.welcome.id}`)), false);
+});
+
+test('join recusado por PIN nao retoma nem derruba um peer suspenso', async () => {
+  const server = await createSignalingServer({ port: 0, pin: '4321', resumeGraceMs: 150 });
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana', pin: '4321' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno', pin: '4321' });
+    const vistoPeloBruno = coletar(bruno.ws);
+    const fechou = new Promise((r) => ana.ws.once('close', r));
+    ana.ws.terminate();
+    await fechou;
+
+    const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => intruso.once('open', r));
+    const negado = once(intruso, 'join-denied');
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', clientId: 'c-ana', resumeToken: ana.welcome.resumeToken, pin: '0000' }));
+    assert.equal((await negado).reason, 'pin');
+    await new Promise((r) => setTimeout(r, 25));
+    assert.equal(server.getPeerCount(), 2);
+    assert.equal(vistoPeloBruno.some((m) => m.type === 'peer-left'), false);
+
+    bruno.ws.close(1000);
+  } finally {
+    await server.close();
+  }
+});
+
+// ---------- Log injetado (vai pro arquivo de log do host) ----------
+
+test('log injetado recebe a entrada e a saida, sem endereco nem clientId', async () => {
+  const linhas = [];
+  const server = await createSignalingServer({ port: 0, log: (...a) => linhas.push(a.join(' ')) });
+  try {
+    const nomeLongo = 'Ana Beatriz de Souza e Silva'; // 28 chars: o log corta em 24
+    const ana = await entrar(server.port, nomeLongo, { clientId: 'c-ana-nao-pode-vazar' });
+    const id = ana.welcome.id;
+    ana.ws.close(1000, 'tchau');
+    await new Promise((r) => ana.ws.once('close', r));
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.ok(linhas.some((l) => l.includes(`"Ana Beatriz de Souza e S" (#${id}) entrou`)), linhas.join('\n'));
+    const saida = linhas.find((l) => l.includes(`(#${id}) saiu`));
+    assert.ok(saida, linhas.join('\n'));
+    assert.match(saida, /code=1000 reason="tchau"/);
+    for (const l of linhas) {
+      assert.equal(l.includes('127.0.0.1'), false);
+      assert.equal(l.includes('c-ana-nao-pode-vazar'), false);
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test('log injetado registra join recusado, heartbeat e room-closed', async () => {
+  const linhas = [];
+  const server = await createSignalingServer({ port: 0, heartbeatMs: 50, pin: '4321', log: (...a) => linhas.push(a.join(' ')) });
+  try {
+    const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => intruso.once('open', r));
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'X', pin: '0000' }));
+    await once(intruso, 'join-denied');
+
+    const mudo = new WebSocket(`ws://127.0.0.1:${server.port}`, { autoPong: false });
+    await new Promise((r) => mudo.once('open', r));
+    mudo.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Mudo', pin: '4321' }));
+    const { id } = await once(mudo, 'welcome');
+    await new Promise((r) => mudo.once('close', r));
+
+    assert.ok(linhas.some((l) => /join recusado \(#\d+\): PIN/.test(l)), linhas.join('\n'));
+    assert.ok(linhas.some((l) => new RegExp(`heartbeat derrubou #${id} \\(sem pong ha \\d+s\\)`).test(l)), linhas.join('\n'));
+    // O PIN (certo ou errado) nunca vai pro log.
+    for (const l of linhas) assert.equal(l.includes('4321') || l.includes('0000'), false);
+  } finally {
+    await server.close();
+  }
+  assert.ok(linhas.some((l) => l.includes('room-closed')));
+});
+
+test('log que lanca nao derruba o servidor', async () => {
+  const server = await createSignalingServer({ port: 0, log: () => { throw new Error('disco cheio'); } });
+  const erro = console.error;
+  console.error = () => {};
+  try {
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana' });
+    assert.equal(ana.welcome.type, 'welcome');
+    ana.ws.close(1000);
+  } finally {
+    console.error = erro;
     await server.close();
   }
 });

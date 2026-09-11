@@ -132,6 +132,25 @@ test('peer sem conexao daquele kind e ignorado, sem lancar', () => {
   assert.equal(mesh.isPeerSuspended('999', 'screen'), false);
 });
 
+test('applyEncoding avisa quando setParameters rejeita', async () => {
+  const sender = {
+    track: { kind: 'video' },
+    getParameters: () => ({}),
+    setParameters: () => Promise.reject(Object.assign(new Error('fechou'), { name: 'InvalidStateError' })),
+  };
+  const mesh = meshWithPeer([sender]);
+  const originalWarn = console.warn;
+  const avisos = [];
+  console.warn = (...args) => avisos.push(args);
+  try {
+    mesh.applyEncoding({ bitrate: 1_000_000, fps: 30 }, 'screen');
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepEqual(avisos, [['[mesh] setParameters falhou', '7', 'screen', 'InvalidStateError']]);
+});
+
 // --- watchersOf (lista de "quem esta assistindo" pro overlay do tile) ---
 
 test('watchersOf exclui quem suspendeu e quem nao tem outConn daquele kind', () => {
@@ -219,7 +238,12 @@ function installFakeWebRTC() {
       this.senders = this.senders.filter((s) => s !== sender);
     }
     addTransceiver(track) {
-      const sender = { track, getParameters: () => ({}), setParameters: () => Promise.resolve() };
+      const sender = {
+        track,
+        params: {},
+        getParameters() { return this.params; },
+        setParameters(params) { this.params = params; return Promise.resolve(); },
+      };
       this.senders.push(sender);
       return { sender, setCodecPreferences: undefined };
     }
@@ -260,6 +284,32 @@ function installFakeWebRTC() {
     }
   };
 }
+
+test('tela usa maintain-resolution, inclusive no repasse; camera preserva framerate', async () => {
+  installFakeWebRTC();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  const quality = { bitrate: 1_000_000, fps: 30, codec: 'video/H264' };
+
+  // 'balanced' deixava o Chromium 128 baixar tela para menos de 360px ou
+  // impar, onde o H.264 hardware cai para OpenH264. A tela agora perde fps.
+  await mesh.offerTo('7', streamFalsa(), quality, 'screen');
+  await new Promise((resolve) => setImmediate(resolve));
+  let sender = mesh.peers.get('7').outConns.screen.getSenders()[0];
+  assert.equal(sender.params.degradationPreference, 'maintain-resolution');
+
+  mesh.applyEncodingToPeer('7', quality, 'screen', 2);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sender.params.degradationPreference, 'maintain-resolution');
+
+  await mesh.offerTo('7', streamFalsa(), { ...quality, codec: 'video/VP8' }, 'camera');
+  await new Promise((resolve) => setImmediate(resolve));
+  sender = mesh.peers.get('7').outConns.camera.getSenders()[0];
+  assert.equal(sender.params.degradationPreference, 'maintain-framerate');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
 
 test('relayTo com stream recebida chama offerTo e manda offer pro filho', async () => {
   installFakeWebRTC();
@@ -562,7 +612,7 @@ test('disconnected recupera sozinho antes da carencia -- nao dispara falha (#A2)
   // Volta a 'connected' sozinho, como o ICE costuma fazer num soluco de
   // rede -- a carencia expira depois, mas ja nao encontra 'disconnected'.
   pc.connectionState = 'connected';
-  t.mock.timers.tick(5000);
+  t.mock.timers.tick(15000);
 
   assert.equal(events.length, 1); // nenhum evento de falha surgiu
 
@@ -587,8 +637,14 @@ test('disconnected que nao recupera dispara falha so depois da carencia (#A2)', 
   assert.equal(events.length, 1);
   assert.equal(events[0].failed, false);
 
-  // Continua 'disconnected' -- a carencia expira sem recuperar.
-  t.mock.timers.tick(5000);
+  // Decisao do dono: 15 s deixam o ICE tentar se curar numa queda da VPN.
+  // Antes disso continua sendo um estado transitorio, nao uma falha.
+  t.mock.timers.tick(14999);
+
+  assert.equal(events.length, 1);
+
+  // Continua 'disconnected' -- a carencia agora expira sem recuperar.
+  t.mock.timers.tick(1);
 
   assert.equal(events.length, 2);
   assert.equal(events[1].failed, true);
@@ -618,10 +674,33 @@ test('fechar a conexao durante a carencia de disconnected nao duplica o evento d
   pc.connectionState = 'closed';
   listeners[0](); // fechamento explicito ANTES da carencia expirar
 
-  t.mock.timers.tick(5000); // a carencia expira depois, ja com settled=true
+  // Decisao do dono: a carencia e 15 s; ja com settled=true, nao duplica.
+  t.mock.timers.tick(15000);
 
   const failures = events.filter((e) => e.failed);
   assert.equal(failures.length, 1);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('recoverUnstable derruba a pc com sinalizacao perdida pela recuperacao existente', async () => {
+  installFakeWebRTC();
+  const events = [];
+  const mesh = createMesh({
+    send() {},
+    onTrack() {},
+    onPeerState: (peerId, payload) => events.push({ peerId, ...payload }),
+  });
+  mesh.addPeer('7', 'Bruno');
+  await mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+
+  const pc = mesh.peers.get('7').inConns.screen;
+  pc.signalingState = 'have-local-offer';
+
+  assert.deepEqual(mesh.recoverUnstable(), [{ peerId: '7', kind: 'screen', dir: 'in' }]);
+  assert.equal(pc.closed, true);
+  assert.equal(events.at(-1).failed, true);
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;

@@ -18,12 +18,14 @@
   function signature(row, ctx) {
     const steps = ctx.steps || {};
     return [
-      row.encoder || '?',
-      ctx.software ? 'sw' : 'hw',
+      row.encoder || 'desconhecido',
+      !row.encoder ? 'unknown' : (ctx.software ? 'sw' : 'hw'),
       row.powerEfficient === false ? 'ineff' : 'eff',
       row.limitation || 'none',
       `g${steps.global || 0}`,
       `p${steps.peer || 0}`,
+      `s${ctx.scaleDownBy || 1}`,
+      `r${ctx.resolutionHeight || 0}`,
     ].join('|');
   }
 
@@ -37,6 +39,8 @@
   function line(row, ctx) {
     const steps = ctx.steps || {};
     const marca = ctx.changed ? 'MUDOU ' : '';
+    const encoder = row.encoder || 'desconhecido';
+    const tipoEncoder = !row.encoder ? 'desconhecido' : (ctx.software ? 'SOFTWARE(CPU)' : 'hardware');
     // ctx.relayOf (sourceId de quem e a tela ORIGINAL) so vem preenchido
     // quando este sender e um repasse (F2), nao a captura direta. Sem isto
     // "tela->gg" nao dizia se gg via a nossa captura ou uma stream de
@@ -44,12 +48,15 @@
     // negociacao de saida de 2026-09-05 exigiu cruzar 3 logs de 2 maquinas
     // so pra descobrir que "screen" ali era "screen@4" por baixo.
     const repasse = ctx.relayOf != null ? ` (repasse de #${ctx.relayOf})` : '';
-    return `[diag] ${marca}tela->${row.name}${repasse} enc=${row.encoder || '?'} ${ctx.software ? 'SOFTWARE(CPU)' : 'hardware'}`
+    return `[diag] ${marca}tela->${row.name}${repasse} enc=${encoder} ${tipoEncoder}`
       + ` efic=${row.powerEfficient === false ? 'nao' : 'sim'}`
       + ` cap=${row.captureFps != null ? Math.round(row.captureFps) : '?'}fps`
       + ` out=${row.width || 0}x${row.height || 0}@${Math.round(row.fps || 0)}fps`
       + ` limite=${row.limitation || 'nenhum'}`
       + ` alvoKbps=${Math.round((ctx.targetBitrate || 0) / 1000)}`
+      + ` escala=${ctx.scaleDownBy || 1}`
+      + ` res=${ctx.resolutionHeight || '?'}`
+      + ` bwe=${ctx.bweBps != null ? Math.round(ctx.bweBps / 1000) : '?'}`
       + ` realKbps=${Math.round((row.mbps || 0) * 1000)}`
       + ` msFrame=${row.msPerFrame != null ? row.msPerFrame.toFixed(1) : '-'}`
       + ` degraus=g${steps.global || 0}/p${steps.peer || 0}`;

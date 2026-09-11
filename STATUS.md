@@ -106,9 +106,62 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 `0.12.7` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **521 passando**. `npm run lint` → 0 erros, 10 avisos
+Testes: `npm test` → **581 passando** (com as mudanças não commitadas de
+"Em andamento"). `npm run lint` → 0 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
+
+## Em andamento (não lançado, sem commit)
+
+Correções das queixas de dois usuários em 08–10/09 ("cai da sala sozinho" e
+"tela mal otimizada"). Diagnóstico e planos em `logs/agentes/plano-desconexao.md`
+e `logs/agentes/plano-tela.md`; roteiro de teste do repasse em
+`docs/testes/2026-09-11-roteiro-teste-repasse.md`.
+
+- **Retomada de sessão.** Queda de rede (close 1006, ou o heartbeat derrubando
+  o socket) não tira mais a pessoa da sala na hora: o servidor segura a vaga
+  por 20 s. Quem volta com `clientId` + `resumeToken` (rotativo, só dele,
+  comparado em tempo constante) recupera o MESMO id, e o cliente adota as PCs
+  da sessão órfã em vez de renegociar tudo (`src/renderer/resume.js`). Quem
+  ficou recebe `peer-resumed` e re-oferta só as saídas que se perderam. Frame
+  de close de verdade (1000/1001/1005 do Desconectar) continua saindo na hora.
+  Carência do ICE `disconnected`: 5 → 15 s.
+- **Membro fantasma.** Reconexão com token válido substitui o socket velho
+  (antes ele ficava 25–50 s na sala). `clientId` sozinho não expulsa
+  ninguém: ele aparece na lista de bans do dono, então não é segredo.
+- **Reconexão.** Timeout de handshake de 8 s (antes o SYN do Windows levava
+  ~21 s por tentativa) e backoff com teto de 15 s por ~2 min, em 7
+  tentativas (`src/renderer/reconnect.js`).
+- **Desligamento do Windows com sala aberta.** `session-end` fecha o
+  servidor embutido e manda `room-closed`; os clientes voltam ao lobby com
+  "O host encerrou a sala" em vez de ~100 s de "Reconectando".
+- **Diagnóstico.** Log do servidor embutido no arquivo do host (entrada,
+  saída com code, heartbeat, suspensão/retomada), `[signaling]` no renderer
+  (tentativa, welcome, órfã), `powerMonitor`, `crashReporter` local sem
+  upload (conta os `.dmp` no boot).
+- **Tela sem cair pro OpenH264.** Causa: o H.264 de hardware do Chromium 128
+  recusa altura ≤ 359 e dimensão ímpar. Agora: escala da escada por
+  espectador só 1/2/4 (acabou o 853x480); tela em `maintain-resolution` com a
+  resolução escolhida pelo app por espectador (tetos 1080/720/540/360,
+  nativa quando há banda, histerese pela banda estimada —
+  `src/renderer/screenres.js`); canvas sempre par; teto de bitrate
+  `min(preset, max(800 kbps, 1,2 × banda))`.
+- **Escada global** mede o orçamento de encode pelo fps de cada sender (um
+  sender de 30 fps não derruba mais a captura de 60 fps de todos).
+- **Presets "1440p" removidos.** O mesmo H.264 de hardware satura em
+  1920x1088: a captura acabava sempre limitada a 1080p, e a opção prometia
+  pixels que nunca chegavam a existir. Restam 720p/1080p × 30/60fps; config
+  antigo com um preset 1440p salvo migra pro mais próximo (`closestPreset`,
+  já existente).
+- **Telemetria honesta.** `enc=desconhecido` em vez de "hardware",
+  `alvoKbps` por espectador, `escala=`/`res=`/`bwe=` do valor aplicado,
+  rejeição de `setParameters` no log.
+- **Servidor mais duro com cliente hostil.** O rebroadcast de `watchers`
+  refaz cada item pela tabela de peers da sala (id desconhecido some, nome e
+  avatar vêm do `join`) e tem teto de 20 msg/s por peer — antes um item
+  gigante era replicado pra sala inteira pelo PC de quem hospeda.
+- **Pendente:** repasse via canvas (P4) aguarda o teste manual do roteiro;
+  chat enviado durante os 20 s de suspensão não reaparece pra quem voltou.
 
 ## Já lançado (em release com tag)
 

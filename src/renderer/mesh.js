@@ -19,7 +19,7 @@
   // a maquina inteira de recuperacao -- fechar repasses, vetar o relay,
   // recalcular a arvore -- por algo que ia se curar sozinho. Ver a
   // auditoria de 2026-08-27, item A2.
-  const DISCONNECT_GRACE_MS = 5000;
+  const DISCONNECT_GRACE_MS = 15000;
 
   // Estados de sinalizacao em que uma pc de ENTRADA ainda pode receber uma
   // oferta remota: 'stable' (a negociacao anterior fechou) e
@@ -215,6 +215,9 @@
 
   function createMesh({ send, onTrack, onPeerState }) {
     const peers = new Map();
+    // A sessao P2P pode sobreviver a troca do WebSocket de sinalizacao.
+    // A retomada aponta este mesmo mesh para o socket novo, sem recriar PCs.
+    let sendSignal = send;
 
     // Candidatos ICE que chegaram ANTES de a conexao ter remoteDescription.
     //
@@ -280,7 +283,7 @@
       const pc = new RTCPeerConnection(RTC_CONFIG);
 
       pc.addEventListener('icecandidate', (event) => {
-        if (event.candidate) send({ type: 'ice', to: peerId, dir, kind, candidate: event.candidate });
+        if (event.candidate) sendSignal({ type: 'ice', to: peerId, dir, kind, candidate: event.candidate });
       });
 
       if (dir === 'in') {
@@ -479,9 +482,9 @@
           // setParameters -- sem isto a conexao nasce em 'balanced' e so vira
           // outra coisa se o usuario mexer na qualidade (o que chama
           // applyEncoding). A preferencia agora depende do kind (tela em
-          // 'balanced', camera em 'maintain-framerate') -- ver
+          // 'maintain-resolution', camera em 'maintain-framerate') -- ver
           // setDegradationPreference.
-          setDegradationPreference(transceiver.sender, kind);
+          setDegradationPreference(transceiver.sender, peerId, kind);
         }
       }
 
@@ -490,7 +493,7 @@
         type: offer.type,
         sdp: withOpusParams(withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate))),
       });
-      send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate });
+      sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate });
     }
 
     /** Negociacao que morreu no meio: derruba a conexao e AVISA, pra que a
@@ -520,6 +523,28 @@
         `${err?.name || 'Erro'}: ${err?.message || err}`
       );
       onPeerState(peerId, { removedTile: dir === 'in', kind, dir, failed: true });
+    }
+
+    /** PCs que perderam uma oferta/resposta durante a suspensao nao podem
+     * voltar so por o WebSocket ter voltado. Usa a mesma falha que ja limpa
+     * slots e avisa o app, para ele re-ofertar somente as saidas necessarias. */
+    function recoverUnstable() {
+      const recovered = [];
+      for (const [peerId, peer] of peers) {
+        for (const [dir, conns] of [['in', peer.inConns], ['out', peer.outConns]]) {
+          for (const [kind, pc] of Object.entries(conns)) {
+            if (!pc) continue;
+            if (pc.signalingState === 'stable' && pc.iceConnectionState !== 'failed' && pc.connectionState !== 'failed') continue;
+            recovered.push({ peerId, kind, dir });
+            failNegotiation(peerId, kind, dir, new Error('sinalizacao interrompida durante a retomada'));
+          }
+        }
+      }
+      return recovered;
+    }
+
+    function setSend(next) {
+      sendSignal = typeof next === 'function' ? next : () => {};
     }
 
     async function handleOffer(fromId, sdp, kind, renegotiate) {
@@ -588,17 +613,17 @@
       }
     }
 
-    function setDegradationPreference(sender, kind) {
+    function setDegradationPreference(sender, peerId, kind) {
       if (!sender) return;
-      // Tela em 'balanced': sob banda severamente restrita (VPN saturada)
-      // 'maintain-framerate' so obedece destruindo a resolucao. Camera fica
-      // 'maintain-framerate' -- rosto travando incomoda mais que perder
+      // Tela perde fps sob banda baixa, nunca pixels: H.264 hardware do
+      // Chromium 128 recusa altura <= 359 e dimensao impar. Camera fica em
+      // 'maintain-framerate' porque rosto travando incomoda mais que perder
       // nitidez. parseKind cobre o kind de repasse (screen@<origem>).
-      const pref = parseKind(kind).baseKind === 'screen' ? 'balanced' : 'maintain-framerate';
+      const pref = parseKind(kind).baseKind === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
       try {
         const params = sender.getParameters();
         params.degradationPreference = pref;
-        sender.setParameters(params).catch(() => {});
+        sender.setParameters(params).catch((err) => console.warn('[mesh] setParameters falhou', peerId, kind, err?.name));
       } catch {
         /* sender pode ter sido fechado no meio da negociacao */
       }
@@ -614,12 +639,12 @@
           if (!params.encodings || !params.encodings.length) params.encodings = [{}];
           params.encodings[0].maxBitrate = quality.bitrate;
           params.encodings[0].maxFramerate = quality.fps;
-          // Mesma regra do setDegradationPreference: tela em 'balanced'
-          // (banda restrita nao deve destruir a resolucao), camera em
+          // Mesma regra do setDegradationPreference: tela em
+          // 'maintain-resolution', camera em
           // 'maintain-framerate'. parseKind cobre o kind de repasse.
           params.degradationPreference =
-            parseKind(kind).baseKind === 'screen' ? 'balanced' : 'maintain-framerate';
-          sender.setParameters(params).catch(() => {});
+            parseKind(kind).baseKind === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
+          sender.setParameters(params).catch((err) => console.warn('[mesh] setParameters falhou', peer.id, kind, err?.name));
         }
       }
     }
@@ -630,7 +655,7 @@
      * funcao afina por-espectador a partir dele. `scaleDownBy` vem pronto
      * de quem chama (config.scaleFactorFor), pra este modulo nao depender
      * do config. */
-    function applyEncodingToPeer(peerId, quality, kind, scaleDownBy) {
+    function applyEncodingToPeer(peerId, quality, kind, scaleDownBy, onApplied) {
       const pc = peers.get(peerId)?.outConns[kind];
       if (!pc) return;
       for (const sender of pc.getSenders()) {
@@ -640,10 +665,13 @@
         params.encodings[0].maxBitrate = quality.bitrate;
         params.encodings[0].maxFramerate = quality.fps;
         params.encodings[0].scaleResolutionDownBy = Number(scaleDownBy) > 0 ? Number(scaleDownBy) : 1;
-        // Ver applyEncoding: tela em 'balanced', camera em 'maintain-framerate'.
+        // Ver applyEncoding: tela em 'maintain-resolution', camera em
+        // 'maintain-framerate'.
         params.degradationPreference =
-          parseKind(kind).baseKind === 'screen' ? 'balanced' : 'maintain-framerate';
-        sender.setParameters(params).catch(() => {});
+          parseKind(kind).baseKind === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
+        sender.setParameters(params)
+          .then(() => onApplied?.({ peerId, kind, scaleDownBy: params.encodings[0].scaleResolutionDownBy, maxBitrate: params.encodings[0].maxBitrate }))
+          .catch((err) => console.warn('[mesh] setParameters falhou', peerId, kind, err?.name));
       }
     }
 
@@ -666,7 +694,7 @@
         await pc.setLocalDescription(offer);
         // Renegociacao pura: a pc, o ICE e o DTLS continuam de pe deste
         // lado, so a track saiu. Ver ensureInConn.
-        send({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
+        sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
       } catch {
         /* conexao pode ja ter fechado (peer saiu durante a renegociacao) */
       }
@@ -818,6 +846,8 @@
       handleAnswer,
       handleIce,
       offerTo,
+      recoverUnstable,
+      setSend,
       removeTrack,
       applyEncoding,
       applyEncodingToPeer,

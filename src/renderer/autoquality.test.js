@@ -182,3 +182,12 @@ test('a 30fps, o caso real do log nao degrada nenhum degrau', () => {
   for (let i = 0; i < 60; i += 1) s = next(s, { atMs: i * 1000, health: real }, opts);
   assert.equal(s.steps, 0);
 });
+
+test('sender de 30 fps em SW a 21 ms com piso de 60 fps nao degrada', () => {
+  const health = { softwareEncoder: true, msPerFrame: 21, load: 0.63 };
+  let s = initialState();
+  for (let i = 0; i < 60; i += 1) {
+    s = next(s, { atMs: i * 1000, health }, { budgetMs: budgetMsFor(60) });
+  }
+  assert.equal(s.steps, 0);
+});
