@@ -24,16 +24,14 @@
     '720p60': { width: 1280, height: 720, fps: 60, bitrate: 4_000_000 },
     '1080p30': { width: 1920, height: 1080, fps: 30, bitrate: 6_000_000 },
     '1080p60': { width: 1920, height: 1080, fps: 60, bitrate: 12_000_000 },
-    '1440p30': { width: 2560, height: 1440, fps: 30, bitrate: 10_000_000 },
-    '1440p60': { width: 2560, height: 1440, fps: 60, bitrate: 18_000_000 },
   };
   const DEFAULT_QUALITY_PRESET = '1080p60';
   // Ordem de exibicao no select -- QUALITY_PRESETS e um objeto, entao a
   // ordem de insercao ja bateria com isso, mas manter explicito evita
   // depender de ordem implicita de chaves.
-  const QUALITY_PRESET_ORDER = ['720p30', '720p60', '1080p30', '1080p60', '1440p30', '1440p60'];
+  const QUALITY_PRESET_ORDER = ['720p30', '720p60', '1080p30', '1080p60'];
 
-  // Os presets nao sao uma lista de seis: sao uma matriz 3x2 (resolucao x
+  // Os presets nao sao uma lista de quatro: sao uma matriz 2x2 (resolucao x
   // fps), sem celula morta -- toda combinacao existe. A UI escolhe um eixo
   // por vez (ver a spec de 2026-09-03), entao os dois eixos vivem aqui, ao
   // lado da tabela que eles indexam, e nao no render.
@@ -43,7 +41,12 @@
   // ordem dos controles passaria a depender de ordem implicita de chaves.
   // O teste do produto cartesiano em config.test.js e quem garante que as
   // duas listas e a tabela nao saem de sincronia.
-  const QUALITY_RESOLUTIONS = ['720p', '1080p', '1440p'];
+  //
+  // Existiu um preset 1440p (2026-09 a 2026-09-11): removido porque o H.264
+  // de hardware do Chromium 128 satura em 1920x1088, entao a captura acabava
+  // sempre limitada a 1080p (`videoConstraints` abaixo) -- a opcao prometia
+  // pixels que nunca chegavam a existir.
+  const QUALITY_RESOLUTIONS = ['720p', '1080p'];
   const QUALITY_FPS = [30, 60];
 
   /** Preset da celula (resolucao, fps). Combinacao desconhecida cai no
@@ -86,14 +89,10 @@
   // Cadeia de degradacao: preset -> proximo preset mais barato, `null` no
   // piso. Derruba FPS antes de resolucao, porque a resolucao e o que a
   // pessoa escolheu ver -- 1080p30 ainda parece "a tela dela"; 720p60 nao.
-  //
-  // ARMADILHA: ordenar por bitrate NAO serve como cadeia. 1440p30 (10 Mbps)
-  // e mais barato que 1080p60 (12 Mbps), entao "descer um degrau de
-  // bitrate" a partir de 1080p60 AUMENTARIA a resolucao. Por isso a cadeia
-  // e escrita a mao, e nao derivada da tabela acima.
+  // Escrita a mao, e nao derivada da tabela por bitrate: com mais presets
+  // isso ja mordeu antes (1440p30 chegou a ser mais barato que 1080p60 e
+  // "descer um degrau de bitrate" teria SUBIDO a resolucao).
   const QUALITY_DEGRADE_CHAIN = {
-    '1440p60': '1440p30',
-    '1440p30': '1080p30',
     '1080p60': '1080p30',
     '1080p30': '720p30',
     '720p60': '720p30',
@@ -340,18 +339,21 @@
   }
 
   function videoConstraints(quality) {
-    return toConstraints(quality);
+    // O Media Foundation anuncia no maximo 1920x1088 para H.264 -- nenhum
+    // preset pede mais que isso hoje, mas o teto fica explicito aqui (e nao
+    // só "por acaso nenhum preset excede") pra um config antigo restaurado
+    // (`closestPreset`) ou uma janela de captura fora do padrao nunca pedir
+    // uma captura que o encoder de hardware rejeitaria.
+    return toConstraints({ ...quality, width: Math.min(quality.width, 1920), height: Math.min(quality.height, 1080) });
   }
 
   function cameraConstraints(camera) {
     return toConstraints(camera);
   }
 
-  // Degraus "redondos" pro scaleResolutionDownBy. O Chromium aceita
-  // fracionario, mas valores redondos evitam artefato de reamostragem. O
-  // encode escala DEPOIS da captura, entao a captura continua paga inteira
-  // -- quem controla a captura e o piso global (via applyConstraints).
-  const SCALE_STEPS = [1, 1.5, 2, 3, 4];
+  // So potencias de 2: escala fracionaria produz largura impar nos degraus
+  // do adaptador e derruba o encoder H.264 hardware do Chromium 128.
+  const SCALE_STEPS = [1, 2, 4];
 
   function scaleFactorFor(captureWidth, targetWidth) {
     const cap = Number(captureWidth);
@@ -359,10 +361,8 @@
     if (!(cap > 0) || !(tgt > 0) || tgt >= cap) return 1;
     const raw = cap / tgt;
     let chosen = SCALE_STEPS[0];
-    let best = Infinity;
     for (const s of SCALE_STEPS) {
-      const d = Math.abs(s - raw);
-      if (d < best) { best = d; chosen = s; }
+      if (s <= raw) chosen = s;
     }
     return chosen;
   }

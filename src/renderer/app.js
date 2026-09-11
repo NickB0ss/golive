@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, reconnect, resume, screenres } = window.GoLive;
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
@@ -39,10 +39,13 @@
   // Enquanto `orphanSession` existe, `currentSession` e null (todo `mesh.send`
   // e callback tardio vira no-op, entao a orfa e muda por construcao e nunca
   // ha duas sessoes transmitindo), mas os tiles e o mesh dela continuam.
-  // Descartada em exatamente tres pontos: onOpen de uma reconexao que abre
+  // Descartada em exatamente tres pontos: welcome que recusa a retomada
   // (teardownPeers -- preserva a captura), leaveRoom e troca de sala (ambos
   // teardownSession completo).
   let orphanSession = null;
+  // Credencial rotativa da cadeia de reconexao da sala atual. Nunca vai pra
+  // UI nem log; o proximo welcome substitui o valor antes de qualquer retry.
+  let resumeToken = null;
   // So pode haver UM retry de reconexao pendente por vez (o timer que
   // dispara joinRoom da tentativa n+1 e agendado no onClose da tentativa n,
   // que ja e sequencial). Modulo-level porque quem precisa cancela-lo --
@@ -147,6 +150,8 @@
     // fantasma que esta funcao existe pra evitar.
     myId = null;
     ownerId = null;
+    screenResolution.clear();
+    appliedScreenEncoding.clear();
   }
   let localStream = null;
   /** Track de CAPTURA de tela, crua. Quando o relay esta ligado ela NAO e a
@@ -212,6 +217,13 @@
   // Zerada ao parar de compartilhar: os degraus descrevem uma conexao, nao
   // a nossa maquina.
   const peerQuality = new Map();
+  // Estado de BWE e resolucao por sender de tela (peerId + kind composto).
+  // Nao mistura com peerQuality: aquela escada e saude do espectador; esta
+  // aqui e so a banda do transporte que alimenta ESTE sender.
+  const screenResolution = new Map();
+  // So entra depois de setParameters resolver. O diagnostico le daqui em
+  // vez de recalcular o fator e mentir quando uma aplicacao foi rejeitada.
+  const appliedScreenEncoding = new Map();
   // Amostra anterior de readReceiverReport por 'peerId:kind', pra derivar a
   // taxa da janela (freezeCount e cumulativo).
   const rxPrevSample = new Map();
@@ -396,6 +408,90 @@
     return false;
   }
 
+  function screenSourceSize(kind, floor) {
+    const { sourceId } = parseKind(kind);
+    const sourceTrack = sourceId
+      ? currentSession?.mesh?.peers.get(sourceId)?.inStreams?.screen?.getVideoTracks?.()[0]
+      : captureTrack;
+    const settings = sourceTrack?.getSettings?.() || {};
+    const constraints = config.videoConstraints(floor);
+    const width = Number(settings.width) || constraints.width.max;
+    const height = Number(settings.height) || constraints.height.max;
+    if (sourceId) {
+      // O repasse le a track remota, que ja chega par da origem do relay.
+      return { width, height };
+    }
+    // A captura direta passa pelo canvas do relay: espelha o arredondamento
+    // dele para que a decisao do encoder nunca volte a pedir quadro impar.
+    return {
+      width: Math.max(2, Math.floor(width / 2) * 2),
+      height: Math.max(2, Math.floor(height / 2) * 2),
+    };
+  }
+
+  function screenEncodingForPeer(peerId, kind, quality, floor) {
+    const key = `${peerId}:${kind}`;
+    const source = screenSourceSize(kind, floor);
+    const maxHeight = quality.height;
+    const state = screenResolution.get(key) || screenres.initialState(maxHeight);
+    const targetHeight = state.height || maxHeight;
+    // P1 ainda e a rede de seguranca para a escada por espectador. O fator
+    // novo so e aceito se tambem nao fica abaixo daquele degrau inteiro.
+    const p1Scale = config.scaleFactorFor(source.width, quality.width);
+    const selected = screenres.nearestAcceptableScale(
+      source.width, source.height, targetHeight, maxHeight, p1Scale
+    );
+    return {
+      ...selected,
+      source,
+      bweBps: state.bweBps,
+      maxBitrate: screenres.bitrateCap(quality.bitrate, state.bweBps),
+    };
+  }
+
+  function applyScreenEncoding(mesh, peerId, kind, quality, floor) {
+    const encoding = screenEncodingForPeer(peerId, kind, quality, floor);
+    if (encoding.fallback) {
+      const warned = applyScreenEncoding.warnedFallbacks || (applyScreenEncoding.warnedFallbacks = new Set());
+      const sourceKey = `${kind}:${encoding.source.width}x${encoding.source.height}`;
+      if (!warned.has(sourceKey)) {
+        warned.add(sourceKey);
+        console.warn(`[qualidade] sem escala H.264 segura para ${encoding.source.width}x${encoding.source.height}; usando fator ${encoding.scaleDownBy}`);
+      }
+    }
+    mesh.applyEncodingToPeer(peerId, { ...quality, bitrate: encoding.maxBitrate }, kind, encoding.scaleDownBy, (applied) => {
+      // A promise resolveu: este e o ultimo valor que o sender aceitou, nao
+      // uma estimativa refeita na hora de escrever o [diag].
+      appliedScreenEncoding.set(`${peerId}:${kind}`, { ...applied, height: encoding.height, bweBps: encoding.bweBps });
+    });
+  }
+
+  function updateScreenResolution(rows, now) {
+    let needsReapply = false;
+    const floor = qualityFor('screen');
+    for (const row of rows) {
+      if (parseKind(row.kind).baseKind !== 'screen') continue;
+      const key = `${row.peerId}:${row.kind}`;
+      const quality = qualityForPeer(row.peerId, row.kind);
+      const maxHeight = quality.height;
+      const previous = screenResolution.get(key) || screenres.initialState(maxHeight);
+      const nextState = screenres.next(previous, row.availableBps, now, maxHeight);
+      screenResolution.set(key, nextState);
+
+      const wanted = screenEncodingForPeer(row.peerId, row.kind, quality, floor);
+      const applied = appliedScreenEncoding.get(key);
+      if (!applied) {
+        needsReapply = true;
+        continue;
+      }
+      const bitrateChanged = Math.abs(wanted.maxBitrate - applied.maxBitrate) / Math.max(applied.maxBitrate, 1) >= 0.1;
+      if (wanted.height !== applied.height || wanted.scaleDownBy !== applied.scaleDownBy || bitrateChanged) {
+        needsReapply = true;
+      }
+    }
+    return needsReapply;
+  }
+
   function reapplyAudienceQuality() {
     if (!currentSession) return;
     const mesh = currentSession.mesh;
@@ -405,19 +501,20 @@
       // Espectadores diretos: uma escada por conexao.
       for (const peerId of mesh.peers.keys()) {
         const q = qualityForPeer(peerId, 'screen');
-        mesh.applyEncodingToPeer(peerId, q, 'screen', config.scaleFactorFor(floor.width, q.width));
+        applyScreenEncoding(mesh, peerId, 'screen', q, floor);
       }
 
       // A CAPTURA continua guiada pelo piso global -- ela e comum a todas as
       // conexoes, entao segue o denominador comum.
-      const key = `${floor.width}x${floor.height}@${floor.fps}`;
+      const captureConstraints = config.videoConstraints(floor);
+      const key = `${captureConstraints.width.max}x${captureConstraints.height.max}@${floor.fps}`;
       // A track de CAPTURA, nao a do relay: reconfigurar o canvas nao faz
       // nada, e e a captura que precisa parar de produzir 1080p60 quando a
       // escada desce. O relay acompanha o tamanho sozinho (screenrelay.js).
       const track = captureTrack || localStream.getVideoTracks()[0];
       if (track && track.readyState === 'live' && key !== lastCaptureKey) {
         lastCaptureKey = key;
-        track.applyConstraints(config.videoConstraints(floor)).catch((err) => {
+        track.applyConstraints(captureConstraints).catch((err) => {
           console.error('[qualidade] applyConstraints na captura falhou:', err);
         });
       }
@@ -430,7 +527,7 @@
       const ck = relayKindFor('screen', sourceId);
       for (const childId of state.filhosIds) {
         const q = qualityForPeer(childId, ck);
-        mesh.applyEncodingToPeer(childId, q, ck, config.scaleFactorFor(floor.width, q.width));
+        applyScreenEncoding(mesh, childId, ck, q, floor);
       }
     }
 
@@ -1181,14 +1278,17 @@
   }
 
   // Quantas reconexoes automaticas seguidas tentar antes de desistir e
-  // devolver o controle pro usuario, e a folga de conexao estavel que
-  // zera essa contagem (uma queda isolada horas depois nao deve herdar o
-  // contador de uma sequencia de quedas antiga).
-  const MAX_RECONNECT = 4;
+  // devolver o controle pro usuario (a conta fica em reconnect.js: ~2 min
+  // no pior caso, pra uma queda de rota da VPN se curar sozinha), e a folga
+  // de conexao estavel que zera essa contagem (uma queda isolada horas
+  // depois nao deve herdar o contador de uma sequencia de quedas antiga).
+  const { MAX_RECONNECT } = reconnect;
   const STABLE_MS = 20000;
 
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null) {
     if (!reconnectAttempt) {
+      // Nova intencao nao pode apresentar a credencial da sala anterior.
+      resumeToken = null;
       $('setup-error').textContent = '';
       // Tentativa deliberada -- o dialogo de entrar ja fechou (ou nunca
       // abriu, no caso de hospedar / clicar numa sala da lista), entao o
@@ -1225,6 +1325,7 @@
     if (orphanSession && !reconnectAttempt) {
       teardownSession(orphanSession);
       orphanSession = null;
+      console.info('[signaling] sessao orfa descartada (entrada deliberada noutra sala)');
       renderRoomStatus();
     }
 
@@ -1248,6 +1349,9 @@
     // pe por STABLE_MS.
     let attempts = reconnectAttempt;
     let stableTimer = null;
+    // So pro log do onOpen: quanto o handshake levou separa rede lenta de
+    // servidor fora do ar quando se le o arquivo de log de um usuario.
+    const connectStartedAt = performance.now();
 
     let connHandle;
     try {
@@ -1255,25 +1359,16 @@
         onOpen: () => {
           if (currentSession !== session) return;
           session.opened = true;
+          // Tentativa 1 e a entrada; 2+ sao as reconexoes automaticas (o
+          // "Reconectando… (1/N)" da tela corresponde a tentativa 2).
+          console.info(`[signaling] conexao aberta (tentativa ${reconnectAttempt + 1}, ${Math.round(performance.now() - connectStartedAt)} ms ate abrir)`);
 
-          // H1, descarte da orfa gatilho 1: a reconexao abriu DE VERDADE.
-          // Do outro lado as conexoes P2P antigas ja estao mortas (o
-          // servidor nos deu um id novo, os outros nos viram sair e entrar),
-          // entao fecha os peers da orfa -- mas NAO a captura local
-          // (teardownPeers, nao teardownMedia: a Task 5 preserva a captura
-          // pro 'welcome' re-ofertar). resetTreeState roda AGORA, nao antes:
-          // enquanto a orfa vivia, seu epoch/papel ainda descrevia peers
-          // reais, e zera-lo cedo deixaria onPeerState sem como fechar
-          // repasses. Aqui a orfa ja saiu e o 'welcome' ainda nao chegou.
+          // A orfa so e descartada DEPOIS do welcome: o servidor pode ter
+          // preservado o mesmo peer, caso em que adotamos mesh e PCs vivos.
           // Esta reconexao abriu: nao ha mais retry a disparar.
           clearTimeout(retryTimer);
           retryTimer = null;
-          if (orphanSession) {
-            teardownPeers(orphanSession);
-            resetTreeState();
-            orphanSession = null;
-            renderMembersPanel();
-          }
+          session.reconnectWithOrphan = Boolean(orphanSession);
 
           activeRoomAddress = roomAddress;
           markCooldown(activeRoomAddress);
@@ -1288,6 +1383,7 @@
             session.sig.send({
               type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null,
               pin: pin || undefined, clientId: cfg.clientId, ownerToken: hostInfo?.ownerToken || undefined,
+              ...(reconnectAttempt > 0 && resumeToken ? { resumeToken } : {}),
               appVersion: appVersion || undefined,
             });
           });
@@ -1295,7 +1391,9 @@
           if (attempts > 0) $('setup-error').textContent = '';
           showLobbyError(''); // conectou -- limpa "Conectando…" / countdown de reconexao
           stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
-          sound.playJoinSound();
+          // A retomada nao e uma nova entrada. O som, nesse caso, espera o
+          // welcome decidir se a orfa foi adotada ou renegociada do zero.
+          if (!session.reconnectWithOrphan) sound.playJoinSound();
           onSettled?.();
         },
         // handleSignal e async e ninguem aguardava seu retorno: duas
@@ -1325,6 +1423,7 @@
           // que o onOpen marcou pra que a pessoa possa tentar de novo na
           // hora com o PIN certo.
           if (session.joinDenied) {
+            resumeToken = null;
             clearTimeout(retryTimer);
             retryTimer = null;
             currentSession = null;
@@ -1375,6 +1474,7 @@
           const roomClosed = session.roomClosed
             || (detail?.code === 1001 && detail?.reason === 'host-left');
           if (roomClosed) {
+            resumeToken = null;
             clearTimeout(retryTimer);
             retryTimer = null;
             currentSession = null;
@@ -1384,6 +1484,7 @@
             if (orphanSession) {
               teardownSession(orphanSession);
               orphanSession = null;
+              console.info('[signaling] sessao orfa descartada (host encerrou a sala)');
             }
             renderRoomStatus();
             if (wasHostingRoom) window.golive.stopHosting?.().catch(() => {});
@@ -1407,6 +1508,7 @@
           // serial da signalQueue), entao aqui nao mexemos em setup-error.
           const moderatedOut = detail?.code === 1008 && (detail?.reason === 'kick' || detail?.reason === 'ban');
           if (moderatedOut) {
+            resumeToken = null;
             clearTimeout(retryTimer);
             retryTimer = null;
             currentSession = null;
@@ -1414,6 +1516,7 @@
             if (orphanSession) {
               teardownSession(orphanSession);
               orphanSession = null;
+              console.info('[signaling] sessao orfa descartada (expulso/banido pelo dono)');
             }
             teardownSession(session);
             stopStatsLoop();
@@ -1463,8 +1566,11 @@
           // orfanizar -- e uma orfa ANTERIOR, se houver, fica de pe (a
           // cadeia de retry continua tentando por ela). So uma sessao que
           // chegou a abrir vira orfa.
-          if (session.opened) {
+          // A tentativa pode abrir e cair ANTES do welcome. Nao deixa a
+          // casca vazia substituir a orfa que ainda segura os PCs vivos.
+          if (session.opened && !session.reconnectWithOrphan) {
             orphanSession = session;
+            console.info(`[signaling] sessao orfa criada (code=${detail?.code}, retry=${canRetry ? 'sim' : 'nao'})`);
             stopStatsLoop();
             renderRoomStatus();
           }
@@ -1486,15 +1592,17 @@
               retryTimer = null;
               if (currentSession) return; // usuario ja entrou noutra sala/saiu
               joinRoom(rawUrl, name, publicAddress, undefined, next, pin);
-            }, 1000 * 2 ** attempts);
+            }, reconnect.reconnectDelayMs(attempts));
             return;
           }
 
           if (abnormal && attempts >= MAX_RECONNECT) {
+            resumeToken = null;
             showLobbyError(
               'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
             );
           } else if (session.opened && !abnormal) {
+            resumeToken = null;
             // Fecho limpo (1000/1001) -- o proprio host fechando o app, que e
             // o cenario tipico do H1. Sem retry, mas a sessao virou orfa
             // acima: o video segue e o usuario precisa saber disso e que o
@@ -1539,7 +1647,7 @@
         // sinalizacao esta caida, e uma stream nova/substituida ainda
         // precisa pintar. mesh.send segue mudo (guardado por
         // currentSession === session), entao nenhum sinal vaza daqui.
-        if (session !== currentSession && session !== orphanSession) return;
+        if (!isActiveSession(session)) return;
         const { baseKind, sourceId } = parseKind(kind);
         const ownerId = sourceId || peerId;
         const owner = session.mesh.peers.get(ownerId);
@@ -1564,17 +1672,19 @@
         //
         // Numa orfa nao ha repasse a fazer: sem sinalizacao o relayTo nunca
         // negocia. Deixa a sub-arvore como esta -- so a sessao viva repassa.
-        if (!sourceId && currentSession === session) {
-          flushPendingRelay(session, baseKind, peerId).catch(() => {});
+        const activeSession = session.adoptedInto || session;
+        if (!sourceId && currentSession === activeSession) {
+          flushPendingRelay(activeSession, baseKind, peerId).catch(() => {});
         }
       },
       onPeerState: (peerId, { removedTile, kind, dir, failed }) => {
         // Orfa incluida (H1): e ESTE callback que tira da tela um peer cujo
         // connectionstatechange disse que morreu de verdade (mesh.js reporta
-        // com failed:true apos a carencia de 5s de A2) -- o unico gatilho que
+        // com failed:true apos a carencia de 15s de A2) -- o unico gatilho que
         // derruba peer numa sessao orfa. Sem isto, um peer que some de
         // verdade ficaria congelado na tela pra sempre.
-        if (session !== currentSession && session !== orphanSession) return;
+        if (!isActiveSession(session)) return;
+        const activeSession = session.adoptedInto || session;
         const { baseKind, sourceId } = parseKind(kind);
         if (removedTile) {
           // So apaga se o tile ainda for DESTA conexao: um caminho novo pro
@@ -1600,12 +1710,22 @@
         // offerTo -> ensureOutConn -> addPeer fabricaria peers fantasma e
         // abriria RTCPeerConnection de verdade. So a sessao viva recupera
         // relay; a orfa nao tem sinalizacao pra reeleger nada.
-        if (failed && dir === 'out' && !sourceId && session === currentSession
+        if (failed && dir === 'out' && !sourceId && activeSession === currentSession
             && originTree[baseKind]?.assignments.get(peerId)?.role === 'relay') {
           recoverFromRelayLoss(baseKind, peerId);
+        } else if (failed && dir === 'out' && !sourceId && activeSession === currentSession) {
+          // O outro peer pode ter permanecido no servidor, mas a PC dele
+          // falhou durante a queda desta rota. Fechar e re-ofertar por aqui
+          // usa a recuperacao normal do mesh, agora pelo WebSocket retomado.
+          const stream = baseKind === 'camera' ? cameraStream : localStream;
+          if (stream) {
+            activeSession.mesh.closeOut(peerId, kind);
+            activeSession.mesh.offerTo(peerId, stream, qualityFor(baseKind), baseKind)
+              .catch((err) => console.error(`[retomada] re-oferta para ${peerId} falhou:`, err));
+          }
         }
         // Sem sinalizacao (orfa) nunca chega um 'peer-left'. Uma falha de
-        // conexao direta (base kind, passada a carencia de 5s de A2) e o
+        // conexao direta (base kind, passada a carencia de 15s de A2) e o
         // unico aviso possivel de que um peer se foi -- mas so conta como
         // "saiu da sala" se NENHUMA outra conexao com ele ainda estiver de
         // pe. Durante a orfa um peer pode ter a tela (out) caindo enquanto a
@@ -1832,6 +1952,9 @@
   // ---------- Desconectar ----------
 
   function leaveRoom() {
+    // `sig.close()` manda frame de close; limpar antes impede que uma cadeia
+    // cancelada reapresente a credencial em outra sala.
+    resumeToken = null;
     // Desconectar e a intencao final do usuario: qualquer retry de
     // reconexao pendente (o "Reconectando… (n/4)") morre aqui, seja qual for
     // a sessao que o agendou. Sem isto o timer dispararia depois, passaria
@@ -1898,26 +2021,110 @@
     leaveRoom();
   });
 
+  function outConnState(mesh, peerId, kind) {
+    const pc = mesh.peers.get(String(peerId))?.outConns?.[kind];
+    if (!pc) return { exists: false };
+    return { exists: true, signalingState: pc.signalingState, connectionState: pc.connectionState };
+  }
+
+  // A origem so reoferta direto para 'direct' e 'relay'; uma folha recebe
+  // do relay. Sem arvore ativa a malha e direta, igual ao peer-joined.
+  async function reofferForResumedPeer(session, peerId) {
+    const mesh = session.mesh;
+    const id = String(peerId);
+    const directStates = {};
+    for (const kind of KINDS) {
+      const stream = kind === 'camera' ? cameraStream : localStream;
+      const role = originTree[kind].assignments.get(id)?.role || 'direct';
+      if (stream && (role === 'direct' || role === 'relay')) directStates[kind] = outConnState(mesh, id, kind);
+    }
+
+    const reoffered = [];
+    for (const kind of resume.kindsToReoffer({ outConnStates: directStates })) {
+      const stream = kind === 'camera' ? cameraStream : localStream;
+      mesh.closeOut(id, kind);
+      await mesh.offerTo(id, stream, qualityFor(kind), kind);
+      reoffered.push(kind);
+    }
+
+    for (const kind of KINDS) {
+      for (const [sourcePeerId, state] of myRole[kind]) {
+        if (state.role !== 'relay' || !state.filhosIds.map(String).includes(id)) continue;
+        const relayKind = relayKindFor(kind, sourcePeerId);
+        if (!resume.kindsToReoffer({ outConnStates: { [relayKind]: outConnState(mesh, id, relayKind) } }).length) continue;
+        // Reusa relayTo para manter o kind composto e o teto por-filho; sem
+        // reservar o filho, o proximo flush criaria outro transceiver.
+        mesh.closeOut(id, relayKind);
+        state.relayed.add(id);
+        let relayed = false;
+        try {
+          relayed = await mesh.relayTo(id, sourcePeerId, kind, qualityForPeer(id, relayKind));
+        } finally {
+          if (!relayed) state.relayed.delete(id);
+        }
+        if (relayed) reoffered.push(kind);
+      }
+    }
+    return [...new Set(reoffered)];
+  }
+
   async function handleSignal(session, msg) {
     if (currentSession !== session) return;
-    const mesh = session.mesh;
+    let mesh = session.mesh;
     const sig = session.sig;
     try {
     switch (msg.type) {
       case 'welcome': {
+        const waitingOrphan = session.reconnectWithOrphan ? orphanSession : null;
+        const welcomePeers = Array.isArray(msg.peers) ? msg.peers : [];
+        const plan = resume.planResume({
+          resumed: Boolean(waitingOrphan) && msg.resumed === true && String(msg.id) === String(myId),
+          welcomePeerIds: welcomePeers.map((p) => p.id),
+          meshPeerIds: waitingOrphan ? Array.from(waitingOrphan.mesh.peers.keys()) : [],
+        });
+        // O servidor entrega um token novo em TODO welcome, inclusive quando
+        // recusou a retomada. Ausente nunca conserva o token anterior.
+        resumeToken = typeof msg.resumeToken === 'string' && msg.resumeToken ? msg.resumeToken : null;
+        if (plan.adopt) {
+          // Os callbacks dos PCs antigos continuam pertencendo a orfa; esta
+          // marca faz eles reconhecerem a sessao nova que agora a adotou.
+          waitingOrphan.adoptedInto = session;
+          session.mesh = waitingOrphan.mesh;
+          mesh = session.mesh;
+          mesh.setSend((payload) => {
+            if (currentSession === session) session.sig.send(payload);
+          });
+          orphanSession = null;
+          for (const peerId of plan.dropPeers) await handleSignal(session, { type: 'peer-left', id: peerId });
+          console.info(`[signaling] sessao retomada (#${msg.id}, ${welcomePeers.length - plan.offerTo.length} peers mantidos, +${plan.offerTo.length} novos, -${plan.dropPeers.length} sairam)`);
+        } else if (waitingOrphan) {
+          teardownPeers(waitingOrphan);
+          resetTreeState();
+          orphanSession = null;
+          console.info('[signaling] retomada recusada, renegociando tudo');
+          renderMembersPanel();
+          sound.playJoinSound();
+        }
         myId = msg.id;
+        // "host" = este PC roda o servidor da sala; "dono" = quem manda
+        // agora (muda com a lideranca passada). O id e o de conexao, que
+        // muda a cada reconexao -- e ele que casa com o log do servidor.
+        console.info(`[signaling] welcome: sou #${msg.id}, host=${hostInfo ? 'sim' : 'nao'}, dono=${msg.owner ? 'sim' : 'nao'}, ${welcomePeers.length} peer(s) na sala`);
         // A cor do pincel sai do id de conexao, entao ela so existe depois
         // do welcome -- e muda numa reconexao, que e o comportamento certo:
         // o resto da sala tambem passa a te ver com a cor nova.
         ui.annotations.setSelf(myId);
         showLobbyError(''); // entrou de verdade -- nada de erro pendente no lobby
-        ownerId = msg.owner ? 'me' : (msg.peers.find((p) => p.owner)?.id ?? null);
-        for (const p of msg.peers) mesh.addPeer(p.id, p.name, p.avatar);
+        ownerId = msg.owner ? 'me' : (welcomePeers.find((p) => p.owner)?.id ?? null);
+        for (const p of welcomePeers) mesh.addPeer(p.id, p.name, p.avatar);
         renderMembersPanel();
+        renderRoomStatus();
         // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
-        ui.chat.setHistory((msg.chat || []).map((entry) => (entry.system
-          ? entry
-          : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) })));
+        if (!plan.adopt) {
+          ui.chat.setHistory((msg.chat || []).map((entry) => (entry.system
+            ? entry
+            : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) })));
+        }
         if (msg.owner) {
           ui.members.renderBanned(msg.banned || [], {
             onUnban: (key) => currentSession?.sig.send({ type: 'moderate', action: 'unban', target: key }),
@@ -1934,7 +2141,9 @@
           // e justamente esse id -- sem re-registrar, a sala inteira passa a
           // desenhar num id que nao existe mais.
           ui.annotations.setSurface('me', { surfaceId: annotate.surfaceKey(myId, 'screen'), allowed: shareAnnotations, canClearAll: true, canDraw: false });
-          for (const p of msg.peers) {
+          const offerPeerIds = new Set(plan.adopt ? plan.offerTo : welcomePeers.map((p) => String(p.id)));
+          for (const p of welcomePeers) {
+            if (!offerPeerIds.has(String(p.id))) continue;
             if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
               await mesh.offerTo(p.id, localStream, qualityFor('screen'), 'screen');
@@ -1949,7 +2158,9 @@
           recomputeTree('screen');
         }
         if (cameraStream) {
-          for (const p of msg.peers) {
+          const offerPeerIds = new Set(plan.adopt ? plan.offerTo : welcomePeers.map((p) => String(p.id)));
+          for (const p of welcomePeers) {
+            if (!offerPeerIds.has(String(p.id))) continue;
             if (currentSession !== session) return;
             try {
               await mesh.offerTo(p.id, cameraStream, qualityFor('camera'), 'camera');
@@ -1959,6 +2170,13 @@
           }
           broadcastWatchers('camera');
           recomputeTree('camera');
+        }
+        // A orfa parou o loop; ao adota-la a telemetria volta a usar o mesh
+        // mantido. PCs que ficaram no meio de SDP/ICE sao fechadas pelo
+        // caminho de falha existente, que re-oferta somente as saidas vivas.
+        if (plan.adopt) {
+          mesh.recoverUnstable();
+          renderRoomStatus();
         }
         // Reconexao automatica: startStatsLoop so e chamado por startShare. Aqui
         // a captura sobreviveu ao retry (Task 5) e os blocos acima re-ofertaram
@@ -2025,6 +2243,11 @@
             items: ui.annotations.snapshot(annotate.surfaceKey(myId, 'screen')),
           });
         }
+        break;
+      }
+      case 'peer-resumed': {
+        const kinds = await reofferForResumedPeer(session, msg.id);
+        console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
         break;
       }
       case 'peer-left': {
@@ -2126,6 +2349,7 @@
       // reconhece o close limpo (1001 'host-left') caso ele chegue antes
       // desta mensagem ser processada pela fila.
       case 'room-closed': {
+        resumeToken = null;
         session.roomClosed = true;
         break;
       }
@@ -2167,6 +2391,7 @@
           sound.playStoppedSound();
           showToast(`${msg.by} parou sua transmissão.`);
         } else {
+          resumeToken = null;
           sound.playRemovedSound();
           // 'kick'/'ban': o servidor fecha o socket em seguida (1008) -- o
           // onClose padrao (room-closed) cuida de voltar pro lobby.
@@ -2722,7 +2947,8 @@
       }
 
       localStream = stream;
-      lastCaptureKey = `${cfg.quality.width}x${cfg.quality.height}@${cfg.quality.fps}`;
+      const captureConstraints = config.videoConstraints(cfg.quality);
+      lastCaptureKey = `${captureConstraints.width.max}x${captureConstraints.height.max}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
       const track = localStream.getVideoTracks()[0];
       captureTrack = track || null;
@@ -2853,6 +3079,14 @@
     rxPrevSample.clear();
     rxPrevAtMs = 0;
     peerQuality.clear();
+    // Os kinds compostos sao repasses que podem continuar vivos mesmo sem a
+    // nossa tela; so a telemetria dos senders diretos morre com esta captura.
+    for (const key of screenResolution.keys()) if (key.endsWith(':screen')) screenResolution.delete(key);
+    for (const key of appliedScreenEncoding.keys()) if (key.endsWith(':screen')) appliedScreenEncoding.delete(key);
+  }
+
+  function isActiveSession(session) {
+    return session === currentSession || session === orphanSession || session.adoptedInto === currentSession;
   }
 
   /** Pausa manual so suspende os senders que existiam no instante do clique.
@@ -3712,9 +3946,14 @@
   function logEncodeDiag(rows, nowMs) {
     for (const r of rows) {
       if (parseKind(r.kind).baseKind !== 'screen') continue;
+      const applied = appliedScreenEncoding.get(`${r.peerId}:${r.kind}`);
+      if (!applied) continue; // ainda nao ha valor que o sender tenha aceitado
       const ctx = {
         software: isSoftwareEncoder(r.encoder),
-        targetBitrate: qualityFor(r.kind).bitrate,
+        targetBitrate: applied.maxBitrate,
+        scaleDownBy: applied.scaleDownBy,
+        resolutionHeight: applied.height,
+        bweBps: applied.bweBps,
         steps: {
           global: autoQuality.steps,
           peer: peerQuality.get(`${r.peerId}:screen`)?.steps || 0,
@@ -3942,7 +4181,7 @@
 
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
     // acima porque some todos os senders num numero so.
-    myEncodeHealth = summarizeScreenEncodeHealth(rows);
+    myEncodeHealth = summarizeScreenEncodeHealth(rows, (r) => qualityForPeer(r.peerId, r.kind).fps);
 
     // Menor availableBps entre os senders: todos dividem o mesmo uplink,
     // entao a estimativa mais apertada e a que descreve o que sobra.
@@ -3958,6 +4197,7 @@
     // preset a cada segundo) -- decisao de design, fora deste conserto.
     const bws = rows.filter((r) => r.availableBps != null).map((r) => r.availableBps);
     myAvailableBps = bws.length ? Math.min(...bws) : null;
+    let needsQualityReapply = updateScreenResolution(rows, now);
 
     if (localStream && !sharePaused) {
       // Pausado nao codifica nada: myEncodeHealth e null e cada tick contaria
@@ -3986,7 +4226,7 @@
       });
       if (autoQuality.steps !== before) {
         console.log(`[qualidade] escada global: ${before} -> ${autoQuality.steps} degraus`);
-        reapplyAudienceQuality();
+        needsQualityReapply = true;
       }
     }
 
@@ -4077,8 +4317,10 @@
         }
         peerQuality.set(key, nextSt);
       }
-      if (anyPeerChanged) reapplyAudienceQuality();
+      if (anyPeerChanged) needsQualityReapply = true;
     }
+
+    if (needsQualityReapply) reapplyAudienceQuality();
 
     // Do outro lado do fio: o que estamos RECEBENDO. receivingFrom ja
     // enumera os pares (peerId, kind) das conexoes de entrada.

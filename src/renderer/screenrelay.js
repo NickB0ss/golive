@@ -73,6 +73,13 @@
       && typeof g.HTMLCanvasElement.prototype.captureStream === 'function';
   }
 
+  function evenCanvasDimension(value, fallback) {
+    const dimension = Number(value) || fallback;
+    // H.264 hardware recusa impar; desenhar um pixel a menos so estica o
+    // quadro de forma imperceptivel, mas mantem o encoder em hardware.
+    return Math.max(2, Math.floor(dimension / 2) * 2);
+  }
+
   /** Envolve `sourceTrack` num relay por canvas e devolve
    * `{ track, stop }` -- ou `null` quando nao da pra montar (sem suporte,
    * ou track invalida). `stop()` para o laco e a track de saida; a track de
@@ -99,8 +106,8 @@
     const settings = typeof sourceTrack.getSettings === 'function' ? sourceTrack.getSettings() : {};
     // Um tamanho inicial plausivel evita um primeiro quadro esticado; o
     // laco corrige no primeiro frame de qualquer jeito.
-    canvas.width = settings.width || 1920;
-    canvas.height = settings.height || 1080;
+    canvas.width = evenCanvasDimension(settings.width, 1920);
+    canvas.height = evenCanvasDimension(settings.height, 1080);
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     if (!ctx) {
       try { leitor.cancel(); } catch { /* ja cancelado */ }
@@ -132,8 +139,8 @@
         if (r.done) break;
         const frame = r.value;
         try {
-          const w = frame.displayWidth;
-          const h = frame.displayHeight;
+          const w = evenCanvasDimension(frame.displayWidth, canvas.width);
+          const h = evenCanvasDimension(frame.displayHeight, canvas.height);
           if (w && h && (canvas.width !== w || canvas.height !== h)) {
             canvas.width = w;
             canvas.height = h;

@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const { isSoftwareEncoder, summarizeScreenEncodeHealth } = require('./encodehealth');
 
 // Uma linha de sender como updateStats monta: peer x kind + amostra + taxas.
-function row(kind, encoder, msPerFrame, limitation) {
-  return { peerId: '2', kind, name: '#2', encoder, msPerFrame, limitation: limitation || '' };
+function row(kind, encoder, msPerFrame, limitation, targetFps) {
+  return {
+    peerId: '2', kind, name: '#2', encoder, msPerFrame, limitation: limitation || '', targetFps,
+  };
 }
 
 test('isSoftwareEncoder: nomes de CPU do Chromium', () => {
@@ -54,6 +56,15 @@ test('msPerFrame e o MAX entre os senders de tela, nao a soma', () => {
     row('camera', 'libvpx', 99),
   ]);
   assert.equal(health.msPerFrame, 10);
+});
+
+test('load usa o orcamento do fps alvo de cada sender', () => {
+  const health = summarizeScreenEncodeHealth([
+    row('screen', 'openh264', 21, '', 30),
+    row('screen@9', 'openh264', 18, '', 60),
+  ], (r) => r.targetFps);
+  assert.equal(health.msPerFrame, 21);
+  assert.equal(Math.round(health.load * 100) / 100, 1.08);
 });
 
 test('cpuLimited quando algum sender de tela tem qualityLimitationReason=cpu', () => {

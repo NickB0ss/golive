@@ -102,6 +102,16 @@ test('videoConstraints usa largura, altura e fps da qualidade', () => {
   });
 });
 
+test('videoConstraints nunca pede mais que 1920x1080 (teto do H.264 de hardware)', () => {
+  // Nenhum preset atual passa disso, mas o teto e explicito -- protege um
+  // config antigo restaurado (closestPreset) ou uma captura fora do padrao.
+  assert.deepEqual(videoConstraints({ width: 2560, height: 1440, fps: 30 }), {
+    width: { ideal: 1920, max: 1920 },
+    height: { ideal: 1080, max: 1080 },
+    frameRate: { ideal: 30, max: 30 },
+  });
+});
+
 test('cameraConstraints usa a config de camera', () => {
   const c = cameraConstraints({ width: 1280, height: 720, fps: 30 });
   assert.deepEqual(c, {
@@ -144,18 +154,13 @@ test('a cadeia de degradacao leva todo preset ao piso sem ciclo', () => {
 
 test('degradePreset derruba fps antes de resolucao', () => {
   assert.equal(degradePreset('1080p60', 1), '1080p30');
-  assert.equal(degradePreset('1440p60', 1), '1440p30');
   assert.equal(degradePreset('720p60', 1), '720p30');
-  // 1440p30 (10 Mbps) e mais barato que 1080p60 (12 Mbps): descer por
-  // bitrate subiria a resolucao, a cadeia nao faz isso.
-  assert.equal(degradePreset('1440p30', 1), '1080p30');
   assert.equal(degradePreset('1080p30', 1), '720p30');
 });
 
 test('degradePreset anda varios passos e para no piso', () => {
-  assert.equal(degradePreset('1440p60', 2), '1080p30');
-  assert.equal(degradePreset('1440p60', 3), '720p30');
-  assert.equal(degradePreset('1440p60', 99), '720p30');
+  assert.equal(degradePreset('1080p60', 2), '720p30');
+  assert.equal(degradePreset('1080p60', 99), '720p30');
   assert.equal(degradePreset('720p30', 1), '720p30');
   assert.equal(degradePreset('720p30', 99), '720p30');
 });
@@ -204,12 +209,16 @@ test('scaleFactorFor: alvo maior que a captura nao escala (nunca aumenta)', () =
   assert.equal(scaleFactorFor(1280, 1920), 1);
 });
 
-test('scaleFactorFor: 1920 -> 1280 e 1.5', () => {
-  assert.equal(scaleFactorFor(1920, 1280), 1.5);
+test('scaleFactorFor: 1920 -> 1280 fica sem escala', () => {
+  // Fracao produz 853px em passos do adaptador e derruba o H.264 hardware
+  // do Chromium 128; so potencias de 2 preservam dimensoes pares.
+  assert.equal(scaleFactorFor(1920, 1280), 1);
 });
 
-test('scaleFactorFor: 1920 -> 720 arredonda pro degrau mais proximo (3 -> 2.67)', () => {
-  assert.equal(scaleFactorFor(1920, 720), 3);
+test('scaleFactorFor: 1920 -> 720 arredonda pra baixo no degrau inteiro', () => {
+  // Fracao produz 853px em passos do adaptador e derruba o H.264 hardware
+  // do Chromium 128; so potencias de 2 preservam dimensoes pares.
+  assert.equal(scaleFactorFor(1920, 720), 2);
 });
 
 test('scaleFactorFor: nunca passa de 4', () => {
@@ -219,6 +228,17 @@ test('scaleFactorFor: nunca passa de 4', () => {
 test('scaleFactorFor: entrada invalida devolve 1, nao lanca', () => {
   for (const [c, t] of [[0, 100], [100, 0], [-1, 100], [NaN, 100], ['x', 'y']]) {
     assert.equal(scaleFactorFor(c, t), 1);
+  }
+});
+
+test('scaleFactorFor: nunca devolve fator que gere largura impar', () => {
+  const entradas = [1920, 1280, 2560];
+  const passosDoAdaptador = [1, 2 / 3, 1 / 2, 1 / 3, 3 / 4, 3 / 8];
+  for (const largura of entradas) {
+    for (const passo of passosDoAdaptador) {
+      const fator = scaleFactorFor(largura, Math.round(largura * passo));
+      assert.equal(largura / fator % 2, 0, `${largura} x ${passo} / ${fator}`);
+    }
   }
 });
 
@@ -271,14 +291,13 @@ test('os dois eixos cobrem exatamente QUALITY_PRESET_ORDER, sem celula morta nem
 });
 
 test('os eixos vao do mais barato pro mais caro, que e a ordem que o controle mostra', () => {
-  assert.deepEqual(QUALITY_RESOLUTIONS, ['720p', '1080p', '1440p']);
+  assert.deepEqual(QUALITY_RESOLUTIONS, ['720p', '1080p']);
   assert.deepEqual(QUALITY_FPS, [30, 60]);
-  // Dentro de um mesmo fps, subir na lista de resolucao sempre custa mais.
   for (const fps of QUALITY_FPS) {
     for (let i = 1; i < QUALITY_RESOLUTIONS.length; i += 1) {
       const antes = QUALITY_PRESETS[presetFor(QUALITY_RESOLUTIONS[i - 1], fps)].bitrate;
       const depois = QUALITY_PRESETS[presetFor(QUALITY_RESOLUTIONS[i], fps)].bitrate;
-      assert.ok(depois > antes, `${QUALITY_RESOLUTIONS[i]}@${fps} nao custa mais que ${QUALITY_RESOLUTIONS[i - 1]}@${fps}`);
+      assert.ok(depois >= antes, `${QUALITY_RESOLUTIONS[i]}@${fps} custa menos que ${QUALITY_RESOLUTIONS[i - 1]}@${fps}`);
     }
   }
   // E dentro de uma mesma resolucao, 60 fps sempre custa mais que 30.
@@ -299,7 +318,7 @@ test('presetAxes e presetFor sao ida e volta pra todo preset', () => {
 });
 
 test('presetAxes le a altura da tabela, entao o rotulo nunca diverge do que e codificado', () => {
-  assert.deepEqual(presetAxes('1440p30'), { resolution: '1440p', fps: 30 });
+  assert.deepEqual(presetAxes('1080p30'), { resolution: '1080p', fps: 30 });
   assert.equal(presetAxes('1080p60').resolution, `${QUALITY_PRESETS['1080p60'].height}p`);
 });
 

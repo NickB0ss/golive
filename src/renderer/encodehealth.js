@@ -19,6 +19,13 @@
     return String(kind ?? '').split('@')[0];
   }
 
+  // Mesma regra de autoquality.budgetMsFor (piso no orcamento de 60fps);
+  // copiada pra este modulo continuar sem dependencia e testavel sozinho.
+  function budgetMsFor(fps) {
+    const n = Number(fps);
+    return Number.isFinite(n) && n > 0 ? Math.max(1000 / n, 1000 / 60) : 1000 / 60;
+  }
+
   // Deriva o resumo de saude de encode da TELA das linhas que updateStats
   // ja montou. So linhas de tela (diretas ou de repasse 'screen@origem') --
   // a camera e SEMPRE VP8/libvpx (qualityFor a forca em app.js), entao
@@ -37,7 +44,7 @@
   // ~9 ms, fps de saida colado em 30, e a soma prendia a sala em 720p por
   // 18 min). Lista de tela vazia === "nao estamos codificando tela" ===
   // null (o caso NEUTRO de tree.js/autoquality).
-  function summarizeScreenEncodeHealth(rows) {
+  function summarizeScreenEncodeHealth(rows, targetFpsFor) {
     const screen = (rows || []).filter((r) => baseKindOf(r.kind) === 'screen');
     if (!screen.length) return null;
     const comMs = screen.filter((r) => r.msPerFrame != null);
@@ -45,6 +52,11 @@
       softwareEncoder: screen.some((r) => isSoftwareEncoder(r.encoder)),
       cpuLimited: screen.some((r) => r.limitation === 'cpu'),
       msPerFrame: comMs.length ? Math.max(...comMs.map((r) => r.msPerFrame)) : null,
+      // Cada sender tem seu proprio alvo. Cobrar 16,6ms de um sender 30fps
+      // marcava OpenH264 saudavel como lento e derrubava o piso global.
+      load: comMs.length
+        ? Math.max(...comMs.map((r) => r.msPerFrame / budgetMsFor(targetFpsFor?.(r))))
+        : null,
     };
   }
 
