@@ -151,6 +151,23 @@ function onceWithin(ws, type, ms = 2000) {
   ]);
 }
 
+function noMessageWithin(ws, type, ms = 100) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.off('message', onMessage);
+      resolve();
+    }, ms);
+    function onMessage(raw) {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type !== type) return;
+      clearTimeout(timer);
+      ws.off('message', onMessage);
+      reject(new Error(`recebeu ${type} invalido`));
+    }
+    ws.on('message', onMessage);
+  });
+}
+
 // view-state (e, na fase 2, tree) sao encaminhamento direto peer-a-peer,
 // igual a offer/answer/ice: o servidor nao interpreta nada, so entrega ao
 // destinatario carimbando quem mandou. Ver a spec de 2026-08-23, F1.3.
@@ -2005,6 +2022,88 @@ test('watchers: `origin` forjado gigante chega cortado, igual ao kind', async ()
     const emB = once(b.ws, 'watchers');
     a.ws.send(JSON.stringify({ type: 'watchers', kind: 'screen', origin: 'x'.repeat(5000), watchers: [] }));
     assert.equal((await emB).origin.length, 64);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+// 'reoffer' (hotfix 2026-09-12): o espectador cuja tela assistida nunca
+// mostrou imagem pede a quem a serve pra refazer aquela conexao. Mesmo
+// encaminhamento do view-state: destino na mesma sala, `from` carimbado.
+test('encaminha reoffer ao destinatario, com o from carimbado', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const emB = once(b.ws, 'reoffer');
+    a.ws.send(JSON.stringify({ type: 'reoffer', to: b.welcome.id, kind: 'screen' }));
+    const msg = await emB;
+    assert.equal(msg.from, a.welcome.id);
+    assert.equal(msg.kind, 'screen');
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('reoffer com kind invalido e descartado', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const semReoffer = noMessageWithin(b.ws, 'reoffer');
+    a.ws.send(JSON.stringify({ type: 'reoffer', to: b.welcome.id, kind: `screen@${'9'.repeat(17)}` }));
+    await semReoffer;
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('reoffer reconstrui somente os campos do protocolo', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+
+    const emB = once(b.ws, 'reoffer');
+    a.ws.send(JSON.stringify({ type: 'reoffer', to: b.welcome.id, kind: 'camera', extra: 'nao pode viajar' }));
+    assert.deepEqual(await emB, {
+      type: 'reoffer', to: b.welcome.id, kind: 'camera', from: a.welcome.id,
+    });
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('reoffer tem teto proprio de duas mensagens por segundo', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    const recebidos = [];
+    b.ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'reoffer') recebidos.push(msg);
+    });
+
+    for (let i = 0; i < 3; i += 1) {
+      a.ws.send(JSON.stringify({ type: 'reoffer', to: b.welcome.id, kind: 'screen' }));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(recebidos.length, 2);
 
     a.ws.close();
     b.ws.close();

@@ -104,14 +104,54 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.7` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
-`electron-builder` na `^26`.
-Testes: `npm test` → **581 passando** (com as mudanças não commitadas de
-"Em andamento"). `npm run lint` → 0 erros, 9 avisos
+`0.13.1` (tag `v0.13.1`, 2026-09-12). Electron `^32` (fora de suporte — ver
+backlog), `electron-builder` na `^26`.
+Testes: `npm test` → **603 passando**. `npm run lint` → 0 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
-## Em andamento (não lançado, sem commit)
+## Lançado na 0.13.1 (2026-09-12)
+
+**Hotfix 0.13.1 — tela preta ao passar a assistir outra tela.** Investigação,
+evidência e hipóteses descartadas em
+`docs/superpowers/specs/2026-09-12-tela-preta-ao-assistir-design.md`; roteiro
+em `docs/testes/2026-09-12-roteiro-tela-preta.md`.
+
+- **Renegociação reaproveita o canal existente** (`mesh.js`,
+  `negotiateOffer`). Antes empilhava um transceiver de vídeo por
+  renegociação; provado no Chromium 128 do app que o receptor fica com duas
+  tracks na mesma stream e o `<video>` preso na velha — tela preta com os
+  dados chegando. Afeta com certeza a câmera (desligar/religar).
+- **Detector de tela assistida sem imagem + autocura** (`stallwatch.js`):
+  tela que nunca exibiu quadro desde que passou a ser assistida, por 6 s,
+  pede a quem a serve (origem ou relay) pra refazer só aquela conexão
+  (mensagem nova `reoffer`), no máximo 3 vezes. Tela parada de conteúdo
+  estático não dispara. Timer próprio: quem só assiste não roda o loop de
+  estatísticas.
+- **Log `[assistir]`** do lado de quem assiste e de quem serve (antes não
+  existia nenhum): intenção, `view-state` enviado, demanda aplicada com o
+  estado dos canais de vídeo, pedido e resultado da autocura.
+- **Revisão 1 — `reoffer` seguro:** servidor valida `to`/kind estrito,
+  reconstrói só os campos do protocolo e limita a 2/s; cliente aceita origem
+  composta conhecida e mantém histórico com teto.
+- **Revisão 2 — estado por sessão:** teardown limpa detector de stall e os
+  caches de reoferta/view-state, sem tentativas herdadas entre salas.
+- **Revisão 3 — oferta confirmada:** mesh expõe negociação em voo, `offerTo`/
+  `relayTo` retornam sucesso real e o relay libera filho reservado se não sair
+  oferta.
+- **Revisão 4 — câmera serializada:** remover track e religar usam a mesma
+  guarda; a nova oferta aguarda `stable` depois da resposta pendente.
+- **Não provado:** qual caminho renegocia uma conexão de *tela* viva no uso
+  real — por isso a autocura e o log; o roteiro diz o que mandar.
+- **Captura instável de jogo:** o transmissor detecta três `mute` em 20 s ou
+  um `mute` contínuo de 3 s, avisa no palco com orientação para usar janela
+  sem borda e só remove o aviso após 15 s estáveis. Tela cheia exclusiva e
+  proteção anti-captura são limites do jogo/Windows, não corrigíveis pelo app.
+- **Beacon ao fechar a sala:** o anúncio UDP para antes de o servidor embutido
+  ser invalidado; o callback de pares também tolera servidor ausente e a
+  descoberta interrompe um anúncio cujo callback falhe.
+
+## Lançado na 0.13.0 (2026-09-11)
 
 Correções das queixas de dois usuários em 08–10/09 ("cai da sala sozinho" e
 "tela mal otimizada"). Diagnóstico e planos em `logs/agentes/plano-desconexao.md`

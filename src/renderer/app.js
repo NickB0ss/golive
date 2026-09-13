@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, reconnect, resume, screenres } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, reconnect, resume, screenres, stallwatch, capturewatch } = window.GoLive;
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
@@ -197,6 +197,12 @@
   // Aviso derivado das estatisticas (encoder em software). Fica separado do
   // aviso de host porque os dois dividem o mesmo #stage-warning.
   let encoderWarning = '';
+  // A captura e mais acionavel que encoder em software: quando os dois
+  // ocorrem, este aviso ganha o unico slot do palco.
+  let captureWarning = '';
+  let captureWatch = null;
+  let captureWatchTimer = null;
+  let captureSurface = '?';
   // Resumo da NOSSA saude de encode ({ softwareEncoder, msPerFrame }), o
   // ultimo derivado por updateStats. Sobe junto do 'view-state' pra que a
   // origem nao eleja relay quem ja esta com o encoder afogado (H2). null
@@ -320,6 +326,14 @@
    * indexar em undefined. */
   function isKnownKind(kind) {
     return KINDS.includes(parseKind(kind).baseKind);
+  }
+
+  function isKnownReofferKind(session, kind) {
+    if (typeof kind !== 'string') return false;
+    const { baseKind, sourceId } = parseKind(kind);
+    if (!KINDS.includes(baseKind)) return false;
+    if (!sourceId) return kind === baseKind;
+    return kind === `${baseKind}@${sourceId}` && session?.mesh.peers.has(sourceId);
   }
 
   /** Quantas pessoas ha na sala alem de nos.
@@ -974,11 +988,11 @@
   function renderHostWarning() {
     const el = $('stage-warning');
     if (!el) return;
-    const parts = [];
-    if (hostInfo?.addressWarning) {
+    const parts = captureWarning ? [captureWarning] : [];
+    if (!captureWarning && hostInfo?.addressWarning) {
       parts.push(`${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`);
     }
-    if (encoderWarning) parts.push(encoderWarning);
+    if (!captureWarning && encoderWarning) parts.push(encoderWarning);
 
     const firewallBroken = !!(hostInfo?.firewall && !hostInfo.firewall.ok);
 
@@ -1005,6 +1019,8 @@
     // `grid-template-rows: 0fr -> 1fr` e so o filho direto tem o
     // `min-height: 0; overflow: hidden` que faz o corte funcionar. Um
     // segundo filho direto quebraria a animacao (ver o comentario acima).
+    // Falha de captura fica ate a track estabilizar ou parar.
+    if (!captureWarning) {
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'warn-dismiss';
@@ -1020,6 +1036,7 @@
     // que o botao aparece -- e o X terminava pendurado embaixo do aviso, em
     // vez de no canto.
     inner.insertBefore(close, inner.firstChild);
+    }
     inner.classList.add('warn-inner');
 
     el.appendChild(inner);
@@ -1089,6 +1106,7 @@
   // desistencia do retry chamam isto.
   function teardownMedia() {
     if (localStream) {
+      stopCaptureWatch();
       screenRelay?.stop();
       screenRelay = null;
       captureTrack?.stop(); // fora do localStream quando o relay esta ligado
@@ -1141,6 +1159,9 @@
     resetTreeState();
     teardownMedia();
     teardownPeers(session);
+    stallWatch.reset();
+    lastReofferAt.clear();
+    lastViewStateSent.clear();
     renderMembersPanel();
   }
 
@@ -2029,6 +2050,85 @@
 
   // A origem so reoferta direto para 'direct' e 'relay'; uma folha recebe
   // do relay. Sem arvore ativa a malha e direta, igual ao peer-joined.
+  // ---------- Tela assistida sem imagem (hotfix 2026-09-12) ----------
+  //
+  // O defeito relatado: "cliquei pra assistir a tela de alguem e ficou
+  // preta ate a pessoa sair e entrar". O detector (stallwatch.js) olha os
+  // quadros que o <video> do tile de fato exibiu; se a tela nunca mostrou
+  // imagem desde que passou a ser assistida, pede a quem a serve (a origem,
+  // ou o relay da arvore) pra refazer SO aquela conexao. Tudo com log
+  // [assistir], pra proxima reclamacao chegar com o caminho inteiro.
+  const stallWatch = stallwatch.createStallWatch();
+  const lastViewStateSent = new Map(); // `${peer}|${kind}` -> ultimo valor logado
+  const lastReofferAt = new Map(); // `${pedinte}|${kind}` -> ms do ultimo refazer
+  const REOFFER_MIN_GAP_MS = 15000;
+  const MAX_REOFFER_HISTORY = 128;
+  // Timer proprio, e nao o loop de estatisticas: aquele so roda pra quem
+  // transmite ou repassa (syncStatsLoop), e quem so ASSISTE -- justamente
+  // quem ve a tela preta -- nunca passaria por ele. Custa uma leitura de
+  // getVideoPlaybackQuality por tela recebida a cada 2 s.
+  const STALL_CHECK_MS = 2000;
+  setInterval(() => checkStalledTiles(currentSession), STALL_CHECK_MS);
+
+  function checkStalledTiles(session) {
+    if (!session?.mesh || !session.sig?.isOpen()) return;
+    const now = performance.now();
+    for (const { peerId, kind } of session.mesh.receivingFrom()) {
+      const { baseKind, sourceId } = parseKind(kind);
+      if (!KINDS.includes(baseKind)) continue;
+      const origem = sourceId || peerId;
+      const tileId = baseKind === 'camera' ? `cam-${origem}` : String(origem);
+      const originPeer = session.mesh.peers.get(origem);
+      const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+      const watched = isAppVisible() && querendo && !originPeer?.paused;
+      const frames = watched ? ui.grid.framesShown(tileId) : null;
+      const r = stallWatch.observe(`${peerId}|${kind}`, { watched, frames, now });
+      if (!r) continue;
+      const nome = originPeer?.name || `#${origem}`;
+      const via = sourceId ? ` via relay #${peerId}` : '';
+      if (r.action === 'heal') {
+        console.warn(`[assistir] tela de ${nome}${via} sem imagem ha ${Math.round(r.stalledFor / 1000)}s desde que passou a ser assistida -- pedindo pra refazer a conexao (${kind}), tentativa ${r.attempts}`);
+        session.sig.send({ type: 'reoffer', to: peerId, kind });
+      } else if (r.action === 'give-up') {
+        console.error(`[assistir] tela de ${nome}${via} continua sem imagem depois de ${r.attempts} tentativas`);
+      } else if (r.action === 'recovered') {
+        console.info(`[assistir] tela de ${nome}${via} voltou a mostrar imagem depois de ${r.attempts} tentativa(s)`);
+      }
+    }
+  }
+
+  /** Refaz so a conexao de saida `kind` pra `peerId` (fecha e oferta de
+   * novo). Kind composto: somos relay daquele filho e repassamos de novo. */
+  async function reofferOne(session, peerId, kind) {
+    const mesh = session.mesh;
+    const { baseKind, sourceId } = parseKind(kind);
+    if (!KINDS.includes(baseKind)) return false;
+    if (!sourceId) {
+      const stream = baseKind === 'camera' ? cameraStream : localStream;
+      if (!stream || !mesh.peers.get(peerId)?.outConns[kind]) return false;
+      if (mesh.isNegotiating(peerId, kind)) return false;
+      mesh.closeOut(peerId, kind);
+      const offered = await mesh.offerTo(peerId, stream, qualityFor(baseKind), kind);
+      if (!offered) return false;
+      if (baseKind === 'screen') enforceSharePauseFor(mesh, peerId);
+      return true;
+    }
+    const state = myRole[baseKind].get(sourceId);
+    if (state?.role !== 'relay' || !state.filhosIds.map(String).includes(peerId)) return false;
+    if (mesh.isNegotiating(peerId, kind)) return false;
+    mesh.closeOut(peerId, kind);
+    // Reserva antes do await, como flushPendingRelay: sem isso um flush
+    // concorrente repassaria de novo pro mesmo filho.
+    state.relayed.add(peerId);
+    let ok = false;
+    try {
+      ok = await mesh.relayTo(peerId, sourceId, baseKind, qualityForPeer(peerId, kind));
+    } finally {
+      if (!ok) state.relayed.delete(peerId);
+    }
+    return ok;
+  }
+
   async function reofferForResumedPeer(session, peerId) {
     const mesh = session.mesh;
     const id = String(peerId);
@@ -2100,6 +2200,12 @@
         } else if (waitingOrphan) {
           teardownPeers(waitingOrphan);
           resetTreeState();
+          // Ids novos, conexoes novas: a autocura recomeca do zero, igual ao
+          // teardownSession -- senao um id reaproveitado herdaria tentativas
+          // e o teto de reoferta da sessao morta.
+          stallWatch.reset();
+          lastReofferAt.clear();
+          lastViewStateSent.clear();
           orphanSession = null;
           console.info('[signaling] retomada recusada, renegociando tudo');
           renderMembersPanel();
@@ -2533,10 +2639,27 @@
           }
         }
         if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
+          console.info(`[assistir] demanda de #${msg.from} kind=${msg.kind}: ${wanted ? 'religado' : 'suspenso'} (${mesh.describeOut(msg.from, msg.kind)})`);
           renderMembersPanel();
           if (KINDS.includes(vsBase)) broadcastWatchers(vsBase, vsOrigemId);
           broadcastViewState(); // se formos relay, isto pode mudar o que reportamos rio acima
         }
+        break;
+      }
+      // Um espectador cuja tela assistida nunca mostrou quadro pede pra
+      // refazer SO aquela conexao -- o "sair e entrar" automatico e
+      // localizado (hotfix 2026-09-12, ver stallwatch.js).
+      case 'reoffer': {
+        if (!isKnownReofferKind(session, msg.kind)) break;
+        const chave = `${msg.from}|${msg.kind}`;
+        const agora = Date.now();
+        if (agora - (lastReofferAt.get(chave) || 0) < REOFFER_MIN_GAP_MS) break;
+        if (!lastReofferAt.has(chave) && lastReofferAt.size >= MAX_REOFFER_HISTORY) {
+          lastReofferAt.delete(lastReofferAt.keys().next().value);
+        }
+        lastReofferAt.set(chave, agora);
+        const refeito = await reofferOne(session, String(msg.from), msg.kind);
+        console.info(`[assistir] #${msg.from} pediu para refazer ${msg.kind}: ${refeito ? 'refeito' : 'nada a refazer'}`);
         break;
       }
       // Recebido de QUALQUER peer da sala que esteja servindo video (nao so
@@ -2960,8 +3083,25 @@
         // engasgou) -- o encoder fica em 0 fps sem erro nenhum.
         const s = track.getSettings();
         console.log(`[diag] captura de tela: ${s.width || '?'}x${s.height || '?'}@${s.frameRate ? Math.round(s.frameRate) : '?'} surface=${s.displaySurface || '?'}`);
-        track.addEventListener('mute', () => console.warn('[diag] captura de tela: MUTE -- parou de entregar quadros'));
-        track.addEventListener('unmute', () => console.log('[diag] captura de tela: UNMUTE -- voltou a entregar quadros'));
+        captureSurface = s.displaySurface || '?';
+        captureWatch = capturewatch.createCaptureWatch();
+        const observeCapture = (event) => {
+          if (captureTrack !== track || !captureWatch) return;
+          const transition = captureWatch.event(event, Date.now());
+          if (transition) handleCaptureTransition(transition);
+        };
+        track.addEventListener('mute', () => {
+          console.warn('[diag] captura de tela: MUTE -- parou de entregar quadros');
+          observeCapture('mute');
+        });
+        track.addEventListener('unmute', () => {
+          console.log('[diag] captura de tela: UNMUTE -- voltou a entregar quadros');
+          observeCapture('unmute');
+        });
+        captureWatchTimer = setInterval(() => {
+          const transition = captureWatch?.tick(Date.now());
+          if (transition) handleCaptureTransition(transition);
+        }, 1000);
       }
 
       // RELAY: troca a track de video que vai pros senders por uma de canvas.
@@ -3034,6 +3174,7 @@
 
   function stopShare() {
     if (!localStream) return;
+    stopCaptureWatch();
     screenRelay?.stop();
     screenRelay = null;
     captureTrack?.stop(); // fora do localStream quando o relay esta ligado
@@ -3083,6 +3224,28 @@
     // nossa tela; so a telemetria dos senders diretos morre com esta captura.
     for (const key of screenResolution.keys()) if (key.endsWith(':screen')) screenResolution.delete(key);
     for (const key of appliedScreenEncoding.keys()) if (key.endsWith(':screen')) appliedScreenEncoding.delete(key);
+  }
+
+  function handleCaptureTransition(transition) {
+    if (transition.state === 'instavel') {
+      console.warn(`[captura] instavel: ${transition.mutes} quedas em 20 s (surface=${captureSurface})`);
+      dismissedWarning = null;
+      captureWarning = 'A captura da tela está falhando — o jogo pode estar em tela cheia exclusiva ou bloqueando captura. Tente o modo janela sem borda, ou compartilhe só a janela do jogo.';
+    } else {
+      console.info('[captura] estavel de novo');
+      captureWarning = '';
+    }
+    renderHostWarning();
+  }
+
+  function stopCaptureWatch() {
+    if (captureWatchTimer) clearInterval(captureWatchTimer);
+    captureWatchTimer = null;
+    captureWatch = null;
+    captureSurface = '?';
+    if (!captureWarning) return;
+    captureWarning = '';
+    renderHostWarning();
   }
 
   function isActiveSession(session) {
@@ -3209,7 +3372,7 @@
         // sem degradacao.
         const quality = qualityFor('camera');
         for (const peerId of currentSession.mesh.peers.keys()) {
-          await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera');
+          await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera', { waitForStable: true });
         }
         broadcastWatchers('camera'); // lista inicial: todo mundo conta como assistindo
         recomputeTree('camera');
@@ -3424,6 +3587,7 @@
 
   ui.grid.onWatchIntent((tileId, mode) => {
     const id = String(tileId);
+    console.info(`[assistir] intencao ${mode} tile=${id}`);
 
     // Camera: tile 'cam-<dono>', escolha binaria (sem 'add', sem
     // multi-watch). 'only' volta a assistir, 'remove' para.
@@ -3497,6 +3661,12 @@
       // H2: carona no canal que ja existe -- a origem daquele kind usa isto
       // pra eleger relay por saude de encode, nao so por RTT. null quando
       // nao estamos codificando nada.
+      const vsChave = `${peerId}|${kind}`;
+      const vsValor = `${watching}/${isAppVisible() && querendo}`;
+      if (lastViewStateSent.get(vsChave) !== vsValor) {
+        lastViewStateSent.set(vsChave, vsValor);
+        console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${isAppVisible() && querendo}`);
+      }
       session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking: isAppVisible() && querendo, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null });
     }
   }

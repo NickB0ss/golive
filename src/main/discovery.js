@@ -194,7 +194,14 @@ function createDiscovery({
     advertising = true;
     const send = () => {
       if (!socket) return;
-      const peers = typeof getPeerCount === 'function' ? getPeerCount() : undefined;
+      let peers;
+      try {
+        peers = typeof getPeerCount === 'function' ? getPeerCount() : undefined;
+      } catch {
+        // O dono do callback fechou; nao deixa um timer best-effort derrubar o processo.
+        stopAdvertising();
+        return;
+      }
       // Sala sem ninguem conectado (nem o proprio host) nao e anunciada: o
       // timer continua vivo e o beacon volta sozinho assim que alguem entra.
       // Evita a sala ficar pendurada em "Ao vivo agora" depois que todo mundo
@@ -206,6 +213,7 @@ function createDiscovery({
       }
     };
     send();
+    if (!advertising) return;
     advertiseTimer = setInterval(send, advertiseIntervalMs);
   }
 
