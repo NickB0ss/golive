@@ -17,9 +17,13 @@ contextBridge.exposeInMainWorld('golive', {
     ipcRenderer.invoke('sources:select', { id, audioMode }),
 
   /** Sobe o servidor de sinalizacao embutido e devolve o endereco pronto.
-   * Aceita { name, advertise }: advertise liga o anuncio via broadcast UDP
-   * assim que a sala sobe. */
+   * Aceita { name, advertise } e, numa migracao, os seeds opcionais { roomId,
+   * pin, initialTransferredTo, initialBans, initialChatHistory } para retomar
+   * uma sala existente em vez de criar uma sala nova do zero. */
   hostRoom: (payload) => ipcRenderer.invoke('room:host', payload),
+
+  /** Informa ao main se a janela esta dentro de uma sala. */
+  setRoomActive: (active) => ipcRenderer.send('room:active', active),
 
   /** Derruba a sala hospedada localmente: para o anuncio UDP e fecha o
    * servidor de sinalizacao embutido. Chamado quando o host sai da propria
@@ -42,6 +46,15 @@ contextBridge.exposeInMainWorld('golive', {
    * sendo anunciada. */
   refreshDiscovery: () => ipcRenderer.invoke('discovery:refresh'),
 
+  /** Inicia ou para o beacon curto que avisa os membros de uma sala migrada
+   * onde o novo anfitriao esta escutando. Chamado so durante a migracao. */
+  startMigrationBeacon: (payload) => ipcRenderer.invoke('room:migrate-beacon:start', payload),
+  stopMigrationBeacon: () => ipcRenderer.invoke('room:migrate-beacon:stop'),
+
+  /** Recebe beacons de migracao da rede; o renderer filtra pela sala atual. */
+  onMigrationBeacon: (callback) =>
+    ipcRenderer.on('room-migrate:discovered', (_event, beacon) => callback(beacon)),
+
   /** Assina a lista de salas descobertas na rede via broadcast UDP. Chamado
    * sempre que a lista muda (nova sala anunciada, sala expirou). */
   onRoomsDiscovered: (callback) =>
@@ -61,6 +74,8 @@ contextBridge.exposeInMainWorld('golive', {
    * sem tocar na captura nem no encode, que rodam no processo de GPU. */
   onWindowVisibilityChange: (callback) =>
     ipcRenderer.on('window:visibility-changed', (_event, visible) => callback(visible)),
+
+  onSpyBack: (callback) => ipcRenderer.on('spy:back', () => callback()),
 
   /** Atalhos globais disparados pelo processo principal (funcionam com a
    * janela atras do jogo). Hoje so 'toggle-pause'. */
@@ -129,9 +144,6 @@ contextBridge.exposeInMainWorld('golive', {
    * instalar"). O progresso chega pelos eventos 'downloading'. */
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
 
-  /** Fecha o app, instala o pacote baixado e reabre na versao nova. */
-  installUpdate: () => ipcRenderer.invoke('update:install'),
-
   /** Versao desta instalacao (ex: '0.1.6'). */
   getVersion: () => ipcRenderer.invoke('app:version'),
 
@@ -150,6 +162,8 @@ contextBridge.exposeInMainWorld('golive', {
   sendAnnotOverlayOp: (payload) => ipcRenderer.invoke('overlay:op', payload),
   /** Lousa inteira -- pra janela que nasce com a transmissao ja rabiscada. */
   sendAnnotOverlayLoad: (payload) => ipcRenderer.invoke('overlay:load', payload),
+  /** Efeito efemero (laser ou reacao) da tela real, sem estado persistente. */
+  sendFxOverlay: (payload) => ipcRenderer.invoke('overlay:fx', payload),
 
   /** Controles da janela sem moldura (Windows). `platform` deixa o renderer
    * decidir se mostra a faixa propria ou deixa a barra nativa (macOS/Linux).
@@ -159,6 +173,7 @@ contextBridge.exposeInMainWorld('golive', {
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
     close: () => ipcRenderer.send('window:close'),
+    show: () => ipcRenderer.send('window:show'),
     onMaximizeChange: (callback) =>
       ipcRenderer.on('window:maximize-changed', (_event, isMax) => callback(isMax)),
   },

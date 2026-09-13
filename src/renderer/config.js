@@ -177,6 +177,7 @@
     name: '',
     avatar: null,
     soundsEnabled: true,
+    liveNotifyEnabled: true,
     quality: qualityFromPreset(DEFAULT_QUALITY_PRESET),
     camera: {
       width: 1280,
@@ -317,6 +318,7 @@
       avatar: typeof parsed.avatar === 'string' ? parsed.avatar : DEFAULTS.avatar,
       clientId: typeof parsed.clientId === 'string' && parsed.clientId ? parsed.clientId : randomId(),
       soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : DEFAULTS.soundsEnabled,
+      liveNotifyEnabled: typeof parsed.liveNotifyEnabled === 'boolean' ? parsed.liveNotifyEnabled : DEFAULTS.liveNotifyEnabled,
       quality: loadQuality(parsed.quality),
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
       network: { ...mergeSection(DEFAULTS.network, parsed.network), tree: true },

@@ -13,20 +13,26 @@ const {
   BEACON_INTERVAL_MS,
   ROOM_TTL_MS,
   DISCOVERY_PORT,
+  MIGRATION_BEACON_TYPE,
+  MIGRATION_BEACON_INTERVAL_MS,
+  MIGRATION_BEACON_WINDOW_MS,
+  formatMigrationBeacon,
+  parseMigrationBeacon,
 } = require('./discovery');
 
 // dgram falso: guarda os datagramas enviados pra gente inspecionar o beacon.
 function fakeDgram() {
   const sent = [];
+  const handlers = {};
   const socket = {
-    on() {},
+    on(event, callback) { handlers[event] = callback; },
     bind(_port, cb) { cb && cb(); },
     setBroadcast() {},
     send(buf) { sent.push(buf.toString()); },
     close() {},
     address() { return { port: 0 }; },
   };
-  return { sent, dgram: { createSocket: () => socket } };
+  return { sent, handlers, socket, dgram: { createSocket: () => socket } };
 }
 
 test('constantes basicas', () => {
@@ -34,6 +40,61 @@ test('constantes basicas', () => {
   assert.notEqual(DISCOVERY_PORT, 9000); // nao pode colidir com o signaling
   assert.ok(BEACON_INTERVAL_MS > 0);
   assert.ok(ROOM_TTL_MS > BEACON_INTERVAL_MS); // TTL folgado o bastante pra tolerar 1 beacon perdido
+});
+
+test('constantes do beacon de migracao', () => {
+  assert.equal(MIGRATION_BEACON_TYPE, 'golive-room-migrate');
+  assert.equal(MIGRATION_BEACON_INTERVAL_MS, 1500);
+  assert.equal(MIGRATION_BEACON_WINDOW_MS, 45000);
+});
+
+test('formatMigrationBeacon + parseMigrationBeacon fazem round-trip', () => {
+  const raw = formatMigrationBeacon({
+    roomId: 'room-123',
+    address: '10.0.0.5:9001',
+    port: 9001,
+    protected: true,
+  });
+  assert.deepEqual(parseMigrationBeacon(raw), {
+    roomId: 'room-123',
+    address: '10.0.0.5:9001',
+    port: 9001,
+    protected: true,
+  });
+  assert.equal('protected' in JSON.parse(formatMigrationBeacon({ roomId: 'r', address: 'a', port: 1 })), false);
+});
+
+test('parseMigrationBeacon rejeita tipo, campos ausentes e tamanho estourado', () => {
+  const base = { type: MIGRATION_BEACON_TYPE, roomId: 'r', address: 'a', port: 1 };
+  assert.equal(parseMigrationBeacon(JSON.stringify({ ...base, type: 'golive-room' })), null);
+  assert.equal(parseMigrationBeacon(JSON.stringify({ ...base, roomId: '' })), null);
+  assert.equal(parseMigrationBeacon(JSON.stringify({ ...base, address: '' })), null);
+  assert.equal(parseMigrationBeacon(JSON.stringify({ ...base, port: 0 })), null);
+  assert.equal(parseMigrationBeacon(JSON.stringify({ ...base, roomId: 'x'.repeat(65) })), null);
+  assert.equal(parseMigrationBeacon(JSON.stringify({ ...base, address: 'x'.repeat(65) })), null);
+  assert.doesNotThrow(() => parseMigrationBeacon('{ malformado'));
+});
+
+test('startAdvertisingMigration envia o payload correto e recebe beacon valido no mesmo socket', async () => {
+  const { sent, handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  const received = [];
+  d.onMigrationBeacon((beacon) => received.push(beacon));
+  d.startAdvertisingMigration({ roomId: 'room-1', address: '10.0.0.5:9001', port: 9001, protected: true, windowMs: 50 });
+  assert.ok(sent.length >= 1);
+  assert.deepEqual(JSON.parse(sent[0]), {
+    type: MIGRATION_BEACON_TYPE,
+    roomId: 'room-1',
+    address: '10.0.0.5:9001',
+    port: 9001,
+    protected: true,
+  });
+  handlers.message(Buffer.from(formatMigrationBeacon({ roomId: 'room-1', address: '10.0.0.6:9001', port: 9001 })));
+  handlers.message(Buffer.from(formatBeacon({ name: 'Sala', port: 9001, address: '10.0.0.7:9001' })));
+  assert.equal(received.length, 1);
+  assert.equal(received[0].roomId, 'room-1');
+  d.stop();
 });
 
 test('computeBroadcastAddress calcula o broadcast de uma /24 comum', () => {

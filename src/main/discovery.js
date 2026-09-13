@@ -17,6 +17,9 @@ const DISCOVERY_PORT = 41235;
 const BEACON_INTERVAL_MS = 2000;
 const ROOM_TTL_MS = 7000;
 const BEACON_TYPE = 'golive-room';
+const MIGRATION_BEACON_TYPE = 'golive-room-migrate';
+const MIGRATION_BEACON_INTERVAL_MS = 1500;
+const MIGRATION_BEACON_WINDOW_MS = 45000;
 
 // --- Funcoes puras, testaveis sem abrir socket -------------------------
 
@@ -101,6 +104,42 @@ function parseBeacon(raw) {
   return result;
 }
 
+/** Serializa o beacon que anuncia a migracao de uma sala. */
+function formatMigrationBeacon({ roomId, address, port, protected: isProtected }) {
+  if (typeof roomId !== 'string' || !roomId.trim()) throw new Error('roomId invalido');
+  if (typeof address !== 'string' || !address.trim()) throw new Error('address invalido');
+  if (!Number.isInteger(port) || port <= 0) throw new Error('port invalida');
+  const payload = {
+    type: MIGRATION_BEACON_TYPE,
+    roomId: roomId.trim(),
+    address: address.trim(),
+    port,
+  };
+  if (isProtected) payload.protected = true;
+  return JSON.stringify(payload);
+}
+
+/** Parseia e valida um beacon de migracao recebido. */
+function parseMigrationBeacon(raw) {
+  let data;
+  try {
+    data = JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object' || data.type !== MIGRATION_BEACON_TYPE) return null;
+  if (typeof data.roomId !== 'string' || !data.roomId.trim() || data.roomId.trim().length > 64) return null;
+  if (typeof data.address !== 'string' || !data.address.trim() || data.address.trim().length > 64) return null;
+  if (typeof data.port !== 'number' || !Number.isInteger(data.port) || data.port <= 0) return null;
+  const result = {
+    roomId: data.roomId.trim(),
+    address: data.address.trim(),
+    port: data.port,
+  };
+  if (data.protected === true) result.protected = true;
+  return result;
+}
+
 /** Uma sala expirou se nao chegou beacon novo dentro do TTL. */
 function isExpired(room, now, ttl = ROOM_TTL_MS) {
   return now - room.lastSeen > ttl;
@@ -141,6 +180,8 @@ function createDiscovery({
   port = DISCOVERY_PORT,
   advertiseIntervalMs = BEACON_INTERVAL_MS,
   ttlMs = ROOM_TTL_MS,
+  migrationBeaconIntervalMs = MIGRATION_BEACON_INTERVAL_MS,
+  migrationBeaconWindowMs = MIGRATION_BEACON_WINDOW_MS,
   deps = {},
 } = {}) {
   const dgram = deps.dgram || require('dgram');
@@ -148,9 +189,12 @@ function createDiscovery({
   const rooms = new Map();
   let onRoomsChange = null;
   let advertiseTimer = null;
+  let migrationAdvertiseTimer = null;
+  let migrationWindowTimer = null;
   let pruneTimer = null;
   let started = false;
   let advertising = false;
+  let onMigrationBeaconCallback = null;
   let socket = null;
 
   function notify() {
@@ -160,9 +204,13 @@ function createDiscovery({
   function bindSocket(sock) {
     sock.on('message', (msg) => {
       const beacon = parseBeacon(msg);
-      if (!beacon) return;
-      rooms.set(beacon.address, { ...beacon, lastSeen: Date.now() });
-      notify();
+      if (beacon) {
+        rooms.set(beacon.address, { ...beacon, lastSeen: Date.now() });
+        notify();
+        return;
+      }
+      const migrationBeacon = parseMigrationBeacon(msg);
+      if (migrationBeacon && onMigrationBeaconCallback) onMigrationBeaconCallback(migrationBeacon);
     });
     sock.on('error', () => {
       /* socket UDP de descoberta e best-effort -- nunca deve derrubar o app */
@@ -223,8 +271,32 @@ function createDiscovery({
     advertising = false;
   }
 
+  function stopAdvertisingMigration() {
+    if (migrationAdvertiseTimer) clearInterval(migrationAdvertiseTimer);
+    if (migrationWindowTimer) clearTimeout(migrationWindowTimer);
+    migrationAdvertiseTimer = null;
+    migrationWindowTimer = null;
+  }
+
+  function startAdvertisingMigration({ roomId, address, port: migrationPort, protected: isProtected = false, windowMs = migrationBeaconWindowMs }) {
+    stopAdvertisingMigration();
+    const payload = Buffer.from(formatMigrationBeacon({ roomId, address, port: migrationPort, protected: isProtected }));
+    const send = () => {
+      if (!socket) return;
+      for (const target of listBroadcastTargets()) {
+        socket.send(payload, port, target, () => {});
+      }
+    };
+    send();
+    migrationAdvertiseTimer = setInterval(send, migrationBeaconIntervalMs);
+    if (typeof migrationAdvertiseTimer.unref === 'function') migrationAdvertiseTimer.unref();
+    migrationWindowTimer = setTimeout(stopAdvertisingMigration, windowMs);
+    if (typeof migrationWindowTimer.unref === 'function') migrationWindowTimer.unref();
+  }
+
   function stop() {
     stopAdvertising();
+    stopAdvertisingMigration();
     if (pruneTimer) clearInterval(pruneTimer);
     pruneTimer = null;
     rooms.clear();
@@ -252,17 +324,37 @@ function createDiscovery({
     return advertising;
   }
 
-  return { start, stop, startAdvertising, stopAdvertising, setOnRoomsChange, getRooms, isAdvertising };
+  function onMigrationBeacon(callback) {
+    onMigrationBeaconCallback = callback;
+  }
+
+  return {
+    start,
+    stop,
+    startAdvertising,
+    stopAdvertising,
+    startAdvertisingMigration,
+    stopAdvertisingMigration,
+    onMigrationBeacon,
+    setOnRoomsChange,
+    getRooms,
+    isAdvertising,
+  };
 }
 
 module.exports = {
   DISCOVERY_PORT,
   BEACON_INTERVAL_MS,
   ROOM_TTL_MS,
+  MIGRATION_BEACON_TYPE,
+  MIGRATION_BEACON_INTERVAL_MS,
+  MIGRATION_BEACON_WINDOW_MS,
   computeBroadcastAddress,
   listBroadcastTargets,
   formatBeacon,
   parseBeacon,
+  formatMigrationBeacon,
+  parseMigrationBeacon,
   isExpired,
   pruneExpiredRooms,
   toRoomList,

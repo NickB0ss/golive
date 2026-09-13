@@ -1,14 +1,27 @@
 /*
  * Atualizacao via GitHub Releases (electron-updater).
  *
- * O fluxo e explicito, nao passivo: o app checa por atualizacao ao abrir
- * (e quando o usuario aperta o botao de buscar), mas NAO baixa nada sozinho
- * -- `autoDownload = false`. Quem dispara o download e o botao "Reiniciar e
- * instalar" no renderer; quando o download termina, o renderer chama
- * `quitAndInstall()`, que fecha o app, roda o instalador NSIS em silencio
- * (nsis.oneClick, ver package.json) e reabre na versao nova.
+ * `autoDownload = false` e `autoInstallOnAppQuit = false`: o electron-updater
+ * nunca decide sozinho quando baixar ou instalar -- quem decide e o chamador
+ * (main.js), chamando `downloadUpdate()`/`quitAndInstall()` explicitamente.
+ * Isso nao mudou desde 2026-08-26 e continua testado abaixo.
  *
- * `autoInstallOnAppQuit = false`: nada e instalado sem o usuario mandar.
+ * O QUANDO mudou (ver docs/superpowers/specs/2026-09-12-abertura-com-
+ * atualizacao-design.md, decisao 2): antes, so o clique num botao com o app
+ * ja aberto disparava `downloadUpdate`/`quitAndInstall`. Agora existe um
+ * segundo caminho, automatico: a tela de carregamento da abertura
+ * (`src/main/boot.js`) baixa e instala sozinha, sem perguntar, ANTES de
+ * existir janela principal -- exatamente o pedido do usuario. A decisao
+ * antiga de "nada instala sem o usuario mandar" reagia a um fluxo que
+ * baixava escondido com o app em uso e instalava ao fechar sem aviso nenhum;
+ * o fluxo novo instala igual sem perguntar, mas numa tela dedicada, visivel,
+ * antes de qualquer sessao existir -- o problema que motivou a reversao
+ * (cirurgia silenciosa no meio do uso) nao se repete.
+ *
+ * `quitAndInstall(true, true)`: silencioso (o NSIS oneClick, ver
+ * package.json, ja seria silencioso de qualquer jeito) E forca reabrir
+ * depois -- sem o segundo `true` um "atualiza sozinho" que nao reabre
+ * pareceria o app tendo crashado.
  *
  * So faz sentido em build empacotado (app.isPackaged). Em dev nao ha
  * instalador nenhum -- ai `deps.autoUpdater` ausente cai num stub que so
@@ -99,40 +112,94 @@ function setupAutoUpdater(onStatus, deps = {}) {
     return {
       checkForUpdates: (manual) => onStatus({ status: 'not-available', manual: !!manual }),
       downloadUpdate: () => {},
+      cancelBootDownload: () => {},
+      hasDownloadedUpdate: () => false,
       quitAndInstall: () => {},
     };
   }
 
-  const autoUpdater = injected || require('electron-updater').autoUpdater;
+  const electronUpdater = injected ? null : require('electron-updater');
+  const autoUpdater = injected || electronUpdater.autoUpdater;
+  const CancellationToken = deps.CancellationToken || electronUpdater?.CancellationToken || null;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  // Guarda se o ciclo em andamento partiu do botao de buscar. Todo evento
-  // repassado carrega esse flag ate o proximo checkForUpdates trocar.
+  // Cada download tem uma origem propria. Isso impede uma checagem tardia de
+  // reclassificar evento de download e instalar algo que o boot abandonou.
   let lastCheckManual = false;
+  let downloadSource = null;
+  let downloadedSource = null;
+  let bootCancellationToken = null;
+  let cancelledDownloadSource = null;
   const emit = (payload) => onStatus({ manual: lastCheckManual, ...payload });
 
   autoUpdater.on('checking-for-update', () => emit({ status: 'checking' }));
   autoUpdater.on('update-available', (info) => emit({ status: 'available', version: info?.version }));
   autoUpdater.on('update-not-available', () => emit({ status: 'not-available' }));
-  autoUpdater.on('download-progress', (p) =>
-    emit({ status: 'downloading', progress: Math.round(p?.percent || 0) })
-  );
-  autoUpdater.on('update-downloaded', (info) => emit({ status: 'downloaded', version: info?.version }));
+  autoUpdater.on('download-progress', (p) => emit({
+    status: 'downloading',
+    progress: Math.round(p?.percent || 0),
+    ...(downloadSource ? { downloadSource } : {}),
+  }));
+  autoUpdater.on('update-downloaded', (info) => {
+    downloadedSource = downloadSource || cancelledDownloadSource;
+    downloadSource = null;
+    cancelledDownloadSource = null;
+    bootCancellationToken = null;
+    emit({
+      status: 'downloaded',
+      version: info?.version,
+      ...(downloadedSource ? { downloadSource: downloadedSource } : {}),
+    });
+  });
+  autoUpdater.on('update-cancelled', () => {
+    const source = downloadSource;
+    cancelledDownloadSource = source;
+    downloadSource = null;
+    bootCancellationToken = null;
+    emit({ status: 'cancelled', ...(source ? { downloadSource: source } : {}) });
+  });
   autoUpdater.on('error', (err) => {
     const reason = updateErrorReason(err);
-    emit({ status: 'error', message: err?.message || String(err), ...(reason ? { reason } : {}) });
+    const source = downloadSource;
+    downloadSource = null;
+    bootCancellationToken = null;
+    emit({
+      status: 'error',
+      message: err?.message || String(err),
+      ...(reason ? { reason } : {}),
+      ...(source ? { downloadSource: source } : {}),
+    });
   });
 
   return {
     checkForUpdates: (manual) => {
+      if (downloadSource) {
+        onStatus({ status: 'busy', manual: !!manual, reason: 'baixando' });
+        return;
+      }
+      if (downloadedSource) {
+        onStatus({ status: 'busy', manual: !!manual, reason: 'atualizacao-ja-baixada' });
+        return;
+      }
       lastCheckManual = !!manual;
       Promise.resolve(autoUpdater.checkForUpdates()).catch(() => {});
     },
-    downloadUpdate: () => {
-      Promise.resolve(autoUpdater.downloadUpdate()).catch(() => {});
+    downloadUpdate: (source = 'manual') => {
+      if (downloadSource || downloadedSource) return;
+      cancelledDownloadSource = null;
+      downloadSource = source;
+      bootCancellationToken = source === 'boot' && CancellationToken ? new CancellationToken() : null;
+      Promise.resolve(autoUpdater.downloadUpdate(bootCancellationToken || undefined)).catch(() => {});
     },
-    quitAndInstall: () => autoUpdater.quitAndInstall(),
+    cancelBootDownload: () => {
+      if (downloadSource !== 'boot' || !bootCancellationToken) return;
+      bootCancellationToken.cancel();
+    },
+    hasDownloadedUpdate: () => !!downloadedSource,
+    // (true, true): silencioso + forca reabrir -- ver comentario do topo
+    // do arquivo.
+    quitAndInstall: () => autoUpdater.quitAndInstall(true, true),
   };
 }
 

@@ -11,6 +11,8 @@
 const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, crashReporter } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
+const { clampBounds, parseStoredBounds } = require('./main/spywin');
 
 // So pode existir UM GoLive rodando por maquina: dois processos tentando abrir
 // o mesmo servidor de sinalizacao/porta, escutar a mesma descoberta UDP e
@@ -22,6 +24,8 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
   return;
 }
+
+app.setAppUserModelId('com.golive.lan');
 
 // TODAS as features do Chromium tem que sair daqui, numa lista so:
 // appendSwitch('enable-features', ...) chamado duas vezes NAO soma -- a
@@ -77,6 +81,43 @@ let selectedSourceId = null;
  * startShare em app.js) -- a captura por processo (excluir/incluir o
  * Discord, ou audio so de uma janela) roda por fora, via o addon nativo. */
 let audioMode = 'system';
+let spyWin = null;
+let spyBoundsTimer = null;
+
+function spyFallbackBounds() {
+  const workArea = screen.getPrimaryDisplay().workArea;
+  return { x: workArea.x + workArea.width - 376, y: workArea.y + workArea.height - 242, width: 360, height: 202 };
+}
+
+function spyBoundsPath() {
+  return path.join(app.getPath('userData'), 'espiar-janela.json');
+}
+
+function loadSpyBounds() {
+  const fallback = spyFallbackBounds();
+  try {
+    const stored = parseStoredBounds(fs.readFileSync(spyBoundsPath(), 'utf8'));
+    return clampBounds(stored, screen.getAllDisplays(), fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function saveSpyBounds() {
+  if (!spyWin || spyWin.isDestroyed()) return;
+  try {
+    fs.writeFileSync(spyBoundsPath(), JSON.stringify(spyWin.getBounds()), 'utf8');
+  } catch (err) {
+    logger.error('espiar: nao salvou geometria:', err?.message || err);
+  }
+}
+
+function destroySpyWindow() {
+  clearTimeout(spyBoundsTimer);
+  spyBoundsTimer = null;
+  if (spyWin && !spyWin.isDestroyed()) spyWin.destroy();
+  spyWin = null;
+}
 
 /** Addon nativo (WASAPI Process Loopback) pra capturar/excluir o audio de
  * um processo especifico (ex: incluir/excluir o Discord do que e
@@ -115,15 +156,32 @@ let sourceDisplays = new Map();
 let selectedDisplayId = null;
 /** Controle do auto-updater, preenchido em whenReady (so em build empacotado). */
 let updater = null;
+/** Janela de carregamento da abertura (ver src/main/boot.js). Existe so
+ * entre app.whenReady e a liberacao do app -- nunca depois. */
+let splashWin = null;
+/** Maquina de estados da abertura, criada junto da splash. */
+let bootController = null;
+/** setInterval da checagem periodica em segundo plano (pos-liberacao). */
+let periodicUpdateTimer = null;
+/** Ultima versao vista em 'available' antes da janela principal existir --
+ * repassada pra ela assim que carrega, pra o botao de atualizar do lobby
+ * nascer aceso mesmo se o boot liberou por timeout/erro no meio do download
+ * (ver releaseApp). Null quando nao ha nenhuma vista, ou quando ja foi
+ * baixada (instalar torna a pergunta "tem atualizacao?" sem sentido). */
+let sawUpdateAvailable = null;
+/** Estado confirmado pelo renderer para impedir instalacao dentro da sala. */
+let roomActive = false;
 
 // Segunda tentativa de abrir o app: em vez de deixar o SO iniciar outro
 // processo (que ia falhar tentando reusar porta/UDP), o Electron dispara isto
-// no processo original. So resta trazer a janela existente pra frente.
+// no processo original. So resta trazer a janela existente pra frente -- a
+// principal se ja existir, senao a de carregamento.
 app.on('second-instance', () => {
-  if (!win || win.isDestroyed()) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+  const target = win && !win.isDestroyed() ? win : (splashWin && !splashWin.isDestroyed() ? splashWin : null);
+  if (!target) return;
+  if (target.isMinimized()) target.restore();
+  target.show();
+  target.focus();
 });
 
 const { createSignalingServer } = require('../server/signaling-core');
@@ -132,6 +190,10 @@ const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
 const { createDiscovery } = require('./main/discovery');
 const { setupAutoUpdater } = require('./main/updater');
+const { createBootUpdater } = require('./main/boot');
+const { createUpdatePolicy } = require('./main/update-policy');
+/** Politica que impede `downloaded` tardio do boot de instalar apos liberar. */
+const updatePolicy = createUpdatePolicy();
 const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
 const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
@@ -253,6 +315,9 @@ async function ensureDiscoveryStarted() {
   discovery.setOnRoomsChange((rooms) => {
     if (win && !win.isDestroyed()) win.webContents.send('rooms:discovered', rooms);
   });
+  discovery.onMigrationBeacon((beacon) => {
+    if (win && !win.isDestroyed()) win.webContents.send('room-migrate:discovered', beacon);
+  });
   try {
     await discovery.start();
   } catch {
@@ -260,7 +325,7 @@ async function ensureDiscoveryStarted() {
   }
 }
 
-async function closeEmbeddedServer() {
+async function closeEmbeddedServer(opts) {
   if (embeddedServerClosing) return embeddedServerClosing;
   if (!embeddedServer) return;
   // O callback do beacon le embeddedServer a cada tick. Para o timer antes
@@ -272,7 +337,7 @@ async function closeEmbeddedServer() {
   // Limpa a referencia antes do await: session-end e will-quit podem chegar
   // quase juntos, e os dois precisam compartilhar este mesmo fechamento.
   try {
-    embeddedServerClosing = Promise.resolve(server.close());
+    embeddedServerClosing = Promise.resolve(server.close(opts));
   } catch (err) {
     embeddedServerClosing = Promise.reject(err);
   }
@@ -324,6 +389,12 @@ function createWindow() {
   ipcMain.on('window:close', () => {
     if (win && !win.isDestroyed()) win.close();
   });
+  ipcMain.on('window:show', () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
   const sendMaxState = () => {
     if (win && !win.isDestroyed()) {
       win.webContents.send('window:maximize-changed', win.isMaximized());
@@ -337,11 +408,61 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === 'F11') event.preventDefault();
   });
 
+  const spyUrl = pathToFileURL(path.join(__dirname, 'renderer', 'espiar.html')).href;
+  win.webContents.setWindowOpenHandler((details) => {
+    if (details.frameName !== 'golive-espiar' || details.url !== spyUrl) return { action: 'deny' };
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        ...loadSpyBounds(),
+        frame: false,
+        alwaysOnTop: true,
+        resizable: true,
+        movable: true,
+        minimizable: false,
+        maximizable: false,
+        backgroundColor: '#0e1116',
+        webPreferences: {
+          preload: path.join(__dirname, 'espiar-preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      },
+    };
+  });
+  win.webContents.on('did-create-window', (_event, child, details) => {
+    if (details.frameName !== 'golive-espiar') return;
+    destroySpyWindow();
+    spyWin = child;
+    // Mesmo nivel do rabisco: janela comum fica atras de jogo sem borda.
+    spyWin.setAlwaysOnTop(true, 'screen-saver');
+    spyWin.setMenuBarVisibility(false);
+    const scheduleSave = () => {
+      clearTimeout(spyBoundsTimer);
+      spyBoundsTimer = setTimeout(saveSpyBounds, 400);
+    };
+    spyWin.on('move', scheduleSave);
+    spyWin.on('resize', scheduleSave);
+    spyWin.on('closed', () => {
+      if (spyWin === child) spyWin = null;
+    });
+  });
+  ipcMain.on('spy:back', () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    win.webContents.send('spy:back');
+  });
+
   // A janela de rabisco e uma BrowserWindow como outra qualquer: viva depois
   // que a principal fecha, ela segura o 'window-all-closed' e o app fica
   // rodando invisivel, sem nada na tela nem na barra de tarefas (ela e
   // skipTaskbar). Ela morre junto com a principal, sempre.
-  win.on('closed', destroyOverlayWindow);
+  win.on('closed', () => {
+    destroyOverlayWindow();
+    destroySpyWindow();
+  });
   // No logoff/desligamento do Windows o Electron pode morrer sem before-quit
   // nem will-quit. Fecha ja aqui para o servidor avisar room-closed antes do
   // processo sumir; closeEmbeddedServer e idempotente para a sequencia normal.
@@ -349,7 +470,8 @@ function createWindow() {
     win.on('query-session-end', () => logger.log('query-session-end recebido'));
     win.on('session-end', () => {
       logEncerramento('session-end');
-      closeEmbeddedServer().catch(() => {
+      // O Windows pode matar o processo logo em seguida; migrar e best-effort.
+      closeEmbeddedServer({ migrate: true }).catch(() => {
         /* best-effort: o Windows pode encerrar o processo agora */
       });
     });
@@ -394,6 +516,120 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+}
+
+// --- Abertura: tela de carregamento + atualizacao automatica -----------
+//
+// Ver docs/superpowers/specs/2026-09-12-abertura-com-atualizacao-design.md.
+// A janela principal (createWindow, acima) so nasce depois que a maquina de
+// estados de src/main/boot.js decide 'release' -- nunca em paralelo com a
+// checagem/download/instalacao da abertura.
+
+/** Janela pequena, sem moldura, que aparece ANTES da principal pra checar
+ * (e, se houver, baixar/instalar) atualizacao sem perguntar. Mesmo padrao
+ * de seguranca da janela principal (contextIsolation, sem nodeIntegration).
+ * `backgroundColor` bate com o fundo de splash.css -- sem isso haveria um
+ * flash da cor padrao do Electron antes do CSS carregar. */
+function createSplashWindow() {
+  splashWin = new BrowserWindow({
+    width: 300,
+    height: 360,
+    resizable: false,
+    frame: false,
+    show: false,
+    center: true,
+    backgroundColor: '#0E0F13',
+    icon: path.join(__dirname, 'renderer', 'assets', 'icon.ico'),
+    webPreferences: {
+      preload: path.join(__dirname, 'splash', 'preload-splash.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  splashWin.setMenuBarVisibility(false);
+  splashWin.on('closed', () => { splashWin = null; });
+  // show so depois de pronta pra pintar -- sem isso haveria um frame em branco.
+  splashWin.once('ready-to-show', () => splashWin?.show());
+  return splashWin.loadFile(path.join(__dirname, 'splash', 'splash.html'));
+}
+
+/** Manda a fase atual da abertura pra tela de carregamento. Silencioso se
+ * ela ja fechou -- so acontece na corrida rara entre 'downloaded' (o
+ * processo esta prestes a fechar sozinho) e um evento tardio. */
+function sendSplashPhase(phase, extra) {
+  if (splashWin && !splashWin.isDestroyed()) splashWin.webContents.send('boot:phase', { phase, ...extra });
+}
+
+/** O que o app fazia direto no whenReady antes desta feature: cria a janela
+ * principal, liga a descoberta e o atalho global, e so AGORA -- depois que
+ * a abertura decidiu que nao ha nada mais pra baixar/instalar antes disso.
+ * Chamada uma unica vez por processo (a maquina de estados de boot.js so
+ * chega em 'release' uma vez). */
+function releaseApp() {
+  updatePolicy.markBootReleased();
+  if (bootController?.isDownloadAbandoned()) updater?.cancelBootDownload();
+  createWindow();
+  // A principal precisa existir antes de fechar a splash. Sem essa ordem o
+  // window-all-closed pode encerrar o processo durante a transicao.
+  if (splashWin && !splashWin.isDestroyed()) splashWin.close();
+  splashWin = null;
+  ensureDiscoveryStarted().catch((err) => logger.error('descoberta nao iniciou:', err?.message || err));
+
+  // O boot pode ter visto uma versao nova e nao ter conseguido baixar a
+  // tempo (timeout de checagem/download travado/erro) -- a informacao nao
+  // pode se perder: o botao "Atualizar" do lobby precisa nascer aceso.
+  if (sawUpdateAvailable) {
+    const info = sawUpdateAvailable;
+    win.webContents.once('did-finish-load', () => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('update:status', { status: 'available', manual: false, version: info.version });
+      }
+    });
+  }
+
+  // Quem transmite passa a maior parte do tempo com o jogo em fullscreen por
+  // cima: sem atalho global nao existe como pausar a transmissao sem
+  // alt-tab, que em fullscreen exclusivo custa um engasgo. Falha de registro
+  // (outro app ja tomou a combinacao) nao pode derrubar a inicializacao --
+  // so vira log, e o botao da UI continua valendo.
+  const atalhoOk = globalShortcut.register('Control+Alt+P', () => {
+    if (win && !win.isDestroyed()) win.webContents.send('shortcut:toggle-pause');
+  });
+  if (!atalhoOk) logger.error('atalho global Control+Alt+P nao pode ser registrado');
+
+  // Checagem periodica em segundo plano (60 min), sem baixar nada -- so pra
+  // acender o botao "Atualizar" do lobby se uma versao nova sair enquanto o
+  // app esta em uso. Baixar sozinho de novo aqui repetiria o problema que a
+  // decisao de 2026-08-26 corrigiu (ver src/main/updater.js).
+  periodicUpdateTimer = setInterval(() => updater?.checkForUpdates(false), 60 * 60 * 1000);
+}
+
+/** Unico ponto que recebe status do autoUpdater (boot.js OU checagem
+ * periodica/manual com a janela ja aberta -- o mesmo `updater` serve os
+ * tres caminhos). Loga sempre; repassa pro bootController (que ignora
+ * sozinho se ja liberou) e pra janela principal se ela ja existir. */
+function dispatchUpdateStatus(payload) {
+  logger.log(
+    `update: ${payload.status}${payload.reason ? ` [${payload.reason}]` : ''}` +
+      `${payload.message ? ' -- ' + payload.message : ''}`
+  );
+  bootController?.handleStatus(payload);
+  const destination = updatePolicy.handleStatus(payload);
+  if (destination === 'boot-installing') return;
+  if (destination === 'ready') {
+    sawUpdateAvailable = { version: payload.version || null };
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('update:status', { status: 'available', manual: false, version: payload.version || null });
+    }
+    return;
+  }
+  if (destination === 'install-manual') {
+    if (win && !win.isDestroyed()) win.webContents.send('update:status', { status: 'installing' });
+    updater?.quitAndInstall();
+    return;
+  }
+  if (payload?.status === 'available') sawUpdateAvailable = { version: payload.version || null };
+  if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
 }
 
 /** Secoes do chrome://gpu que valem log, na ordem em que sao emitidas.
@@ -622,30 +858,39 @@ app.whenReady().then(() => {
     { useSystemPicker: false }
   );
 
-  createWindow();
-  // Escuta descoberta de salas sempre, mesmo sem hospedar nenhuma -- senao
-  // quem so quer entrar em salas dos outros nunca ve a lista da rede (o
-  // socket UDP de escuta so era aberto ao criar/anunciar uma sala local).
-  ensureDiscoveryStarted().catch((err) => logger.error('descoberta nao iniciou:', err?.message || err));
+  // updater existe o processo inteiro (boot da abertura, checagem periodica
+  // pos-liberacao e o botao manual de buscar todos passam por aqui, ver
+  // dispatchUpdateStatus acima).
+  updater = setupAutoUpdater(dispatchUpdateStatus);
 
-  updater = setupAutoUpdater((payload) => {
-    logger.log(
-      `update: ${payload.status}${payload.reason ? ` [${payload.reason}]` : ''}` +
-        `${payload.message ? ' -- ' + payload.message : ''}`
-    );
-    if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
-  });
-  updater.checkForUpdates(false); // check no boot, mas sem baixar nada
-
-  // Quem transmite passa a maior parte do tempo com o jogo em fullscreen por
-  // cima: sem atalho global nao existe como pausar a transmissao sem
-  // alt-tab, que em fullscreen exclusivo custa um engasgo. Falha de registro
-  // (outro app ja tomou a combinacao) nao pode derrubar a inicializacao --
-  // so vira log, e o botao da UI continua valendo.
-  const atalhoOk = globalShortcut.register('Control+Alt+P', () => {
-    if (win && !win.isDestroyed()) win.webContents.send('shortcut:toggle-pause');
-  });
-  if (!atalhoOk) logger.error('atalho global Control+Alt+P nao pode ser registrado');
+  // Tela de carregamento primeiro: SO depois que ela decidir 'release' (sem
+  // atualizacao, ou timeout/erro, ou o download travou) e que a janela
+  // principal, a descoberta e o atalho global sobem -- ver releaseApp.
+  // Instalar uma atualizacao encontrada aqui fecha o processo sozinho
+  // (quitAndInstall) e releaseApp nunca chega a rodar nesse caminho.
+  createSplashWindow()
+    .then(() => {
+      bootController = createBootUpdater({
+        driver: updater,
+        onPhase: (phase, extra) => {
+          sendSplashPhase(phase, extra);
+          if (phase === 'release') releaseApp();
+        },
+        // Em build empacotado nao ha piso: a tela some assim que o
+        // resultado chega. Em dev (npm start) a checagem cai no stub
+        // sintetico quase instantaneo -- sem piso a tela nem daria tempo
+        // de ser lida, entao ~0.6s so pra nao flashar (nao e comportamento
+        // de producao).
+        minDisplayMs: app.isPackaged ? 0 : 600,
+      });
+      bootController.start();
+    })
+    .catch((err) => {
+      // Falha rarissima (a pagina da splash nao carregou). Nunca deixar o
+      // app preso atras de uma tela que nao teve como abrir.
+      logger.error('splash: nao carregou, liberando o app direto:', err?.message || err);
+      releaseApp();
+    });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -655,7 +900,9 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   logEncerramento('will-quit');
   globalShortcut.unregisterAll();
+  if (periodicUpdateTimer) clearInterval(periodicUpdateTimer);
   destroyOverlayWindow();
+  destroySpyWindow();
   // Ultima linha da sessao: depois disto o logger vira no-op de arquivo (o
   // console segue), entao um handler atrasado nao lanca nem escreve num fd
   // fechado.
@@ -670,7 +917,7 @@ app.on('window-all-closed', async () => {
   // de ficar presos numa sala fantasma. `await` garante que os frames saiam
   // antes do processo morrer; se travar, o quit abaixo encerra mesmo assim.
   try {
-    await closeEmbeddedServer();
+    await closeEmbeddedServer({ migrate: true });
   } catch {
     /* best-effort: seguimos com o encerramento */
   }
@@ -771,14 +1018,16 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
   return true;
 });
 
-ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) => {
+ipcMain.handle('room:host', async (_event, {
+  name, advertise, protect, roomId, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory,
+} = {}) => {
   try {
     if (embeddedServer || embeddedServerClosing) await closeEmbeddedServer();
     // PIN de 4 digitos gerado com a sala (B3). Nao e cripto -- so corta o
     // entrar-por-acidente. `Math.random` basta: nao ha modelo de ameaca de
     // forca bruta aqui (o servidor derruba o socket a cada tentativa, e a
     // sala vive minutos). 1000-9999 pra sempre ter 4 casas.
-    const pin = protect ? String(1000 + Math.floor(Math.random() * 9000)) : null;
+    const pin = forcedPin !== undefined ? forcedPin : (protect ? String(1000 + Math.floor(Math.random() * 9000)) : null);
     // Token de dono (novo): gerado por sala, nunca sai desta maquina -- so
     // volta pro renderer que criou a sala, que o reenvia no proprio 'join'.
     const ownerToken = require('crypto').randomUUID();
@@ -788,6 +1037,10 @@ ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) =>
       port,
       pin,
       ownerToken,
+      roomId,
+      initialTransferredTo,
+      initialBans,
+      initialChatHistory,
       appVersion: app.getVersion(),
       log: (...a) => logger.log('[servidor]', ...a),
     }));
@@ -826,7 +1079,7 @@ ipcMain.handle('room:host', async (_event, { name, advertise, protect } = {}) =>
 // senao o proximo tick do beacon chama getPeerCount() num servidor ja nulo.
 ipcMain.handle('room:unhost', async () => {
   discovery.stopAdvertising();
-  await closeEmbeddedServer();
+  await closeEmbeddedServer({ migrate: true });
   return true;
 });
 
@@ -837,6 +1090,16 @@ ipcMain.handle('room:unhost', async () => {
 ipcMain.handle('firewall:retry', async () => {
   if (!embeddedServer) return { ok: false, error: 'NO_ROOM' };
   return ensureFirewallRule(embeddedServer.port);
+});
+
+ipcMain.handle('room:migrate-beacon:start', async (_event, { roomId, address, port, protect } = {}) => {
+  discovery.startAdvertisingMigration({ roomId, address, port, protected: Boolean(protect) });
+  return true;
+});
+
+ipcMain.handle('room:migrate-beacon:stop', async () => {
+  discovery.stopAdvertisingMigration();
+  return true;
 });
 
 // Endereco desta maquina na rede virtual, pro lobby responder "qual endereco
@@ -865,12 +1128,21 @@ ipcMain.handle('update:check', () => {
   return true;
 });
 ipcMain.handle('update:download', () => {
-  updater?.downloadUpdate();
+  // So este IPC, disparado pelo clique explicito em "Atualizar", inicia o
+  // fluxo manual. Se o boot abandonado terminou tarde, o pacote ja esta
+  // pronto e o mesmo clique instala sem baixar de novo.
+  const action = updatePolicy.requestManualUpdate(updater?.hasDownloadedUpdate());
+  if (action === 'install-manual') updater?.quitAndInstall();
+  else if (action === 'download-manual') updater?.downloadUpdate('manual');
   return true;
 });
-ipcMain.handle('update:install', () => {
-  updater?.quitAndInstall();
-  return true;
+
+ipcMain.on('room:active', (event, active) => {
+  // So a janela principal pode informar este estado, e o valor precisa ser
+  // booleano de verdade para nao aceitar coercao de IPC malformado.
+  if (event.sender !== win?.webContents || typeof active !== 'boolean') return;
+  roomActive = active;
+  updatePolicy.setRoomActive(roomActive);
 });
 
 ipcMain.handle('app:version', () => app.getVersion());
@@ -983,6 +1255,7 @@ ipcMain.handle('overlay:stop', () => {
 
 ipcMain.handle('overlay:op', (_event, payload) => sendToOverlay('overlay:op', payload));
 ipcMain.handle('overlay:load', (_event, payload) => sendToOverlay('overlay:load', payload));
+ipcMain.handle('overlay:fx', (_event, payload) => sendToOverlay('overlay:fx', payload));
 
 // Abre a pasta de logs no explorador de arquivos -- pra mandar pra quem for
 // investigar um bug depois (ver golive #12).

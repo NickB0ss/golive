@@ -224,6 +224,25 @@ test('peer sem conexao daquele kind e ignorado, sem lancar', () => {
   assert.equal(mesh.isPeerSuspended('999', 'screen'), false);
 });
 
+test('replaceLocalTrack troca video normal, preserva pausa e sempre troca audio', async () => {
+  const video = fakeSender({ kind: 'video' });
+  const audio = fakeSender({ kind: 'audio' });
+  const mesh = meshWithPeer([video, audio]);
+  const novoVideo = { kind: 'video' };
+  const novoAudio = { kind: 'audio' };
+
+  assert.equal(mesh.replaceLocalTrack('screen', 'video', novoVideo), 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(video.track, novoVideo);
+
+  mesh.setPeerDemand('7', 'screen', false);
+  assert.equal(mesh.replaceLocalTrack('screen', 'video', { kind: 'video' }), 0);
+  assert.equal(video.track, null, 'P1: troca nao reativa peer pausado');
+  assert.equal(mesh.replaceLocalTrack('screen', 'audio', novoAudio), 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(audio.track, novoAudio);
+});
+
 test('applyEncoding avisa quando setParameters rejeita', async () => {
   const sender = {
     track: { kind: 'video' },

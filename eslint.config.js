@@ -208,10 +208,21 @@ module.exports = [
 
   // Os preloads rodam no processo de renderizacao mas com require() do
   // Electron: sao os unicos arquivos que enxergam os dois mundos ao mesmo
-  // tempo. Sao dois -- o do app e o da janela de rabisco.
+  // tempo. Sao tres -- o do app, o da janela de rabisco e o da tela de
+  // carregamento da abertura.
   {
-    files: ['src/preload.js', 'src/preload-overlay.js'],
+    files: ['src/preload.js', 'src/preload-overlay.js', 'src/splash/preload-splash.js'],
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
+  },
+
+  // A tela de carregamento da abertura (src/splash/) e uma pagina isolada
+  // como a do overlay de rabisco: script classica com globais de
+  // navegador, sem os globais de Node do renderer principal -- ela nao e
+  // um modulo GoLive.* nem e carregada por `node --test`.
+  {
+    files: ['src/splash/*.js'],
+    ignores: ['src/splash/preload-splash.js'],
+    languageOptions: { sourceType: 'script', globals: globals.browser },
   },
 
   // Renderer: <script> classicas que compartilham o escopo global via

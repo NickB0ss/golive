@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, reconnect, resume, screenres, stallwatch, capturewatch } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, stallwatch, capturewatch } = window.GoLive;
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
@@ -12,6 +12,11 @@
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
   theme.apply(cfg.theme); // antes de qualquer render -- e o que evita um flash do tema padrao
   sound.setEnabled(cfg.soundsEnabled); // aplica a preferencia salva antes de qualquer som tocar
+
+  function playSoundEvent(event, context) {
+    const name = soundevents.soundForEvent(event, context);
+    if (name) sound.play(name);
+  }
 
   // Versao deste app (a do package.json, via IPC). Vale pra tres coisas: o
   // rotulo no topo, o toast do "ja esta na mais recente" e -- a que importa
@@ -57,6 +62,14 @@
   let retryTimer = null;
   let myId = null;
   let ownerId = null; // 'me' quando EU sou o dono, ou o id do peer marcado owner:true
+  let joinedAtMs = null;
+  let notifyTracker = livenotify.createTracker();
+  let roomId = null;
+  let hostId = null;
+  let joinedPin = null;
+  let localChatTail = [];
+  let migrationState = null;
+  let migrationBeaconTimer = null;
 
   const KINDS = ['screen', 'camera'];
   const { relayKindFor, parseKind } = meshModule;
@@ -150,6 +163,11 @@
     // fantasma que esta funcao existe pra evitar.
     myId = null;
     ownerId = null;
+    roomId = null;
+    hostId = null;
+    joinedPin = null;
+    localChatTail = [];
+    clearMigrationState();
     screenResolution.clear();
     appliedScreenEncoding.clear();
   }
@@ -167,6 +185,13 @@
   // tudo e obriga a escolher a fonte de novo.
   let sharePaused = false;
   let sharing = false; // in-flight latch: true while startShare() is mid-flight
+  let swapping = false;
+  let openingSwapPicker = false;
+  let swapEpoch = 0;
+  let currentSourceId = null;
+  let currentShareSound = false;
+  let currentIncludeDiscord = false;
+  let currentAudioMode = 'none';
   let cameraStream = null;
   let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
   // Sobe a cada teardown de midia. startCamera guarda o valor de quando
@@ -202,6 +227,8 @@
   let captureWarning = '';
   let captureWatch = null;
   let captureWatchTimer = null;
+  let captureWatchTrack = null;
+  let captureWatchListeners = null;
   let captureSurface = '?';
   // Resumo da NOSSA saude de encode ({ softwareEncoder, msPerFrame }), o
   // ultimo derivado por updateStats. Sobe junto do 'view-state' pra que a
@@ -695,6 +722,22 @@
         persist();
         sound.setEnabled(enabled);
       },
+      onLiveNotifyChange: (enabled) => {
+        cfg = { ...cfg, liveNotifyEnabled: enabled };
+        persist();
+      },
+      getRecentSounds: () => sound.getRecent(),
+      onTestSounds: async (onProgress) => {
+        const names = ['entrou', 'saiu', 'chat', 'ao vivo', 'parou', 'interrompido', 'removido'];
+        onProgress(names[0]);
+        const sequence = await sound.playSequence(names, { ignoreChatFocus: true });
+        names.slice(1).forEach((name, index) => {
+          setTimeout(() => onProgress(name), (index + 1) * 450);
+        });
+        await new Promise((resolve) => {
+          setTimeout(resolve, sequence.durationMs);
+        });
+      },
       onThemeChange: (themeCfg) => {
         cfg = { ...cfg, theme: themeCfg };
         persist();
@@ -777,16 +820,26 @@
     renderRoomList();
   });
 
-  // Atualizacao: fluxo explicito. O check roda no boot e quando a pessoa
-  // aperta o botao de buscar (#btn-check-update). Nada e baixado ate o clique
-  // em "Reiniciar e instalar"; quando o download termina, instala e reinicia
-  // sozinho. Ver main/updater.js e a spec de 2026-08-26.
+  window.golive.onMigrationBeacon?.((beacon) => {
+    handleMigrationBeacon(beacon);
+  });
+
+  // Atualizacao. A abertura (tela de carregamento, src/main/boot.js) ja
+  // baixa e instala sozinha SEM perguntar antes de existir janela nenhuma
+  // -- ver a spec 2026-09-12. Com o app ja aberto o fluxo continua
+  // explicito: uma checagem periodica de 60 min (main.js) e a busca manual
+  // deste botao so ACENDEM #btn-update-available; baixar so acontece no
+  // clique nele (ou no banner "Atualizar" antigo, que saiu -- o botao do
+  // topo e chamativo o bastante sozinho). Quando o download termina fora
+  // da sala, instala e reinicia; dentro da sala fica pronto e so instala
+  // no proximo clique, ja no lobby (ver src/main/update-policy.js).
   void appVersionReady.then(() => {  // appVersionReady nunca rejeita (ja tem .catch)
     if (appVersion) $('app-version').textContent = `v${appVersion}`;
     renderRoomList(); // a lista da rede so sabe marcar sala incompativel com a nossa versao em maos
   });
 
   const btnCheckUpdate = $('btn-check-update');
+  const btnUpdateAvailable = $('btn-update-available');
   const spinCheck = (on) => {
     btnCheckUpdate.classList.remove('spin');
     if (on) {
@@ -810,16 +863,27 @@
   const updateErrorText = (reason) =>
     UPDATE_ERROR_TEXT[reason] || 'Não consegui verificar a atualização. Tente de novo mais tarde.';
 
-  function showUpdateBanner({ text, action = false, progress = null, indeterminate = false }) {
+  // So progresso real daqui -- "ha atualizacao" e o botao do topo, nunca o
+  // banner (ver decisao 10 da spec 2026-09-12).
+  function showUpdateBanner({ text, progress = null, indeterminate = false }) {
     $('update-banner').classList.remove('hidden');
     $('update-banner-text').textContent = text;
-    $('update-banner-action').classList.toggle('hidden', !action);
     const wrap = $('update-progress');
     const fill = $('update-progress-fill');
     const showBar = progress != null || indeterminate;
     wrap.classList.toggle('hidden', !showBar);
     fill.classList.toggle('indeterminate', indeterminate);
     if (progress != null) fill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+  }
+
+  function showUpdateAvailable(version) {
+    btnUpdateAvailable.title = version
+      ? `Atualização ${version} disponível — clique para atualizar agora`
+      : 'Atualização disponível — clique para atualizar agora';
+    btnUpdateAvailable.classList.remove('hidden');
+  }
+  function hideUpdateAvailable() {
+    btnUpdateAvailable.classList.add('hidden');
   }
 
   window.golive.onUpdateStatus?.((payload) => {
@@ -830,30 +894,45 @@
         break;
       case 'available':
         spinCheck(false);
-        showUpdateBanner({ text: `Atualização ${version || 'nova'} disponível.`, action: true });
+        showUpdateAvailable(version);
+        if (manual) {
+          showToast(`Atualização ${version || 'nova'} disponível — clique em "Atualizar" no topo.`);
+        }
         break;
       case 'downloading':
+        hideUpdateAvailable(); // o banner de progresso assume dali pra frente
         showUpdateBanner({ text: `Baixando atualização… ${progress ?? 0}%`, progress: progress ?? 0 });
         break;
       case 'downloaded':
         showUpdateBanner({ text: 'Instalando atualização…', indeterminate: true });
-        window.golive.installUpdate?.();
+        break;
+      case 'installing':
+        showUpdateBanner({ text: 'Instalando atualização…', indeterminate: true });
         break;
       case 'not-available':
         spinCheck(false);
+        hideUpdateAvailable();
         if (manual) showToast(`Você já está na versão mais recente${appVersion ? ` (${appVersion})` : ''}.`);
         break;
       case 'error':
         spinCheck(false);
         if (manual) showToast(updateErrorText(reason));
         break;
+      case 'busy':
+        spinCheck(false);
+        if (manual) {
+          showToast(reason === 'atualizacao-ja-baixada'
+            ? 'A atualização já foi baixada. Clique em "Atualizar" para instalar.'
+            : 'A atualização já está sendo baixada.');
+        }
+        break;
       default:
         break;
     }
   });
 
-  $('update-banner-action').addEventListener('click', () => {
-    $('update-banner-action').classList.add('hidden');
+  btnUpdateAvailable.addEventListener('click', () => {
+    hideUpdateAvailable();
     showUpdateBanner({ text: 'Baixando atualização… 0%', progress: 0 });
     window.golive.downloadUpdate?.();
   });
@@ -919,11 +998,11 @@
   // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
   // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
   // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
-  async function hostRoomFlow(protect, advertise) {
+  async function hostRoomFlow(protect, advertise, seed = {}, preserveMigrationOrphan = false) {
     showLobbyError('');
     let result;
     try {
-      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise, protect });
+      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise, protect, ...seed });
     } catch {
       return { ok: false, error: 'Não consegui subir a sala: erro inesperado. Tente de novo.' };
     }
@@ -937,8 +1016,66 @@
     }
     hostInfo = { port: result.port, address: result.address, pin: result.pin || null, ownerToken: result.ownerToken || null, firewall: result.firewall, addressWarning: result.addressWarning };
     renderHostWarning();
-    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address, undefined, 0, result.pin || null);
+    joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address, undefined, 0, result.pin || null, preserveMigrationOrphan);
     return { ok: true };
+  }
+
+  function clearMigrationState() {
+    clearTimeout(migrationBeaconTimer);
+    migrationBeaconTimer = null;
+    const wasBecoming = migrationState?.becoming;
+    migrationState = null;
+    if (wasBecoming) window.golive.stopMigrationBeacon?.().catch(() => {});
+  }
+
+  function armMigrationWait(candidates, hostIdAtDrop) {
+    clearTimeout(migrationBeaconTimer);
+    migrationBeaconTimer = null;
+    const rank = succession.successorRank(candidates, hostIdAtDrop, myId);
+    if (rank < 0) return;
+    const waitingFor = migrationState;
+    migrationBeaconTimer = setTimeout(() => {
+      migrationBeaconTimer = null;
+      if (migrationState !== waitingFor || migrationState.becoming) return;
+      void becomeMigrationHost();
+    }, succession.successorTimeoutMs(rank));
+  }
+
+  async function becomeMigrationHost() {
+    const migration = migrationState;
+    if (!migration || migration.becoming) return;
+    migration.becoming = true;
+    clearTimeout(migrationBeaconTimer);
+    migrationBeaconTimer = null;
+    const seed = {
+      roomId: migration.roomId,
+      pin: joinedPin ?? migration.pin ?? null,
+      initialTransferredTo: migration.newOwnerClientId || null,
+      initialBans: migration.bans,
+      initialChatHistory: migration.chat.length ? migration.chat : localChatTail,
+    };
+    const result = await hostRoomFlow(Boolean(migration.pin || joinedPin), false, seed, true);
+    if (!result.ok) {
+      showLobbyError(result.error);
+      if (migrationState === migration) migration.becoming = false;
+      return;
+    }
+    window.golive.startMigrationBeacon({
+      roomId: migration.roomId,
+      address: hostInfo.address,
+      port: hostInfo.port,
+      protect: Boolean(hostInfo.pin),
+    }).catch(() => {});
+  }
+
+  function handleMigrationBeacon(beacon) {
+    if (!migrationState || migrationState.becoming || beacon?.roomId !== migrationState.roomId) return;
+    const migration = migrationState;
+    clearTimeout(migrationBeaconTimer);
+    migrationBeaconTimer = null;
+    migrationState = null;
+    const pin = joinedPin || migration.pin || null;
+    joinRoom(`ws://${beacon.address}`, cfg.name, beacon.address, undefined, 0, pin, true);
   }
 
   $('btn-create-room').addEventListener('click', () => {
@@ -1117,6 +1254,7 @@
       stopNativeAudioFns = [];
       shareAnnotations = false;
       ui.annotations.setSurface('me', { allowed: false });
+      ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
       stopAnnotOverlay();
       ui.grid.removeTile('me', emptyMessage());
     }
@@ -1149,6 +1287,7 @@
     tileSource.clear();
     watchedScreens.clear();
     autoWatchSuppressed = false;
+    notifyTracker = livenotify.createTracker();
     unwatchedCameras.clear();
     watchersByTile.clear();
     lookingByViewer.clear();
@@ -1273,7 +1412,7 @@
     // de conexao (queda: orphanSession set + renderRoomStatus logo abaixo;
     // volta: reconexao/welcome -> renderMembersPanel -> renderRoomStatus),
     // cobre os dois sentidos e `ui.chat.setEnabled` e idempotente.
-    ui.chat.setEnabled(!orphanSession);
+    ui.chat.setEnabled(!orphanSession || Boolean(currentSession?.preserveMigrationOrphan && currentSession.opened));
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -1306,10 +1445,11 @@
   const { MAX_RECONNECT } = reconnect;
   const STABLE_MS = 20000;
 
-  function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null) {
+  function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null, preserveMigrationOrphan = false) {
     if (!reconnectAttempt) {
       // Nova intencao nao pode apresentar a credencial da sala anterior.
       resumeToken = null;
+      joinedPin = typeof pin === 'string' && pin ? pin : null;
       $('setup-error').textContent = '';
       // Tentativa deliberada -- o dialogo de entrar ja fechou (ou nunca
       // abriu, no caso de hospedar / clicar numa sala da lista), entao o
@@ -1334,8 +1474,17 @@
       currentSession = null; // invalida a sessao antiga imediatamente
       activeRoomAddress = null;
       oldSession.sig?.close();
-      ui.stageHeader.clear();
-      teardownSession(oldSession);
+      if (preserveMigrationOrphan) {
+        // Migracao de servidor: a pessoa continua na sala, entao o main
+        // NAO recebe setRoomActive(false) -- senao uma atualizacao pronta
+        // poderia instalar no meio da troca.
+        orphanSession = oldSession;
+        stopStatsLoop();
+      } else {
+        ui.stageHeader.clear();
+        window.golive.setRoomActive?.(false);
+        teardownSession(oldSession);
+      }
     }
 
     // H1, descarte da orfa gatilho 3: entrar noutra sala e saida deliberada
@@ -1343,7 +1492,7 @@
     // So numa chamada do usuario (reconnectAttempt 0): a reconexao automatica
     // tambem passa por aqui com a orfa viva, e nesse caso ela e desmontada
     // no onOpen (teardownPeers, que preserva a captura), nao agora.
-    if (orphanSession && !reconnectAttempt) {
+    if (orphanSession && !reconnectAttempt && !preserveMigrationOrphan) {
       teardownSession(orphanSession);
       orphanSession = null;
       console.info('[signaling] sessao orfa descartada (entrada deliberada noutra sala)');
@@ -1363,7 +1512,14 @@
 
     // A fila de sinalizacao e da SESSAO: morre com ela, entao nenhuma
     // mensagem de uma sala anterior fica encadeada na frente das novas.
-    const session = { sig: null, mesh: null, signalQueue: queue.createSerialQueue() };
+    const session = {
+      sig: null,
+      mesh: null,
+      signalQueue: queue.createSerialQueue(),
+      preserveMigrationOrphan,
+      bootstrapExistingShare: false,
+      joinPin: typeof pin === 'string' && pin ? pin : null,
+    };
 
     // Contador de reconexoes que sobrevive entre as chamadas de joinRoom
     // (o parametro reseta a cada chamada); zera quando a conexao fica de
@@ -1409,12 +1565,13 @@
             });
           });
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
+          window.golive.setRoomActive?.(true);
           if (attempts > 0) $('setup-error').textContent = '';
           showLobbyError(''); // conectou -- limpa "Conectando…" / countdown de reconexao
           stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
           // A retomada nao e uma nova entrada. O som, nesse caso, espera o
           // welcome decidir se a orfa foi adotada ou renegociada do zero.
-          if (!session.reconnectWithOrphan) sound.playJoinSound();
+          playSoundEvent('join', { reconnectWithOrphan: session.reconnectWithOrphan });
           onSettled?.();
         },
         // handleSignal e async e ninguem aguardava seu retorno: duas
@@ -1451,7 +1608,10 @@
             activeRoomAddress = null;
             clearCooldown(roomAddress);
             teardownSession(session);
-            if (!orphanSession) ui.stageHeader.clear();
+            if (!orphanSession) {
+              ui.stageHeader.clear();
+              window.golive.setRoomActive?.(false);
+            }
             const reason = session.joinDenied;
             // Versoes diferentes: nao ha o que redigitar (nem PIN, nem
             // endereco) -- tentar de novo agora daria exatamente a mesma
@@ -1492,8 +1652,9 @@
           // conexao numa sala que segue viva). Reconhecido tanto pela
           // mensagem 'room-closed' ja processada quanto pelo close limpo
           // 1001 'host-left', caso o socket caia antes da fila drenar.
-          const roomClosed = session.roomClosed
-            || (detail?.code === 1001 && detail?.reason === 'host-left');
+          const migratingRoomClosed = migrationState?.roomId === roomId;
+          const roomClosed = !migratingRoomClosed && (session.roomClosed
+            || (detail?.code === 1001 && detail?.reason === 'host-left'));
           if (roomClosed) {
             resumeToken = null;
             clearTimeout(retryTimer);
@@ -1512,6 +1673,7 @@
             teardownSession(session);
             stopStatsLoop();
             ui.stageHeader.clear();
+            window.golive.setRoomActive?.(false);
             renderHostWarning();
             showLobbyError('O host encerrou a sala.');
             renderMembersPanel();
@@ -1542,6 +1704,7 @@
             teardownSession(session);
             stopStatsLoop();
             ui.stageHeader.clear();
+            window.golive.setRoomActive?.(false);
             renderMembersPanel();
             renderRoomList();
             onSettled?.();
@@ -1619,10 +1782,34 @@
 
           if (abnormal && attempts >= MAX_RECONNECT) {
             resumeToken = null;
-            showLobbyError(
-              'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
-            );
-          } else if (session.opened && !abnormal) {
+            const candidates = [...session.mesh.peers.keys(), myId].filter(Boolean);
+            const successorId = succession.chooseSuccessor(candidates, hostId);
+            if (successorId && roomId) {
+              const survivors = candidates.filter((id) => id !== hostId);
+              const currentOwnerId = ownerId === 'me' ? myId : ownerId;
+              const newOwnerConnectionId = succession.chooseNewOwner(survivors, currentOwnerId, successorId);
+              // O cliente nao conhece o clientId de terceiros, entao nao pode
+              // semear a lideranca deles no servidor novo depois de uma queda.
+              migrationState = {
+                roomId,
+                successor: successorId,
+                successorName: null,
+                newOwnerClientId: null,
+                newOwnerConnectionId,
+                pin: null,
+                bans: [],
+                chat: [],
+                becoming: false,
+              };
+              showLobbyError('Anfitrião sumiu. Tentando restaurar a sala automaticamente...');
+              if (successorId === myId) void becomeMigrationHost();
+              else armMigrationWait(candidates, hostId);
+            } else {
+              showLobbyError(
+                'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+              );
+            }
+          } else if (session.opened && !abnormal && !migratingRoomClosed) {
             resumeToken = null;
             // Fecho limpo (1000/1001) -- o proprio host fechando o app, que e
             // o cenario tipico do H1. Sem retry, mas a sessao virou orfa
@@ -1639,7 +1826,10 @@
           // de antes ainda tem video na tela), o cabecalho fica -- peers e
           // video continuam visiveis. So limpa quando esta e uma tentativa
           // que nunca abriu E nao ha orfa anterior: ai nao ha sala nenhuma.
-          if (!orphanSession) ui.stageHeader.clear();
+          if (!orphanSession) {
+            ui.stageHeader.clear();
+            window.golive.setRoomActive?.(false);
+          }
           renderMembersPanel();
           renderRoomList();
         },
@@ -1741,7 +1931,7 @@
           const stream = baseKind === 'camera' ? cameraStream : localStream;
           if (stream) {
             activeSession.mesh.closeOut(peerId, kind);
-            activeSession.mesh.offerTo(peerId, stream, qualityFor(baseKind), baseKind)
+            offerOwnStreamTo(activeSession, peerId, stream, qualityFor(baseKind), baseKind)
               .catch((err) => console.error(`[retomada] re-oferta para ${peerId} falhou:`, err));
           }
         }
@@ -1767,6 +1957,9 @@
             // junto. Sem o bloco do overlay -- uma orfa nao esta negociando
             // repasse, e a janela se corrige no proximo overlay:load normal.
             ui.annotations.forgetAuthor(peerId);
+            ui.laser.dropAuthor(peerId);
+            ui.reactions.dropAuthor(peerId);
+            dropOverlayFxAuthor(peerId);
             dropTile(peerId);
             dropTile(`cam-${peerId}`);
           }
@@ -1905,6 +2098,27 @@
     },
   });
 
+  // Laser saindo daqui pra sala. Nunca e sobre a MINHA tela (quem e dono
+  // nao tem a ferramenta -- ui.js so acende `canDraw` pra tela dos outros),
+  // entao nao ha push pro proprio overlay aqui, ao contrario do rabisco.
+  ui.laser.render({
+    onOp: (surfaceId, op) => {
+      if (!surfaceId) return;
+      currentSession?.sig.send({ type: 'laser', surface: surfaceId, ...op });
+    },
+  });
+
+  // Reacao saindo daqui pra sala. Ao contrario do laser, reacao na PROPRIA
+  // tela e permitida (nao ha gate de `canDraw`) -- por isso, igual ao
+  // rabisco, o push pro overlay acontece tambem aqui, nao so na recepcao.
+  ui.reactions.render({
+    onOp: (surfaceId, emoji) => {
+      if (!surfaceId) return;
+      currentSession?.sig.send({ type: 'reaction', surface: surfaceId, emoji });
+      pushToFxOverlay('reaction', surfaceId, myId, { emoji });
+    },
+  });
+
   // --- Rabisco na tela real -------------------------------------------
   //
   // O overlay so existe pra quem esta compartilhando uma TELA inteira. Com
@@ -1959,6 +2173,24 @@
     window.golive.sendAnnotOverlayOp?.({ surface: String(surfaceId), from: String(from), op });
   }
 
+  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: MESMA
+   * regra (so a MINHA tela, so `kind === 'screen'`, so com o overlay ligado
+   * -- que so liga com `shareAnnotations`, a mesma permissao do rabisco;
+   * ver a spec de 2026-09-12, secao 2). Canal PROPRIO (`overlay:fx`), nao o
+   * `overlay:op` do rabisco: sao efeitos efemeros, sem a semantica de lousa
+   * persistente que aquele canal carrega. */
+  function pushToFxOverlay(kind, surfaceId, from, payload) {
+    if (!annotOverlayOn) return;
+    const { ownerId, kind: surfaceKind } = annotate.parseSurface(surfaceId);
+    if (String(ownerId) !== String(myId) || surfaceKind !== 'screen') return;
+    window.golive.sendFxOverlay?.({ kind, surface: String(surfaceId), from: String(from), ...payload });
+  }
+
+  function dropOverlayFxAuthor(peerId) {
+    if (!annotOverlayOn) return;
+    window.golive.sendFxOverlay?.({ kind: 'drop-author', from: String(peerId) });
+  }
+
   // Recolher a coluna direita (membros + banidos + chat). O CSS de
   // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
   // por teclado enquanto invisiveis); aqui a affordance do botao acompanha o
@@ -1976,6 +2208,11 @@
     // `sig.close()` manda frame de close; limpar antes impede que uma cadeia
     // cancelada reapresente a credencial em outra sala.
     resumeToken = null;
+    joinedPin = null;
+    roomId = null;
+    hostId = null;
+    localChatTail = [];
+    clearMigrationState();
     // Desconectar e a intencao final do usuario: qualquer retry de
     // reconexao pendente (o "Reconectando… (n/4)") morre aqui, seja qual for
     // a sessao que o agendou. Sem isto o timer dispararia depois, passaria
@@ -1992,12 +2229,13 @@
       const orphan = orphanSession;
       orphanSession = null;
       renderRoomStatus();
-      sound.playLeaveSound();
+      playSoundEvent('leave');
       const wasHosting = !!hostInfo;
       hostInfo = null;
       orphan.sig?.close();
       if (wasHosting) window.golive.stopHosting?.().catch(() => {});
       ui.stageHeader.clear();
+      window.golive.setRoomActive?.(false);
       $('setup-error').textContent = '';
       showLobbyError(''); // saiu de vez -- limpa o aviso de "conexao encerrada"
       renderHostWarning();
@@ -2018,7 +2256,7 @@
       orphanSession = null;
       renderRoomStatus();
     }
-    sound.playLeaveSound();
+    playSoundEvent('leave');
     const session = currentSession;
     const leavingAddress = activeRoomAddress;
     const wasHosting = !!hostInfo;
@@ -2031,6 +2269,7 @@
     // vazia, ate o app fechar.
     if (wasHosting) window.golive.stopHosting?.().catch(() => {});
     ui.stageHeader.clear();
+    window.golive.setRoomActive?.(false);
     showLobbyError(''); // pode haver um countdown de reconexao da orfa encerrada acima
     renderHostWarning();
     teardownSession(session);
@@ -2142,9 +2381,9 @@
     const reoffered = [];
     for (const kind of resume.kindsToReoffer({ outConnStates: directStates })) {
       const stream = kind === 'camera' ? cameraStream : localStream;
+      if (mesh.isNegotiating(id, kind)) continue;
       mesh.closeOut(id, kind);
-      await mesh.offerTo(id, stream, qualityFor(kind), kind);
-      reoffered.push(kind);
+      if (await offerOwnStreamTo(session, id, stream, qualityFor(kind), kind)) reoffered.push(kind);
     }
 
     for (const kind of KINDS) {
@@ -2152,6 +2391,7 @@
         if (state.role !== 'relay' || !state.filhosIds.map(String).includes(id)) continue;
         const relayKind = relayKindFor(kind, sourcePeerId);
         if (!resume.kindsToReoffer({ outConnStates: { [relayKind]: outConnState(mesh, id, relayKind) } }).length) continue;
+        if (mesh.isNegotiating(id, relayKind)) continue;
         // Reusa relayTo para manter o kind composto e o teto por-filho; sem
         // reservar o filho, o proximo flush criaria outro transceiver.
         mesh.closeOut(id, relayKind);
@@ -2177,6 +2417,8 @@
       case 'welcome': {
         const waitingOrphan = session.reconnectWithOrphan ? orphanSession : null;
         const welcomePeers = Array.isArray(msg.peers) ? msg.peers : [];
+        const migratedRoom = Boolean(waitingOrphan && session.preserveMigrationOrphan
+          && typeof msg.roomId === 'string' && msg.roomId === roomId);
         const plan = resume.planResume({
           resumed: Boolean(waitingOrphan) && msg.resumed === true && String(msg.id) === String(myId),
           welcomePeerIds: welcomePeers.map((p) => p.id),
@@ -2198,8 +2440,12 @@
           for (const peerId of plan.dropPeers) await handleSignal(session, { type: 'peer-left', id: peerId });
           console.info(`[signaling] sessao retomada (#${msg.id}, ${welcomePeers.length - plan.offerTo.length} peers mantidos, +${plan.offerTo.length} novos, -${plan.dropPeers.length} sairam)`);
         } else if (waitingOrphan) {
+          // O sucessor entrega ids novos e nao retoma a sessao anterior.
+          // Adotar PCs velhos deixaria roteamento e tiles dos ids antigos em
+          // paralelo; desmonta so a malha e preserva a captura para reofertar.
           teardownPeers(waitingOrphan);
           resetTreeState();
+          joinedPin = session.joinPin;
           // Ids novos, conexoes novas: a autocura recomeca do zero, igual ao
           // teardownSession -- senao um id reaproveitado herdaria tentativas
           // e o teto de reoferta da sessao morta.
@@ -2207,11 +2453,18 @@
           lastReofferAt.clear();
           lastViewStateSent.clear();
           orphanSession = null;
-          console.info('[signaling] retomada recusada, renegociando tudo');
+          console.info(migratedRoom
+            ? '[signaling] sala migrada, renegociando a malha'
+            : '[signaling] retomada recusada, renegociando tudo');
           renderMembersPanel();
-          sound.playJoinSound();
+          if (!migratedRoom) playSoundEvent('join');
         }
+        roomId = typeof msg.roomId === 'string' ? msg.roomId : null;
+        hostId = typeof msg.hostId === 'string' ? msg.hostId : null;
+        if (migrationState && roomId === migrationState.roomId) clearMigrationState();
         myId = msg.id;
+        joinedAtMs = Date.now();
+        session.bootstrapExistingShare = migratedRoom && Boolean(localStream);
         // "host" = este PC roda o servidor da sala; "dono" = quem manda
         // agora (muda com a lideranca passada). O id e o de conexao, que
         // muda a cada reconexao -- e ele que casa com o log do servidor.
@@ -2225,11 +2478,18 @@
         for (const p of welcomePeers) mesh.addPeer(p.id, p.name, p.avatar);
         renderMembersPanel();
         renderRoomStatus();
+        // O servidor novo nasce sem estado live. Todo transmissor o anuncia
+        // no welcome da migracao para inclusive o ultimo entrar ser visivel.
+        if (localStream && sig.isOpen()) {
+          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, bootstrap: session.bootstrapExistingShare });
+        }
         // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
         if (!plan.adopt) {
-          ui.chat.setHistory((msg.chat || []).map((entry) => (entry.system
+          const chatHistory = (msg.chat || []).map((entry) => (entry.system
             ? entry
-            : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) })));
+            : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) }));
+          ui.chat.setHistory(chatHistory);
+          localChatTail = chatHistory.slice(-50);
         }
         if (msg.owner) {
           ui.members.renderBanned(msg.banned || [], {
@@ -2252,13 +2512,12 @@
             if (!offerPeerIds.has(String(p.id))) continue;
             if (currentSession !== session) return; // sinalizacao morreu no meio do welcome: para de erguer pcs mortas
             try {
-              await mesh.offerTo(p.id, localStream, qualityFor('screen'), 'screen');
+              await offerOwnStreamTo(session, p.id, localStream, qualityFor('screen'), 'screen');
             } catch (err) {
               // uma oferta isolada que falha (peer que ja sumiu, glare) nao
               // pode abortar as demais nem o resto do handshake do welcome
               console.error(`[reconexao] re-oferta de tela para ${p.id} falhou:`, err);
             }
-            enforceSharePauseFor(mesh, p.id);
           }
           broadcastWatchers('screen');
           recomputeTree('screen');
@@ -2300,21 +2559,20 @@
         mesh.addPeer(msg.id, msg.name, msg.avatar);
         if (msg.owner) ownerId = msg.id;
         renderMembersPanel();
-        sound.playJoinSound();
+        playSoundEvent('join');
         // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
         // oferta abaixo ja sai com ele (qualityFor le o tamanho da sala,
         // que o addPeer acima acabou de atualizar).
         reapplyAudienceQuality();
         if (localStream) {
           try {
-            await mesh.offerTo(msg.id, localStream, qualityFor('screen'), 'screen');
+            await offerOwnStreamTo(session, msg.id, localStream, qualityFor('screen'), 'screen');
           } catch (err) {
             // uma oferta de tela que rejeita (peer que ja saiu, glare) nao pode
             // pular a oferta de camera, o broadcastWatchers nem o recomputeTree
             // -- mesmo racional do try/catch por-peer do welcome (Task 5).
             console.error(`[peer-joined] oferta de tela para ${msg.id} falhou:`, err);
           }
-          enforceSharePauseFor(mesh, msg.id);
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
@@ -2334,7 +2592,12 @@
         // sharePaused` resolve "entrei durante uma pausa" do mesmo jeito,
         // sem mensagem nova. Idempotente pra quem ja sabia (broadcast-state
         // so regrava peer.live/peer.paused).
-        if (localStream && sig.isOpen()) sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations });
+        if (localStream && sig.isOpen()) {
+          sig.send({
+            type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+            bootstrap: session.bootstrapExistingShare,
+          });
+        }
         // Mesmo motivo, pra camera: ela nao passa pelo broadcast-state, e
         // sem isto quem entrou depois nunca saberia que pode rabiscar nela.
         if (cameraStream) sendCameraState(session);
@@ -2366,6 +2629,13 @@
         for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
         ui.annotations.setSurface(msg.id, { allowed: false });
         ui.annotations.setSurface(`cam-${msg.id}`, { allowed: false });
+        // O ponto de laser dele some com ele -- mesma logica do rabisco
+        // orfao (forgetAuthor), so que sem nada pra recarregar no overlay: o
+        // laser ja tinha prazo de validade proprio, nunca fez parte de
+        // snapshot nenhum.
+        ui.laser.dropAuthor(msg.id);
+        ui.reactions.dropAuthor(msg.id);
+        dropOverlayFxAuthor(msg.id);
         // O que ele rabiscou na tela dos OUTROS sai com ele (a tela dele ja
         // some com o tile logo abaixo). Se algum traco apagado estava na
         // MINHA tela real, o overlay tem a copia -- recarrega do snapshot ja
@@ -2393,7 +2663,7 @@
           if (espectador === msg.id || origem === msg.id) lookingByViewer.delete(k);
         }
         renderMembersPanel();
-        sound.playLeaveSound();
+        playSoundEvent('leave');
         // Quem saiu pode ter sido um espectador -- em qualquer uma das
         // telas que esta maquina serve, propria ou repassada.
         broadcastAllWatchers();
@@ -2446,6 +2716,28 @@
         await mesh.handleIce(msg.from, msg.dir, msg.candidate, msg.kind);
         break;
       }
+      case 'room-migrating': {
+        clearTimeout(migrationBeaconTimer);
+        migrationBeaconTimer = null;
+        migrationState = {
+          roomId: msg.roomId,
+          successor: msg.successor,
+          successorName: msg.successorName,
+          newOwnerClientId: msg.newOwnerClientId,
+          pin: msg.pin ?? null,
+          bans: Array.isArray(msg.bans) ? msg.bans : [],
+          chat: Array.isArray(msg.chat) ? msg.chat : [],
+          becoming: false,
+        };
+        showLobbyError(`Anfitrião saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
+        renderRoomStatus();
+        if (msg.successor === myId) {
+          void becomeMigrationHost();
+        } else {
+          armMigrationWait([...mesh.peers.keys(), myId].filter(Boolean), hostId);
+        }
+        break;
+      }
       // O host encerrou a sala (fechou o app ou clicou em Desconectar). O
       // servidor de sinalizacao morre com o processo dele: nao ha pra onde
       // reconectar nem como entrar mais ninguem. Diferente de uma queda da
@@ -2455,6 +2747,7 @@
       // reconhece o close limpo (1001 'host-left') caso ele chegue antes
       // desta mensagem ser processada pela fila.
       case 'room-closed': {
+        if (migrationState?.roomId === roomId) break;
         resumeToken = null;
         session.roomClosed = true;
         break;
@@ -2478,27 +2771,30 @@
           // 'moderated' (abaixo) -- esta linha de sistema e so o registro
           // visivel pra sala inteira, sem acao adicional aqui.
           ui.chat.append(msg);
+          localChatTail.push(msg);
+          if (localChatTail.length > 50) localChatTail.shift();
           break;
         }
         // msg.from e o id de conexao carimbado pelo SERVIDOR -- compara com o
         // myId de modulo, nao com a chave local fixa 'me'.
         const isMine = msg.from === myId;
         const chatPeer = isMine ? null : mesh.peers.get(msg.from);
-        ui.chat.append({ ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) });
-        // playChatSound() ja verifica sozinha o foco da janela e o teto de
-        // 1x/2s (Task 7) -- aqui so falta nao tocar pra propria mensagem.
-        if (!isMine) sound.playChatSound();
+        const chatEntry = { ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) };
+        ui.chat.append(chatEntry);
+        localChatTail.push(chatEntry);
+        if (localChatTail.length > 50) localChatTail.shift();
+        playSoundEvent('chat', { isMine });
         break;
       }
       // Chegou uma acao de moderacao contra NOS (o dono da sala agiu).
       case 'moderated': {
         if (msg.action === 'stop-share') {
           if (localStream) stopShare(); // reusa o caminho que ja para de compartilhar
-          sound.playStoppedSound();
+          playSoundEvent('moderated', { action: msg.action });
           showToast(`${msg.by} parou sua transmissão.`);
         } else {
           resumeToken = null;
-          sound.playRemovedSound();
+          playSoundEvent('moderated', { action: msg.action });
           // 'kick'/'ban': o servidor fecha o socket em seguida (1008) -- o
           // onClose padrao (room-closed) cuida de voltar pro lobby.
           showToast(msg.action === 'ban' ? `${msg.by} baniu você da sala.` : `${msg.by} expulsou você da sala.`);
@@ -2511,6 +2807,23 @@
       case 'annotate': {
         ui.annotations.applyOp(msg.surface, msg.from, msg);
         pushToAnnotOverlay(msg.surface, msg.from, msg);
+        break;
+      }
+      // Ponteiro laser: mesma superficie e mesma permissao do rabisco (ver
+      // spec de 2026-09-12, secao 2) -- ui.js ja confere isso antes de
+      // desenhar (o tile so aceita se estiver registrado com ESTA
+      // superficie). Nada de sync: o ponto morre sozinho por idade.
+      case 'laser': {
+        ui.laser.apply(msg.surface, msg.from, msg);
+        pushToFxOverlay('laser', msg.surface, msg.from, { x: msg.x, y: msg.y });
+        break;
+      }
+      // Reacao rapida: livre no tile (nenhuma permissao), so pede permissao
+      // pra aparecer na tela REAL de quem transmite (mesma checagem de
+      // `pushToFxOverlay`, mesma logica de `pushToAnnotOverlay`).
+      case 'reaction': {
+        ui.reactions.apply(msg.surface, msg.from, msg.emoji);
+        pushToFxOverlay('reaction', msg.surface, msg.from, { emoji: msg.emoji });
         break;
       }
       // Snapshot da lousa pra quem entrou no meio. So o DONO da tela manda
@@ -2560,6 +2873,7 @@
       case 'broadcast-state': {
         const peer = mesh.peers.get(msg.id);
         const wasLive = peer?.live;
+        const bootstrap = msg.bootstrap === true;
         if (peer) peer.live = msg.live;
         if (peer) peer.paused = Boolean(msg.paused);
         // Quem transmite decide se a sala pode rabiscar na tela dele. Peer
@@ -2576,13 +2890,14 @@
           // broadcast-state repetido nem no estado inicial de quem entra. O
           // alvo de uma acao de moderacao nao tem entrada propria em
           // mesh.peers, entao nao ha risco de dobrar com o playStoppedSound.
-          if (wasLive) sound.playPeerStoppedSound();
+          playSoundEvent('broadcast-state', { live: false, wasLive, bootstrap });
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
           ui.grid.removeTile(msg.id, emptyMessage());
           dropWatchers(msg.id);
           unwatchScreen(msg.id);
         } else {
-          if (!wasLive) sound.playLiveSound();
+          playSoundEvent('broadcast-state', { live: true, wasLive, bootstrap });
+          if (!wasLive) maybeNotifyLive(peer, msg.id, { bootstrap });
           ui.grid.setPaused(msg.id, peer.paused, {
             title: 'Transmissão pausada',
             subtitle: `${peer.name || 'Alguém'} pausou a tela`,
@@ -2955,6 +3270,9 @@
     if (sharing || localStream) return;
     const session = currentSession;
     if (!session || !session.sig.isOpen()) return;
+    // Uma transmissao iniciada nesta sessao sempre e nova, mesmo que a sala
+    // tenha acabado de migrar.
+    session.bootstrapExistingShare = false;
 
     sharing = true;
     const startedNativeStops = [];
@@ -3070,6 +3388,10 @@
       }
 
       localStream = stream;
+      currentSourceId = sourceId;
+      currentShareSound = shareSound;
+      currentIncludeDiscord = shareSound && includeDiscord;
+      currentAudioMode = useElectronLoopback ? 'system-loopback' : (basePid ? 'process' : (useIncludeListMode ? 'include-list' : 'none'));
       const captureConstraints = config.videoConstraints(cfg.quality);
       lastCaptureKey = `${captureConstraints.width.max}x${captureConstraints.height.max}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
@@ -3078,30 +3400,7 @@
       if (track) {
         track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
         track.addEventListener('ended', stopShare);
-        // Diagnostico: uma track de captura que entra em 'mute' para de
-        // entregar quadros (fonte sumiu, GPU perdeu o contexto, WGC
-        // engasgou) -- o encoder fica em 0 fps sem erro nenhum.
-        const s = track.getSettings();
-        console.log(`[diag] captura de tela: ${s.width || '?'}x${s.height || '?'}@${s.frameRate ? Math.round(s.frameRate) : '?'} surface=${s.displaySurface || '?'}`);
-        captureSurface = s.displaySurface || '?';
-        captureWatch = capturewatch.createCaptureWatch();
-        const observeCapture = (event) => {
-          if (captureTrack !== track || !captureWatch) return;
-          const transition = captureWatch.event(event, Date.now());
-          if (transition) handleCaptureTransition(transition);
-        };
-        track.addEventListener('mute', () => {
-          console.warn('[diag] captura de tela: MUTE -- parou de entregar quadros');
-          observeCapture('mute');
-        });
-        track.addEventListener('unmute', () => {
-          console.log('[diag] captura de tela: UNMUTE -- voltou a entregar quadros');
-          observeCapture('unmute');
-        });
-        captureWatchTimer = setInterval(() => {
-          const transition = captureWatch?.tick(Date.now());
-          if (transition) handleCaptureTransition(transition);
-        }, 1000);
+        watchCaptureTrack(track);
       }
 
       // RELAY: troca a track de video que vai pros senders por uma de canvas.
@@ -3156,7 +3455,7 @@
       // ficaria nos 12 Mbps nao degradados pelo resto da conexao.
       const quality = qualityFor('screen');
       for (const peerId of session.mesh.peers.keys()) {
-        await session.mesh.offerTo(peerId, localStream, quality, 'screen');
+        await offerOwnStreamTo(session, peerId, localStream, quality, 'screen');
       }
       if (currentSession !== session) return;
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
@@ -3165,6 +3464,7 @@
       session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations });
       ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
+      $('btn-swap-share').classList.remove('hidden');
       renderMembersPanel();
       startStatsLoop();
     } finally {
@@ -3172,7 +3472,229 @@
     }
   }
 
+  async function swapShare(newSourceId, shareSound, includeDiscord) {
+    if (swapping || !localStream) return;
+    const session = currentSession;
+    if (!session || !session.sig.isOpen()) return;
+    const streamAtStart = localStream;
+    const epoch = ++swapEpoch;
+
+    swapping = true;
+    const startedNativeStops = [];
+    let stream = null;
+    let pendingAudioTrack = null;
+    let capturePromoted = false;
+    const canContinue = () => sourceswap.canContinueSwap({
+      currentSession,
+      session,
+      currentStream: localStream,
+      streamAtStart,
+      activeEpoch: swapEpoch,
+      swapEpoch: epoch,
+    });
+    const stopNewCapture = () => {
+      if (!sourceswap.shouldStopTemporaryCapture({ promoted: capturePromoted })) return;
+      pendingAudioTrack?.stop();
+      stream?.getTracks().forEach((track) => track.stop());
+      startedNativeStops.forEach((stop) => stop());
+    };
+    try {
+      const isWindowSource = newSourceId.startsWith('window:');
+      const windowPid = shareSound && isWindowSource ? await window.golive.pidForSource(newSourceId) : 0;
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+      const ownPid = shareSound && !isWindowSource ? await getOwnPidCached() : 0;
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+      const strategy = sourceswap.decideAudioStrategy({
+        shareSound,
+        isWindowSource,
+        includeDiscord,
+        windowPid,
+        ownPid,
+        allowSystemLoopback: currentAudioMode === 'system-loopback' && !isWindowSource,
+      });
+      const discordPid = shareSound && isWindowSource && includeDiscord ? await window.golive.findDiscordPid() : 0;
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+      await window.golive.selectSource(newSourceId, strategy.mode === 'system-loopback' ? 'system' : 'none');
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: config.videoConstraints(cfg.quality),
+          audio: strategy.mode === 'system-loopback',
+        });
+      } catch (err) {
+        showToast('Não consegui trocar a fonte — a transmissão continua com a anterior.');
+        return;
+      }
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+
+      const newCaptureTrack = stream.getVideoTracks()[0];
+      const captureCommit = sourceswap.decideSwapCommit({
+        videoReady: sourceswap.canUseCapturedVideo(newCaptureTrack),
+        audioRequested: shareSound,
+        audioReady: false,
+      });
+      if (!captureCommit.commitVideo) {
+        stopNewCapture();
+        showToast('Não consegui trocar a fonte — a transmissão continua com a anterior.');
+        return;
+      }
+
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+      let audioUnavailable = false;
+      let commit = null;
+      if (shareSound) {
+        audioUnavailable = Boolean(strategy.audioUnavailable);
+        if (strategy.mode === 'system-loopback') {
+          pendingAudioTrack = stream.getAudioTracks()[0] || null;
+          audioUnavailable = !pendingAudioTrack;
+        }
+        if (!audioUnavailable && (strategy.mode === 'process' || strategy.mode === 'include-list')) {
+          try {
+            const ctx = await ensurePcmWorklet();
+            if (!canContinue()) {
+              stopNewCapture();
+              return;
+            }
+            const dest = ctx.createMediaStreamDestination();
+            if (strategy.mode === 'process') {
+              const base = await startNativeProcessAudioNode(ctx, strategy.basePid, strategy.baseExclude);
+              if (!canContinue()) {
+                base?.stop();
+                stopNewCapture();
+                return;
+              }
+              if (!base) {
+                audioUnavailable = true;
+              } else {
+                base.node.connect(dest);
+                startedNativeStops.push(base.stop);
+              }
+            } else {
+              startedNativeStops.push(startIncludeListCapture(ctx, dest).stop);
+            }
+            if (!audioUnavailable && sourceswap.wantsSeparateDiscordCapture({ isWindowSource, includeDiscord, discordPid, basePid: strategy.basePid })) {
+              const discord = await startNativeProcessAudioNode(ctx, discordPid, false);
+              if (!canContinue()) {
+                discord?.stop();
+                stopNewCapture();
+                return;
+              }
+              if (discord) {
+                discord.node.connect(dest);
+                startedNativeStops.push(discord.stop);
+              }
+            }
+            if (!audioUnavailable) {
+              // eslint-disable-next-line require-atomic-updates -- epoca foi validada apos cada await
+              pendingAudioTrack = dest.stream.getAudioTracks()[0] || null;
+              if (!pendingAudioTrack) audioUnavailable = true;
+            }
+          } catch (err) {
+            console.warn('[troca] captura de audio da nova fonte falhou:', err);
+            startedNativeStops.forEach((stop) => stop());
+            startedNativeStops.length = 0;
+            audioUnavailable = true;
+          }
+        }
+        if (!canContinue()) {
+          stopNewCapture();
+          return;
+        }
+        commit = sourceswap.decideSwapCommit({
+          videoReady: true,
+          audioRequested: true,
+          audioReady: !audioUnavailable && Boolean(pendingAudioTrack),
+        });
+      }
+
+      if (!commit) commit = captureCommit;
+      const oldCaptureTrack = captureTrack;
+      const oldOutputTrack = localStream.getVideoTracks()[0];
+      let relayAccepted = false;
+      if (screenRelay) relayAccepted = screenRelay.swapSource(newCaptureTrack);
+      if (!relayAccepted) {
+        screenRelay?.stop();
+        screenRelay = null;
+        newCaptureTrack.contentHint = 'motion';
+        localStream.removeTrack(oldOutputTrack);
+        localStream.addTrack(newCaptureTrack);
+        session.mesh.replaceLocalTrack('screen', 'video', newCaptureTrack);
+      }
+      oldCaptureTrack?.removeEventListener('ended', stopShare);
+      newCaptureTrack.addEventListener('ended', stopShare);
+      captureTrack = newCaptureTrack;
+      // A troca conserva a saida do relay, mas a entrada que pode travar e
+      // outra. O observador anterior nao pode continuar medindo a fonte ja
+      // descartada nem deixar o aviso dela sobreviver nesta transmissao.
+      watchCaptureTrack(newCaptureTrack);
+      if (commit.discardOldVideo) oldCaptureTrack?.stop();
+      // A nova captura pode nascer no teto, mesmo com a escada ja reduzida.
+      lastCaptureKey = '';
+      reapplyAudienceQuality();
+      if (shareSound) {
+        const oldAudioTrack = localStream.getAudioTracks()[0];
+        if (commit.discardOldAudio && oldAudioTrack) localStream.removeTrack(oldAudioTrack);
+        if (commit.audio === 'replace' && pendingAudioTrack) {
+          pendingAudioTrack.contentHint = 'music';
+          localStream.addTrack(pendingAudioTrack);
+        }
+        session.mesh.replaceLocalTrack('screen', 'audio', commit.audio === 'replace' ? pendingAudioTrack : null);
+        if (commit.discardOldAudio) oldAudioTrack?.stop();
+        stopNativeAudioFns.forEach((stop) => stop());
+        stopNativeAudioFns = commit.audio === 'replace' ? startedNativeStops : [];
+        currentShareSound = commit.audio === 'replace';
+        currentIncludeDiscord = commit.audio === 'replace' && includeDiscord;
+        // eslint-disable-next-line require-atomic-updates -- epoca protege a fonte da troca atual
+        currentAudioMode = commit.audio === 'replace' ? strategy.mode : 'none';
+        // eslint-disable-next-line require-atomic-updates -- track ja foi entregue ao stream local
+        pendingAudioTrack = null;
+
+        if (commit.audio === 'disable') {
+          showToast('Não consegui capturar o som só desta janela — a transmissão seguiu sem som');
+        }
+      }
+      capturePromoted = true;
+
+      const plan = sourceswap.planSwap({ fromSourceId: currentSourceId || '', toSourceId: newSourceId });
+      stopAnnotOverlay();
+      ui.annotations.clearSurface('me');
+      currentSourceId = newSourceId;
+      if (plan.overlayShouldReopen) await startAnnotOverlay();
+      if (!canContinue()) {
+        stopNewCapture();
+        return;
+      }
+      if (!shareSound || currentShareSound) showToast('Fonte trocada sem interromper a transmissão.');
+    } catch (err) {
+      if (!capturePromoted) stopNewCapture();
+      showToast(`Não consegui trocar a fonte: ${err.message}`);
+    } finally {
+      // eslint-disable-next-line require-atomic-updates -- latch pertence a esta troca serializada
+      swapping = false;
+    }
+  }
+
   function stopShare() {
+    swapEpoch += 1;
     if (!localStream) return;
     stopCaptureWatch();
     screenRelay?.stop();
@@ -3195,6 +3717,7 @@
     // o que estava desenhado, aqui e -- via broadcast-state -- em todo mundo.
     shareAnnotations = false;
     ui.annotations.setSurface('me', { allowed: false });
+    ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
     stopAnnotOverlay();
     ui.grid.removeTile('me', emptyMessage());
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
@@ -3210,12 +3733,18 @@
    * saida deliberada (teardownMedia) ou parar de compartilhar (stopShare).
    * Ficava so no stopShare e vazava pela outra porta. */
   function resetShareState() {
+    swapEpoch += 1;
     autoQuality = autoquality.initialState();
     lastCaptureKey = '';
     sharePaused = false;
     ui.grid.setPaused('me', false, {});
     ui.setToggleState('pause', 'off');
     $('btn-pause-share').classList.add('hidden');
+    $('btn-swap-share').classList.add('hidden');
+    currentSourceId = null;
+    currentShareSound = false;
+    currentIncludeDiscord = false;
+    currentAudioMode = 'none';
     rxHealthByPeer.clear();
     rxPrevSample.clear();
     rxPrevAtMs = 0;
@@ -3241,6 +3770,12 @@
   function stopCaptureWatch() {
     if (captureWatchTimer) clearInterval(captureWatchTimer);
     captureWatchTimer = null;
+    if (captureWatchTrack && captureWatchListeners) {
+      captureWatchTrack.removeEventListener('mute', captureWatchListeners.mute);
+      captureWatchTrack.removeEventListener('unmute', captureWatchListeners.unmute);
+    }
+    captureWatchTrack = null;
+    captureWatchListeners = null;
     captureWatch = null;
     captureSurface = '?';
     if (!captureWarning) return;
@@ -3248,17 +3783,56 @@
     renderHostWarning();
   }
 
+  function watchCaptureTrack(track) {
+    stopCaptureWatch();
+    // Diagnostico: uma track de captura que entra em 'mute' para de
+    // entregar quadros (fonte sumiu, GPU perdeu o contexto, WGC
+    // engasgou) -- o encoder fica em 0 fps sem erro nenhum.
+    const s = track.getSettings();
+    console.log(`[diag] captura de tela: ${s.width || '?'}x${s.height || '?'}@${s.frameRate ? Math.round(s.frameRate) : '?'} surface=${s.displaySurface || '?'}`);
+    captureSurface = s.displaySurface || '?';
+    captureWatch = capturewatch.createCaptureWatch();
+    const observeCapture = (event) => {
+      if (captureTrack !== track || !captureWatch) return;
+      const transition = captureWatch.event(event, Date.now());
+      if (transition) handleCaptureTransition(transition);
+    };
+    const onMute = () => {
+      console.warn('[diag] captura de tela: MUTE -- parou de entregar quadros');
+      observeCapture('mute');
+    };
+    const onUnmute = () => {
+      console.log('[diag] captura de tela: UNMUTE -- voltou a entregar quadros');
+      observeCapture('unmute');
+    };
+    captureWatchTrack = track;
+    captureWatchListeners = { mute: onMute, unmute: onUnmute };
+    track.addEventListener('mute', onMute);
+    track.addEventListener('unmute', onUnmute);
+    captureWatchTimer = setInterval(() => {
+      if (captureTrack !== track || !captureWatch) return;
+      const transition = captureWatch.tick(Date.now());
+      if (transition) handleCaptureTransition(transition);
+    }, 1000);
+  }
+
   function isActiveSession(session) {
     return session === currentSession || session === orphanSession || session.adoptedInto === currentSession;
   }
 
-  /** Pausa manual so suspende os senders que existiam no instante do clique.
-   * Quem entra depois (peer-joined) ou reconecta (welcome) recebe uma oferta
-   * nova com a track viva -- sem reimpor aqui, a tela "pausada" volta a
-   * sair, e no reconnect pra sala inteira de uma vez. */
+  /** Pausa manual tambem vale para todo sender de tela criado depois dela. */
   function enforceSharePauseFor(m, peerId) {
     if (!sharePaused || !localStream) return;
     m.setPeerDemand(peerId, 'screen', false, localStream.getVideoTracks()[0] || null);
+  }
+
+  function offerOwnStreamTo(session, peerId, stream, quality, kind) {
+    const offer = session.mesh.offerTo(peerId, stream, quality, kind);
+    // offerTo cria sender antes do primeiro await; pausa na mesma pilha.
+    if (sourceswap.shouldPauseNewScreenSender({ kind, sharePaused, hasLocalStream: Boolean(localStream) })) {
+      enforceSharePauseFor(session.mesh, peerId);
+    }
+    return offer;
   }
 
   function setSharePaused(paused) {
@@ -3283,6 +3857,26 @@
   }
 
   $('btn-pause-share').addEventListener('click', () => setSharePaused(!sharePaused));
+  $('btn-swap-share').addEventListener('click', async () => {
+    if (!localStream || swapping || openingSwapPicker) return;
+    openingSwapPicker = true;
+    try {
+      const nativeAudioAvailable = await isNativeAudioAvailable();
+      if (!localStream || swapping) return;
+      ui.picker.open({
+        mode: 'swap',
+        onGoLive: swapShare,
+        nativeAudioAvailable,
+        quality: cfg.quality,
+        allowAnnotations: shareAnnotations,
+        currentShareSound,
+        currentIncludeDiscord,
+      });
+    } finally {
+      // eslint-disable-next-line require-atomic-updates -- protege apenas a abertura do seletor
+      openingSwapPicker = false;
+    }
+  });
   window.golive.onShortcut?.(() => setSharePaused(!sharePaused));
 
   // ---------- Câmera ----------
@@ -3427,6 +4021,7 @@
     ui.grid.removeTile('cam-me', emptyMessage());
     ui.setToggleState('camera', 'off');
     ui.annotations.setSurface('cam-me', { allowed: false });
+    ui.laser.drop(annotate.surfaceKey(myId, 'camera'));
     sendCameraState();
 
     if (currentSession && track) {
@@ -3585,7 +4180,29 @@
     ui.grid.forgetWatched(String(originId));
   }
 
-  ui.grid.onWatchIntent((tileId, mode) => {
+  function maybeNotifyLive(peer, peerId, { bootstrap = false } = {}) {
+    const enabled = cfg.liveNotifyEnabled;
+    const ok = livenotify.shouldNotify(notifyTracker, peerId, {
+      enabled,
+      appFocused: document.hasFocus(),
+      joinedAtMs,
+      nowMs: Date.now(),
+      bootstrap,
+    });
+    if (!ok) return;
+    livenotify.markNotified(notifyTracker, peerId, Date.now());
+    const n = new Notification(`${peer?.name || 'Alguém'} ficou ao vivo`, {
+      icon: peer?.avatar || undefined,
+      silent: true, // o app ja tem tom proprio (playLiveSound); o ding nativo dobraria o aviso
+    });
+    n.onclick = () => {
+      window.golive.win.show();
+      applyWatchIntent(peerId, 'only');
+      document.getElementById(`tile-${peerId}`)?.scrollIntoView({ block: 'center' });
+    };
+  }
+
+  function applyWatchIntent(tileId, mode) {
     const id = String(tileId);
     console.info(`[assistir] intencao ${mode} tile=${id}`);
 
@@ -3614,7 +4231,9 @@
       if (!watchedScreens.size) autoWatchSuppressed = true;
     }
     syncWatchedScreens();
-  });
+  }
+
+  ui.grid.onWatchIntent(applyWatchIntent);
 
   // Avisa cada transmissor de quem estamos recebendo se ainda estamos ou nao
   // olhando. Peer que nunca recebeu um 'view-state' conta como assistindo --
@@ -4048,7 +4667,7 @@
     // ser fechada: mesmo que a topologia calculada saia igual, ela precisa
     // ser reaplicada pra que a oferta seja refeita.
     const quality = qualityFor(kind);
-    Promise.all(orphans.map((id) => session.mesh.offerTo(id, stream, quality, kind).catch(() => {})))
+    Promise.all(orphans.map((id) => offerOwnStreamTo(session, id, stream, quality, kind).catch(() => {})))
       .then(() => recomputeTree(kind, { force: true }))
       .catch((err) => console.error('[arvore] reconexao das orfas do relay falhou:', err));
   }
@@ -4071,7 +4690,7 @@
 
       const hasOutConn = Boolean(session.mesh.peers.get(peerId)?.outConns[kind]);
       if (assignment.role === 'direct' || assignment.role === 'relay') {
-        if (!hasOutConn) session.mesh.offerTo(peerId, stream, quality, kind).catch(() => {});
+        if (!hasOutConn) offerOwnStreamTo(session, peerId, stream, quality, kind).catch(() => {});
       } else {
         session.mesh.closeOut(peerId, kind);
       }

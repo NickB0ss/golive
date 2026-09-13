@@ -309,7 +309,7 @@ test('fecha o socket que estoura o teto de mensagens por segundo', async () => {
   }
 });
 
-test('broadcast-state: paused atravessa pra sala inteira junto do live', async () => {
+test('broadcast-state: paused e bootstrap atravessam pra sala inteira junto do live', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
     const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
@@ -323,10 +323,11 @@ test('broadcast-state: paused atravessa pra sala inteira junto do live', async (
     await once(b, 'welcome');
 
     const atB = onceWithin(b, 'broadcast-state');
-    a.send(JSON.stringify({ type: 'broadcast-state', live: true, paused: true }));
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, paused: true, bootstrap: true }));
     const msg = await atB;
     assert.equal(msg.live, true);
     assert.equal(msg.paused, true);
+    assert.equal(msg.bootstrap, true);
 
     a.close();
     b.close();
@@ -1773,6 +1774,201 @@ test('annotate: estourar a cota de desenho nao fecha o socket (nem gasta a de ch
   }
 });
 
+test('laser: repassa pra sala com o from carimbado, menos pra quem mandou', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    const c = await entrar(server.port, 'Carla');
+
+    let voltouPraQuemMandou = false;
+    a.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'laser') voltouPraQuemMandou = true;
+    });
+    const emB = once(b.ws, 'laser');
+    const emC = once(c.ws, 'laser');
+    a.ws.send(JSON.stringify({ type: 'laser', surface: `${b.welcome.id}:screen`, x: 0.1234, y: 0.9876, from: 'forjado' }));
+
+    for (const recebida of [emB, emC]) {
+      const msg = await recebida;
+      assert.equal(msg.surface, `${b.welcome.id}:screen`);
+      assert.equal(msg.x, 0.123);
+      assert.equal(msg.y, 0.988);
+      assert.equal(msg.from, a.welcome.id);
+    }
+    assert.equal(voltouPraQuemMandou, false);
+
+    a.ws.close();
+    b.ws.close();
+    c.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('laser: superficie invalida ou coordenadas invalidas sao descartadas em silencio', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    let recebidas = 0;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'laser') recebidas += 1;
+    });
+    a.ws.send(JSON.stringify({ type: 'laser', surface: '9999', x: 0.5, y: 0.5 }));
+    a.ws.send(JSON.stringify({ type: 'laser', surface: `${b.welcome.id}:screen`, x: 1.5, y: 0.5 }));
+    a.ws.send(JSON.stringify({ type: 'laser', surface: `${b.welcome.id}:screen`, x: 0.5, y: -0.2 }));
+    a.ws.send(JSON.stringify({ type: 'laser', surface: `${b.welcome.id}:screen`, x: '0.5', y: 0.5 }));
+    a.ws.send(JSON.stringify({ type: 'laser', surface: `${b.welcome.id}:screen`, x: 0.5 }));
+    await barreira(a.ws, b.ws, 'laser-invalido');
+    assert.equal(recebidas, 0);
+    assert.equal(a.ws.readyState, WebSocket.OPEN);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('laser: as primeiras 30 mensagens passam e a 31a e descartada sem fechar o socket', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    let recebidas = 0;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'laser') recebidas += 1;
+    });
+    for (let i = 0; i < 31; i++) a.ws.send(JSON.stringify({ type: 'laser', surface: `${b.welcome.id}:screen`, x: 0.5, y: 0.5 }));
+    await barreira(a.ws, b.ws, 'laser-cota');
+    assert.equal(recebidas, 30);
+    assert.equal(a.ws.readyState, WebSocket.OPEN);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('reaction: repassa emoji permitido com o from carimbado, menos pra quem mandou', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    let voltouPraQuemMandou = false;
+    a.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'reaction') voltouPraQuemMandou = true;
+    });
+    const emB = once(b.ws, 'reaction');
+    a.ws.send(JSON.stringify({ type: 'reaction', surface: `${b.welcome.id}:screen`, emoji: '🔥', from: 'forjado' }));
+    const msg = await emB;
+    assert.equal(msg.surface, `${b.welcome.id}:screen`);
+    assert.equal(msg.emoji, '🔥');
+    assert.equal(msg.from, a.welcome.id);
+    assert.equal(voltouPraQuemMandou, false);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('reaction: emoji fora da lista fechada e superficie invalida sao descartados em silencio', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    let recebidas = 0;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'reaction') recebidas += 1;
+    });
+    for (const emoji of ['🍕', '<script>', { emoji: '👍' }]) {
+      a.ws.send(JSON.stringify({ type: 'reaction', surface: `${b.welcome.id}:screen`, emoji }));
+    }
+    a.ws.send(JSON.stringify({ type: 'reaction', surface: '9999', emoji: '👍' }));
+    await barreira(a.ws, b.ws, 'reaction-invalida');
+    assert.equal(recebidas, 0);
+    assert.equal(a.ws.readyState, WebSocket.OPEN);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('laser e reaction: superficie fora do formato de um peer existente e descartada', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    let recebidas = 0;
+    b.ws.on('message', (raw) => {
+      const type = JSON.parse(raw.toString()).type;
+      if (type === 'laser' || type === 'reaction') recebidas += 1;
+    });
+
+    // Numero e id cru apontam para um peer real, mas nao sao surfaces do protocolo.
+    a.ws.send(JSON.stringify({ type: 'laser', surface: Number(b.welcome.id), x: 0.5, y: 0.5 }));
+    a.ws.send(JSON.stringify({ type: 'laser', surface: b.welcome.id, x: 0.5, y: 0.5 }));
+    a.ws.send(JSON.stringify({ type: 'reaction', surface: Number(b.welcome.id), emoji: '👍' }));
+    await barreira(a.ws, b.ws, 'surface-numerica');
+    assert.equal(recebidas, 0);
+    assert.equal(a.ws.readyState, WebSocket.OPEN);
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('reaction: aceita rajada de 5, corta a 6a e libera outra apos o reabastecimento', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = await entrar(server.port, 'Ana');
+    const b = await entrar(server.port, 'Bruno');
+    let recebidas = 0;
+    b.ws.on('message', (raw) => {
+      if (JSON.parse(raw.toString()).type === 'reaction') recebidas += 1;
+    });
+    for (let i = 0; i < 6; i++) a.ws.send(JSON.stringify({ type: 'reaction', surface: `${b.welcome.id}:screen`, emoji: '👍' }));
+    await barreira(a.ws, b.ws, 'reaction-cota');
+    assert.equal(recebidas, 5);
+    assert.equal(a.ws.readyState, WebSocket.OPEN);
+
+    await new Promise((r) => setTimeout(r, 350));
+    const reabastecida = once(b.ws, 'reaction');
+    a.ws.send(JSON.stringify({ type: 'reaction', surface: `${b.welcome.id}:screen`, emoji: '👍' }));
+    assert.equal((await reabastecida).emoji, '👍');
+
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('laser e reaction sem join sao descartados sem derrubar o servidor', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => intruso.once('open', r));
+    intruso.send(JSON.stringify({ type: 'laser', surface: '1', x: 0.5, y: 0.5 }));
+    intruso.send(JSON.stringify({ type: 'reaction', surface: '1', emoji: '👍' }));
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Agora entrou' }));
+    assert.equal((await once(intruso, 'welcome')).type, 'welcome');
+    assert.equal(server.getPeerCount(), 1);
+
+    intruso.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('annotate-sync: snapshot vai so pro destinatario, com teto de itens', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
@@ -2557,4 +2753,90 @@ test('log que lanca nao derruba o servidor', async () => {
     console.error = erro;
     await server.close();
   }
+});
+
+test('welcome recebe roomId gerado ou o roomId passado ao servidor', async () => {
+  const generated = await createSignalingServer({ port: 0 });
+  const fixed = await createSignalingServer({ port: 0, roomId: 'sala-transferida-1' });
+  try {
+    const ana = await entrar(generated.port, 'Ana');
+    const bruno = await entrar(fixed.port, 'Bruno');
+    assert.equal(typeof ana.welcome.roomId, 'string');
+    assert.notEqual(ana.welcome.roomId, '');
+    assert.equal(ana.welcome.hostId, ana.welcome.id);
+    assert.equal(bruno.welcome.roomId, 'sala-transferida-1');
+    assert.equal(bruno.welcome.hostId, bruno.welcome.id);
+    ana.ws.close();
+    bruno.ws.close();
+  } finally {
+    await generated.close();
+    await fixed.close();
+  }
+});
+
+test('initialTransferredTo faz o cliente correspondente entrar como dono', async () => {
+  const server = await createSignalingServer({ port: 0, initialTransferredTo: 'client-novo-dono' });
+  try {
+    const novoDono = await entrar(server.port, 'Ana', { clientId: 'client-novo-dono' });
+    const outro = await entrar(server.port, 'Bruno', { clientId: 'client-outro' });
+    assert.equal(novoDono.welcome.owner, true);
+    assert.equal(outro.welcome.owner, false);
+    novoDono.ws.close();
+    outro.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('initialBans barra o cliente banido desde o primeiro join', async () => {
+  const server = await createSignalingServer({
+    port: 0,
+    initialBans: [{ key: 'client:banido-desde-o-inicio', name: 'Intruso' }],
+  });
+  try {
+    const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((resolve) => intruso.once('open', resolve));
+    const negado = onceWithin(intruso, 'join-denied');
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', clientId: 'banido-desde-o-inicio' }));
+    assert.equal((await negado).reason, 'banned');
+  } finally {
+    await server.close();
+  }
+});
+
+test('initialChatHistory aparece no primeiro welcome e descarta entrada invalida', async () => {
+  const server = await createSignalingServer({
+    port: 0,
+    initialChatHistory: [
+      { type: 'chat', text: 'mensagem transferida' },
+      { type: 'chat', system: true, event: 'transfer-owner', actor: 'Ana' },
+      { type: 'chat', system: true, event: 'evento-inventado', actor: 'Ana' },
+      { type: 'chat', text: 42 },
+      { type: 'fora-do-chat', text: 'invalida' },
+    ],
+  });
+  try {
+    const ana = await entrar(server.port, 'Ana');
+    assert.deepEqual(
+      ana.welcome.chat.map((entry) => entry.system ? entry.event : entry.text),
+      ['mensagem transferida', 'transfer-owner']
+    );
+    ana.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('sanitizadores das seeds descartam ban e chat invalidos sem coercao', () => {
+  const { sanitizeInitialBan, sanitizeInitialChatEntry } = require('./signaling-core');
+  assert.deepEqual(sanitizeInitialBan({ key: 'client:abc', name: 'Ana', extra: 'nao viaja' }), { key: 'client:abc', name: 'Ana' });
+  assert.equal(sanitizeInitialBan({ key: 'outra:abc', name: 'Ana' }), null);
+  assert.equal(sanitizeInitialBan({ key: 'client:abc', name: 42 }), null);
+  assert.deepEqual(
+    sanitizeInitialChatEntry({ type: 'chat', text: 'oi', from: '1', ignored: true }),
+    { type: 'chat', text: 'oi', from: '1' }
+  );
+  assert.equal(sanitizeInitialChatEntry({ type: 'chat', text: 42 }), null);
+  assert.equal(sanitizeInitialChatEntry({ type: 'chat', system: true, event: 42 }), null);
+  assert.equal(sanitizeInitialChatEntry({ type: 'chat', system: true, event: 'evento-inventado' }), null);
 });

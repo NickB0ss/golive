@@ -125,6 +125,7 @@
     track.contentHint = 'motion';
 
     let vivo = true;
+    let trocando = false;
     let quadros = 0;
 
     (async () => {
@@ -133,10 +134,20 @@
         try {
           r = await leitor.read();
         } catch (err) {
+          if (trocando) {
+            trocando = false;
+            continue;
+          }
           if (vivo) o.onFrameError?.(err);
           break;
         }
-        if (r.done) break;
+        if (r.done) {
+          if (trocando) {
+            trocando = false;
+            continue;
+          }
+          break;
+        }
         const frame = r.value;
         try {
           const w = evenCanvasDimension(frame.displayWidth, canvas.width);
@@ -164,6 +175,19 @@
     return {
       track,
       quadros: () => quadros,
+      swapSource(newTrack) {
+        let novoLeitor;
+        try {
+          novoLeitor = new g.MediaStreamTrackProcessor({ track: newTrack }).readable.getReader();
+        } catch {
+          return false;
+        }
+        const leitorAntigo = leitor;
+        leitor = novoLeitor;
+        trocando = true;
+        try { leitorAntigo.cancel(); } catch { /* ja cancelado */ }
+        return true;
+      },
       stop() {
         vivo = false;
         try { leitor.cancel(); } catch { /* ja cancelado */ }

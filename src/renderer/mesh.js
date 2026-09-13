@@ -888,6 +888,21 @@
       return Boolean(peers.get(peerId)?.suspended?.[kind]);
     }
 
+    function replaceLocalTrack(kind, matchKind, track) {
+      let tocados = 0;
+      for (const peer of peers.values()) {
+        const pc = peer.outConns[kind];
+        if (!pc) continue;
+        // P1: trocar fonte nao pode religar video que a pausa suspendeu.
+        if (matchKind === 'video' && peer.suspended?.[kind]) continue;
+        const sender = pc.getSenders().find((s) => s.track?.kind === matchKind);
+        if (!sender) continue;
+        sender.replaceTrack(track || null).catch(() => {});
+        tocados += 1;
+      }
+      return tocados;
+    }
+
     /** Quem, entre os peers pra quem estamos ENVIANDO aquele kind, esta de
      * fato assistindo agora (nao suspenso por F1.3). E a lista que o
      * transmissor broadcasta pra sala poder desenhar "quem esta assistindo"
@@ -958,6 +973,7 @@
       inStatsFor,
       setPeerDemand,
       isPeerSuspended,
+      replaceLocalTrack,
       receivingFrom,
       watchersOf,
       describeOut,

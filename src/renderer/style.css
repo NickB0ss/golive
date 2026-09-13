@@ -2567,3 +2567,121 @@ body.has-titlebar #room-view {
 }
 /* Tile em tela cheia (win.setFullScreen): a faixa some. */
 body:has(.tile.fullscreen) .titlebar { display: none; }
+
+/* ============ Laser e reacoes (frente interacao, 2026-09-12) ============ */
+
+.tile-react-bar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-full);
+  background: var(--scrim-tint-2);
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.tile:hover .tile-react-bar,
+.tile:focus-within .tile-react-bar {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tile-react-btn {
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--tx);
+  font-size: 17px;
+  line-height: 1;
+}
+.tile-react-btn:hover:not(:disabled) { background: var(--s3); }
+.tile-react-pops {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+.tile-react-pop {
+  position: absolute;
+  bottom: 14%;
+  font-size: clamp(24px, 5vw, 48px);
+  line-height: 1;
+  animation: tile-react-rise 1.4s var(--ease-out) both;
+}
+.tile.is-unwatched .tile-react-bar,
+.tile.is-unwatched .tile-react-pops { display: none; }
+
+@keyframes tile-react-rise {
+  0% { opacity: 0; transform: translateY(16px); }
+  15%, 68% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-72px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-react-pop {
+    animation-name: tile-react-fade;
+    animation-duration: 1.4s !important;
+  }
+  @keyframes tile-react-fade {
+    0% { opacity: 0; }
+    15%, 68% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
+/* ============ Configuracoes > Sons: verificacao ============ */
+.sound-check {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.sound-check-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sound-check-head strong, .sound-check h4 { font-size: 12px; color: var(--tx); }
+.sound-check-head span, .sound-check-hint, .sound-recent { font-size: 11px; color: var(--tx3); }
+.sound-check-hint { margin: 7px 0 10px; line-height: 1.4; }
+.sound-check h4 { margin: 0 0 5px; }
+.sound-recent { margin: 0; padding: 0; list-style: none; }
+.sound-recent li { display: grid; grid-template-columns: 55px minmax(62px, 1fr) auto minmax(88px, 1.2fr); gap: 6px; padding: 4px 0; border-top: 1px solid var(--line); align-items: baseline; }
+.sound-recent b { font-weight: 600; }
+.sound-recent .sound-played { color: var(--tx); }
+.sound-recent .sound-skipped { color: var(--tx3); }
+.sound-recent em { font-style: normal; }
+.sound-recent-empty { display: block; }
+.sound-check button:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+
+/* ---- Abertura com atualizacao automatica (2026-09-12) -----------------
+ * Botao "Atualizar" do topbar do lobby: so aparece quando ha atualizacao
+ * disponivel (boot, checagem periodica de 60 min ou busca manual). Usa
+ * --act (nunca --live, que e reservado a "alguem esta ao vivo" -- regra do
+ * vault); o pontinho de aviso usa --warn (token ja reservado a "algo
+ * precisa de atencao"), nao uma cor nova. O pulso e cortado pelo bloco
+ * global de prefers-reduced-motion do topo do arquivo (linha 224) -- nao
+ * precisa de outro aqui. */
+.update-available-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--warn);
+  flex: none;
+  animation: update-dot-pulse 1.6s ease-in-out infinite;
+}
+@keyframes update-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .45; }
+}

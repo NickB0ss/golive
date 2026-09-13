@@ -16,11 +16,16 @@
  * mesmo `toPx` do annotate.js cai no pixel certo aqui com um retangulo
  * trivial: e o que garante que o rabisco aterrisse onde quem desenhou viu.
  *
- * Ver docs/superpowers/specs/2026-09-05-rabisco-na-tela-real-design.md
+ * Ver docs/superpowers/specs/2026-09-05-rabisco-na-tela-real-design.md e
+ * docs/superpowers/specs/2026-09-12-laser-e-reacoes-design.md (laser e
+ * reacao, que chegam por um canal PROPRIO -- overlay:fx -- ja filtrados
+ * pelo app.js: so o que e da MINHA tela e so com a permissao ligada).
  */
 
 (function () {
   const annotate = window.GoLive.annotate;
+  const laser = window.GoLive.laser;
+  const reactions = window.GoLive.reactions;
   const canvas = document.getElementById('lousa');
   const ctx = canvas.getContext('2d');
 
@@ -29,6 +34,10 @@
   // ponto) e o que mantem o custo constante: um traco de 3 segundos manda
   // ~50 mensagens de lote, nao 50 copias de uma lousa de 400 itens.
   const store = annotate.createStore();
+  // Depositos do laser e das reacoes -- mesma ideia, so que efemeros: nao
+  // ha snapshot nem `load` pra eles (ver spec, secao 3.3).
+  const laserStore = laser.createStore();
+  const reactionsStore = reactions.createStore();
 
   // Ha uma superficie so nesta janela -- a tela de quem esta compartilhando,
   // que e o dono dela. O id real chega junto das ops.
@@ -103,6 +112,58 @@
         ctx.shadowBlur = 0;
       }
     }
+
+    // Laser: mesmo desenho (ponto com brilho, opacidade pela idade) que
+    // ui.js pinta no tile -- so a cor troca de fonte (colorFor, nao colorOf:
+    // laser nao tem campo de cor escolhida, sempre a da pessoa).
+    for (const pt of laserStore.active(Date.now(), laser.TTL_MS)) {
+      if (pt.surfaceId !== surfaceId) continue;
+      const p = annotate.toPx(pt.x, pt.y, rect);
+      const cor = annotate.colorFor(pt.from);
+      ctx.globalAlpha = Math.max(0, 1 - pt.age / laser.TTL_MS);
+      ctx.fillStyle = cor;
+      ctx.shadowColor = cor;
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    // Reacao: sobe e desaparece, igual ao tile -- so que sem DOM/CSS aqui, e
+    // por isso a posicao horizontal (que no tile e um `style.left` aleatorio
+    // fixado na criacao) sai de um hash do id da bolha: PRECISA ser estavel
+    // quadro a quadro, e este `redraw()` roda de novo a cada frame do loop.
+    for (const bolha of reactionsStore.active(surfaceId, Date.now(), reactions.TTL_MS)) {
+      const now = Date.now();
+      const age = now - bolha.ts;
+      const t = age / reactions.TTL_MS; // 0 (nasceu) .. 1 (hora de sumir)
+      const xFrac = xFracFromId(bolha.id);
+      const px = rect.left + xFrac * rect.width;
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const deslocamento = reducedMotion ? 0 : t * rect.height * 0.28;
+      const py = rect.top + rect.height * 0.82 - deslocamento;
+      const tamanho = Math.max(24, rect.height * 0.05);
+      ctx.font = `${tamanho}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      // Some suave no ultimo terco, nao um corte seco.
+      ctx.globalAlpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3);
+      ctx.fillText(bolha.emoji, px, py);
+      ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'left'; // volta o padrao -- o texto de anotacao acima conta com isso
+  }
+
+  /** Hash simples e estavel: mesma bolha sempre cai na mesma fracao
+   * horizontal em TODOS os quadros que ela vive, sem guardar estado num
+   * Map a parte. Faixa 28%-72% -- mesma faixa central que ui.js usa no
+   * tile, pra reacao real e reacao no tile lerem parecido. */
+  function xFracFromId(id) {
+    let h = 0;
+    const s = String(id);
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return 0.28 + (h % 1000) / 1000 * 0.44;
   }
 
   window.goliveOverlay.onOp(({ surface, from, op }) => {
@@ -118,6 +179,48 @@
     store.load(surfaceId, items);
     scheduleRedraw();
   });
+
+  // Laser e reacao chegam por um canal PROPRIO (overlay:fx) -- ja filtrados
+  // pelo app.js (so a MINHA tela, so com a permissao ligada). Nenhum dos
+  // dois tem `load`/snapshot: nascem e morrem sozinhos (ver spec, secao 3.3).
+  window.goliveOverlay.onFx(({ kind, surface, from, ...payload }) => {
+    if (kind === 'drop-author') {
+      laserStore.dropAuthor(from);
+      reactionsStore.dropAuthor(from);
+      scheduleRedraw();
+      return;
+    }
+    surfaceId = String(surface);
+    const now = Date.now();
+    const aceitou = kind === 'laser'
+      ? laserStore.apply(surfaceId, from, payload, now)
+      : kind === 'reaction'
+        ? Boolean(reactionsStore.apply(surfaceId, from, payload.emoji, now))
+        : false;
+    if (!aceitou) return;
+    scheduleRedraw();
+    scheduleFxLoop();
+  });
+
+  // Loop de repintura continuo e barato: laser e reacao desbotam por
+  // IDADE, entao precisam de um quadro novo mesmo sem mensagem nenhuma
+  // chegando. Para sozinho quando os dois depositos ficam vazios -- nao
+  // fica um requestAnimationFrame rodando pra sempre numa tela parada.
+  let fxRafId = null;
+  function scheduleFxLoop() {
+    if (fxRafId !== null) return;
+    const step = () => {
+      fxRafId = null;
+      const now = Date.now();
+      const temLaser = laserStore.active(now, laser.TTL_MS).length > 0;
+      reactionsStore.prune(now);
+      const temReacao = surfaceId && reactionsStore.active(surfaceId, now, reactions.TTL_MS).length > 0;
+      if (!temLaser && !temReacao) return;
+      redraw();
+      fxRafId = requestAnimationFrame(step);
+    };
+    fxRafId = requestAnimationFrame(step);
+  }
 
   // Trocar a resolucao do monitor com a transmissao no ar redimensiona a
   // janela; o canvas e redesenhado da lista de itens, nunca esticado.
