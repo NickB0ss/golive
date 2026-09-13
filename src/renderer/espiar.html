@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src blob: mediastream:; style-src 'unsafe-inline'; script-src 'self'" />
+<title>Espiar</title>
+<style>
+  :root { --spy-bg: #0e1116; --spy-fg: #f1f3f5; --spy-muted: #9ba3af; --spy-control: #202733; --spy-hover: #303b4c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--spy-bg); color: var(--spy-fg); font: 13px system-ui, sans-serif; }
+  #video { width: 100%; height: 100%; object-fit: contain; background: var(--spy-bg); }
+  #drag { position: fixed; inset: 0 0 auto; height: 30px; -webkit-app-region: drag; z-index: 2; }
+  #controls { position: fixed; right: 8px; top: 5px; display: flex; gap: 5px; opacity: 0; transition: opacity 120ms ease; z-index: 3; }
+  body:hover #controls, #controls:focus-within { opacity: 1; }
+  button { width: 28px; height: 24px; border: 0; border-radius: 4px; background: var(--spy-control); color: var(--spy-fg); cursor: pointer; -webkit-app-region: no-drag; }
+  button:hover { background: var(--spy-hover); }
+  button:focus-visible { outline: 2px solid var(--spy-fg); outline-offset: 2px; }
+  #state { position: fixed; inset: auto 0 0; padding: 10px; text-align: center; background: var(--spy-bg); color: var(--spy-muted); display: none; }
+  #state.visible { display: block; }
+  @media (prefers-reduced-motion: reduce) { #controls { transition: none; } }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<div id="drag"></div>
+<div id="controls"><button id="back" type="button" aria-label="Voltar ao GoLive" title="Voltar ao GoLive">↩</button><button id="close" type="button" aria-label="Fechar espiar" title="Fechar">×</button></div>
+<div id="state" role="status"></div>
+<script src="espiar-page.js"></script>
+</body>
+</html>

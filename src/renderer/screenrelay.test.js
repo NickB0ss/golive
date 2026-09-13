@@ -191,6 +191,73 @@ test('stop para a track de saida e nao lanca duas vezes', () => {
   assert.doesNotThrow(() => relay.stop());
 });
 
+function escopoPorTrack() {
+  const e = {
+    HTMLCanvasElement: function () {},
+    MediaStreamTrackProcessor: function ({ track }) {
+      if (track.invalida) throw new Error('track invalida');
+      const fila = track.frames;
+      let pendente;
+      this.readable = {
+        getReader: () => ({
+          async read() {
+            if (fila.length) return { done: false, value: fila.shift() };
+            return new Promise((resolve) => { pendente = resolve; });
+          },
+          cancel() { pendente?.({ done: true }); },
+        }),
+      };
+    },
+  };
+  e.HTMLCanvasElement.prototype = { captureStream() {} };
+  return e;
+}
+
+test('swapSource troca a entrada e conserva a track de saida', async () => {
+  const canvas = fakeCanvas();
+  const antiga = { frames: [fakeFrame(1280, 720)], getSettings: () => ({ width: 1280, height: 720 }) };
+  const nova = { frames: [fakeFrame(800, 600)], getSettings: () => ({ width: 800, height: 600 }) };
+  const relay = create(antiga, { escopo: escopoPorTrack(), document: fakeDoc(canvas) });
+  const saida = relay.track;
+  await proximoTick();
+
+  assert.equal(relay.swapSource(nova), true);
+  for (let i = 0; i < 4; i += 1) await proximoTick();
+
+  assert.equal(relay.track, saida);
+  assert.deepEqual(canvas.desenhos.map((d) => `${d.w}x${d.h}`), ['1280x720', '800x600']);
+  assert.equal(saida.parada, false);
+  relay.stop();
+});
+
+test('swapSource recusada conserva a fonte anterior', async () => {
+  const canvas = fakeCanvas();
+  const antiga = { frames: [fakeFrame(640, 480), fakeFrame(640, 480)], getSettings: () => ({ width: 640, height: 480 }) };
+  const relay = create(antiga, { escopo: escopoPorTrack(), document: fakeDoc(canvas) });
+
+  assert.equal(relay.swapSource({ invalida: true }), false);
+  for (let i = 0; i < 4; i += 1) await proximoTick();
+
+  assert.equal(canvas.desenhos.length, 2);
+  relay.stop();
+});
+
+test('dois swapSource seguidos mantem o laco vivo na fonte mais nova', async () => {
+  const canvas = fakeCanvas();
+  const antiga = { frames: [], getSettings: () => ({ width: 640, height: 480 }) };
+  const segunda = { frames: [], getSettings: () => ({ width: 800, height: 600 }) };
+  const terceira = { frames: [fakeFrame(1024, 768)], getSettings: () => ({ width: 1024, height: 768 }) };
+  const relay = create(antiga, { escopo: escopoPorTrack(), document: fakeDoc(canvas) });
+
+  assert.equal(relay.swapSource(segunda), true);
+  assert.equal(relay.swapSource(terceira), true);
+  for (let i = 0; i < 4; i += 1) await proximoTick();
+
+  assert.equal(relay.quadros(), 1);
+  assert.equal(canvas.desenhos[0].w, 1024);
+  relay.stop();
+});
+
 test('falha no laco vira callback, nao silencio', async () => {
   // Uma tela que congela sem deixar rastro no log foi exatamente o tipo de
   // problema que originou esta investigacao.

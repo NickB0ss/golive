@@ -9,6 +9,8 @@
   const emoji = root.GoLive.emoji;
   const chatmedia = root.GoLive.chatmedia;
   const annotate = root.GoLive.annotate;
+  const laser = root.GoLive.laser;
+  const reactions = root.GoLive.reactions;
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -39,7 +41,46 @@
   // spec docs/superpowers/specs/2026-08-20-tile-avatars-and-fullscreen-pip-design.md).
   const tileRegistry = new Map();
   let fullscreenTileId = null;
+  const spyState = root.GoLive.espiar.createSpyState();
+  let spyWin = null;
   const pinnedPip = new Set();
+
+  function updateSpyWindow() {
+    const tileId = spyState.tileId();
+    const entry = tileRegistry.get(tileId);
+    if (!spyWin || spyWin.closed || !entry) return false;
+    const api = spyWin.GoLiveSpy;
+    if (!api) return false;
+    api.setStream(tileId, entry.stream, entry.displayName || entry.label);
+    const paused = tilePaused.get(tileId);
+    api.setPaused(Boolean(paused?.paused), paused?.opts);
+    return true;
+  }
+
+  function openSpyWindow(tileId) {
+    spyState.open(tileId);
+    if (!spyWin || spyWin.closed) spyWin = window.open('espiar.html', 'golive-espiar');
+    if (!spyWin) {
+      spyState.closeFor(tileId);
+      return;
+    }
+    if (!updateSpyWindow()) spyWin.addEventListener('load', updateSpyWindow, { once: true });
+  }
+
+  function closeSpyWindow(tileId) {
+    if (!spyState.closeFor(tileId)) return;
+    if (spyWin && !spyWin.closed) spyWin.close();
+    spyWin = null;
+  }
+
+  root.GoLive.__espiarClosed = (tileId) => {
+    spyState.closed(tileId);
+    spyWin = null;
+  };
+  window.golive.onSpyBack?.(() => {
+    const tile = document.getElementById(`tile-${spyState.tileId()}`);
+    tile?.focus({ preventScroll: true });
+  });
 
   // Posicao/tamanho de cada miniatura arrastavel dentro do fullscreen --
   // id -> { x, y, w }. x/y em % da area do fullscreen (0-100, sobrevive a
@@ -450,6 +491,17 @@
     onWatchIntent = fn;
   }
 
+  /** Quadros que o <video> do tile ja exibiu -- o que a pessoa de fato ve,
+   * nao o que chegou pela rede. null quando nao da pra medir: sem tile, sem
+   * stream, video pausado (janela oculta, tela cheia de outro tile) ou
+   * escondido pelo veu de pausa. Ver stallwatch.js. */
+  function framesShown(tileId) {
+    const video = document.getElementById(`tile-${tileId}`)?.querySelector('video');
+    if (!video || !video.srcObject || video.paused || video.hidden) return null;
+    const quality = video.getVideoPlaybackQuality?.();
+    return quality ? quality.totalVideoFrames : null;
+  }
+
   // Ultimo estado de pausa por tile ({ paused, opts }), pro overlay
   // sobreviver a um tile recriado do zero -- mesmo motivo do tileWatchers
   // acima (renegociacao pode destruir e recriar o <div class="tile"> com o
@@ -512,6 +564,7 @@
    * -- o tile local usa um texto diferente do de quem assiste (ver app.js). */
   function setPaused(tileId, paused, opts) {
     tilePaused.set(tileId, { paused, opts });
+    if (spyState.tileId() === tileId) updateSpyWindow();
     const tile = document.getElementById(`tile-${tileId}`);
     if (!tile) return; // tile pode ja ter sido removido (ex: parou de transmitir)
     renderPausedOverlay(tile, tile.querySelector('video'), paused, opts);
@@ -542,6 +595,7 @@
       tile = document.createElement('div');
       tile.className = 'tile';
       tile.id = `tile-${id}`;
+      tile.tabIndex = -1;
       tile.innerHTML = `
         <video autoplay playsinline></video>
         <canvas class="tile-annot-canvas"></canvas>
@@ -549,13 +603,16 @@
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
         <div class="tile-watchers is-empty"></div>
-        <button class="tile-fullscreen-btn" type="button" title="Tela cheia">
+        <button class="tile-fullscreen-btn" type="button" title="Tela cheia" aria-label="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
         <div class="tile-annot-bar" hidden></div>
+        <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">${reactionBarButtonsHtml()}</div>
+        <div class="tile-react-pops"></div>
         <div class="pip-strip"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
       wireTileAnnotations(tile, id);
+      wireTileReactions(tile, id);
       tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
         event.stopPropagation();
         toggleTileFullscreen(tile, id);
@@ -622,9 +679,11 @@
     if (!tilePaused.get(id)?.paused) applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
+    if (spyState.tileId() === id) updateSpyWindow();
   }
 
   function removeTile(id, emptyMessage) {
+    closeSpyWindow(id);
     document.getElementById(`tile-${id}`)?.remove();
     // A lousa morre com a tela: parou de compartilhar, o desenho vai junto
     // (spec de 2026-09-04, secao 8) -- e o observador de tamanho tem de
@@ -683,6 +742,21 @@
   let annotBrushColor = null;
   let onAnnotOp = null;
 
+  // Laser e reacoes reaproveitam a MESMA barra/canvas do rabisco (spec de
+  // 2026-09-12): o laser e uma terceira ferramenta de `annotTool`, e as duas
+  // guardam o proprio estado em modulo puro (laser.js/reactions.js), igual
+  // annotStore guarda o de rabisco. `laserStore` so tem UMA posicao por
+  // pessoa (a mais recente) -- o "rastro" e efeito de desenho, nao lista de
+  // pontos guardada. `reactionsStore` e indexado por tileId direto (nao por
+  // surfaceId): reacao no tile NAO pede permissao nenhuma, entao nao precisa
+  // do gate de `annotSurfaces` que o laser usa.
+  const laserStore = laser?.createStore();
+  const reactionsStore = reactions?.createStore();
+  const reactionLimiter = reactions?.createBurstLimiter();
+  let onLaserOp = null;
+  let onReactionOp = null;
+  let laserRafId = null; // requestAnimationFrame continuo enquanto ha ponto de laser vivo
+
   function brushColor() {
     return annotBrushColor || annotate.colorFor(annotSelfId);
   }
@@ -690,6 +764,9 @@
   const ANNOT_TOOLS = {
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>',
     text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+    // Alvo com um ponto no meio -- o mesmo desenho que o proprio laser faz
+    // na tela, so que virado icone.
+    laser: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>',
     // Meio circulo com a seta pra tras. O icone antigo era o `rotate-ccw` do
     // Feather -- um arco de quase 360 graus, que le como "recarregar", nao
     // como "desfazer".
@@ -701,6 +778,12 @@
     // decide qual aparece (o atributo `hidden` nao esconde <svg>).
     penOn: '<svg class="icon-on hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
     penOff: '<svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><line x1="3" y1="3" x2="21" y2="21"/></svg>',
+  };
+
+  // Emojis de reacao: conteudo da lista fechada de reactions.js, nao icone
+  // de UI -- por isso NAO entram em ANNOT_TOOLS (que e so SVG de ferramenta).
+  const REACTION_EMOJI_LABEL = {
+    '👍': 'like', '😂': 'risada', '😮': 'surpresa', '🔥': 'fogo', '👏': 'palmas', '❤️': 'coração',
   };
 
   function annotSetSelf(id) {
@@ -806,6 +889,10 @@
     onAnnotOp?.(surfaceId, op);
   }
 
+  function clearAnnotSurface(tileId) {
+    emitAnnotOp(tileId, { op: 'clear', scope: 'all' });
+  }
+
   function applyLocalAnnot(surfaceId, op) {
     if (!surfaceId) return; // tile deixou de aceitar anotacao no meio do traco
     if (!annotStore.apply(surfaceId, annotSelfId, op)) return;
@@ -815,6 +902,182 @@
         syncAnnotBar(tileId);
       }
     }
+  }
+
+  // ---------- Laser e reacoes (enderecamento tileId <-> surfaceId) ----------
+  //
+  // O protocolo endereca por '<dono>:<kind>' (surfaceKey), igual o rabisco --
+  // mas quem desenha na tela pensa em tileId ('me', '7', 'cam-7'). Estas duas
+  // funcoes sao o unico lugar que traduz entre os dois sentidos, espelhando
+  // exatamente como app.js ja registra `annotSurfaces` pra cada tile (myId no
+  // lugar do tileId local 'me').
+
+  function surfaceForTile(tileId) {
+    const id = String(tileId);
+    const isCam = id.startsWith('cam-');
+    const raw = isCam ? id.slice(4) : id;
+    const owner = raw === 'me' ? annotSelfId : raw;
+    return annotate.surfaceKey(owner, isCam ? 'camera' : 'screen');
+  }
+
+  function tileIdForSurface(surfaceId) {
+    const { ownerId, kind } = annotate.parseSurface(surfaceId);
+    const owner = String(ownerId) === String(annotSelfId) ? 'me' : ownerId;
+    return kind === 'camera' ? `cam-${owner}` : owner;
+  }
+
+  // ---------- Laser ----------
+  //
+  // Terceira ferramenta da MESMA barra/canvas do rabisco (annotTool ===
+  // 'laser'). So chega aqui quem o dono da tela ja deixou rabiscar -- o
+  // gate e o mesmo `annotSurfaces`, e por isso `applyRemoteLaser` confere
+  // que o tile ESTA registrado com ESTA superficie antes de desenhar
+  // qualquer coisa: sem isso um laser pra uma tela sem permissao ainda
+  // apareceria, so o rabisco de fato ficaria barrado.
+
+  /** Um ponto de laser chegou da rede. Devolve o tileId onde ele deveria
+   * aparecer, ou null se a superficie nao esta liberada (tile nao
+   * registrado, ou registrado com outra superficie). */
+  function applyRemoteLaser(surfaceId, from, op) {
+    if (!laserStore) return;
+    const tileId = tileIdForSurface(surfaceId);
+    const info = annotSurfaces.get(tileId);
+    if (!info || info.surfaceId !== String(surfaceId)) return; // dono nao permitiu, ou tile nao existe mais
+    if (!laserStore.apply(surfaceId, from, op, Date.now())) return;
+    scheduleLaserLoop();
+    redrawAnnot(tileId);
+  }
+
+  /** Peer saiu da sala: o ponto dele para de existir em TODAS as
+   * superficies -- mesmo padrao do rabisco orfao (forgetAnnotAuthor), so
+   * que aqui nao ha nada pra redesenhar alem do proximo quadro do loop, que
+   * ja vai rodar sozinho enquanto houver outros pontos vivos. */
+  function forgetLaserAuthor(peerId) {
+    laserStore?.dropAuthor(peerId);
+  }
+
+  /** A tela parou (ou trocou): o laser dela nao faz mais sentido. */
+  function dropLaserSurface(surfaceId) {
+    laserStore?.drop(String(surfaceId));
+  }
+
+  /** Loop de repintura barato: enquanto existir pelo menos um ponto de
+   * laser vivo em QUALQUER superficie, um requestAnimationFrame redesenha
+   * os tiles afetados pra o rastro desbotar mesmo sem pacote novo chegando
+   * (o ponto morre por IDADE, nao por mensagem -- ver laser.js). Para
+   * sozinho quando `active` volta vazio; so um loop por vez. */
+  function scheduleLaserLoop() {
+    if (laserRafId !== null || !laserStore) return;
+    const step = () => {
+      laserRafId = null;
+      const now = Date.now();
+      const ativos = laserStore.active(now, laser.TTL_MS);
+      if (!ativos.length) return; // nada vivo: o loop se apaga sozinho
+      const superficiesVivas = new Set(ativos.map((p) => String(p.surfaceId)));
+      for (const [tileId, info] of annotSurfaces) {
+        if (superficiesVivas.has(String(info.surfaceId))) redrawAnnot(tileId);
+      }
+      laserRafId = requestAnimationFrame(step);
+    };
+    laserRafId = requestAnimationFrame(step);
+  }
+
+  // ---------- Reacoes ----------
+  //
+  // Ao contrario do laser, reacao no tile NAO pede a permissao do rabisco
+  // (spec, secao 2) -- por isso o deposito e indexado por tileId direto, e
+  // NAO passa pelo gate de `annotSurfaces`. `surfaceForTile` so entra na
+  // hora de mandar pra rede (o protocolo endereca por superficie, igual o
+  // resto); o que chega da rede ja vem traduzido pro tileId por
+  // `applyRemoteReaction`.
+
+  /** `spawnReactionPop` e declarada mais abaixo (secao "desenho") -- chamada
+   * aqui por nome, nao por variavel: `function` e hoisted no escopo do
+   * modulo, e as duas coisas sao a MESMA reacao (dado + desenho), so que
+   * fisicamente separadas pra ficar perto do resto de cada assunto. */
+  function applyRemoteReaction(surfaceId, from, emoji) {
+    if (!reactionsStore) return;
+    const now = Date.now();
+    reactionsStore.prune(now); // rega o deposito de bolhas mortas de qualquer tile, nao so deste
+    const tileId = tileIdForSurface(surfaceId);
+    if (!document.getElementById(`tile-${tileId}`)) return; // ninguem esta vendo essa tela agora
+    const bolha = reactionsStore.apply(tileId, from, emoji, now);
+    if (bolha) spawnReactionPop(tileId, bolha);
+  }
+
+  function forgetReactionAuthor(peerId) {
+    reactionsStore?.dropAuthor(peerId);
+    for (const el of document.querySelectorAll('.tile-react-pop')) {
+      if (el.dataset.author === String(peerId)) el.remove();
+    }
+  }
+
+  /** Clique na barra de reacao de UM tile: aplica local na hora (quem
+   * clicou ve a propria reacao subir sem esperar o servidor, mesmo padrao
+   * de `emitAnnotOp`) e manda pra rede. */
+  function emitReactionOp(tileId, emoji) {
+    if (!reactionsStore) return;
+    const now = Date.now();
+    reactionsStore.prune(now);
+    if (reactionLimiter && !reactionLimiter.hit(now)) return;
+    const bolha = reactionsStore.apply(tileId, annotSelfId, emoji, now);
+    if (!bolha) return; // emoji fora da lista fechada -- nem local nem rede
+    spawnReactionPop(tileId, bolha);
+    onReactionOp?.(surfaceForTile(tileId), emoji);
+  }
+
+  /** Botoes da barra de reacao: um por emoji da lista FECHADA de
+   * reactions.js. O emoji e conteudo (aparece no botao), nao vira <svg> --
+   * o `aria-label` que carrega o nome e o que mantem o botao acessivel. */
+  function reactionBarButtonsHtml() {
+    if (!reactions) return '';
+    return reactions.REACTIONS.map((e) => {
+      const nome = REACTION_EMOJI_LABEL[e] || e;
+      return `<button type="button" class="tile-react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
+    }).join('');
+  }
+
+  /** Amarra a barra de reacao de UM tile, uma vez, na criacao dele --
+   * mesmo espirito de wireTileAnnotations, so que sem gate de permissao
+   * nenhum (reacao no tile e sempre livre, ver spec secao 2). */
+  function wireTileReactions(tile, tileId) {
+    const bar = tile.querySelector('.tile-react-bar');
+    if (!bar) return;
+    bar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const btn = e.target.closest('.tile-react-btn');
+      if (!btn) return;
+      emitReactionOp(tileId, btn.dataset.emoji);
+    });
+    // Mesma razao do annot-bar: a barra fica por cima do video, um clique
+    // nela nao pode disparar o duplo-clique do fullscreen nem o arrasto do PiP.
+    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+    bar.addEventListener('dblclick', (e) => e.stopPropagation());
+  }
+
+  /** Sobe um emoji sobre o tile e o remove sozinho quando a animacao
+   * termina. `prefers-reduced-motion` troca a keyframe (CSS) por uma que so
+   * aparece/some, sem subir -- entao aqui tambem troca o evento que espera:
+   * uma animacao sem deslocamento ainda dispara `animationend`, entao o
+   * mesmo listener serve pros dois casos. */
+  function spawnReactionPop(tileId, bubble) {
+    const tile = document.getElementById(`tile-${tileId}`);
+    const host = tile?.querySelector('.tile-react-pops');
+    if (!host) return;
+    const el = document.createElement('span');
+    el.className = 'tile-react-pop';
+    el.dataset.author = String(bubble.from);
+    el.textContent = bubble.emoji;
+    // Posicao horizontal aleatoria (dentro de uma faixa central) pra
+    // reacoes simultaneas nao empilharem exatamente uma em cima da outra.
+    el.style.left = `${28 + Math.round(Math.random() * 44)}%`;
+    host.appendChild(el);
+    const remove = () => el.remove();
+    el.addEventListener('animationend', remove, { once: true });
+    // Rede de seguranca: se por algum motivo a animacao nunca disparar
+    // `animationend` (aba em segundo plano, por exemplo), o elemento nao
+    // fica pendurado pra sempre.
+    setTimeout(remove, reactions.TTL_MS + 500);
   }
 
   // ---- desenho ----
@@ -900,6 +1163,30 @@
         ctx.shadowBlur = 0;
       }
     }
+
+    // Laser: MESMO canvas do rabisco (nao vale abrir um segundo elemento so
+    // pra um ponto). O deposito guarda so a posicao mais recente de cada
+    // pessoa (laser.js) -- o "rastro curto" e o brilho/desbote deste
+    // desenho, nao uma lista de pontos historicos. `age` decide a opacidade:
+    // 0 = acabou de chegar (cheio), TTL = a hora de sumir (zero).
+    if (laserStore) {
+      const now = Date.now();
+      for (const pt of laserStore.active(now, laser.TTL_MS)) {
+        if (pt.surfaceId !== String(surfaceId)) continue;
+        const p = annotate.toPx(pt.x, pt.y, rect);
+        const cor = annotate.colorFor(pt.from);
+        const opacidade = Math.max(0, 1 - pt.age / laser.TTL_MS);
+        ctx.globalAlpha = opacidade;
+        ctx.fillStyle = cor;
+        ctx.shadowColor = cor;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   /** Liga/desliga o modo de desenho de um tile. Com ele desligado o canvas
@@ -961,6 +1248,7 @@
       <span class="annot-sep"></span>
       <button type="button" class="annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta" aria-label="Caneta"${travado}>${ANNOT_TOOLS.pen}</button>
       <button type="button" class="annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever" aria-label="Escrever"${travado}>${ANNOT_TOOLS.text}</button>
+      <button type="button" class="annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="Laser" aria-label="Laser"${travado}>${ANNOT_TOOLS.laser}</button>
       <span class="annot-sep"></span>
       <button type="button" class="annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
       <button type="button" class="annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
@@ -1022,6 +1310,7 @@
     let stroke = null;
     let pending = [];
     let flushTimer = null;
+    let lastLaserSentAt = 0; // throttle de envio do laser (laser.shouldEmit)
 
     function pointOf(event) {
       const box = tile.getBoundingClientRect();
@@ -1044,6 +1333,11 @@
     canvas.addEventListener('pointerdown', (event) => {
       if (!tile.classList.contains('annot-on') || event.button !== 0) return;
       event.stopPropagation();
+      // Laser nao comeca traco nenhum -- so o pointermove manda posicao (ver
+      // abaixo). O clique aqui nao faz nada de proposito, senao um clique
+      // acidental de quem so queria apontar abriria a caixa de texto ou um
+      // traco de um ponto so.
+      if (annotTool === 'laser') return;
       const p = pointOf(event);
       if (annotTool === 'text') {
         // preventDefault e o que faz a escrita funcionar. A acao padrao do
@@ -1062,6 +1356,19 @@
     });
 
     canvas.addEventListener('pointermove', (event) => {
+      // Laser: SO manda, nunca desenha local -- o proprio cursor de quem
+      // aponta ja mostra onde ele esta; desenhar de novo seria redundante
+      // so pra quem esta apontando (ver spec, secao 5.1). Nao depende de
+      // `stroke` (nao ha traco no laser) nem de pointerdown ter rodado.
+      if (annotTool === 'laser') {
+        if (!tile.classList.contains('annot-on')) return;
+        const now = Date.now();
+        if (!laser?.shouldEmit(lastLaserSentAt, now, laser.EMIT_HZ)) return;
+        lastLaserSentAt = now;
+        const p = pointOf(event);
+        onLaserOp?.(annotSurfaceOf(tileId), { x: p.x, y: p.y });
+        return;
+      }
       if (!stroke) return;
       const p = pointOf(event);
       // Desenha JA, sem esperar o lote: o traco tem de acompanhar o dedo.
@@ -1429,6 +1736,7 @@
     } else if (watched && ws) {
       watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
     }
+    const spyItem = watched ? '<button type="button" class="tile-menu-spy">Espiar</button>' : '';
 
     const menu = document.createElement('div');
     menu.className = 'tile-menu';
@@ -1440,6 +1748,7 @@
         <span class="tile-menu-name" title="${escapeHtml(nome)}">${escapeHtml(nome)}</span>
       </div>
       ${watchItem}
+      ${spyItem}
       <label class="check compact tile-menu-mute-row">
         <input type="checkbox" class="tile-menu-mute" ${isMuted(id) ? 'checked' : ''} />
         <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
@@ -1458,7 +1767,12 @@
     }
 
     menu.querySelector('.tile-menu-watch')?.addEventListener('click', (event) => {
+      if (event.currentTarget.dataset.watch === 'remove') closeSpyWindow(id);
       onWatchIntent?.(id, event.currentTarget.dataset.watch);
+      closeTileMenu();
+    });
+    menu.querySelector('.tile-menu-spy')?.addEventListener('click', () => {
+      openSpyWindow(id);
       closeTileMenu();
     });
 
@@ -2616,6 +2930,27 @@
             <span class="check-desc">Entrada, saída, chat, transmissão começando e avisos de moderação.</span>
           </span>
         </label>
+      </div>
+      <div class="sound-check" aria-labelledby="sound-check-title">
+        <div class="sound-check-head">
+          <strong id="sound-check-title">Verificação</strong>
+          <span id="sound-test-current" aria-live="polite">Pronto para testar.</span>
+        </div>
+        <button id="btn-test-sounds" type="button" class="ghost small">Testar sons</button>
+        <p class="sound-check-hint">O teste toca todos os avisos, inclusive o de chat com a janela em foco.</p>
+        <h4>Últimos sons</h4>
+        <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
+      </div>
+      <h3>Notificações</h3>
+      <div class="check-group">
+        <label class="check">
+          <input id="settings-live-notify" type="checkbox" />
+          <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <span class="check-text">
+            <span class="check-title">Avisar quando alguém ficar ao vivo</span>
+            <span class="check-desc">Notificação do Windows quando a janela do GoLive não está em foco.</span>
+          </span>
+        </label>
       </div>`;
 
     settingsPanes.stats.innerHTML = `
@@ -2627,6 +2962,7 @@
 
     renderProfilePreview(config);
     $('settings-sounds').checked = config.soundsEnabled;
+    $('settings-live-notify').checked = config.liveNotifyEnabled;
 
     $('settings-profile-name').addEventListener('input', (event) => {
       deps.onNameChange(event.target.value);
@@ -2646,6 +2982,38 @@
 
     $('settings-sounds').addEventListener('change', () => {
       deps.onSoundsChange($('settings-sounds').checked);
+    });
+    $('settings-live-notify').addEventListener('change', () => {
+      deps.onLiveNotifyChange($('settings-live-notify').checked);
+    });
+
+    const renderRecentSounds = () => {
+      const list = $('sound-recent');
+      const entries = deps.getRecentSounds ? deps.getRecentSounds() : [];
+      if (!entries.length) {
+        list.innerHTML = '<li class="sound-recent-empty">Nenhuma tentativa nesta sessão.</li>';
+        return;
+      }
+      list.innerHTML = entries.slice().reverse().map((entry) => {
+        const status = entry.status === 'NAO tocou' ? 'não tocou' : entry.status;
+        const hour = new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return `<li><time>${hour}</time><span>${entry.name}</span><b class="sound-${entry.status === 'tocou' ? 'played' : 'skipped'}">${status}</b><em>${entry.reason}</em></li>`;
+      }).join('');
+    };
+    renderRecentSounds();
+    $('btn-test-sounds').addEventListener('click', async () => {
+      const button = $('btn-test-sounds');
+      button.disabled = true;
+      try {
+        await deps.onTestSounds((name) => {
+          $('sound-test-current').textContent = `Tocando: ${name}.`;
+          renderRecentSounds();
+        });
+        $('sound-test-current').textContent = 'Teste concluído.';
+      } finally {
+        button.disabled = false;
+        renderRecentSounds();
+      }
     });
 
     initThemeControls(config);
@@ -2715,6 +3083,9 @@
   const pickerWindowHintEl = $('picker-window-hint');
   const pickerQualityEl = $('picker-quality');
   const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
+  const pickerQualityTitleEl = pickerQualityEl.previousElementSibling;
+  const pickerAnnotationsEl = $('allow-annotations').closest('.check-group');
+  const pickerAnnotationsTitleEl = pickerAnnotationsEl.previousElementSibling;
   const shareSoundEl = $('share-sound');
   const shareDiscordRowEl = $('share-discord-row');
   const shareDiscordEl = $('share-discord');
@@ -3001,7 +3372,7 @@
     }
   });
 
-  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange, allowAnnotations = false }) {
+  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange, allowAnnotations = false, mode = 'start', currentShareSound = true, currentIncludeDiscord = false }) {
     selectedSourceId = null;
     btnGoLiveEl.disabled = true;
     pickerTab = 'screen';
@@ -3013,12 +3384,21 @@
     // das abas (ver syncPickerIndicator).
     syncQualityAxes(quality.preset, false);
     pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
-    shareSoundEl.checked = true;
+    const swapping = mode === 'swap';
+    pickerEl.querySelector('h2').textContent = swapping ? 'Trocar para qual fonte?' : 'O que você quer compartilhar?';
+    btnGoLiveEl.textContent = swapping ? 'Trocar' : 'Ir ao vivo';
+    pickerQualityTitleEl.classList.toggle('hidden', swapping);
+    pickerQualityEl.classList.toggle('hidden', swapping);
+    pickerQualityBandwidthEl.classList.toggle('hidden', swapping);
+    pickerAnnotationsTitleEl.classList.toggle('hidden', swapping);
+    pickerAnnotationsEl.classList.toggle('hidden', swapping);
+    shareSoundEl.checked = swapping ? Boolean(currentShareSound) : true;
+    shareSoundEl.disabled = swapping;
     // Vem da ULTIMA escolha (config), nao de um padrao fixo: e a mesma
     // regra do "anunciar na rede" no dialogo de criar sala.
     $('allow-annotations').checked = Boolean(allowAnnotations);
-    shareDiscordEl.checked = false;
-    shareDiscordRowEl.classList.remove('hidden');
+    shareDiscordEl.checked = swapping && shareSoundEl.checked && Boolean(currentIncludeDiscord);
+    shareDiscordRowEl.classList.toggle('hidden', !shareSoundEl.checked);
     // Sem o addon nativo (Windows apenas), nao ha como excluir o Discord do
     // audio capturado -- a checkbox nao teria efeito nenhum, entao fica
     // desabilitada em vez de prometer algo que nao entrega.
@@ -3146,16 +3526,28 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown },
     annotations: {
       setSelf: annotSetSelf,
       setSurface: setAnnotSurface,
       applyOp: applyAnnotOp,
+      clearSurface: clearAnnotSurface,
       load: loadAnnotSnapshot,
       snapshot: annotSnapshot,
       forgetAuthor: forgetAnnotAuthor,
       render: ({ onOp }) => { onAnnotOp = onOp; },
       colorFor: annotate.colorFor,
+    },
+    laser: {
+      apply: applyRemoteLaser,
+      dropAuthor: forgetLaserAuthor,
+      drop: dropLaserSurface,
+      render: ({ onOp }) => { onLaserOp = onOp; },
+    },
+    reactions: {
+      apply: applyRemoteReaction,
+      dropAuthor: forgetReactionAuthor,
+      render: ({ onOp }) => { onReactionOp = onOp; },
     },
     rooms: { render: renderRooms, setNetworkStatus: renderNetworkStatus },
     dialogs: {

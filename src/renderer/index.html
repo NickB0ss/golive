@@ -27,9 +27,12 @@
   </div>
 </div>
 
+<!-- So progresso real daqui pra frente (baixando/instalando) -- "ha
+     atualizacao disponivel" e o botao #btn-update-available do topbar do
+     lobby, chamativo o bastante pra nao precisar de banner tambem. Ver
+     docs/superpowers/specs/2026-09-12-abertura-com-atualizacao-design.md. -->
 <div id="update-banner" class="update-banner hidden">
   <span id="update-banner-text"></span>
-  <button id="update-banner-action" class="primary small hidden" type="button">Reiniciar e instalar</button>
   <div id="update-progress" class="update-progress hidden"><div id="update-progress-fill" class="update-progress-fill"></div></div>
 </div>
 
@@ -61,6 +64,13 @@
         <span id="user-panel-avatar-fallback"></span>
       </button>
       <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
+      <!-- So aparece quando ha atualizacao disponivel (boot, checagem
+           periodica ou busca manual). Fora da sala por construcao: mora
+           dentro do #lobby-view, que some inteiro ao entrar numa sala. -->
+      <button id="btn-update-available" class="primary small update-available-btn hidden" type="button"
+              title="Atualização disponível — clique para atualizar agora">
+        <span class="update-dot" aria-hidden="true"></span>Atualizar
+      </button>
       <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" aria-label="Buscar atualizações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
       </button>
@@ -211,6 +221,10 @@
         <svg class="icon-off" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="5" width="4" height="14" rx="1"/><rect x="13" y="5" width="4" height="14" rx="1"/></svg>
         <svg class="icon-on hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         <span class="btn-label">Pausar</span>
+      </button>
+      <button id="btn-swap-share" class="secondary control-btn hidden" type="button" aria-label="Trocar de tela ou janela">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        <span class="btn-label">Trocar</span>
       </button>
       <button id="btn-disconnect" class="ghost control-btn control-btn-end" type="button">Sair da sala</button>
     </div>
@@ -383,25 +397,34 @@
 <script src="emoji.js"></script>
 <script src="chatmedia.js"></script>
 <script src="annotate.js"></script>
+<script src="laser.js"></script>
+<script src="reactions.js"></script>
 <script src="theme.js"></script>
 <script src="version.js"></script>
 <script src="signaling.js"></script>
 <script src="reconnect.js"></script>
 <script src="resume.js"></script>
+<script src="succession.js"></script>
 <script src="tree.js"></script>
 <script src="mesh.js"></script>
+<script src="espiar.js"></script>
 <script src="ui.js"></script>
+<script src="soundevents.js"></script>
 <script src="sound.js"></script>
+<script src="livenotify.js"></script>
 <script src="queue.js"></script>
 <script src="status.js"></script>
 <script src="encodehealth.js"></script>
 <script src="screenrelay.js"></script>
+<script src="sourceswap.js"></script>
 <script src="encodediag.js"></script>
 <script src="autoquality.js"></script>
 <script src="rxstats.js"></script>
 <script src="peerquality.js"></script>
 <script src="screenres.js"></script>
 <script src="titlebar.js"></script>
+<script src="stallwatch.js"></script>
+<script src="capturewatch.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

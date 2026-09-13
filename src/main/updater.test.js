@@ -10,9 +10,10 @@ function fakeAutoUpdater() {
   au.autoDownload = true;
   au.autoInstallOnAppQuit = true;
   au.calls = [];
+  au.quitAndInstallArgs = null;
   au.checkForUpdates = () => { au.calls.push('checkForUpdates'); return Promise.resolve(); };
-  au.downloadUpdate = () => { au.calls.push('downloadUpdate'); return Promise.resolve(); };
-  au.quitAndInstall = () => { au.calls.push('quitAndInstall'); };
+  au.downloadUpdate = (token) => { au.calls.push('downloadUpdate'); au.downloadToken = token; return Promise.resolve(); };
+  au.quitAndInstall = (...args) => { au.calls.push('quitAndInstall'); au.quitAndInstallArgs = args; };
   return au;
 }
 
@@ -94,6 +95,67 @@ test('downloadUpdate e quitAndInstall delegam pro autoUpdater', () => {
   u.downloadUpdate();
   u.quitAndInstall();
   assert.deepEqual(au.calls, ['downloadUpdate', 'quitAndInstall']);
+});
+
+test('checagem concorrente durante download e ignorada sem trocar o ciclo', () => {
+  const au = fakeAutoUpdater();
+  const { events, onStatus } = collect();
+  const u = setupAutoUpdater(onStatus, { autoUpdater: au });
+
+  u.downloadUpdate('boot');
+  u.checkForUpdates(true);
+  au.emit('download-progress', { percent: 12 });
+
+  assert.deepEqual(au.calls, ['downloadUpdate']);
+  assert.deepEqual(events, [
+    { manual: true, status: 'busy', reason: 'baixando' },
+    { manual: false, status: 'downloading', progress: 12, downloadSource: 'boot' },
+  ]);
+});
+
+test('busca com atualizacao baixada e ignorada e preserva o pacote pronto', () => {
+  const au = fakeAutoUpdater();
+  const { events, onStatus } = collect();
+  const u = setupAutoUpdater(onStatus, { autoUpdater: au });
+
+  u.downloadUpdate('boot');
+  au.emit('update-downloaded', { version: '9.9.9' });
+  u.checkForUpdates(true);
+
+  assert.deepEqual(au.calls, ['downloadUpdate']);
+  assert.deepEqual(events, [
+    { manual: false, status: 'downloaded', version: '9.9.9', downloadSource: 'boot' },
+    { manual: true, status: 'busy', reason: 'atualizacao-ja-baixada' },
+  ]);
+});
+
+test('cancelamento interrompe somente o download iniciado pelo boot', () => {
+  const au = fakeAutoUpdater();
+  class FakeCancellationToken {
+    constructor() { this.cancelled = false; }
+    cancel() { this.cancelled = true; }
+  }
+  const u = setupAutoUpdater(collect().onStatus, {
+    autoUpdater: au,
+    CancellationToken: FakeCancellationToken,
+  });
+
+  u.downloadUpdate('boot');
+  u.cancelBootDownload();
+
+  assert.equal(au.downloadToken instanceof FakeCancellationToken, true);
+  assert.equal(au.downloadToken.cancelled, true);
+});
+
+// quitAndInstall(true, true): silencioso + forca reabrir -- sem o segundo
+// argumento, uma instalacao automatica (boot.js) que nao reabre pareceria
+// o app tendo crashado. Ver a spec 2026-09-12, decisao 5.
+test('quitAndInstall e chamado silencioso e forcando reabrir', () => {
+  const au = fakeAutoUpdater();
+  const u = setupAutoUpdater(collect().onStatus, { autoUpdater: au });
+
+  u.quitAndInstall();
+  assert.deepEqual(au.quitAndInstallArgs, [true, true]);
 });
 
 test('sem mock e sem build empacotado, checkForUpdates ainda da retorno sintetico', () => {

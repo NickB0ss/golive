@@ -239,6 +239,30 @@
     // Negociacoes de saida em voo, por `${peerId}|${kind}`. Ver offerTo.
     const negotiating = new Set();
 
+    function negotiationKey(peerId, kind) {
+      return `${peerId}|${kind}`;
+    }
+
+    function isNegotiating(peerId, kind) {
+      return negotiating.has(negotiationKey(peerId, kind));
+    }
+
+    function waitForStable(pc) {
+      if (pc.signalingState === 'stable') return Promise.resolve(true);
+      return new Promise((resolve) => {
+        const finish = (stable) => {
+          pc.removeEventListener?.('signalingstatechange', onState);
+          resolve(stable);
+        };
+        const onState = () => {
+          if (pc.signalingState === 'stable') finish(true);
+          else if (pc.signalingState === 'closed') finish(false);
+        };
+        pc.addEventListener('signalingstatechange', onState, { once: false });
+        onState();
+      });
+    }
+
     // Esvazia, na ordem de chegada, os candidatos guardados pra `pc`. Uma
     // falha individual (candidato malformado do outro lado) nao pode
     // impedir a entrega dos demais -- basta UM candidato bom pra rota fechar.
@@ -414,7 +438,7 @@
       }
     }
 
-    async function offerTo(peerId, stream, quality, kind) {
+    async function offerTo(peerId, stream, quality, kind, options = {}) {
       // UMA negociacao de saida por vez, por conexao.
       //
       // `createOffer` tira um RETRATO dos m-lines que existem no instante em
@@ -435,14 +459,20 @@
       // mesma origem (flushPendingRelay, via onTrack e via case 'offer'), e
       // ali a segunda chamada e literalmente a mesma oferta -- enfileira-la
       // so devolveria o transceiver duplicado por outro caminho.
-      const emVoo = `${peerId}|${kind}`;
+      const emVoo = negotiationKey(peerId, kind);
       if (negotiating.has(emVoo)) {
         console.warn(`[mesh] oferta pra #${peerId} (kind=${kind}) ignorada: ja ha uma negociacao em voo`);
-        return;
+        return false;
       }
       negotiating.add(emVoo);
       try {
+        const existing = peers.get(peerId)?.outConns[kind];
+        if (existing && existing.signalingState !== 'stable') {
+          if (!options.waitForStable || !await waitForStable(existing)) return false;
+          if (peers.get(peerId)?.outConns[kind] !== existing) return false;
+        }
         await negotiateOffer(peerId, stream, quality, kind);
+        return true;
       } catch (err) {
         // Sem isto a pc ficava ABERTA e meio negociada: como ela nunca chega
         // em 'failed' no connectionstatechange (nao falhou -- nunca comecou),
@@ -468,7 +498,28 @@
       if (peerRef?.suspended) peerRef.suspended[kind] = false;
       if (peerRef?.suspendedSenders) peerRef.suspendedSenders[kind] = [];
 
+      // Renegociar numa pc que ja existe REAPROVEITA o transceiver de cada
+      // tipo de midia em vez de empilhar outro. Empilhar deixava o receptor
+      // com duas tracks de video na mesma stream e o <video> preso na
+      // primeira -- a velha, muda: tela preta com os dados chegando. Medido
+      // no Chromium 128 do app (spec 2026-09-12-tela-preta-ao-assistir):
+      // 0 quadros exibidos, 120 decodificados na track que ninguem mostrava.
+      const reusable = renegotiate && pc.getTransceivers
+        ? pc.getTransceivers().filter((t) => !t.stopped && t.receiver?.track)
+        : [];
       for (const track of stream.getTracks()) {
+        const idx = reusable.findIndex((t) => t.receiver.track.kind === track.kind);
+        if (idx >= 0) {
+          const reused = reusable.splice(idx, 1)[0];
+          reused.direction = 'sendonly';
+          await reused.sender.replaceTrack(track);
+          reused.sender.setStreams?.(stream);
+          if (track.kind === 'video') {
+            preferCodec(reused, quality.codec);
+            await applyReusedVideoParams(reused.sender, quality, peerId, kind);
+          }
+          continue;
+        }
         const transceiver = pc.addTransceiver(track, {
           direction: 'sendonly',
           streams: [stream],
@@ -486,6 +537,13 @@
           // setDegradationPreference.
           setDegradationPreference(transceiver.sender, peerId, kind);
         }
+      }
+      // Sobrou transceiver sem track correspondente (a stream nova tem menos
+      // midias, ou havia um empilhado por uma versao anterior): nao pode
+      // seguir mandando a track velha.
+      for (const leftover of reusable) {
+        leftover.sender.replaceTrack(null).catch(() => {});
+        leftover.direction = 'inactive';
       }
 
       const offer = await pc.createOffer();
@@ -629,6 +687,40 @@
       }
     }
 
+    // Transceiver reaproveitado nao passa pelo sendEncodings do
+    // addTransceiver: teto e preferencia de degradacao vao num setParameters
+    // UNICO (dois em voo no mesmo sender brigam pelo transactionId).
+    async function applyReusedVideoParams(sender, quality, peerId, kind) {
+      try {
+        const params = sender.getParameters();
+        if (params.encodings?.[0]) {
+          params.encodings[0].maxBitrate = quality.bitrate;
+          params.encodings[0].maxFramerate = quality.fps;
+        }
+        params.degradationPreference = parseKind(kind).baseKind === 'screen' ? 'maintain-resolution' : 'maintain-framerate';
+        await sender.setParameters(params);
+      } catch (err) {
+        console.warn('[mesh] setParameters no transceiver reaproveitado falhou', peerId, kind, err?.name);
+      }
+    }
+
+    /** Resumo da conexao de saida pra um peer/kind, so pra log de
+     * diagnostico ([assistir]). Nunca lanca. */
+    function describeOut(peerId, kind) {
+      const pc = peers.get(peerId)?.outConns?.[kind];
+      if (!pc) return 'sem conexao';
+      try {
+        const videos = (pc.getTransceivers ? pc.getTransceivers() : [])
+          .filter((t) => t.receiver?.track?.kind === 'video');
+        const tracks = videos
+          .map((t) => (t.sender.track ? `${t.sender.track.readyState}${t.sender.track.muted ? '/muda' : ''}` : 'sem-track'))
+          .join(',');
+        return `pc=${pc.connectionState} canais-video=${videos.length} [${tracks}] suspenso=${Boolean(peers.get(peerId)?.suspended?.[kind])}`;
+      } catch {
+        return 'indisponivel';
+      }
+    }
+
     function applyEncoding(quality, kind) {
       for (const peer of peers.values()) {
         const pc = peer.outConns[kind];
@@ -685,18 +777,26 @@
     async function removeTrack(peerId, track, kind) {
       const peer = peers.get(peerId);
       const pc = peer?.outConns[kind];
-      if (!pc) return;
+      if (!pc) return false;
       const sender = pc.getSenders().find((s) => s.track === track);
-      if (!sender) return;
+      if (!sender) return false;
+      const emVoo = negotiationKey(peerId, kind);
+      if (negotiating.has(emVoo)) return false;
+      negotiating.add(emVoo);
       try {
+        if (!await waitForStable(pc)) return false;
         pc.removeTrack(sender);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         // Renegociacao pura: a pc, o ICE e o DTLS continuam de pe deste
         // lado, so a track saiu. Ver ensureInConn.
         sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
+        return true;
       } catch {
         /* conexao pode ja ter fechado (peer saiu durante a renegociacao) */
+        return false;
+      } finally {
+        negotiating.delete(emVoo);
       }
     }
 
@@ -736,8 +836,7 @@
       // Heranca do contentHint da origem nao e garantida pelo Chromium na
       // recodificacao -- reaplicar aqui.
       if (track) track.contentHint = 'motion';
-      await offerTo(childId, inbound, quality, relayKindFor(kind, sourcePeerId));
-      return true;
+      return offerTo(childId, inbound, quality, relayKindFor(kind, sourcePeerId));
     }
 
     // ---------- Encode sob demanda (spec de 2026-08-23, F1.3) ----------
@@ -787,6 +886,21 @@
 
     function isPeerSuspended(peerId, kind) {
       return Boolean(peers.get(peerId)?.suspended?.[kind]);
+    }
+
+    function replaceLocalTrack(kind, matchKind, track) {
+      let tocados = 0;
+      for (const peer of peers.values()) {
+        const pc = peer.outConns[kind];
+        if (!pc) continue;
+        // P1: trocar fonte nao pode religar video que a pausa suspendeu.
+        if (matchKind === 'video' && peer.suspended?.[kind]) continue;
+        const sender = pc.getSenders().find((s) => s.track?.kind === matchKind);
+        if (!sender) continue;
+        sender.replaceTrack(track || null).catch(() => {});
+        tocados += 1;
+      }
+      return tocados;
     }
 
     /** Quem, entre os peers pra quem estamos ENVIANDO aquele kind, esta de
@@ -846,6 +960,7 @@
       handleAnswer,
       handleIce,
       offerTo,
+      isNegotiating,
       recoverUnstable,
       setSend,
       removeTrack,
@@ -858,8 +973,10 @@
       inStatsFor,
       setPeerDemand,
       isPeerSuspended,
+      replaceLocalTrack,
       receivingFrom,
       watchersOf,
+      describeOut,
     };
   }
 

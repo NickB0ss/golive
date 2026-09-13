@@ -1,0 +1,88 @@
+/* Tela de carregamento da abertura -- paleta minima duplicada dos tokens de
+ * src/renderer/style.css (--bg, --tx, --tx2, --live, --line) em vez de
+ * carregar a folha inteira (2000+ linhas) numa janela de 300x360. Se os
+ * tokens de style.css mudarem, replicar aqui tambem. Zero backdrop-filter,
+ * como em todo o app.
+ * Ver docs/superpowers/specs/2026-09-12-abertura-com-atualizacao-design.md.
+ */
+
+:root {
+  --bg:   #0E0F13;
+  --tx:   #E8EAED;
+  --tx2:  #9AA0AA;
+  --live: #FF4D4F;
+  --line: rgba(255, 255, 255, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--tx);
+  overflow: hidden;
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  height: 100vh;
+  -webkit-app-region: drag; /* deixa arrastar pela janela sem moldura */
+}
+
+.brand-mark {
+  width: 48px;
+  height: 48px;
+  color: var(--tx);
+}
+.brand-origin { fill: var(--live); }
+
+.status-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx2);
+  text-align: center;
+  min-height: 16px;
+}
+
+.progress {
+  width: 160px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--tx2);
+  border-radius: inherit;
+  transition: width 150ms linear;
+}
+
+/* Fase sem progresso numerico (checando/instalando): faixa deslizando em
+   vez de uma barra parada em 0%, que pareceria travada. */
+.progress.indeterminate .progress-fill {
+  width: 40%;
+  transition: none;
+  animation: progress-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0%   { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sem faixa deslizando: barra parada em 40% (mostra "em andamento" sem
+     movimento nenhum na tela). */
+  .progress.indeterminate .progress-fill {
+    animation: none;
+    margin-left: 0;
+  }
+}

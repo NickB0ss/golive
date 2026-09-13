@@ -104,14 +104,114 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.12.7` (`package.json`). Electron `^32` (fora de suporte — ver backlog),
+`0.14.0` (tag `v0.14.0`, 2026-09-12), logo depois do hotfix `0.13.1`
+(tag `v0.13.1`, mesmo dia). Electron `^32` (fora de suporte — ver backlog),
 `electron-builder` na `^26`.
-Testes: `npm test` → **581 passando** (com as mudanças não commitadas de
-"Em andamento"). `npm run lint` → 0 erros, 9 avisos
+Testes: `npm test` → **710 passando** (581 na 0.13.0). `npm run lint` → 0
+erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
-## Em andamento (não lançado, sem commit)
+## Lançado na 0.14.0 (2026-09-12)
+
+Seis frentes de 2026-09-12 mais o hotfix 0.13.1 (bloco no fim desta seção).
+Specs e planos em `docs/superpowers/specs/` e `docs/superpowers/plans/`
+(`2026-09-12-*`); roteiro de teste manual em
+`docs/testes/2026-09-12-roteiro-teste-novidades.md`; pesquisa sobre o
+compartilhamento em `docs/2026-09-12-pesquisa-compartilhamento-de-tela.md`.
+**Lançado sem teste em PCs reais** — só `npm test`/lint e quatro rodadas de
+revisão de código; o roteiro é a validação pendente.
+
+- **Tela de carregamento com atualização automática** (`src/splash/`,
+  `src/main/boot.js`, `src/main/update-policy.js`). Na abertura, antes da
+  janela principal, o app checa a atualização (limite de ~5 s) e, se houver,
+  baixa e instala sozinho, sem perguntar; sem rede, com erro ou download
+  travado, libera o app. Com o app aberto: checagem a cada 60 min e botão
+  "Atualizar" no lobby (cor de ação e um ponto `--warn`), escondido dentro da
+  sala. Download manual que termina com a pessoa numa sala só instala no
+  próximo clique, já fora dela (IPC `room:active`). Substitui a decisão de
+  2026-08-26 ("nada instalado sem o usuário mandar"): aquele fluxo baixava
+  escondido e instalava ao fechar; este é visível e acontece antes de existir
+  sala.
+- **Transferência de sala (F3).** Host que sai avisa a sala
+  (`room-migrating`, com PIN, banidos, chat e novo dono) e o sucessor — menor
+  id sobrevivente, sem votação (`src/renderer/succession.js`) — sobe o
+  servidor com esse estado e anuncia um beacon UDP de migração; os outros
+  reconectam nele sem derrubar as conexões P2P de vídeo. Na queda do host, o
+  mesmo caminho dispara quando a reconexão se esgota, com espera escalonada
+  por posição (se o 1º sucessor falhar, o 2º assume). Limites: na queda, a
+  lista de banidos se perde e a liderança de uma terceira pessoa (nem host nem
+  sucessor) vai para o sucessor.
+- **Trocar a fonte ao vivo.** Botão "Trocar" durante a transmissão: troca a
+  entrada do relay de canvas e a track de saída continua a mesma (sem
+  renegociar, sem clique de quem assiste). O som acompanha a fonte nova; sem
+  PID/addon a troca segue **sem som** e avisa — nunca com o som do sistema
+  inteiro (`src/renderer/sourceswap.js`).
+- **Pausa vale para todo sender novo** (P1 da avaliação de 2026-09-07): toda
+  criação de sender de tela passa por `offerOwnStreamTo()`, que já nasce
+  pausado — reeleição do relay, entrada tardia, reconexão e troca de fonte.
+- **Ponteiro laser e reações** sobre a tela (`laser.js`, `reactions.js`): no
+  tile de quem assiste e na tela real de quem transmite, só com "Deixar a
+  sala rabiscar". Mensagens `laser`/`reaction` validadas campo a campo e com
+  limite no servidor (laser 30/s; reação: rajada de 5, depois 1 a cada 300 ms).
+- **Notificação "fulano ficou ao vivo"** do Windows com o app fora de foco
+  (interruptor em Configurações, ligado por padrão; sem repetir em rajada nem
+  ao entrar numa sala com gente já ao vivo) e **janela espiar** sempre no topo
+  (botão direito no tile → "Espiar"; `window.open` controlado pelo main, uma
+  janela por vez, posição lembrada). Jogo em tela cheia exclusiva não deixa
+  nada por cima.
+- **Verificação de sons.** Quem dispara qual som saiu do `app.js` para
+  `soundevents.js` (testado); cada tentativa grava no log
+  `[som] <nome>: tocou | pulado (motivo) | NAO tocou (motivo)`, e "tocou" só
+  depois de o AudioContext estar `running`. O 2º blip do chat é agendado no
+  próprio áudio (não atrasa com a janela oculta). "Testar sons" e "Últimos
+  sons" em Configurações > Voz e Vídeo. O chat continua sem som com a janela
+  em foco (decisão antiga, agora visível no diagnóstico).
+
+Protocolo novo: `laser`, `reaction`, `room-migrating`, `welcome.roomId` /
+`welcome.hostId`, beacon UDP `golive-room-migrate`. IPC novo: `room:active`,
+`room:migrate-beacon:start|stop`, `overlay:fx` e a janela espiar.
+
+**Hotfix 0.13.1 — tela preta ao passar a assistir outra tela.** Investigação,
+evidência e hipóteses descartadas em
+`docs/superpowers/specs/2026-09-12-tela-preta-ao-assistir-design.md`; roteiro
+em `docs/testes/2026-09-12-roteiro-tela-preta.md`.
+
+- **Renegociação reaproveita o canal existente** (`mesh.js`,
+  `negotiateOffer`). Antes empilhava um transceiver de vídeo por
+  renegociação; provado no Chromium 128 do app que o receptor fica com duas
+  tracks na mesma stream e o `<video>` preso na velha — tela preta com os
+  dados chegando. Afeta com certeza a câmera (desligar/religar).
+- **Detector de tela assistida sem imagem + autocura** (`stallwatch.js`):
+  tela que nunca exibiu quadro desde que passou a ser assistida, por 6 s,
+  pede a quem a serve (origem ou relay) pra refazer só aquela conexão
+  (mensagem nova `reoffer`), no máximo 3 vezes. Tela parada de conteúdo
+  estático não dispara. Timer próprio: quem só assiste não roda o loop de
+  estatísticas.
+- **Log `[assistir]`** do lado de quem assiste e de quem serve (antes não
+  existia nenhum): intenção, `view-state` enviado, demanda aplicada com o
+  estado dos canais de vídeo, pedido e resultado da autocura.
+- **Revisão 1 — `reoffer` seguro:** servidor valida `to`/kind estrito,
+  reconstrói só os campos do protocolo e limita a 2/s; cliente aceita origem
+  composta conhecida e mantém histórico com teto.
+- **Revisão 2 — estado por sessão:** teardown limpa detector de stall e os
+  caches de reoferta/view-state, sem tentativas herdadas entre salas.
+- **Revisão 3 — oferta confirmada:** mesh expõe negociação em voo, `offerTo`/
+  `relayTo` retornam sucesso real e o relay libera filho reservado se não sair
+  oferta.
+- **Revisão 4 — câmera serializada:** remover track e religar usam a mesma
+  guarda; a nova oferta aguarda `stable` depois da resposta pendente.
+- **Não provado:** qual caminho renegocia uma conexão de *tela* viva no uso
+  real — por isso a autocura e o log; o roteiro diz o que mandar.
+- **Captura instável de jogo:** o transmissor detecta três `mute` em 20 s ou
+  um `mute` contínuo de 3 s, avisa no palco com orientação para usar janela
+  sem borda e só remove o aviso após 15 s estáveis. Tela cheia exclusiva e
+  proteção anti-captura são limites do jogo/Windows, não corrigíveis pelo app.
+- **Beacon ao fechar a sala:** o anúncio UDP para antes de o servidor embutido
+  ser invalidado; o callback de pares também tolera servidor ausente e a
+  descoberta interrompe um anúncio cujo callback falhe.
+
+## Lançado na 0.13.0 (2026-09-11)
 
 Correções das queixas de dois usuários em 08–10/09 ("cai da sala sozinho" e
 "tela mal otimizada"). Diagnóstico e planos em `logs/agentes/plano-desconexao.md`

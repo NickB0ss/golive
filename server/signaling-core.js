@@ -9,6 +9,7 @@
 
 const { WebSocketServer } = require('ws');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
+const { chooseSuccessor, chooseNewOwner } = require('../src/renderer/succession.js');
 
 // O servidor de sinalizacao roda no MESMO processo do app de quem criou a
 // sala. O `maxPayload` padrao do `ws` e 100 MB: um cliente hostil (ou com
@@ -64,6 +65,28 @@ const MAX_ANNOTATE_POINTS = 200; // pontos por mensagem (lote de um quadro)
 const MAX_ANNOTATE_TEXT = 120; // caracteres de uma escrita
 const MAX_ANNOTATE_SYNC_ITEMS = 400; // itens de um snapshot pra quem chegou depois
 
+// Ids de conexao nascem em `String(nextId++)`: decimal positivo, sem zeros
+// a esquerda. Number conserva inteiros exatos ate 16 algarismos; o teto
+// tambem impede um kind composto de virar uma chave gigante no renderer.
+const CONNECTION_ID_RE = /^[1-9]\d{0,15}$/;
+const REOFFER_KINDS_RE = /^(screen|camera)(?:@([1-9]\d{0,15}))?$/;
+const SURFACE_RE = /^([1-9]\d{0,15}):(screen|camera)$/;
+const MAX_REOFFER_PER_SECOND = 2;
+
+function parseReofferKind(kind) {
+  if (typeof kind !== 'string') return null;
+  const match = REOFFER_KINDS_RE.exec(kind);
+  if (!match) return null;
+  return { kind, sourceId: match[2] || null };
+}
+
+function parseSurface(surface) {
+  if (typeof surface !== 'string') return null;
+  const match = SURFACE_RE.exec(surface);
+  if (!match || !CONNECTION_ID_RE.test(match[1])) return null;
+  return { surface, ownerId: match[1] };
+}
+
 /** Contador de taxa por conexao, isolado pra ser testavel sem subir socket.
  * `hit(now)` registra uma mensagem e devolve `true` enquanto a conexao
  * estiver dentro do teto na janela corrente; `false` no primeiro estouro. */
@@ -78,6 +101,29 @@ function createRateLimiter({ limit = MAX_MSGS_PER_SECOND, windowMs = RATE_WINDOW
       }
       count += 1;
       return count <= limit;
+    },
+  };
+}
+
+// Reacoes precisam de rajada curta e depois cadencia constante, algo que
+// uma janela fixa de "N por segundo" nao representa.
+function createBurstLimiter({ capacity = 5, refillMs = 300 } = {}) {
+  let tokens = capacity;
+  let lastRefill = null;
+  return {
+    hit(now) {
+      if (lastRefill === null) {
+        lastRefill = now;
+      } else {
+        const refill = Math.floor((now - lastRefill) / refillMs);
+        if (refill > 0) {
+          tokens = Math.min(capacity, tokens + refill);
+          lastRefill += refill * refillMs;
+        }
+      }
+      if (tokens < 1) return false;
+      tokens -= 1;
+      return true;
     },
   };
 }
@@ -188,6 +234,58 @@ function sanitizeAnnotateOp(msg) {
   }
 }
 
+function sanitizeLaserOp(msg) {
+  if (typeof msg.x !== 'number' || typeof msg.y !== 'number') return null;
+  const x = normPoint(msg.x);
+  const y = normPoint(msg.y);
+  return x === null || y === null ? null : { x, y };
+}
+
+// Lista fechada de emojis permitidos. Espelho de REACTIONS de reactions.js:
+// um emoji arbitrario de cliente hostil nunca atravessa a sala inteira.
+const REACTION_EMOJI = new Set(['👍', '😂', '😮', '🔥', '👏', '❤️']);
+
+// Eventos que o servidor emite e o renderer sabe apresentar no historico.
+const SYSTEM_CHAT_EVENTS = new Set(['join', 'leave', 'stop-share', 'kick', 'ban', 'unban', 'transfer-owner']);
+
+function sanitizeReactionOp(msg) {
+  return typeof msg.emoji === 'string' && REACTION_EMOJI.has(msg.emoji) ? { emoji: msg.emoji } : null;
+}
+
+function sanitizeInitialBan(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+  const { key, name } = entry;
+  if (typeof key !== 'string' || key.length > 128 || !/^(client|ip):.+$/.test(key)) return null;
+  if (typeof name !== 'string') return null;
+  return { key, name: name.slice(0, 40) };
+}
+
+function sanitizeInitialChatEntry(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry) || entry.type !== 'chat') return null;
+  if (entry.system === true) {
+    if (typeof entry.event !== 'string' || !SYSTEM_CHAT_EVENTS.has(entry.event)) return null;
+    const safe = { type: 'chat', system: true, event: entry.event };
+    if (typeof entry.actor === 'string') safe.actor = entry.actor.slice(0, 40);
+    if (typeof entry.target === 'string') safe.target = entry.target.slice(0, 40);
+    if (typeof entry.ts === 'number' && Number.isFinite(entry.ts)) safe.ts = entry.ts;
+    return safe;
+  }
+  if (typeof entry.text !== 'string') return null;
+  const safe = { type: 'chat', text: entry.text.slice(0, 500) };
+  if (typeof entry.id === 'string') safe.id = entry.id.slice(0, 64);
+  if (typeof entry.from === 'string') safe.from = entry.from.slice(0, 64);
+  if (typeof entry.name === 'string') safe.name = entry.name.slice(0, 40);
+  if (typeof entry.ts === 'number' && Number.isFinite(entry.ts)) safe.ts = entry.ts;
+  if (typeof entry.image === 'string'
+    && /^data:image\/(png|jpeg|gif|webp);base64,/.test(entry.image)
+    && entry.image.length <= MAX_IMAGE_CHARS) {
+    safe.image = entry.image;
+    safe.w = clampDim(entry.w);
+    safe.h = clampDim(entry.h);
+  }
+  return safe;
+}
+
 // Destino padrao do log: o console, como sempre foi (o CLI em
 // server/signaling.js usa este). O app embutido passa o proprio logger via
 // `createSignalingServer({ log })` -- sem isso nada do que acontece no host
@@ -222,7 +320,7 @@ function send(ws, payload) {
  *
  * `resumeGraceMs`: quanto um peer com close anormal continua membro antes
  * de sair de verdade. `getPeerCount()` inclui esses peers suspensos. */
-function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog }) {
+function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, initialTransferredTo = null, initialBans, initialChatHistory }) {
   // O servidor roda no processo de quem hospeda: um logger que lance (disco
   // cheio, arquivo travado) dentro de um handler do ws subiria como uncaught
   // e derrubaria a sala inteira por causa de uma linha de diagnostico. A
@@ -240,6 +338,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
   // beacon anuncia a sala pra todo mundo. `null`/'' => sala aberta, igual
   // a sempre. Normalizado pra string pra comparar com o que vem do cliente.
   const roomPin = pin != null && String(pin) !== '' ? String(pin) : null;
+  const stableRoomId = typeof roomId === 'string' && roomId !== '' && roomId.length <= 100 ? roomId : randomUUID();
   // Token de dono (opcional). Gerado pelo main.js e devolvido so pro
   // renderer de quem criou a sala -- nunca sai da maquina. Comparado por
   // igualdade estrita: string vazia/null nunca marca dono.
@@ -265,13 +364,18 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     // ver a spec de 2026-09-04, secao 4.1: sem isto, o host que passa a
     // lideranca e depois reconecta voltaria como dono (o ownerToken dele
     // continua valido) e a sala teria duas coroas.
-    let transferredTo = null;
+    let transferredTo = typeof initialTransferredTo === 'string' && initialTransferredTo !== '' && initialTransferredTo.length <= 100
+      ? initialTransferredTo
+      : null;
 
     const CHAT_HISTORY_MAX = 50;
     const chatHistory = []; // ring buffer -- mensagens de texto e linhas de sistema juntas
     const chatRateLimiters = new Map(); // peerId -> limiter, 5 msg/s
     const chatImageLimiters = new Map(); // peerId -> limiter, 3 imagens / 5s
     const annotateLimiters = new Map(); // peerId -> limiter, 60 msg/s
+    const laserLimiters = new Map(); // peerId -> limiter, 30 msg/s
+    const reactionLimiters = new Map(); // peerId -> limiter, rajada 5, 1 / 300ms
+    const reofferLimiters = new Map(); // peerId -> limiter, 2 reofertas/s
     // 'watchers' e reenviado pra sala inteira com os avatares (data URL de
     // ate 256 KB cada): sem teto proprio, um cliente em loop faria o host
     // replicar megabytes por mensagem. Uso legitimo e rajada curta em
@@ -296,6 +400,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
         chatHistory.splice(i, 1);
         extras -= 1;
       }
+    }
+
+    for (const entry of Array.isArray(initialChatHistory) ? initialChatHistory.slice(0, CHAT_HISTORY_MAX) : []) {
+      const safe = sanitizeInitialChatEntry(entry);
+      if (safe) pushChatEntry(safe);
     }
 
     /** Linha de sistema (entrada/saida/moderacao). `target` e omitido pra
@@ -335,6 +444,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     function isLoopback(address) {
       return address === '127.0.0.1' || address === '::1';
     }
+    function findHostPeerId(room = null) {
+      for (const [id, peer] of peers) {
+        if ((room === null || peer.room === room) && isLoopback(normalizeAddress(peer.address))) return id;
+      }
+      return null;
+    }
     function banKeysFor({ address, clientId }) {
       const keys = [];
       const ip = normalizeAddress(address);
@@ -344,6 +459,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     }
 
     const bans = new Map(); // qualquer chave (ip: ou client:) -> { primaryKey, name }
+
+    for (const entry of Array.isArray(initialBans) ? initialBans.slice(0, 200) : []) {
+      const safe = sanitizeInitialBan(entry);
+      if (safe) bans.set(safe.key, { primaryKey: safe.key, name: safe.name });
+    }
 
     function findBan(keys) {
       for (const k of keys) if (bans.has(k)) return bans.get(k);
@@ -460,6 +580,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
       chatRateLimiters.delete(peerId);
       chatImageLimiters.delete(peerId);
       annotateLimiters.delete(peerId);
+      laserLimiters.delete(peerId);
+      reactionLimiters.delete(peerId);
+      reofferLimiters.delete(peerId);
       watchersLimiters.delete(peerId);
       log(`- ${logName(me.name)} (#${peerId}) saiu da sala ${logName(me.room)} (${why})`);
       broadcastToRoom(me.room, peerId, { type: 'peer-left', id: peerId });
@@ -631,6 +754,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 chatRateLimiters.delete(resumedId);
                 chatImageLimiters.delete(resumedId);
                 annotateLimiters.delete(resumedId);
+                laserLimiters.delete(resumedId);
+                reactionLimiters.delete(resumedId);
+                reofferLimiters.delete(resumedId);
                 watchersLimiters.delete(resumedId);
                 joined = true;
                 peerId = resumedId;
@@ -641,6 +767,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                   type: 'welcome', id: resumedId, owner: resumedPeer.owner, peers: roomPeers(room, resumedId),
                   chat: chatHistory.slice(), banned: resumedPeer.owner ? listBans() : [],
                   resumeToken: resumedPeer.resumeToken, resumed: true,
+                  roomId: stableRoomId, hostId: findHostPeerId(room),
                 });
                 // Quem ficou nao recebe peer-joined na retomada, mas precisa
                 // saber que o socket voltou para refazer uma oferta perdida.
@@ -659,6 +786,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 type: 'welcome', id, owner, peers: roomPeers(room, id),
                 chat: chatHistory.slice(), banned: owner ? listBans() : [],
                 resumeToken: newResumeToken,
+                roomId: stableRoomId, hostId: findHostPeerId(room),
               });
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
               pushSystemLine(room, 'join', name, undefined, id);
@@ -739,7 +867,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
             // nada, so entrega ao destinatario carimbando quem mandou.
             // 'view-state' e o espectador dizendo se esta ou nao assistindo
             // (F1.3); 'tree' e a origem distribuindo papeis da arvore de
-            // retransmissao (F2). Ver a spec de 2026-08-23.
+            // retransmissao (F2). Ver a spec de 2026-08-23. 'reoffer' e o
+            // espectador pedindo pra refazer uma conexao cuja tela nunca
+            // mostrou imagem (hotfix 2026-09-12) -- quem recebe valida o kind
+            // e tem teto de frequencia proprio.
             case 'offer':
             case 'answer':
             case 'ice':
@@ -753,6 +884,28 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               const target = peers.get(String(msg.to));
               if (!me || !target || me.room !== target.room) return;
               send(target.ws, { ...msg, from: peerId });
+              break;
+            }
+
+            case 'reoffer': {
+              // Reoffer nao e sinalizacao generica: os dois campos que viram
+              // chave no cliente precisam ter tipo e formato exatos antes de
+              // chegar la. Reconstruir tambem nao deixa campo arbitrario
+              // viajar junto com o pedido.
+              if (typeof msg.to !== 'string' || !CONNECTION_ID_RE.test(msg.to)) return;
+              const me = peers.get(peerId);
+              const target = peers.get(msg.to);
+              const parsedKind = parseReofferKind(msg.kind);
+              if (!me || !target || me.room !== target.room || !parsedKind) return;
+              if (parsedKind.sourceId) {
+                const source = peers.get(parsedKind.sourceId);
+                if (!source || source.room !== me.room) return;
+              }
+              const limiter = reofferLimiters.get(peerId)
+                || createRateLimiter({ limit: MAX_REOFFER_PER_SECOND, windowMs: 1000 });
+              reofferLimiters.set(peerId, limiter);
+              if (!limiter.hit(Date.now())) return;
+              send(target.ws, { type: 'reoffer', to: msg.to, kind: parsedKind.kind, from: peerId });
               break;
             }
 
@@ -818,6 +971,38 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               break;
             }
 
+            case 'laser': {
+              const me = peers.get(peerId);
+              if (!me) return;
+              const parsedSurface = parseSurface(msg.surface);
+              if (!parsedSurface) return;
+              const limiter = laserLimiters.get(peerId) || createRateLimiter({ limit: 30, windowMs: 1000 });
+              laserLimiters.set(peerId, limiter);
+              if (!limiter.hit(Date.now())) return;
+              const surface = peers.get(parsedSurface.ownerId);
+              if (!surface || surface.room !== me.room) return;
+              const op = sanitizeLaserOp(msg);
+              if (!op) return;
+              broadcastToRoom(me.room, peerId, { ...op, type: 'laser', surface: parsedSurface.surface, from: peerId });
+              break;
+            }
+
+            case 'reaction': {
+              const me = peers.get(peerId);
+              if (!me) return;
+              const parsedSurface = parseSurface(msg.surface);
+              if (!parsedSurface) return;
+              const limiter = reactionLimiters.get(peerId) || createBurstLimiter();
+              reactionLimiters.set(peerId, limiter);
+              if (!limiter.hit(Date.now())) return;
+              const surface = peers.get(parsedSurface.ownerId);
+              if (!surface || surface.room !== me.room) return;
+              const op = sanitizeReactionOp(msg);
+              if (!op) return;
+              broadcastToRoom(me.room, peerId, { ...op, type: 'reaction', surface: parsedSurface.surface, from: peerId });
+              break;
+            }
+
             // Snapshot da lousa pra UM peer (quem acabou de entrar). Roteado
             // como offer/answer, nao broadcast: e um estado inteiro, e so
             // quem chegou depois precisa dele.
@@ -853,6 +1038,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 // campo vem de um cliente: qualquer coisa que nao seja o
                 // booleano vira false, como ja acontece com `paused`.
                 annotate: msg.annotate === true,
+                // Estado reapresentado apos migracao: informa o cliente que
+                // recebe para nao tratar a sincronizacao como transicao nova.
+                bootstrap: msg.bootstrap === true,
               });
               break;
             }
@@ -964,9 +1152,36 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
         // sala fantasma na tela ate desconectar na mao. O 'room-closed'
         // explicito (+ close limpo 1001) deixa o cliente distinguir "a sala
         // acabou" de "a MINHA conexao caiu" e voltar pro lobby na hora.
-        close: () => new Promise((res) => {
+        close: ({ migrate = false } = {}) => new Promise((res) => {
           closingRoom = true;
           for (const peer of peers.values()) clearResumeTimer(peer);
+          const hostPeerId = findHostPeerId();
+          const hostPeer = hostPeerId ? peers.get(hostPeerId) : null;
+          const survivors = hostPeer
+            ? [...peers].filter(([id, peer]) => id !== hostPeerId && peer.room === hostPeer.room).map(([id]) => id)
+            : [];
+          if (migrate === true && hostPeer && survivors.length) {
+            const successor = chooseSuccessor(survivors, null);
+            let currentOwnerId = null;
+            for (const [id, peer] of peers) {
+              if (peer.room === hostPeer.room && peer.owner) {
+                currentOwnerId = id;
+                break;
+              }
+            }
+            const newOwnerId = chooseNewOwner(survivors, currentOwnerId, successor);
+            const successorPeer = successor ? peers.get(successor) : null;
+            broadcastToRoom(hostPeer.room, hostPeerId, {
+              type: 'room-migrating',
+              roomId: stableRoomId,
+              successor,
+              successorName: successorPeer ? successorPeer.name : null,
+              newOwnerClientId: newOwnerId ? peers.get(newOwnerId)?.clientId ?? null : null,
+              pin: roomPin,
+              bans: listBans(),
+              chat: chatHistory.slice(),
+            });
+          }
           log(`sala encerrada: room-closed para ${wss.clients.size} conexao(oes)`);
           for (const client of wss.clients) {
             send(client, { type: 'room-closed' });
@@ -989,6 +1204,8 @@ module.exports = {
   createSignalingServer,
   createRateLimiter,
   sanitizeAnnotateOp,
+  sanitizeInitialBan,
+  sanitizeInitialChatEntry,
   clampDim,
   MAX_IMAGE_CHARS,
   CHAT_IMAGE_HISTORY_MAX,

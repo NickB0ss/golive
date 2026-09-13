@@ -2,7 +2,7 @@
  * Ponte da janela de rabisco. Superficie minima de proposito: esta pagina so
  * RECEBE o que desenhar, e nao tem uma unica funcao pra chamar de volta --
  * ela nao fala com a sala, nao le disco e nao abre socket. Tudo o que ela
- * sabe chega por estes tres eventos.
+ * sabe chega por estes quatro eventos.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -18,4 +18,11 @@ contextBridge.exposeInMainWorld('goliveOverlay', {
    * transmissao que ja tinha rabisco. */
   onLoad: (callback) =>
     ipcRenderer.on('overlay:load', (_event, payload) => callback(payload)),
+
+  /** Laser ou reacao -- `{ kind: 'laser'|'reaction', surface, from, ... }`.
+   * Canal PROPRIO (nao `overlay:op`): sao efeitos efemeros, sem a semantica
+   * de lousa persistente que aquele canal carrega (ver spec de
+   * 2026-09-12, secao 7). */
+  onFx: (callback) =>
+    ipcRenderer.on('overlay:fx', (_event, payload) => callback(payload)),
 });

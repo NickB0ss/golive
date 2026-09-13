@@ -241,10 +241,13 @@ encoder. Nessa mesma aba fica o botão **Abrir pasta de logs** — um arquivo po
 sessão (os últimos 8 são mantidos), pra mandar pra quem for investigar um
 problema.
 
-No canto superior esquerdo, ao lado do nome do app, há um botão de **buscar
-atualizações**. O app também checa sozinho ao abrir, mas não baixa nada sem
-você mandar: quando há versão nova, um aviso no topo oferece o botão
-"Reiniciar e instalar", que aí sim baixa e reinstala.
+**Atualização.** Ao abrir, uma tela de carregamento procura versão nova antes
+de liberar o app: se houver, baixa e instala sozinha, sem perguntar, e o app
+reabre já atualizado; sem internet, ela desiste em poucos segundos e abre o
+app normalmente. Com o app aberto, nada instala sozinho: quando sai uma versão
+nova, aparece no topo do lobby um botão **Atualizar** (some dentro de uma
+sala) — clicar baixa e reinstala. Há também o botão de **buscar
+atualizações**, ao lado do nome do app.
 
 ---
 
