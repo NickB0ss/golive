@@ -28,9 +28,17 @@ if (!app.requestSingleInstanceLock()) {
 // segunda chamada sobrescreve a primeira, em silencio.
 //
 // Uma feature que nao existe nesta versao do Chromium tambem e ignorada em
-// silencio -- parece que funcionou. Por isso os nomes de WGC abaixo estao
-// marcados como NAO VERIFICADOS: eles mudaram de nome e de granularidade
-// entre versoes. Como confirmar qual capturador esta em uso, em ordem:
+// silencio -- parece que funcionou. Os nomes de WGC abaixo mudaram de nome
+// e de granularidade entre versoes; no Chromium 128 (Electron 32.3.3) eles
+// foram VERIFICADOS em 2026-09-12: com --enable-logging --v=1 o log mostra
+// `DesktopCaptureOptions: ... allow_wgc_screen_capturer: 1,
+// allow_wgc_window_capturer: 1`, e a captura de monitor entregou ~32 fps
+// numa area de trabalho parada. Na mesma maquina o caminho DXGI nem sobe
+// ("Cannot initialize any DxgiOutputDuplicator instance" nos adaptadores
+// 1 e 2 -- ha duas RTX 3060 com LUIDs diferentes), entao ali o app depende
+// do WGC, que depende da composicao do DWM: jogo em tela cheia exclusiva
+// pode deixar a captura sem quadros (track em mute/unmute). Ao subir o
+// Electron, reconfirmar. Como confirmar qual capturador esta em uso:
 //   1. rodar com --enable-logging --v=1 e procurar WgcCapturerWin no log
 //      (o caminho lento aparece como ScreenCapturerWinGdi/WindowCapturerWinGdi);
 //   2. teste decisivo: compartilhar uma janela de jogo em fullscreen
@@ -255,6 +263,9 @@ async function ensureDiscoveryStarted() {
 async function closeEmbeddedServer() {
   if (embeddedServerClosing) return embeddedServerClosing;
   if (!embeddedServer) return;
+  // O callback do beacon le embeddedServer a cada tick. Para o timer antes
+  // de limpar a referencia para ele nunca observar o servidor fechado.
+  discovery.stopAdvertising();
   const server = embeddedServer;
   embeddedServer = null;
   hostedRoomPin = null;
@@ -691,7 +702,8 @@ function advertiseHostedRoom() {
     name: hostedRoomName,
     port: embeddedServer.port,
     address,
-    getPeerCount: () => embeddedServer.getPeerCount(),
+    // Defesa para um tick que tenha sido enfileirado enquanto a sala fecha.
+    getPeerCount: () => embeddedServer?.getPeerCount?.() || 0,
     protected: Boolean(hostedRoomPin),
     // A versao viaja no beacon so pra lista da rede poder avisar ANTES do
     // clique ("v0.6.0 - atualize") em vez de deixar a pessoa conectar e

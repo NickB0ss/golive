@@ -116,6 +116,98 @@ test('religar devolve a track ao mesmo sender', () => {
   assert.equal(mesh.isPeerSuspended('7', 'screen'), false);
 });
 
+// --- Renegociacao reaproveita transceivers (hotfix 2026-09-12) ---
+//
+// Empilhar um transceiver por renegociacao deixava o receptor com duas
+// tracks de video na mesma stream e o <video> preso na velha (tela preta).
+function fakeTransceiver(kind, track = null) {
+  return {
+    stopped: false,
+    direction: 'sendonly',
+    receiver: { track: { kind } },
+    sender: {
+      track,
+      replaceTrack(next) { this.track = next; return Promise.resolve(); },
+      getParameters() { return { encodings: [{}] }; },
+      setParameters() { return Promise.resolve(); },
+    },
+  };
+}
+
+function fakeRenegotiablePc(transceivers) {
+  return {
+    added: 0,
+    connectionState: 'connected',
+    signalingState: 'stable',
+    localDescription: null,
+    getTransceivers: () => transceivers,
+    getSenders: () => transceivers.map((t) => t.sender),
+    addTransceiver(track) {
+      this.added += 1;
+      const t = fakeTransceiver(track.kind, track);
+      transceivers.push(t);
+      return t;
+    },
+    async createOffer() { return { type: 'offer', sdp: 'v=0\r\n' }; },
+    async setLocalDescription(d) { this.localDescription = d; },
+  };
+}
+
+const QUALIDADE_REUSO = { bitrate: 6_000_000, fps: 60, codec: 'video/H264' };
+
+test('renegociar numa pc existente reaproveita o canal de video e de audio', async () => {
+  const sent = [];
+  const mesh = createMesh({ send: (m) => sent.push(m), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  const video = fakeTransceiver('video', null); // suspenso (F1.3)
+  const audio = fakeTransceiver('audio', { kind: 'audio', id: 'audio-velho' });
+  const pc = fakeRenegotiablePc([video, audio]);
+  mesh.peers.get('7').outConns.screen = pc;
+  const novoVideo = { kind: 'video', id: 'video-novo' };
+  const novoAudio = { kind: 'audio', id: 'audio-novo' };
+
+  await mesh.offerTo('7', { getTracks: () => [novoVideo, novoAudio] }, QUALIDADE_REUSO, 'screen');
+
+  assert.equal(pc.added, 0, 'nenhum transceiver empilhado');
+  assert.equal(pc.getTransceivers().length, 2);
+  assert.equal(video.sender.track, novoVideo);
+  assert.equal(audio.sender.track, novoAudio);
+  assert.equal(sent.at(-1).renegotiate, true);
+  assert.equal(mesh.isPeerSuspended('7', 'screen'), false);
+});
+
+test('canal que sobra sem track correspondente para de mandar a track velha', async () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  const video = fakeTransceiver('video', { kind: 'video', id: 'v' });
+  const audio = fakeTransceiver('audio', { kind: 'audio', id: 'a-velho' });
+  mesh.peers.get('7').outConns.screen = fakeRenegotiablePc([video, audio]);
+
+  await mesh.offerTo('7', { getTracks: () => [{ kind: 'video', id: 'v2' }] }, QUALIDADE_REUSO, 'screen');
+
+  assert.equal(audio.sender.track, null);
+  assert.equal(audio.direction, 'inactive');
+});
+
+test('midia nova sem canal existente ainda ganha transceiver proprio', async () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  const pc = fakeRenegotiablePc([fakeTransceiver('video', { kind: 'video' })]);
+  mesh.peers.get('7').outConns.camera = pc;
+
+  await mesh.offerTo('7', { getTracks: () => [{ kind: 'video' }, { kind: 'audio' }] }, QUALIDADE_REUSO, 'camera');
+
+  assert.equal(pc.added, 1, 'so o audio, que nao tinha canal');
+});
+
+test('describeOut resume a conexao sem lancar', () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  assert.equal(mesh.describeOut('7', 'screen'), 'sem conexao');
+  mesh.peers.get('7').outConns.screen = fakeRenegotiablePc([fakeTransceiver('video', null)]);
+  assert.match(mesh.describeOut('7', 'screen'), /canais-video=1 \[sem-track\]/);
+});
+
 test('pedir o estado em que ja esta nao faz nada', () => {
   const video = fakeSender({ kind: 'video' });
   const mesh = meshWithPeer([video]);
@@ -225,14 +317,24 @@ function installFakeWebRTC() {
     constructor() {
       this.senders = [];
       this.localDescription = null;
+      this.listeners = {};
       // Uma pc recem-criada ja esta em 'stable' -- e o estado que
       // ensureInConn exige pra reusar a conexao numa renegociacao (#A8).
       this.signalingState = 'stable';
     }
-    addEventListener() {}
+    addEventListener(type, listener) {
+      (this.listeners[type] ||= []).push(listener);
+    }
+    removeEventListener(type, listener) {
+      this.listeners[type] = (this.listeners[type] || []).filter((item) => item !== listener);
+    }
+    emit(type) {
+      for (const listener of this.listeners[type] || []) listener();
+    }
     close() {
       this.closed = true;
       this.signalingState = 'closed';
+      this.emit('signalingstatechange');
     }
     removeTrack(sender) {
       this.senders = this.senders.filter((s) => s !== sender);
@@ -258,6 +360,7 @@ function installFakeWebRTC() {
     setLocalDescription(desc) {
       this.localDescription = desc;
       this.signalingState = desc.type === 'offer' ? 'have-local-offer' : 'stable';
+      this.emit('signalingstatechange');
       return Promise.resolve();
     }
     setRemoteDescription(desc) {
@@ -274,6 +377,7 @@ function installFakeWebRTC() {
       }
       this.remoteDescription = desc;
       this.signalingState = desc.type === 'offer' ? 'have-remote-offer' : 'stable';
+      this.emit('signalingstatechange');
       return Promise.resolve();
     }
     createAnswer() {
@@ -494,6 +598,7 @@ test('removeTrack marca a oferta como renegociacao (#A8)', async () => {
   const track = { kind: 'video' };
   const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
   await mesh.offerTo('7', stream, { bitrate: 1_000_000, fps: 30, codec: 'video/VP8' }, 'camera');
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'camera');
   await mesh.removeTrack('7', track, 'camera');
 
   assert.equal(sent.length, 2);
@@ -519,6 +624,7 @@ test('offerTo so marca renegociacao quando a outConn ja existia (#A8)', async ()
   assert.equal(sent[0].renegotiate, false, 'conexao nova: o outro lado tem que montar a dele');
 
   // Religar a camera depois de stopCamera: a outConn nunca foi fechada.
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'camera');
   await mesh.offerTo('7', stream, quality, 'camera');
   assert.equal(sent[1].renegotiate, true);
 
@@ -996,7 +1102,7 @@ test('offerTo concorrente na mesma conexao nao empilha um segundo encoder', asyn
   const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
   mesh.addPeer('folha', 'gg');
 
-  await Promise.all([
+  const results = await Promise.all([
     mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen@origem'),
     mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen@origem'),
   ]);
@@ -1004,6 +1110,7 @@ test('offerTo concorrente na mesma conexao nao empilha um segundo encoder', asyn
   const pc = mesh.peers.get('folha').outConns['screen@origem'];
   assert.equal(pc.getSenders().length, 1, 'um encoder por filho, nao dois');
   assert.equal(sent.filter((m) => m.type === 'offer').length, 1, 'uma oferta, nao duas');
+  assert.deepEqual(results, [true, false], 'a segunda chamada sabe que nao enviou oferta');
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
@@ -1022,6 +1129,53 @@ test('offerTo volta a ser aceito depois que a negociacao anterior fecha', async 
   await mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen');
 
   assert.equal(sent.filter((m) => m.type === 'offer').length, 2, 'a segunda oferta sai');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('relayTo devolve false quando a oferta do filho ja esta em voo', async () => {
+  installFakeWebRTC();
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+  mesh.addPeer('folha', 'Bruno');
+  const track = { kind: 'video' };
+  mesh.peers.get('origem').inStreams = {
+    screen: { getTracks: () => [track], getVideoTracks: () => [track] },
+  };
+
+  const pending = new Promise(() => {});
+  global.RTCPeerConnection.prototype.createOffer = () => pending;
+  const first = mesh.offerTo('folha', streamFalsa(), QUALIDADE, 'screen@origem');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(mesh.isNegotiating('folha', 'screen@origem'), true);
+  assert.equal(await mesh.relayTo('folha', 'origem', 'screen', QUALIDADE), false);
+  void first;
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('religar camera espera a resposta da remocao antes de ofertar', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  const quality = { bitrate: 1_000_000, fps: 30, codec: 'video/VP8' };
+  const oldTrack = { kind: 'video' };
+  const newTrack = { kind: 'video' };
+
+  await mesh.offerTo('7', { getTracks: () => [oldTrack] }, quality, 'camera');
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'camera');
+  await mesh.removeTrack('7', oldTrack, 'camera');
+  const religa = mesh.offerTo('7', { getTracks: () => [newTrack] }, quality, 'camera', { waitForStable: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sent.length, 2, 'a oferta da camera nao pode sair em have-local-offer');
+
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'camera');
+  assert.equal(await religa, true);
+  assert.equal(sent.length, 3);
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;

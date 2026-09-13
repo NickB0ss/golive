@@ -127,6 +127,24 @@ test('startAdvertising anuncia normalmente quando nao ha contagem de peers', asy
   d.stop();
 });
 
+test('para o anuncio se a consulta de peers falhar', async () => {
+  const { dgram } = fakeDgram();
+  const d = createDiscovery({ advertiseIntervalMs: 10, deps: { dgram } });
+  await d.start();
+  let calls = 0;
+
+  assert.doesNotThrow(() => {
+    d.startAdvertising({ name: 'Sala', port: 9000, address: '1.2.3.4:9000', getPeerCount: () => {
+      calls += 1;
+      throw new Error('servidor fechado');
+    } });
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(d.isAdvertising(), false);
+  assert.equal(calls, 1, 'nao deixa timer vivo depois da primeira falha');
+  d.stop();
+});
+
 test('isExpired usa o TTL informado', () => {
   const room = { lastSeen: 1000 };
   assert.equal(isExpired(room, 1000 + ROOM_TTL_MS - 1, ROOM_TTL_MS), false);

@@ -64,6 +64,20 @@ const MAX_ANNOTATE_POINTS = 200; // pontos por mensagem (lote de um quadro)
 const MAX_ANNOTATE_TEXT = 120; // caracteres de uma escrita
 const MAX_ANNOTATE_SYNC_ITEMS = 400; // itens de um snapshot pra quem chegou depois
 
+// Ids de conexao nascem em `String(nextId++)`: decimal positivo, sem zeros
+// a esquerda. Number conserva inteiros exatos ate 16 algarismos; o teto
+// tambem impede um kind composto de virar uma chave gigante no renderer.
+const CONNECTION_ID_RE = /^[1-9]\d{0,15}$/;
+const REOFFER_KINDS_RE = /^(screen|camera)(?:@([1-9]\d{0,15}))?$/;
+const MAX_REOFFER_PER_SECOND = 2;
+
+function parseReofferKind(kind) {
+  if (typeof kind !== 'string') return null;
+  const match = REOFFER_KINDS_RE.exec(kind);
+  if (!match) return null;
+  return { kind, sourceId: match[2] || null };
+}
+
 /** Contador de taxa por conexao, isolado pra ser testavel sem subir socket.
  * `hit(now)` registra uma mensagem e devolve `true` enquanto a conexao
  * estiver dentro do teto na janela corrente; `false` no primeiro estouro. */
@@ -272,6 +286,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     const chatRateLimiters = new Map(); // peerId -> limiter, 5 msg/s
     const chatImageLimiters = new Map(); // peerId -> limiter, 3 imagens / 5s
     const annotateLimiters = new Map(); // peerId -> limiter, 60 msg/s
+    const reofferLimiters = new Map(); // peerId -> limiter, 2 reofertas/s
     // 'watchers' e reenviado pra sala inteira com os avatares (data URL de
     // ate 256 KB cada): sem teto proprio, um cliente em loop faria o host
     // replicar megabytes por mensagem. Uso legitimo e rajada curta em
@@ -460,6 +475,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
       chatRateLimiters.delete(peerId);
       chatImageLimiters.delete(peerId);
       annotateLimiters.delete(peerId);
+      reofferLimiters.delete(peerId);
       watchersLimiters.delete(peerId);
       log(`- ${logName(me.name)} (#${peerId}) saiu da sala ${logName(me.room)} (${why})`);
       broadcastToRoom(me.room, peerId, { type: 'peer-left', id: peerId });
@@ -631,6 +647,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 chatRateLimiters.delete(resumedId);
                 chatImageLimiters.delete(resumedId);
                 annotateLimiters.delete(resumedId);
+                reofferLimiters.delete(resumedId);
                 watchersLimiters.delete(resumedId);
                 joined = true;
                 peerId = resumedId;
@@ -739,7 +756,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
             // nada, so entrega ao destinatario carimbando quem mandou.
             // 'view-state' e o espectador dizendo se esta ou nao assistindo
             // (F1.3); 'tree' e a origem distribuindo papeis da arvore de
-            // retransmissao (F2). Ver a spec de 2026-08-23.
+            // retransmissao (F2). Ver a spec de 2026-08-23. 'reoffer' e o
+            // espectador pedindo pra refazer uma conexao cuja tela nunca
+            // mostrou imagem (hotfix 2026-09-12) -- quem recebe valida o kind
+            // e tem teto de frequencia proprio.
             case 'offer':
             case 'answer':
             case 'ice':
@@ -753,6 +773,28 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               const target = peers.get(String(msg.to));
               if (!me || !target || me.room !== target.room) return;
               send(target.ws, { ...msg, from: peerId });
+              break;
+            }
+
+            case 'reoffer': {
+              // Reoffer nao e sinalizacao generica: os dois campos que viram
+              // chave no cliente precisam ter tipo e formato exatos antes de
+              // chegar la. Reconstruir tambem nao deixa campo arbitrario
+              // viajar junto com o pedido.
+              if (typeof msg.to !== 'string' || !CONNECTION_ID_RE.test(msg.to)) return;
+              const me = peers.get(peerId);
+              const target = peers.get(msg.to);
+              const parsedKind = parseReofferKind(msg.kind);
+              if (!me || !target || me.room !== target.room || !parsedKind) return;
+              if (parsedKind.sourceId) {
+                const source = peers.get(parsedKind.sourceId);
+                if (!source || source.room !== me.room) return;
+              }
+              const limiter = reofferLimiters.get(peerId)
+                || createRateLimiter({ limit: MAX_REOFFER_PER_SECOND, windowMs: 1000 });
+              reofferLimiters.set(peerId, limiter);
+              if (!limiter.hit(Date.now())) return;
+              send(target.ws, { type: 'reoffer', to: msg.to, kind: parsedKind.kind, from: peerId });
               break;
             }
 

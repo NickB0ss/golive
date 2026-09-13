@@ -450,6 +450,17 @@
     onWatchIntent = fn;
   }
 
+  /** Quadros que o <video> do tile ja exibiu -- o que a pessoa de fato ve,
+   * nao o que chegou pela rede. null quando nao da pra medir: sem tile, sem
+   * stream, video pausado (janela oculta, tela cheia de outro tile) ou
+   * escondido pelo veu de pausa. Ver stallwatch.js. */
+  function framesShown(tileId) {
+    const video = document.getElementById(`tile-${tileId}`)?.querySelector('video');
+    if (!video || !video.srcObject || video.paused || video.hidden) return null;
+    const quality = video.getVideoPlaybackQuality?.();
+    return quality ? quality.totalVideoFrames : null;
+  }
+
   // Ultimo estado de pausa por tile ({ paused, opts }), pro overlay
   // sobreviver a um tile recriado do zero -- mesmo motivo do tileWatchers
   // acima (renegociacao pode destruir e recriar o <div class="tile"> com o
@@ -3146,7 +3157,7 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown },
     annotations: {
       setSelf: annotSetSelf,
       setSurface: setAnnotSurface,
