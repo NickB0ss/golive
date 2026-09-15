@@ -201,7 +201,10 @@
     // aqui -- chaves e tipos -- nunca os valores de cor (isso e trabalho de
     // theme.js, que este arquivo deliberadamente nao importa, pra manter os
     // dois modulos desacoplados; quem cruza os dois e o app.js).
-    theme: { preset: 'signal' },
+    theme: { preset: 'marca' },
+    // Marca que este config ja passou pela troca do padrao: sem isto uma
+    // escolha posterior de "Superficie e sinal" seria migrada de novo.
+    themeMigration: true,
     // Anotacao na tela (spec de 2026-09-04, secao 5.1). NAO e uma
     // configuracao global: e a ULTIMA ESCOLHA feita no dialogo de
     // compartilhar, lembrada pra proxima vez -- exatamente como
@@ -218,7 +221,7 @@
   // a forma de `theme.preset` sem depender de theme.js (ver o comentario
   // acima de DEFAULTS.theme). Se um preset novo entrar em theme.js, ele
   // precisa entrar aqui tambem, senao um config salvo com ele cai no padrao.
-  const THEME_PRESETS = ['signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+  const THEME_PRESETS = ['marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
 
   function isValidThemeBase(base) {
     return isObject(base)
@@ -322,7 +325,12 @@
       quality: loadQuality(parsed.quality),
       camera: mergeSection(DEFAULTS.camera, parsed.camera),
       network: { ...mergeSection(DEFAULTS.network, parsed.network), tree: true },
-      theme: loadTheme(parsed.theme),
+      // So o signal antigo, sem acento proprio, era o padrao implicito.
+      // A marca gravada preserva uma escolha feita depois desta migracao.
+      theme: parsed.themeMigration !== true && parsed.theme?.preset === 'signal' && !isValidHexColor(parsed.theme?.act)
+        ? { preset: 'marca' }
+        : loadTheme(parsed.theme),
+      themeMigration: true,
       annotations: { allow: parsed.annotations?.allow === true },
       emojiRecents: loadStringList(parsed.emojiRecents, 24),
     };

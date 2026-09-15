@@ -12,21 +12,42 @@
  * da spec tenta liberar. Ver docs/superpowers/specs/2026-08-23-*.
  */
 
+@font-face {
+  font-family: 'Outfit'; font-style: normal; font-weight: 600 800; font-display: swap;
+  src: url('assets/fonts/outfit-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Outfit'; font-style: normal; font-weight: 600 800; font-display: swap;
+  src: url('assets/fonts/outfit-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Work Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/worksans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Work Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/worksans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   /* Superficies -- elevacao por luminosidade, nunca por blur. */
-  --bg:  #0E0F13;
-  --s1:  #16181D;
-  --s2:  #1D2026;
-  --s3:  #262A32;
-  --s4:  #323742;
+  --bg:  #0A0A0F;
+  --s1:  #101018;
+  --s2:  #16161F;
+  --s3:  #1E1E2A;
+  --s4:  #292936;
   --surface-modal: var(--s1);
 
-  --line:  rgba(255, 255, 255, 0.08);
-  --line2: rgba(255, 255, 255, 0.14);
+  --line:  rgba(237, 237, 242, 0.08);
+  --line2: rgba(237, 237, 242, 0.14);
 
-  --tx:  #E8EAED;
-  --tx2: #9AA0AA;
-  --tx3: #868D9B; /* rotulo 10-11px, hora, dica -- 5.33:1 sobre --s1, 4.89:1 sobre --s2 */
+  --tx:  #EDEDF2;
+  --tx2: #A3A3B8;
+  --tx3: #9292AB;
   --tx-soft: #D3D7DD; /* corpo de mensagem do chat -- entre --tx e --tx2 */
 
   /* Cor semantica -- tres papeis, nunca decorativo (ver a spec, secao 4.1).
@@ -35,8 +56,8 @@
      TRAVADOS (spec 2026-09-03, secao 5.1): --live/--warn/--danger e os tres
      -dim so existem aqui, no :root base -- nenhum bloco :root[data-theme]
      nem o tema custom os redefine. */
-  --act:      #4F46E5;
-  --act-hover:#6257EB;
+  --act:      #5B4BE8;
+  --act-hover:#6D5CF6;
   --live:     #FF4D4F;
   --warn:     #F5B544;
   --danger:   #C92A33;
@@ -84,6 +105,13 @@
   --r-md: 14px;
   --r-lg: 18px;
   --r-full: 999px;
+
+  /* Camadas com nomes evitam que um menu novo passe por cima do modal. */
+  --z-stage: 1;
+  --z-popover: 50;
+  --z-modal: 1000;
+  --z-toast: 1001;
+  --z-titlebar: 9999;
 
   --s-1: 4px;  --s-2: 8px;   --s-3: 12px;
   --s-4: 16px; --s-5: 24px;  --s-6: 32px;  --s-7: 48px;
@@ -185,6 +213,12 @@
  * sao os unicos tokens de acao alem de --act que cada preset define --
  * os tres primeiros, la no :root base, sao color-mix() sobre --act, entao
  * seguem sozinhos qualquer bloco que troque --act, sem entrar aqui. */
+:root[data-theme="signal"] {  /* Superficie e sinal */
+  --bg:#0E0F13; --s1:#16181D; --s2:#1D2026; --s3:#262A32; --s4:#323742;
+  --tx:#E8EAED; --tx-soft:#D3D7DD; --tx2:#9AA0AA; --tx3:#868D9B;
+  --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
+  --act:#4F46E5; --act-hover:#6257EB;
+}
 :root[data-theme="midnight"] {  /* Meia-noite */
   --bg:#080B14; --s1:#0D1220; --s2:#121A2C; --s3:#1A2438; --s4:#243149;
   --tx:#E7ECF7; --tx2:#98A3BE; --tx3:#7C87A3;
@@ -235,7 +269,7 @@ html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--tx);
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Work Sans', system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
@@ -276,9 +310,8 @@ button:active:not(:disabled) { transform: scale(0.97); transition-duration: 0ms;
 button svg { width: 17px; height: 17px; flex: none; }
 
 :where(button, .icon-btn-inline, .room-row, .source-card, .picker-tab, .settings-cat, input, select, textarea):focus-visible {
-  outline: 2px solid var(--act);
-  outline-offset: 2px;
-  box-shadow: none;
+  outline: 0;
+  box-shadow: var(--ring);
 }
 
 /* Uma primaria colorida por tela, nunca duas (ver a spec, secao 4.5). */
@@ -399,7 +432,7 @@ input[type="range"] { accent-color: var(--live); }
 
 .update-banner, .toast {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-modal);
   right: 16px;
   bottom: 16px;
   background: var(--surface-2);
@@ -427,7 +460,7 @@ input[type="range"] { accent-color: var(--live); }
 }
 /* Se os dois aparecerem juntos (ex: erro de download com o banner ainda na
    tela), o toast fica por cima e some sozinho em segundos. */
-.toast { z-index: 1001; }
+.toast { z-index: var(--z-toast); }
 @starting-style {
   .update-banner, .toast { opacity: 0; transform: translateY(12px); }
 }
@@ -500,7 +533,7 @@ input[type="range"] { accent-color: var(--live); }
    (.logo-origem lá). */
 .app-brand-mark { width: 26px; height: 26px; flex: none; color: var(--tx); }
 .app-brand-origin { fill: var(--live); }
-.app-brand-name { font-weight: 700; font-size: 15px; }
+.app-brand-name { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 15px; }
 .app-version {
   font-size: 11px; color: var(--tx3); font-variant-numeric: tabular-nums;
   margin-right: auto; padding-top: 2px;
@@ -520,6 +553,7 @@ input[type="range"] { accent-color: var(--live); }
   grid-template-columns: 380px minmax(0, 1fr);
   gap: var(--s-6);
   align-items: start;
+  align-content: safe center;
   min-height: 0;
   height: 100%;
   padding-top: var(--s-6);
@@ -536,12 +570,24 @@ input[type="range"] { accent-color: var(--live); }
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
+  position: relative;
+  isolation: isolate;
 }
+.lobby-start::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--s-6) * -1);
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--act) 18%, transparent), transparent 68%);
+}
+.lobby-brand-mark { width: 44px; height: 44px; color: var(--tx); }
+.lobby-brand-mark .app-brand-origin { fill: var(--live); }
 .lobby-eyebrow {
   margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .08em;
   text-transform: uppercase; color: var(--tx3);
 }
-.lobby-title { margin: 0; font-size: 26px; line-height: 1.22; font-weight: 700; letter-spacing: -0.01em; }
+.lobby-title { margin: 0; font-family: 'Outfit', sans-serif; font-size: 26px; line-height: 1.22; font-weight: 700; letter-spacing: -0.01em; }
 .lobby-lede { margin: 0; font-size: 13px; line-height: 1.6; color: var(--tx2); }
 
 .lobby-actions { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
@@ -575,7 +621,8 @@ input[type="range"] { accent-color: var(--live); }
   max-width: 640px;
 }
 .rooms-head { display: flex; align-items: center; gap: var(--s-2); }
-.rooms-title {
+.rooms-title, .members-title, .settings-pane h3 {
+  font-family: 'Outfit', sans-serif;
   margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
   color: var(--tx3); font-weight: 700;
 }
@@ -622,6 +669,11 @@ input[type="range"] { accent-color: var(--live); }
   font-size: 12px; color: var(--tx2); font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.room-people { white-space: normal; overflow: visible; text-overflow: clip; }
+.room-version-note {
+  white-space: normal; overflow: hidden; text-overflow: clip;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
 .room-lock { flex: none; color: var(--warn); display: flex; }
 .room-lock svg { width: 13px; height: 13px; }
 
@@ -629,7 +681,6 @@ input[type="range"] { accent-color: var(--live); }
    viraria "a sala do meu amigo nao aparece"), mas apagado e sem clique --
    e o selo diz de quem e a culpa. Ver a trava de versao no signaling-core. */
 .room-row.incompatible { opacity: .62; }
-.room-row.incompatible .room-badge { filter: grayscale(1); }
 .room-version {
   flex: none; font-size: 11px; font-weight: 700; color: var(--warn);
   background: var(--warn-dim); border-radius: var(--r-full); padding: 1px 7px;
@@ -709,7 +760,7 @@ input[type="range"] { accent-color: var(--live); }
 /* ============ DIALOGOS (criar sala / entrar / banir) ============ */
 
 .dialog-box { width: min(360px, 90vw); padding: var(--s-5); }
-.dialog-box h2 { margin: 0 0 var(--s-3); font-size: 17px; }
+.dialog-box h2 { margin: 0 0 var(--s-3); font-family: 'Outfit', sans-serif; font-size: 17px; }
 /* Botao ocupado: o rotulo troca e o spinner entra no lugar do que houver
    antes dele. Subir o servidor embutido inclui pedir liberacao de firewall
    ao Windows, o que pode abrir um prompt de elevacao e demorar segundos --
@@ -740,7 +791,7 @@ button.busy { cursor: default; }
 .stage-status-dot[data-level="live"] { background: var(--live); }
 .stage-status-dot[data-level="degraded"] { background: var(--warn); }
 .stage-status-dot[data-level="paused"] { background: var(--tx3); }
-.stage-room-name { font-weight: 650; font-size: 14.5px; }
+.stage-room-name { font-family: 'Outfit', sans-serif; font-weight: 650; font-size: 14.5px; }
 .stage-room-address { font-size: 12px; color: var(--tx2); font-variant-numeric: tabular-nums; }
 .stage-room-pin { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--warn); }
 .stage-room-pin svg { width: 14px; height: 14px; flex: none; }
@@ -889,7 +940,7 @@ button.busy { cursor: default; }
 .member-menu-btn:hover { background: var(--s3); color: var(--tx); }
 
 .member-menu {
-  position: fixed; z-index: 50; background: var(--s2); border: 1px solid var(--line2);
+  position: fixed; z-index: var(--z-popover); background: var(--s2); border: 1px solid var(--line2);
   border-radius: var(--r-md); padding: 5px; width: 210px; box-shadow: var(--shadow-3);
 }
 .member-menu-item {
@@ -950,6 +1001,7 @@ button.busy { cursor: default; }
   flex: 1; resize: none; background: transparent; border: none; color: var(--tx);
   font-family: inherit; font-size: 12.5px; line-height: 1.4; max-height: 88px;
 }
+.chat-compose textarea::placeholder { color: var(--tx3); opacity: 1; }
 .chat-compose textarea:focus { outline: none; }
 .chat-input-count { font-size: 11px; color: var(--tx3); flex: none; }
 .chat-compose.disabled { opacity: .6; pointer-events: none; }
@@ -964,7 +1016,7 @@ button.busy { cursor: default; }
   letter-spacing: 0.25em;
 }
 #in-pin::placeholder {
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Work Sans', system-ui, sans-serif;
   letter-spacing: normal;
 }
 
@@ -1167,7 +1219,7 @@ button.busy { cursor: default; }
    ordem e a de chegada dos streams, que muda a cada reconexao. */
 .tile[data-kind="camera"] { order: 1; }
 
-.empty {
+.grid > .empty {
   grid-column: 1 / -1;
   display: grid;
   place-items: center;
@@ -1687,6 +1739,7 @@ button.busy { cursor: default; }
 .modal {
   position: fixed;
   inset: 0;
+  z-index: var(--z-modal);
   background: var(--scrim-3);
   display: grid;
   place-items: center;
@@ -1730,7 +1783,10 @@ button.busy { cursor: default; }
 }
 .modal-close:hover { background: var(--surface-3); color: var(--text-1); }
 
-.settings-box { width: min(880px, 90vw); height: min(600px, 85vh); display: grid; grid-template-columns: 200px 1fr; padding: 0; overflow: hidden; }
+.settings-box { width: min(880px, 90vw); height: min(600px, 85vh); display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); padding: 0; overflow: hidden; }
+.settings-header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; min-height: 60px; padding: 0 var(--s-5); border-bottom: 1px solid var(--line); }
+.settings-header h2 { margin: 0; font-family: 'Outfit', sans-serif; font-size: 18px; }
+.settings-header .modal-close { position: static; flex: none; }
 .settings-nav {
   background: var(--surface-1);
   border-right: 1px solid var(--line-subtle);
@@ -1771,7 +1827,7 @@ button.busy { cursor: default; }
 }
 .settings-cat:hover { color: var(--text-1); }
 .settings-cat.active { color: var(--text-1); font-weight: 650; }
-.settings-content { padding: 26px; overflow-y: auto; }
+.settings-content { min-height: 0; padding: 26px; overflow-y: auto; }
 .settings-pane h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
 .settings-pane h3:first-child { margin-top: 0; }
 .settings-field { margin-bottom: 14px; }
@@ -1841,7 +1897,7 @@ button.busy { cursor: default; }
   overflow-y: auto;
   overflow-x: clip;
 }
-.picker-box h2 { font-size: 17px; margin-bottom: 18px; }
+.picker-box h2 { font-family: 'Outfit', sans-serif; font-size: 17px; margin-bottom: 18px; }
 .picker-box h3 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 18px 0 10px; }
 
 .picker-tabs {
@@ -2466,6 +2522,9 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 }
 .emoji-search input:focus,
 .emoji-search input:focus-visible { outline: none; box-shadow: none; }
+/* O campo nao tem caixa propria (ver acima), entao o anel vai na linha
+   inteira -- sem isto quem navega por teclado nao via onde estava o foco. */
+.emoji-search:focus-within { box-shadow: var(--ring); }
 .emoji-tabs {
   display: flex;
   gap: 2px;
@@ -2608,7 +2667,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   position: fixed;
   inset: 0 0 auto 0;
   height: 32px;
-  z-index: 9999;
+  z-index: var(--z-titlebar);
   display: flex;
   align-items: stretch;
   background: var(--s1);
@@ -2649,6 +2708,134 @@ body.has-titlebar #room-view {
 }
 /* Tile em tela cheia (win.setFullScreen): a faixa some. */
 body:has(.tile.fullscreen) .titlebar { display: none; }
+
+/* ============ Estrutura de app: casca, cards e dock ============ */
+
+/* A navegacao fica estavel e o conteudo vivo ganha toda a outra coluna. */
+.lobby {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--bg);
+}
+.lobby-sidebar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--s1);
+  border-right: 1px solid var(--line);
+}
+.lobby-brand { display: flex; align-items: center; gap: var(--s-2); min-height: 32px; }
+.lobby-brand .app-version { margin-right: 0; background: var(--s3); border-radius: var(--r-full); padding: 2px 7px; }
+.lobby-actions { margin: 0; }
+.lobby-cta { height: 44px; min-height: 44px; justify-content: flex-start; }
+.sidebar-label { margin: 0 0 var(--s-2); color: var(--tx3); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.lobby-net { margin: 0; padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--s2); }
+.user-panel { margin-top: auto; display: flex; align-items: center; gap: var(--s-1); padding: var(--s-2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--s2); min-width: 0; }
+.user-panel .user-panel-name { flex: 1; max-width: none; }
+.user-panel .update-available-btn { min-height: 32px; padding: 0 var(--s-2); font-size: 11px; }
+.lobby-main { min-width: 0; min-height: 0; overflow-y: auto; padding: var(--s-6); }
+.lobby-rooms { max-width: none; height: 100%; }
+.rooms-head { align-items: center; padding-bottom: var(--s-3); border-bottom: 1px solid var(--line); }
+/* flex: 1 empurra o "Procurar salas de novo" pra borda direita do cabecalho --
+   antes era o margin-right: auto do contador, que agora mora na linha do titulo. */
+.rooms-intro { min-width: 0; flex: 1; }
+.rooms-title-line { display: flex; align-items: center; gap: var(--s-2); }
+.rooms-title-line .rooms-count { margin: 0; flex: none; }
+.rooms-title { color: var(--tx); text-transform: none; letter-spacing: -.01em; font-size: 22px; }
+.rooms-subtitle { margin: var(--s-1) 0 0; color: var(--tx2); font-size: 13px; }
+.room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-content: start; gap: var(--s-3); overflow: visible; padding: 0; }
+.room-card { min-height: 0; display: flex; flex-direction: column; align-items: stretch; gap: var(--s-3); padding: var(--s-4); }
+.room-card .room-info { flex: none; align-items: flex-start; }
+.room-card .room-badge { width: 48px; height: 48px; font-size: 17px; }
+.room-card .room-connect { width: 100%; min-height: 44px; }
+.rooms-empty { grid-column: 1 / -1; min-height: 320px; border-style: solid; background: var(--s1); box-shadow: var(--shadow-1); }
+.rooms-empty svg { width: 42px; height: 42px; color: var(--act); }
+.rooms-empty-title { font-family: 'Outfit', sans-serif; font-size: 20px; color: var(--tx); }
+.rooms-empty-hint { max-width: 390px; font-size: 13px; }
+
+/* O dock e um filho normal do palco: a grade nunca fica encoberta. */
+#room-view { gap: var(--s-2); padding: var(--s-2); background: var(--bg); }
+.stage { min-width: 0; gap: var(--s-2); }
+.stage-header { min-height: 44px; padding: 0 var(--s-2); background: transparent; border: 0; }
+.stage-header #btn-room-settings { display: none; }
+.stage-room-name { margin-right: auto; }
+.stage-room-address, .stage-room-pin, .stage-status-badge { background: var(--s2); border: 1px solid var(--line); border-radius: var(--r-full); padding: 4px 8px; }
+.stage-copy { flex: none; }
+.control-bar { position: static; align-self: center; width: fit-content; max-width: 100%; margin: 0; padding: var(--s-1); border: 1px solid var(--line2); border-radius: var(--r-full); background: var(--s1); box-shadow: var(--shadow-2); }
+.control-bar .control-btn { min-height: 44px; border-radius: var(--r-full); }
+.control-separator { width: 1px; height: 24px; background: var(--line2); flex: none; }
+.control-btn-end { margin-left: 0 !important; background: var(--danger-dim); border-color: var(--danger-dim); color: var(--danger-soft); }
+.control-btn-end:hover:not(:disabled) { background: var(--danger-dim); border-color: var(--danger-soft); color: var(--danger-soft); }
+.room-side { width: 300px; margin: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--s1); }
+.room-side.collapsed { margin: 0; }
+.chat-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-compose { margin-top: auto; border-radius: var(--r-full); background: var(--s2); }
+
+/* Segunda passada da sala: o video e o foco, controles viram uma chamada. */
+.stage-header { min-height: 56px; padding: 0 var(--s-3); gap: var(--s-2); }
+.stage-title-group { min-width: 0; display: grid; gap: 1px; margin-right: auto; }
+.stage-room-name { font-size: 16px; line-height: 1.1; }
+.stage-member-count { color: var(--tx2); font-size: 12px; line-height: 1.1; }
+.stage-room-address, .stage-room-pin { flex: none; }
+.room-settings-header { display: none; }
+.stage-copy { position: relative; width: 44px; min-width: 44px; padding: 0; }
+.stage-copy.copied-flash svg { opacity: 0; }
+.stage-copy.copied-flash::after { content: '✓'; position: absolute; color: var(--act); font-size: 18px; }
+
+.grid { padding: 0; gap: var(--s-2); }
+.grid-main { border-radius: var(--r-lg); overflow: hidden; }
+.grid-strip { min-height: 104px; max-height: 112px; padding: 0 var(--s-1); }
+.grid-strip .tile:not(.fullscreen) { max-height: 104px; }
+.grid > .empty { min-height: 0; padding: var(--s-6); color: var(--tx2); text-align: center; font-family: 'Outfit', sans-serif; font-size: 16px; }
+.grid > .empty::before { content: ''; width: 42px; height: 30px; border: 2px solid var(--tx3); border-radius: var(--r-xs); margin-bottom: var(--s-3); }
+.grid > .empty::after { content: 'Compartilhar tela fica no dock abaixo.'; color: var(--tx3); font-family: 'Work Sans', system-ui, sans-serif; font-size: 13px; font-weight: 400; margin-top: var(--s-1); }
+
+.control-bar { gap: var(--s-1); padding: var(--s-1); flex-wrap: nowrap; }
+.control-bar .control-btn { position: relative; width: 48px; min-width: 48px; min-height: 48px; padding: 0; border-radius: var(--r-full); }
+.control-bar #btn-toggle-share { width: auto; min-width: 164px; padding: 0 var(--s-4); }
+.control-bar .btn-label { position: absolute; bottom: calc(100% + var(--s-2)); left: 50%; z-index: var(--z-popover); transform: translateX(-50%); opacity: 0; pointer-events: none; white-space: nowrap; padding: 5px 8px; border-radius: var(--r-xs); background: var(--s3); color: var(--tx); border: 1px solid var(--line2); font-size: 12px; line-height: 1.2; }
+.control-bar .control-btn:hover .btn-label, .control-bar .control-btn:focus-visible .btn-label { opacity: 1; }
+.control-bar #btn-toggle-share .btn-label { position: static; transform: none; opacity: 1; pointer-events: auto; padding: 0; border: 0; background: transparent; color: inherit; }
+.control-settings { margin-left: 0 !important; }
+.control-bar .control-settings { background: var(--s3); border-color: var(--line2); color: var(--tx); }
+.control-bar .control-settings:hover:not(:disabled) { background: var(--s4); }
+.control-btn-end { background: var(--danger); border-color: var(--danger); color: var(--on-act); }
+.control-btn-end:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); color: var(--on-act); }
+
+.room-side { width: 320px; padding: var(--s-2); gap: var(--s-2); }
+.room-side.collapsed { padding: 0; }
+.room-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-1); padding: var(--s-1); border: 1px solid var(--line); border-radius: var(--r-full); background: var(--s2); }
+.room-tab { min-height: 44px; padding: 0 var(--s-2); border-radius: var(--r-full); color: var(--tx2); background: transparent; font-size: 12px; }
+.room-tab[aria-selected="true"] { color: var(--tx); background: var(--s3); }
+.chat-unread-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--act); flex: none; }
+.room-tab-panel { flex: 1; min-height: 0; overflow: hidden; }
+#people-panel { overflow-y: auto; }
+#chat-panel { display: flex; }
+#chat-panel[hidden], #people-panel[hidden] { display: none; }
+#chat-panel .members-title { padding-top: var(--s-2); }
+
+@media (max-width: 900px) {
+  .control-bar #btn-toggle-share { min-width: 148px; }
+}
+
+/* Dialogos usam a mesma leitura: titulo, corpo livre, acoes separadas. */
+.dialog-box { padding: 0; overflow: hidden; }
+.dialog-box > h2, .dialog-box > p, .dialog-box > .dialog-field, .dialog-box > .check-group { margin-left: var(--s-5); margin-right: var(--s-5); }
+.dialog-box > h2 { padding-top: var(--s-5); }
+.dialog-box .dialog-actions { margin: var(--s-5) 0 0; padding: var(--s-3) var(--s-5); border-top: 1px solid var(--line); }
+
+.settings-cat { display: flex; align-items: center; gap: var(--s-2); }
+.settings-cat svg { width: 17px; height: 17px; flex: none; }
+
+@media (max-width: 900px) {
+  .lobby { grid-template-columns: 232px minmax(0, 1fr); }
+  .lobby-main { padding: var(--s-4); }
+  .room-grid { grid-template-columns: minmax(240px, 1fr); }
+  .control-bar { justify-content: center; border-radius: var(--r-lg); }
+}
 
 /* ============ Laser e reacoes (frente interacao, 2026-09-12) ============ */
 

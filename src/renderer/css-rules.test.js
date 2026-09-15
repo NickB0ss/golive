@@ -68,3 +68,20 @@ test('cores literais ficam restritas aos tokens dos blocos de tema', () => {
   ));
   assert.deepEqual(violations, [], `cor literal fora de bloco de tema: ${violations.map((rule) => `${rule.line}: ${rule.stack.at(-1)} -> ${rule.value}`).join('; ')}`);
 });
+
+test('estrutura moderna mantem dock no fluxo e camadas por tokens', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  assert.match(css, /--z-stage:\s*\d+;/, 'falta token da camada do palco');
+  assert.match(css, /--z-popover:\s*\d+;/, 'falta token da camada de popovers');
+  assert.match(css, /--z-modal:\s*\d+;/, 'falta token da camada de dialogos');
+  assert.match(css, /--z-toast:\s*\d+;/, 'falta token da camada de toasts');
+  assert.match(css, /--z-titlebar:\s*\d+;/, 'falta token da camada da faixa de titulo');
+  assert.match(css, /\.control-bar\s*\{[^}]*position:\s*static;/s, 'o dock deve permanecer no fluxo');
+  assert.match(css, /\.room-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill, minmax\(260px, 1fr\)\)/s, 'a lista de salas deve ser uma grade de cards');
+});
+
+test('estado vazio da grade nao vaza para outros elementos', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const unscoped = declarations(css).filter(({ stack }) => /^\.empty(?:::?(?:before|after))?$/.test(stack.at(-1)));
+  assert.deepEqual(unscoped, [], `seletor .empty sem escopo: ${unscoped.map((rule) => rule.line).join(', ')}`);
+});

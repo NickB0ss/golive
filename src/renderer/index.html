@@ -39,15 +39,9 @@
 <div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <!-- ============ LOBBY (fora de sala) ============ -->
-<!-- Duas faixas: uma barra unica no topo (marca a esquerda, perfil e os dois
-     botoes de icone encostados na borda direita da JANELA, nao no miolo
-     centrado) e o corpo de duas colunas. A regra que organiza o corpo: o que
-     EU FACO fica na esquerda (fixa, sempre visivel), o que ESTA ACONTECENDO
-     na rede fica na direita (rola sozinha).
-     Ver docs/superpowers/specs/2026-09-03-lobby-v2-e-acabamento-design.md -->
 <div id="lobby-view" class="lobby">
-  <header class="lobby-topbar">
-    <div class="lobby-topbar-inner">
+  <aside class="lobby-sidebar">
+    <div class="lobby-brand">
       <svg class="app-brand-mark" viewBox="0 0 32 32" aria-hidden="true">
         <g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <path d="M20.71 14.20 L11.35 9.06" />
@@ -59,6 +53,29 @@
       </svg>
       <span class="app-brand-name">GoLive LAN</span>
       <span id="app-version" class="app-version"></span>
+    </div>
+    <div class="lobby-actions">
+      <button id="btn-create-room" class="primary lobby-cta" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Criar sala
+      </button>
+      <button id="btn-join-address" class="secondary lobby-cta" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Entrar por endereço
+      </button>
+    </div>
+    <p id="lobby-error" class="error" role="alert"></p>
+    <section class="lobby-network">
+      <p class="sidebar-label">Sua rede</p>
+      <div class="lobby-net">
+        <span id="lobby-net-dot" class="dot"></span>
+        <span class="lobby-net-text">
+          <span id="lobby-net-kind" class="lobby-net-kind">procurando rede…</span>
+          <span id="lobby-net-addr" class="lobby-net-addr"></span>
+        </span>
+      </div>
+    </section>
+    <div class="user-panel">
       <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
         <img id="user-panel-avatar-img" class="hidden" alt="" />
         <span id="user-panel-avatar-fallback"></span>
@@ -78,55 +95,19 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
-  </header>
+  </aside>
 
-  <div class="lobby-bounds lobby-body">
-    <!-- Coluna de acoes: largura fixa, nunca rola. Os dois CTAs ficam
-         visiveis com a rede cheia de salas ou vazia. -->
-    <section class="lobby-start">
-      <p class="lobby-eyebrow">Comece por aqui</p>
-      <h1 class="lobby-title">Sua tela, na casa dos seus amigos.</h1>
-      <p class="lobby-lede">
-        1080p60 direto de PC pra PC pela sua LAN virtual — sem servidor no
-        meio, sem conta, sem ninguém olhando a transmissão.
-      </p>
-
-      <div class="lobby-actions">
-        <button id="btn-create-room" class="primary lobby-cta" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Criar sala
-        </button>
-        <button id="btn-join-address" class="secondary lobby-cta" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          Entrar por endereço
-        </button>
-      </div>
-
-      <p id="lobby-error" class="error" role="alert"></p>
-
-      <!-- Responde "qual endereco eu passo pros meus amigos?" ANTES de
-           existir uma sala; ate agora so tinha resposta depois de criar. -->
-      <div class="lobby-net">
-        <span id="lobby-net-dot" class="dot"></span>
-        <span class="lobby-net-text">
-          <span id="lobby-net-kind" class="lobby-net-kind">procurando rede…</span>
-          <span id="lobby-net-addr" class="lobby-net-addr"></span>
-        </span>
-      </div>
-    </section>
-
-    <!-- Coluna viva: cards de sala descobertos por beacon UDP. -->
+  <main class="lobby-main">
     <section class="lobby-rooms">
       <div class="rooms-head">
-        <h2 class="rooms-title">Salas abertas na sua rede</h2>
-        <span id="rooms-count" class="rooms-count">0</span>
+        <div class="rooms-intro"><div class="rooms-title-line"><h1 class="rooms-title">Salas na sua rede</h1><span id="rooms-count" class="rooms-count">0</span></div><p class="rooms-subtitle">Encontre amigos na sua LAN virtual e entre em segundos.</p></div>
         <button id="btn-refresh-discovery" class="icon-btn-inline" title="Procurar salas de novo" aria-label="Procurar salas de novo" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
         </button>
       </div>
-      <ul id="room-list-live" class="room-list"></ul>
+      <ul id="room-list-live" class="room-list room-grid"></ul>
     </section>
-  </div>
+  </main>
 </div>
 
 <!-- ============ DIALOGO: CRIAR SALA ============ -->
@@ -192,15 +173,21 @@
   <main class="stage">
     <header id="stage-header" class="stage-header hidden">
       <span id="stage-status-dot" class="stage-status-dot"></span>
-      <span id="stage-room-name" class="stage-room-name"></span>
+      <div class="stage-title-group">
+        <span id="stage-room-name" class="stage-room-name"></span>
+        <span id="stage-member-count" class="stage-member-count">0 pessoas</span>
+      </div>
       <span id="stage-room-address" class="stage-room-address"></span>
       <span id="stage-room-pin" class="stage-room-pin hidden"></span>
       <span id="stage-status-badge" class="stage-status-badge hidden"></span>
-      <button id="btn-copy-address" class="ghost small">Copiar</button>
-      <button id="btn-room-settings" class="icon-btn-inline" title="Configurações" aria-label="Configurações" type="button">
+      <button id="btn-copy-address" class="icon-btn-inline stage-copy" title="Copiar endereço" aria-label="Copiar endereço" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+      <button class="icon-btn-inline room-settings-header" title="Configurações" aria-label="Configurações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <button id="btn-toggle-side" class="icon-btn-inline" title="Recolher coluna" type="button">
+      <span id="copy-address-status" class="visually-hidden" aria-live="polite"></span>
+      <button id="btn-toggle-side" class="icon-btn-inline" title="Recolher coluna" aria-label="Recolher coluna" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     </header>
@@ -229,22 +216,33 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span class="btn-label">Trocar</span>
       </button>
-      <button id="btn-disconnect" class="ghost control-btn control-btn-end" type="button">Sair da sala</button>
+      <span class="control-separator" aria-hidden="true"></span>
+      <button id="btn-room-settings" class="icon-btn-inline control-btn control-settings" title="Configurações" aria-label="Configurações" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9L7 7m10 10l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+        <span class="btn-label">Configurações</span>
+      </button>
+      <button id="btn-disconnect" class="control-btn control-btn-end" type="button" aria-label="Sair da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg><span class="btn-label">Sair da sala</span></button>
     </div>
   </main>
 
   <!-- ============ COLUNA: MEMBROS + BANIDOS + CHAT ============ -->
   <aside id="room-side" class="room-side">
-    <div class="room-side-section">
-      <h2 class="members-title">Na sala</h2>
-      <ul id="peer-list" class="peer-list"></ul>
+    <div class="room-tabs" role="tablist" aria-label="Painel lateral">
+      <button id="tab-people" class="room-tab" type="button" role="tab" aria-selected="false" aria-controls="people-panel" tabindex="-1">Pessoas · <span id="room-people-count">0</span></button>
+      <button id="tab-chat" class="room-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel"><span>Chat</span><span id="chat-unread-dot" class="chat-unread-dot hidden" aria-hidden="true"></span></button>
     </div>
-    <div id="banned-section" class="room-side-section hidden">
+    <div id="people-panel" class="room-tab-panel" role="tabpanel" aria-labelledby="tab-people" hidden>
+      <div class="room-side-section">
+      <h2 class="members-title visually-hidden">Na sala</h2>
+      <ul id="peer-list" class="peer-list"></ul>
+      </div>
+      <div id="banned-section" class="room-side-section hidden">
       <h2 class="members-title">Banidos</h2>
       <ul id="banned-list" class="banned-list"></ul>
+      </div>
     </div>
-    <div class="room-side-section chat-section">
-      <h2 class="members-title">Chat</h2>
+    <div id="chat-panel" class="room-tab-panel chat-section" role="tabpanel" aria-labelledby="tab-chat">
+      <h2 class="members-title visually-hidden">Chat</h2>
       <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
       <div id="chat-offline-bar" class="offbar hidden">Reconectando — o que você escrever agora não vai sair.</div>
       <!-- Previa do anexo: a imagem escolhida (clipe, Ctrl+V ou arrastada)
@@ -310,11 +308,15 @@
 <!-- ============ MODAL DE CONFIGURACOES ============ -->
 <div id="settings-modal" class="modal hidden">
   <div class="modal-box settings-box">
+    <header class="settings-header">
+      <h2>Configurações</h2>
+      <button id="btn-close-settings" class="modal-close" title="Fechar" type="button">×</button>
+    </header>
     <nav class="settings-nav">
-      <button class="settings-cat active" data-cat="profile">Perfil</button>
-      <button class="settings-cat" data-cat="appearance">Aparência</button>
-      <button class="settings-cat" data-cat="voice">Voz e Vídeo</button>
-      <button class="settings-cat" data-cat="stats">Estatísticas</button>
+      <button class="settings-cat active" data-cat="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Perfil</button>
+      <button class="settings-cat" data-cat="appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z"/></svg>Aparência</button>
+      <button class="settings-cat" data-cat="voice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg>Voz e Vídeo</button>
+      <button class="settings-cat" data-cat="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19V3"/></svg>Estatísticas</button>
     </nav>
     <div class="settings-content">
       <section id="settings-profile" class="settings-pane"></section>
@@ -322,7 +324,6 @@
       <section id="settings-voice" class="settings-pane hidden"></section>
       <section id="settings-stats" class="settings-pane hidden"></section>
     </div>
-    <button id="btn-close-settings" class="modal-close" title="Fechar" type="button">×</button>
   </div>
 </div>
 

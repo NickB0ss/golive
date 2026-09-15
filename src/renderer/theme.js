@@ -159,6 +159,16 @@
   // "paper" abaixo pro motivo matematico completo). bg continua sendo a
   // superficie mais clara da rampa, como pede a spec.
   const PRESETS = {
+    marca: {
+      label: 'GoLive',
+      surfaces: {
+        bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
+        tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
+        line: 'rgba(237,237,242,.08)', line2: 'rgba(237,237,242,.14)',
+      },
+      act: '#5B4BE8',
+      actHover: '#6D5CF6',
+    },
     signal: {
       label: 'Superfície e sinal',
       surfaces: {
@@ -492,7 +502,7 @@
    *      perde o proprio tema num update.
    *
    * Qualquer outra coisa (preset desconhecido, custom malformado, cfg
-   * ausente) cai em PRESETS.signal sem lancar -- roda no boot do app. */
+   * ausente) cai em PRESETS.marca sem lancar -- roda no boot do app. */
   function tokensFor(themeCfg) {
     if (isValidCustomCfg(themeCfg)) {
       return { surfaces: deriveSurfaces(themeCfg.base), ...deriveAction(themeCfg.act) };
@@ -502,7 +512,7 @@
       if (isHex(themeCfg.act)) return { surfaces: preset.surfaces, ...deriveAction(themeCfg.act) };
       return preset;
     }
-    return PRESETS.signal;
+    return PRESETS.marca;
   }
 
   const SURFACE_VAR_MAP = {
@@ -532,7 +542,7 @@
   const CUSTOM_VAR_MAP = { ...SURFACE_VAR_MAP, ...ACTION_VAR_MAP };
 
   /** Aplica um tema no `<html>`. Presets sao so um atributo `data-theme`
-   * (o CSS ja tem o bloco pronto) -- "signal" remove o atributo, pra
+   * (o CSS ja tem o bloco pronto) -- "marca" remove o atributo, pra
    * bater com o :root de hoje sendo o proprio padrao sem override. Custom
    * seta `data-theme="custom"` e escreve cada variavel via
    * `style.setProperty`, sem tocar em --live/--warn/--danger/os -dim (essa
@@ -564,9 +574,9 @@
     for (const varName of Object.keys(CUSTOM_VAR_MAP)) {
       d.documentElement.style.removeProperty?.(varName);
     }
-    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'signal';
-    const preset = PRESETS[requested] ? requested : 'signal';
-    if (preset === 'signal') {
+    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'marca';
+    const preset = PRESETS[requested] ? requested : 'marca';
+    if (preset === 'marca') {
       d.documentElement.removeAttribute('data-theme');
     } else {
       d.documentElement.setAttribute('data-theme', preset);
@@ -583,11 +593,19 @@
       for (const [varName, getter] of Object.entries(ACTION_VAR_MAP)) {
         d.documentElement.style.setProperty(varName, getter(tokens));
       }
+    } else {
+      // Preset puro: superficies e acento vem do bloco CSS, mas o texto sobre
+      // o botao preenchido nao -- --on-act e #fff no :root, igual pra todos.
+      // Acento claro (Carvao: branco sobre #9CA3AF da ~2,5:1) pede o texto
+      // escuro que deriveAction calcula, o mesmo que validate ja usava para
+      // aprovar o preset. Sem isto a trava aprovava um botao ilegivel.
+      d.documentElement.style.setProperty('--on-act', deriveAction(PRESETS[preset].act).onAct);
     }
   }
 
   const api = {
     PRESETS,
+    DANGER,
     contrast,
     hueOf,
     hueDistance,
