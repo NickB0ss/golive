@@ -111,6 +111,39 @@ erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
+## Corrigido depois da 0.15.0 (ainda sem versão)
+
+Tirado do log de quem assiste de 2026-09-15 (0.15.0): "tive que sair e entrar
+da sala".
+
+- **A tela não voltava depois de uma queda curta da sinalização.** Sequência
+  do log: `close 1006` → sessão órfã → uma tentativa sem handshake em 8 s (a
+  rota até o host caiu por ~10 s na LAN virtual) → `sessao retomada` em 12 s →
+  `recoverUnstable` fecha a conexão de **entrada** da tela, que tinha ficado no
+  meio de SDP/ICE. Nada a reabria: o `onPeerState` só recupera saída, e quem
+  transmite, ao receber `peer-resumed`, via a própria saída `stable/connected` e
+  respondia "nada a re-ofertar". O stallwatch não dispara porque aquela tela já
+  tinha mostrado quadro. Agora cada entrada fechada na retomada vira um pedido
+  `reoffer` para quem a serve (origem ou relay), a mesma mensagem da autocura
+  (`resume.reofferRequests`). Os pedidos saem espaçados em 600 ms (o servidor
+  aceita 2 `reoffer`/s por peer, em janela fixa) e, como espaçar não garante a
+  chegada, cada um se repete a cada 8 s, até 3 vezes, enquanto a entrada não
+  volta — e para assim que ela volta, sem derrubar uma saída que outro caminho
+  já refez (`reofferStillNeeded`). O `peer-resumed` zera a carência de 15 s do
+  `reoffer` daquele peer no emissor, senão uma autocura pedida antes da queda
+  barraria o pedido da retomada. Achados de duas rodadas de revisão do Codex
+  (terra, high). A queda de
+  rede em si é do ambiente (Radmin/Wi-Fi); o app só pode voltar sozinho, e
+  agora volta.
+- **Abrir a janela Espiar lançava `uncaughtException` no main.** O listener de
+  `did-create-window` tinha um `_event` a mais (no Electron 32 a assinatura é
+  `(window, details)`), então `details` chegava `undefined`: a janela abria, mas
+  o nível "sempre no topo sobre jogo", a posição lembrada e o controle de janela
+  única nunca eram aplicados. Reproduzido e confirmado corrigido no app real pelo
+  hook de screenshot (`--require`).
+
+Testes: `npm test` → **723 passando**. `npm run lint` → 0 erros, 9 avisos.
+
 ## Lançado na 0.15.0 (2026-09-14)
 
 Passada só de design, a partir de uma auditoria com screenshots do app real

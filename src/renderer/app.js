@@ -2339,6 +2339,20 @@
     }
   }
 
+  /** Pede a quem serve uma entrada que a retomada fechou que a oferte de
+   * novo, e repete enquanto ela nao volta (resume.reofferStillNeeded). */
+  function requestResumeReoffer(session, req, attempt) {
+    const stillNeeded = () => currentSession === session
+      && resume.reofferStillNeeded({ peer: session.mesh.peers.get(req.to), kind: req.kind });
+    if (!stillNeeded()) return; // voltou por outro caminho, peer saiu ou a sessao mudou
+    console.info(`[retomada] entrada ${req.kind} de #${req.to} caiu na retomada; pedindo a oferta de volta (${attempt}/${resume.RESUME_REOFFER_ATTEMPTS})`);
+    session.sig.send({ type: 'reoffer', to: req.to, kind: req.kind });
+    setTimeout(() => {
+      if (attempt < resume.RESUME_REOFFER_ATTEMPTS) requestResumeReoffer(session, req, attempt + 1);
+      else if (stillNeeded()) console.error(`[retomada] entrada ${req.kind} de #${req.to} nao voltou depois de ${attempt} pedidos`);
+    }, resume.RESUME_REOFFER_RETRY_MS);
+  }
+
   /** Refaz so a conexao de saida `kind` pra `peerId` (fecha e oferta de
    * novo). Kind composto: somos relay daquele filho e repassamos de novo. */
   async function reofferOne(session, peerId, kind) {
@@ -2543,7 +2557,12 @@
         // mantido. PCs que ficaram no meio de SDP/ICE sao fechadas pelo
         // caminho de falha existente, que re-oferta somente as saidas vivas.
         if (plan.adopt) {
-          mesh.recoverUnstable();
+          // Entrada fechada aqui so volta se quem a serve ofertar de novo;
+          // sem o pedido, a tela sumia ate a pessoa sair e entrar da sala
+          // (log de 2026-09-15, 21:46:37). Ver resume.reofferRequests.
+          for (const req of resume.reofferRequests(mesh.recoverUnstable())) {
+            setTimeout(() => requestResumeReoffer(session, req, 1), req.delayMs);
+          }
           renderRoomStatus();
         }
         // Reconexao automatica: startStatsLoop so e chamado por startShare. Aqui
@@ -2618,6 +2637,13 @@
         break;
       }
       case 'peer-resumed': {
+        // Uma autocura pedida antes da queda deixaria a carencia do 'reoffer'
+        // valendo, e o pedido que a retomada manda logo depois (entrada que
+        // ela fechou) seria descartado sem nova tentativa. O servidor entrega
+        // este aviso antes de qualquer frame novo do peer retomado.
+        for (const chave of [...lastReofferAt.keys()]) {
+          if (chave.startsWith(`${msg.id}|`)) lastReofferAt.delete(chave);
+        }
         const kinds = await reofferForResumedPeer(session, msg.id);
         console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
         break;

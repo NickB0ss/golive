@@ -430,7 +430,10 @@ function createWindow() {
       },
     };
   });
-  win.webContents.on('did-create-window', (_event, child, details) => {
+  // did-create-window NAO recebe Event: a assinatura e (window, details).
+  // Com um `_event` a mais, details chegava undefined e o main lancava
+  // uncaughtException a cada Espiar aberta (log de 2026-09-15, 21:49:13).
+  win.webContents.on('did-create-window', (child, details) => {
     if (details.frameName !== 'golive-espiar') return;
     destroySpyWindow();
     spyWin = child;
