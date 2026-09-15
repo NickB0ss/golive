@@ -104,13 +104,52 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.14.0` (tag `v0.14.0`, 2026-09-12), logo depois do hotfix `0.13.1`
-(tag `v0.13.1`, mesmo dia). Electron `^32` (fora de suporte — ver backlog),
-`electron-builder` na `^26`.
-Testes: `npm test` → **710 passando** (581 na 0.13.0). `npm run lint` → 0
+`0.15.0` (tag `v0.15.0`, 2026-09-14). Electron `^32` (fora de suporte — ver
+backlog), `electron-builder` na `^26`.
+Testes: `npm test` → **719 passando** (710 na 0.14.0). `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
+
+## Lançado na 0.15.0 (2026-09-14)
+
+Passada só de design, a partir de uma auditoria com screenshots do app real
+(sala simulada com streams de canvas; **não testado em sala real entre PCs**).
+Nenhuma mudança de protocolo, mídia ou sinalização — mas a trava de versão
+vale igual: a sala inteira precisa estar na 0.15.0.
+
+- **Palco em destaque.** Com uma tela assistida e mais alguém na grade
+  (câmera, ou tela ainda não assistida), a tela ocupa o palco em 16:9 pela
+  altura disponível e o resto vai para uma tira de 148px embaixo, centralizada
+  e com rolagem horizontal. Duas ou mais telas assistidas dividem o palco em
+  colunas. Sem tela assistida, ou com um tile só, a grade por contagem de
+  antes. A decisão é pura (`src/renderer/gridlayout.js`, testada); `ui.js`
+  move os tiles entre `.grid-main` e `.grid-strip` e recalcula em todo ponto
+  que muda a composição (tile novo ou removido, assistir/parar, troca de kind).
+  Câmera da tira em tela cheia não herda a altura da tira.
+- **Configurações dentro da sala.** Engrenagem no cabeçalho da sala. Antes o
+  único gatilho morava no topo do lobby, que some ao entrar, e a aba
+  Estatísticas ficava inalcançável justamente durante a sessão.
+- **Estatísticas fora da sala** dizem que aparecem durante a sessão, em vez
+  de uma aba vazia; `ui.js` guarda a última leitura e a reaplica quando a aba
+  é remontada.
+- **Rodapé fixo no seletor de fonte.** Cancelar / Ir ao vivo ficavam abaixo
+  da dobra em 1440×900 e 1366×768.
+- **Emoji que era ícone virou SVG:** o cadeado do PIN no cabeçalho (o card de
+  sala já usava SVG) e a coroa do dono.
+- **Tipografia.** A pilha de fontes declarava `'Inter'`, que nunca foi
+  empacotada (a CSP só aceita `'self'`): virou `'Segoe UI Variable Text',
+  'Segoe UI', system-ui`, a fonte que de fato aparecia. Nenhum texto abaixo de
+  11px (eram 13 regras entre 8 e 10,5px). Placeholder do PIN com fonte e
+  espaçamento normais. "Readmitir" e o rótulo das estatísticas saíram de
+  `--act`/`--muted` para `--tx3`, que passa 4,5:1 em 11px.
+- **Tema Papel:** o corpo das mensagens do chat usava `--tx-soft`, que só
+  existia no tema escuro (#D3D7DD) e ficava quase invisível no claro; o Papel
+  ganhou o próprio `--tx-soft`.
+- **Guarda de CSS** (`src/renderer/css-rules.test.js`): falha com fonte abaixo
+  de 11px, `backdrop-filter` ou cor literal fora dos blocos `:root` (exceção
+  documentada: o hover do fechar da barra de título). Provado vermelho com as
+  três violações injetadas.
 
 ## Lançado na 0.14.0 (2026-09-12)
 

@@ -11,6 +11,7 @@
   const annotate = root.GoLive.annotate;
   const laser = root.GoLive.laser;
   const reactions = root.GoLive.reactions;
+  const gridLayout = root.GoLive.gridLayout;
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -409,7 +410,10 @@
   let onWatchIntent = null; // (tileId, 'only' | 'add' | 'remove') => void
 
   function renderWatchGate(tile, tileId) {
-    if (!tile) return;
+    if (!tile) {
+      syncGridCount();
+      return;
+    }
     const state = tileWatch.get(tileId);
     // Sem estado registrado o tile e assistido -- e o caso de todo tile que
     // nao e tela de outra pessoa (o proprio, as cameras).
@@ -473,6 +477,9 @@
     } else {
       off?.remove();
     }
+    // O card de "ver junto" tambem ocupa a tira: a troca de assistida nao
+    // pode esperar a proxima track pra redesenhar a hierarquia do palco.
+    syncGridCount();
   }
 
   /** `watched` false poe o card de "está ao vivo" no lugar do video. `opts`
@@ -485,6 +492,7 @@
 
   function forgetWatched(tileId) {
     tileWatch.delete(tileId);
+    syncGridCount();
   }
 
   function setWatchIntentHandler(fn) {
@@ -570,13 +578,52 @@
     renderPausedOverlay(tile, tile.querySelector('video'), paused, opts);
   }
 
-  /** Numero de colunas da grade e uma DECISAO por contagem de tiles, nao um
-   * resto de divisao do auto-fit -- ver a spec de 2026-09-03, secao 9. O CSS
-   * le este data-count; 7+ tiles caem todos no balde 'many'. */
+  /** Contagem e hierarquia sao decisoes de estado, nao restos do auto-fit.
+   * O modulo puro escolhe o palco; aqui so movemos os tiles para que a tira
+   * tenha sua propria rolagem sem alargar ou apertar as colunas principais. */
   function syncGridCount() {
-    const n = gridEl.querySelectorAll('.tile').length;
+    const tiles = Array.from(gridEl.querySelectorAll('.tile'));
+    const plan = gridLayout.gridLayout(tiles.map((tile) => {
+      const id = tile.id.slice('tile-'.length);
+      return {
+        id,
+        kind: tile.dataset.kind || null,
+        // Sem registro de escolha o tile e assistido: e o caso de camera e
+        // dos tiles proprios. So o false explicito vira o card de entrada.
+        watched: tileWatch.get(id)?.watched !== false,
+      };
+    }));
+    const n = plan.count;
     if (!n) gridEl.removeAttribute('data-count');
     else gridEl.dataset.count = n > 6 ? 'many' : String(n);
+    gridEl.dataset.layout = plan.layout;
+
+    const mainEl = gridEl.querySelector(':scope > .grid-main');
+    const stripEl = gridEl.querySelector(':scope > .grid-strip');
+    if (plan.layout === 'spotlight') {
+      const main = mainEl || document.createElement('div');
+      const strip = stripEl || document.createElement('div');
+      main.className = 'grid-main';
+      strip.className = 'grid-strip';
+      if (!main.isConnected) gridEl.appendChild(main);
+      if (!strip.isConnected) gridEl.appendChild(strip);
+      main.dataset.count = plan.main.length > 6 ? 'many' : String(plan.main.length);
+
+      const stripIds = new Set(plan.strip);
+      for (const tile of tiles) {
+        const slot = stripIds.has(tile.id.slice('tile-'.length)) ? strip : main;
+        if (tile.parentElement !== slot) slot.appendChild(tile);
+        if (slot === strip) tile.dataset.slot = 'strip';
+        else delete tile.dataset.slot;
+      }
+    } else {
+      for (const tile of tiles) {
+        if (tile.parentElement !== gridEl) gridEl.appendChild(tile);
+        delete tile.dataset.slot;
+      }
+      mainEl?.remove();
+      stripEl?.remove();
+    }
   }
 
   function showTile(id, label, stream, { muted = false, avatar = null, kind = null, displayName = null } = {}) {
@@ -624,7 +671,6 @@
         });
       }
       gridEl.appendChild(tile);
-      syncGridCount();
       // Tile pode ter sido recriado (ex: renegociacao) depois de ja termos
       // recebido um 'watchers' pra esse id -- sem isto o overlay ficaria
       // vazio ate a proxima mudanca de audiencia.
@@ -679,6 +725,9 @@
     if (!tilePaused.get(id)?.paused) applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
+    // `kind` chega junto da track e pode mudar numa renegociacao. A escolha
+    // de palco precisa ver o kind novo, nao o que havia antes no DOM.
+    syncGridCount();
     if (spyState.tileId() === id) updateSpyWindow();
   }
 
@@ -711,7 +760,7 @@
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
       if (fsTile) renderPipStrip(fsTile); // ja termina em syncPainting
     }
-    if (!gridEl.children.length) {
+    if (!gridEl.querySelector('.tile')) {
       gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
     }
   }
@@ -2123,7 +2172,7 @@
       </span>
       <span class="peer-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
       ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
-      ${isOwner ? '<span class="peer-crown" title="Dono da sala">♛</span>' : ''}
+      ${isOwner ? '<span class="peer-crown" title="Dono da sala" role="img" aria-label="Dono da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
       ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
       ${live
         ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
@@ -2553,10 +2602,14 @@
     $('stage-room-address').textContent = address || '';
     const pinEl = $('stage-room-pin');
     if (pin) {
-      pinEl.textContent = `🔒 PIN ${pin}`;
+      pinEl.innerHTML = LOCK_ICON;
+      const pinText = document.createElement('span');
+      pinText.textContent = `PIN ${pin}`;
+      pinEl.append(pinText);
       pinEl.classList.remove('hidden');
     } else {
       pinEl.classList.add('hidden');
+      pinEl.textContent = '';
     }
     // Troca de tela: Lobby fora, Sala dentro -- unico ponto de alternancia
     // entre as duas (ver a spec, secao 5). clearStageHeader faz o inverso.
@@ -2959,6 +3012,7 @@
         <button id="btn-open-logs" type="button" class="ghost small">Abrir pasta de logs</button>
         <small>Pra mandar pra quem for investigar um problema.</small>
       </div>`;
+    setStatsHtml(lastStatsHtml);
 
     renderProfilePreview(config);
     $('settings-sounds').checked = config.soundsEnabled;
@@ -3070,9 +3124,24 @@
     void startSettingsCameraPreview($('settings-camera-device').value);
   }
 
+  // Ultimo HTML de estatisticas recebido do app.js. openSettings remonta a
+  // aba inteira a cada abertura (com o corpo vazio), e o app so escreve de
+  // novo no proximo tique da sala -- ou nunca, fora dela. Sem guardar, fora
+  // da sala o estado vazio nao aparecia, e dentro dela a aba abria em branco.
+  let lastStatsHtml = '';
+
   function setStatsHtml(html) {
+    lastStatsHtml = html || '';
     const body = $('settings-stats-body');
-    if (body) body.innerHTML = html;
+    if (!body) return;
+    if (html) {
+      body.innerHTML = html;
+      return;
+    }
+    const empty = document.createElement('p');
+    empty.className = 'stats-empty';
+    empty.textContent = 'As estatísticas de envio e recepção aparecem aqui enquanto você está numa sala.';
+    body.replaceChildren(empty);
   }
 
   // ---------- Dialogo de compartilhar ----------

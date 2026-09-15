@@ -680,11 +680,11 @@
   }
 
   function openSettingsOnProfile() {
-    $('btn-open-settings').click();
+    openSettings();
     document.querySelector('.settings-cat[data-cat="profile"]')?.click();
   }
 
-  $('btn-open-settings').addEventListener('click', () => {
+  function openSettings() {
     ui.settings.open(cfg, {
       getConfig: () => cfg,
       onNameChange: (name) => {
@@ -744,7 +744,10 @@
         theme.apply(themeCfg);
       },
     });
-  });
+  }
+
+  $('btn-open-settings').addEventListener('click', openSettings);
+  $('btn-room-settings').addEventListener('click', openSettings);
 
   async function applyLiveQuality() {
     const track = captureTrack || localStream.getVideoTracks()[0]; // ver reapplyAudienceQuality
