@@ -358,7 +358,7 @@ function createWindow() {
     // duplicar a logica de storage de config.js so pra isso (fora do
     // escopo da Frente C -- ver plano C7). O preco e um flash escuro breve
     // so no boot, ate o CSS do renderer carregar e repintar o body.
-    backgroundColor: '#0e1116',
+    backgroundColor: '#0A0A0F',
     title: 'GoLive LAN',
     // No pacote Windows o ícone do .exe (build.win.icon) já vira o ícone da
     // janela; isto cobre o `npm start`, que senão mostra o ícone padrão do
@@ -421,7 +421,7 @@ function createWindow() {
         movable: true,
         minimizable: false,
         maximizable: false,
-        backgroundColor: '#0e1116',
+        backgroundColor: '#0A0A0F',
         webPreferences: {
           preload: path.join(__dirname, 'espiar-preload.js'),
           contextIsolation: true,
@@ -430,7 +430,10 @@ function createWindow() {
       },
     };
   });
-  win.webContents.on('did-create-window', (_event, child, details) => {
+  // did-create-window NAO recebe Event: a assinatura e (window, details).
+  // Com um `_event` a mais, details chegava undefined e o main lancava
+  // uncaughtException a cada Espiar aberta (log de 2026-09-15, 21:49:13).
+  win.webContents.on('did-create-window', (child, details) => {
     if (details.frameName !== 'golive-espiar') return;
     destroySpyWindow();
     spyWin = child;
@@ -538,7 +541,7 @@ function createSplashWindow() {
     frame: false,
     show: false,
     center: true,
-    backgroundColor: '#0E0F13',
+    backgroundColor: '#0A0A0F',
     icon: path.join(__dirname, 'renderer', 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'splash', 'preload-splash.js'),

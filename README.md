@@ -70,34 +70,35 @@ npm install
 
 ## Como usar
 
-**1. Alguém da turma clica em "Criar sala"**, na coluna da esquerda da tela
+**1. Alguém da turma clica em "Criar sala"**, na barra lateral da tela
 inicial do GoLive. Um diálogo pergunta se a sala deve ser **anunciada na
 rede** (ligado por padrão) e se deve ser **protegida por um PIN** de 4
 dígitos. Confirmando, o app sobe o servidor de sinalização embutido, libera a
 porta no firewall (pode pedir uma confirmação do Windows na primeira vez) e
-mostra o endereço no cabeçalho do palco, com um botão **Copiar** ao lado.
+mostra o endereço no cabeçalho da sala, com um botão de copiar ao lado.
 
 Sem terminal, sem instalar Node à parte, sem digitar porta.
 
 **2. Todo mundo mais abre o GoLive.** Se a sala foi criada com "Anunciar a
-sala na rede" marcado, ela aparece sozinha em "Salas abertas na sua rede", na
-coluna da direita — é só clicar no card ou no botão **Entrar**. Se não, cola o
+sala na rede" marcado, ela aparece sozinha em "Salas na sua rede", no
+painel principal — é só clicar no botão **Entrar** do card. Se não, cola o
 endereço em "Entrar por endereço" (`26.x.x.x` — a porta é opcional, assume
 `:9000`) e clica em Conectar. O nome exibido pros outros é o apelido definido
-no perfil (avatar e nome na barra do topo, clique pra editar).
+no perfil (avatar e nome no painel do usuário, no rodapé da barra lateral —
+clique pra editar).
 
 **Todo mundo na sala precisa estar na mesma versão do GoLive.** A sala só
 aceita quem estiver exatamente na versão de quem a criou — as salas da rede
 que estão noutra versão aparecem apagadas na lista, com um selo dizendo qual
-lado precisa atualizar, e o botão de buscar atualização fica ali do lado, na
-barra do topo.
+lado precisa atualizar, e o botão de buscar atualização fica no painel do
+usuário, no rodapé da barra lateral.
 
-O rodapé da coluna da esquerda mostra o **endereço desta máquina** na rede
+O cartão **Sua rede**, na barra lateral, mostra o **endereço desta máquina** na rede
 virtual antes mesmo de existir uma sala — é o endereço que os seus amigos vão
 digitar.
 
-Quem quiser transmitir clica em **Compartilhar tela**, escolhe monitor ou
-janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
+Quem quiser transmitir clica em **Compartilhar tela**, no dock da sala (a
+barra de botões embaixo do vídeo), escolhe monitor ou janela, e pronto. Mais de uma pessoa pode transmitir ao mesmo tempo na
 mesma sala.
 
 Duplo clique em qualquer vídeo expande pra tela cheia. **Clique com o botão
@@ -134,14 +135,17 @@ rabisco fica dentro do app, e o GoLive avisa.
 Sai do ar junto com a transmissão. A escolha fica lembrada pra próxima vez,
 e **não dá pra ligar no meio** — pare e compartilhe de novo.
 
-Com o **mouse parado por 3 segundos**, o cabeçalho, a barra de baixo e a
+Com o **mouse parado por 3 segundos**, o cabeçalho, o dock e a
 barra de rabisco somem pra não atrapalhar o vídeo. Voltam no primeiro
 movimento (ou no `Tab`, se você estiver de teclado).
 
 **No chat** dá pra mandar imagem (botão de clipe, `Ctrl+V` ou arrastando em
-cima da coluna) — ela é reduzida automaticamente e aparece como miniatura,
+cima da aba Chat) — ela é reduzida automaticamente e aparece como miniatura,
 que abre em tela cheia no clique. O botão de carinha ao lado abre os emoji,
 com busca em português e os que você mais usa na frente.
+
+A coluna da direita tem duas abas, **Pessoas** e **Chat**. Mensagem nova de
+outra pessoa com a aba Pessoas aberta acende um ponto na aba Chat.
 
 **Quem criou a sala pode passar a liderança** pra outra pessoa: `⋮` ao lado
 do nome dela → *"Passar a liderança"*. Quem recebe passa a poder parar
@@ -149,7 +153,7 @@ transmissões, expulsar e banir; quem passou deixa de poder. Se o novo líder
 sair da sala, a liderança volta sozinha pra quem criou.
 
 **Pra pausar a transmissão** sem parar de compartilhar, use o botão de pausa
-no palco ou o atalho global **`Ctrl+Alt+P`** — ele funciona mesmo com o jogo
+no dock ou o atalho global **`Ctrl+Alt+P`** — ele funciona mesmo com o jogo
 em tela cheia por cima, sem precisar dar alt-tab. Os espectadores veem
 "Transmissão pausada" sobre o último quadro borrado, não um quadro
 congelado sem explicação; o mesmo atalho retoma. Os botões de compartilhar
@@ -157,9 +161,10 @@ tela e câmera também mudam de rótulo e cor quando ligados ("Parar de
 compartilhar", "Desligar câmera"), pra não ter dúvida do que um clique vai
 fazer.
 
-**Se você fechar o GoLive no PC que criou a sala, a sala cai pra todo
-mundo** — não há como transferir a sala pra outra máquina no meio da
-sessão.
+**Se quem criou a sala sair, a sala continua.** Ela passa sozinha pra
+outra pessoa da sala, que sobe o servidor, e todo mundo reconecta nela sem
+derrubar o vídeo. Se o PC de quem criou cair sem avisar, o mesmo acontece
+depois que a reconexão desiste.
 
 ## Gerar o instalador pros amigos
 
@@ -169,7 +174,7 @@ Pra ninguém precisar instalar Node:
 npm run dist
 ```
 
-Sai um instalador em `dist/GoLive LAN Setup <versão>.exe`. Ele cria atalho
+Sai um instalador em `dist/GoLive-LAN-Setup-<versão>.exe`. Ele cria atalho
 na Área de Trabalho e no Menu Iniciar, e desinstala normalmente pelo painel
 do Windows. Quem só quer transmitir/assistir não precisa mais de Node — o
 servidor de sinalização agora sobe embutido no próprio app quando alguém
@@ -184,8 +189,9 @@ Não há aba "Transmissão" no modal de Configurações. As categorias são
 tem controle de bitrate, codec ou áudio do sistema. (O anúncio da sala na
 rede também não mora mais lá: virou uma opção do diálogo de criar sala.)
 
-**Aparência** troca a cor do app: seis predefinições prontas (a última,
-"Papel", é a única clara), e você pode trocar a **cor de ação** (botão
+**Aparência** troca a cor do app: sete predefinições prontas (a primeira,
+"GoLive", é o padrão, com as cores da logo e do site; "Papel" é a única
+clara), e você pode trocar a **cor de ação** (botão
 principal, foco do teclado, seleção) por cima de qualquer uma delas. A troca
 é ao vivo, sem botão "aplicar", e o app reprova uma cor que deixaria algum
 texto ilegível. `--live`, `--warn` e `--danger` (os sinais de "ao vivo",
@@ -193,8 +199,8 @@ texto ilegível. `--live`, `--warn` e `--danger` (os sinais de "ao vivo",
 só o acento é escolha sua.
 
 A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
-tela" → "O que você quer compartilhar?"), numa grade de quatro presets
-fechados: `720p · 30 fps` até `1080p · 60 fps` (12 Mbps), este último como
+tela" → "O que você quer compartilhar?"), em dois controles — **Resolução**
+e **Fluidez** — que formam quatro presets fechados: `720p · 30 fps` até `1080p · 60 fps` (12 Mbps), este último como
 padrão. Cada preset é um pacote fechado de resolução + fps + bitrate — sem
 sliders soltos. Ao lado, uma linha mostra o upload que aquele preset exige
 por espectador.
@@ -245,9 +251,9 @@ problema.
 de liberar o app: se houver, baixa e instala sozinha, sem perguntar, e o app
 reabre já atualizado; sem internet, ela desiste em poucos segundos e abre o
 app normalmente. Com o app aberto, nada instala sozinho: quando sai uma versão
-nova, aparece no topo do lobby um botão **Atualizar** (some dentro de uma
-sala) — clicar baixa e reinstala. Há também o botão de **buscar
-atualizações**, ao lado do nome do app.
+nova, aparece no painel do usuário (rodapé da barra lateral do lobby) um
+botão **Atualizar** (some dentro de uma sala) — clicar baixa e reinstala. No
+mesmo painel fica o botão de **buscar atualizações**.
 
 ---
 
@@ -256,10 +262,12 @@ atualizações**, ao lado do nome do app.
 Compartilhamento de tela em WebRTC entrega 30 fps por padrão, mesmo pedindo
 60. Três ajustes resolvem, e todos estão no código:
 
-- `track.contentHint = 'motion'` — avisa o encoder que é vídeo em movimento,
-  não um slide parado. Sem isso o Chromium prioriza nitidez e derruba o fps.
-- `degradationPreference = 'maintain-framerate'` — quando a banda aperta, o
-  encoder baixa a resolução em vez de congelar a imagem.
+- `contentHint = 'motion'` — avisa o encoder que é vídeo em movimento, não um
+  slide parado. Ele vai numa track que sai de um relay por canvas
+  (`screenrelay.js`), não na track crua da captura: na crua ele derrubava o
+  encoder de hardware do Windows em silêncio (corrigido na 0.11.0).
+- `degradationPreference` — a tela usa `maintain-resolution`, com a resolução
+  escolhida pelo app para cada espectador; a câmera usa `maintain-framerate`.
 - `maxFramerate` e `maxBitrate` explícitos no `sendEncodings`, mais um
   `applyConstraints` de reforço na track, porque alguns caminhos de captura
   ignoram as constraints iniciais e entregam 30 fps caladamente.
@@ -279,7 +287,7 @@ não há botão pra isso: o preset que você marcou é só o ponto de partida.
 **"Não consegui conectar"** — quem criou a sala precisa estar com o GoLive
 aberto: ao clicar em "Criar sala" o app sobe o servidor embutido e tenta
 liberar a porta no firewall sozinho (a porta pode cair em qualquer valor
-entre 9000 e 9010, mostrado no cabeçalho do palco). Se a liberação
+entre 9000 e 9010, mostrado no cabeçalho da sala). Se a liberação
 automática falhar, aparece um aviso acima da grade de vídeo com um botão
 **"Permitir acesso à rede"**, que re-dispara o pedido de elevação do Windows
 pra mesma porta da sala. Só se essa tentativa também falhar é que o comando
@@ -293,7 +301,7 @@ encoder caindo pra software, por exemplo) volta a aparecer normalmente.
 está na mesma versão do app (o protocolo de sinalização e a árvore de
 retransmissão mudam entre releases, e uma sala com versões misturadas quebra
 de um jeito que parece problema de rede). Use o botão de buscar atualização
-na barra do topo; se a versão mais nova for a **sua**, quem criou a sala é
+no painel do usuário, no rodapé da barra lateral; se a versão mais nova for a **sua**, quem criou a sala é
 que precisa atualizar.
 
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O

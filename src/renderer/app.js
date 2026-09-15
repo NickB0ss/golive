@@ -1297,6 +1297,7 @@
   }
 
   function teardownSession(session) {
+    resetRoomTabs();
     stopStatsLoop();
     resetTreeState();
     teardownMedia();
@@ -1383,6 +1384,9 @@
       myId: 'me',
       onModerate: (action, targetId, targetName) => sendModerate(action, targetId, targetName),
     });
+    const people = (session ? session.mesh.peers.size : 0) + (currentSelfInfo() ? 1 : 0);
+    $('room-people-count').textContent = String(people);
+    $('stage-member-count').textContent = `${people} ${people === 1 ? 'pessoa' : 'pessoas'}`;
     renderRoomStatus();
   }
 
@@ -1986,11 +1990,16 @@
 
     const btn = event.currentTarget;
     if (copiedTimer) clearTimeout(copiedTimer);
-    else btn.dataset.label = btn.textContent; // so na 1a vez, senao guarda "Copiado ✓"
-    btn.textContent = 'Copiado ✓';
+    else btn.dataset.label = btn.getAttribute('aria-label') || 'Copiar endereço';
+    btn.setAttribute('aria-label', 'Endereço copiado');
+    btn.title = 'Endereço copiado';
+    const copyStatus = $('copy-address-status');
+    copyStatus.textContent = '';
+    setTimeout(() => { copyStatus.textContent = 'Endereço copiado'; }, 0);
     btn.classList.add('copied-flash');
     copiedTimer = setTimeout(() => {
-      btn.textContent = btn.dataset.label || 'Copiar';
+      btn.setAttribute('aria-label', btn.dataset.label || 'Copiar endereço');
+      btn.title = btn.dataset.label || 'Copiar endereço';
       btn.classList.remove('copied-flash');
       copiedTimer = null;
     }, COPIED_HOLD_MS);
@@ -2203,6 +2212,36 @@
     const btn = $('btn-toggle-side');
     btn.classList.toggle('collapsed', collapsed);
     btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
+    btn.setAttribute('aria-label', btn.title);
+  });
+
+  // As abas mantem um painel por vez para a coluna continuar utilizavel em janela baixa.
+  const roomTabs = [...document.querySelectorAll('.room-tab')];
+  function selectRoomTab(tab) {
+    for (const candidate of roomTabs) {
+      const selected = candidate === tab;
+      candidate.setAttribute('aria-selected', String(selected));
+      candidate.tabIndex = selected ? 0 : -1;
+      $(`${candidate.getAttribute('aria-controls')}`).hidden = !selected;
+    }
+    if (tab.id === 'tab-chat') $('chat-unread-dot').classList.add('hidden');
+  }
+  function resetRoomTabs() {
+    selectRoomTab($('tab-chat'));
+    $('chat-unread-dot').classList.add('hidden');
+  }
+  roomTabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => selectRoomTab(tab));
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? roomTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + roomTabs.length) % roomTabs.length;
+      selectRoomTab(roomTabs[next]);
+      roomTabs[next].focus();
+    });
+  });
+  document.addEventListener('golive:chat-received', () => {
+    if ($('tab-people').getAttribute('aria-selected') === 'true') $('chat-unread-dot').classList.remove('hidden');
   });
 
   // ---------- Desconectar ----------
@@ -2339,6 +2378,20 @@
     }
   }
 
+  /** Pede a quem serve uma entrada que a retomada fechou que a oferte de
+   * novo, e repete enquanto ela nao volta (resume.reofferStillNeeded). */
+  function requestResumeReoffer(session, req, attempt) {
+    const stillNeeded = () => currentSession === session
+      && resume.reofferStillNeeded({ peer: session.mesh.peers.get(req.to), kind: req.kind });
+    if (!stillNeeded()) return; // voltou por outro caminho, peer saiu ou a sessao mudou
+    console.info(`[retomada] entrada ${req.kind} de #${req.to} caiu na retomada; pedindo a oferta de volta (${attempt}/${resume.RESUME_REOFFER_ATTEMPTS})`);
+    session.sig.send({ type: 'reoffer', to: req.to, kind: req.kind });
+    setTimeout(() => {
+      if (attempt < resume.RESUME_REOFFER_ATTEMPTS) requestResumeReoffer(session, req, attempt + 1);
+      else if (stillNeeded()) console.error(`[retomada] entrada ${req.kind} de #${req.to} nao voltou depois de ${attempt} pedidos`);
+    }, resume.RESUME_REOFFER_RETRY_MS);
+  }
+
   /** Refaz so a conexao de saida `kind` pra `peerId` (fecha e oferta de
    * novo). Kind composto: somos relay daquele filho e repassamos de novo. */
   async function reofferOne(session, peerId, kind) {
@@ -2427,6 +2480,7 @@
           welcomePeerIds: welcomePeers.map((p) => p.id),
           meshPeerIds: waitingOrphan ? Array.from(waitingOrphan.mesh.peers.keys()) : [],
         });
+        if (!plan.adopt) resetRoomTabs();
         // O servidor entrega um token novo em TODO welcome, inclusive quando
         // recusou a retomada. Ausente nunca conserva o token anterior.
         resumeToken = typeof msg.resumeToken === 'string' && msg.resumeToken ? msg.resumeToken : null;
@@ -2543,7 +2597,12 @@
         // mantido. PCs que ficaram no meio de SDP/ICE sao fechadas pelo
         // caminho de falha existente, que re-oferta somente as saidas vivas.
         if (plan.adopt) {
-          mesh.recoverUnstable();
+          // Entrada fechada aqui so volta se quem a serve ofertar de novo;
+          // sem o pedido, a tela sumia ate a pessoa sair e entrar da sala
+          // (log de 2026-09-15, 21:46:37). Ver resume.reofferRequests.
+          for (const req of resume.reofferRequests(mesh.recoverUnstable())) {
+            setTimeout(() => requestResumeReoffer(session, req, 1), req.delayMs);
+          }
           renderRoomStatus();
         }
         // Reconexao automatica: startStatsLoop so e chamado por startShare. Aqui
@@ -2618,6 +2677,13 @@
         break;
       }
       case 'peer-resumed': {
+        // Uma autocura pedida antes da queda deixaria a carencia do 'reoffer'
+        // valendo, e o pedido que a retomada manda logo depois (entrada que
+        // ela fechou) seria descartado sem nova tentativa. O servidor entrega
+        // este aviso antes de qualquer frame novo do peer retomado.
+        for (const chave of [...lastReofferAt.keys()]) {
+          if (chave.startsWith(`${msg.id}|`)) lastReofferAt.delete(chave);
+        }
         const kinds = await reofferForResumedPeer(session, msg.id);
         console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
         break;
@@ -2783,7 +2849,7 @@
         const isMine = msg.from === myId;
         const chatPeer = isMine ? null : mesh.peers.get(msg.from);
         const chatEntry = { ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) };
-        ui.chat.append(chatEntry);
+        ui.chat.append(chatEntry, { received: !isMine });
         localChatTail.push(chatEntry);
         if (localChatTail.length > 50) localChatTail.shift();
         playSoundEvent('chat', { isMine });
