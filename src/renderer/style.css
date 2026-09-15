@@ -216,7 +216,7 @@
    genuinamente claro (~0.93 de luminancia) em vez de quase preto. */
 :root[data-theme="paper"] {
   --bg:#FCFAF7; --s1:#FBF8F4; --s2:#F0ECE4; --s3:#DFD6C6; --s4:#CBBEA4;
-  --tx:#1C1A16; --tx2:#47423A; --tx3:#5C564B;
+  --tx:#1C1A16; --tx-soft:#34312B; --tx2:#47423A; --tx3:#5C564B;
   --line: rgba(30,25,15,.10); --line2: rgba(30,25,15,.18);
   --act:#4338CA; --act-hover:#3730A3;
 }
@@ -235,7 +235,7 @@ html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--tx);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
@@ -742,12 +742,13 @@ button.busy { cursor: default; }
 .stage-status-dot[data-level="paused"] { background: var(--tx3); }
 .stage-room-name { font-weight: 650; font-size: 14.5px; }
 .stage-room-address { font-size: 12px; color: var(--tx2); font-variant-numeric: tabular-nums; }
-.stage-room-pin { font-size: 12px; color: var(--warn); }
+.stage-room-pin { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--warn); }
+.stage-room-pin svg { width: 14px; height: 14px; flex: none; }
 .stage-status-badge {
   font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--r-full);
   background: var(--warn-dim); color: var(--warn);
 }
-#btn-toggle-side { margin-left: auto; }
+#btn-room-settings { margin-left: auto; }
 
 .control-bar {
   display: flex; align-items: center; gap: var(--s-2);
@@ -869,12 +870,13 @@ button.busy { cursor: default; }
   font-weight: 550; font-size: 13px; flex: 0 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.peer-you-tag { color: var(--tx3); font-weight: 400; font-size: 10.5px; flex: none; }
-.peer-crown { color: var(--warn); font-size: 12px; flex: none; }
+.peer-you-tag { color: var(--tx3); font-weight: 400; font-size: 11px; flex: none; }
+.peer-crown { display: inline-flex; align-items: center; color: var(--warn); flex: none; }
+.peer-crown svg { width: 14px; height: 14px; }
 .peer-live-badge {
   display: inline-flex; align-items: center; gap: 4px; flex: none;
   background: var(--live-dim); color: var(--live-soft);
-  border-radius: var(--r-xs); padding: 2px 6px; font-size: 9.5px; font-weight: 700;
+  border-radius: var(--r-xs); padding: 2px 6px; font-size: 11px; font-weight: 700;
   letter-spacing: .03em; margin-left: auto;
 }
 .peer-live-badge svg { width: 9px; height: 9px; }
@@ -899,10 +901,10 @@ button.busy { cursor: default; }
 .member-menu-item.warn { color: var(--warn); }
 .member-menu-item.danger { color: var(--danger-soft); }
 .member-menu-sep { height: 1px; background: var(--line); margin: 5px 4px; }
-.member-menu-hint { font-size: 10px; color: var(--tx3); padding: 4px 9px 5px; line-height: 1.45; }
+.member-menu-hint { font-size: 11px; color: var(--tx3); padding: 4px 9px 5px; line-height: 1.45; }
 
 .banned-readmit {
-  margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--act);
+  margin-left: auto; font-size: 11px; font-weight: 600; color: var(--tx3);
   border: 1px solid var(--line2); border-radius: var(--r-xs); padding: 3px 8px;
   background: transparent; min-height: 0;
 }
@@ -927,7 +929,7 @@ button.busy { cursor: default; }
   font-size: 12.5px; font-weight: 650; color: var(--tx);
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.chat-time { font-size: 10px; color: var(--tx3); flex: none; }
+.chat-time { font-size: 11px; color: var(--tx3); flex: none; }
 .chat-text { font-size: 12.5px; line-height: 1.5; color: var(--tx-soft); margin-top: 1px; word-break: break-word; }
 
 .chat-sys {
@@ -949,7 +951,7 @@ button.busy { cursor: default; }
   font-family: inherit; font-size: 12.5px; line-height: 1.4; max-height: 88px;
 }
 .chat-compose textarea:focus { outline: none; }
-.chat-input-count { font-size: 10px; color: var(--tx3); flex: none; }
+.chat-input-count { font-size: 11px; color: var(--tx3); flex: none; }
 .chat-compose.disabled { opacity: .6; pointer-events: none; }
 
 .offbar {
@@ -960,6 +962,10 @@ button.busy { cursor: default; }
 #in-pin {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.25em;
+}
+#in-pin::placeholder {
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  letter-spacing: normal;
 }
 
 /* Pausado nao e so "ligado": e um estado que esconde a tela dos outros e
@@ -1080,6 +1086,66 @@ button.busy { cursor: default; }
 .grid[data-count="6"],
 .grid[data-count="many"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
+/* Palco e tira sao grupos separados porque uma coluna implicita para cada
+   miniatura faria o grid principal encolher antes de a tira poder rolar.
+   A tira guarda sua barra nela mesma; o palco segue usando toda a altura que
+   sobra e o resize observer continua vendo a caixa real de cada tile. */
+.grid[data-layout="spotlight"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 148px;
+  grid-auto-rows: auto;
+  align-content: stretch;
+  overflow-x: clip;
+  overflow-y: hidden;
+}
+.grid-main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+}
+/* A grade base centraliza os itens na trilha; o palco precisa ESTICAR nela.
+   Sem isto o .grid-main ficava com a altura do conteudo -- um tile 16:9 pela
+   largura inteira (617px) numa trilha de ~544 -- e estourava por cima do
+   cabecalho, empurrando a tira. */
+.grid-main { align-self: stretch; }
+.grid-main[data-count="1"] { grid-template-columns: minmax(0, min(1280px, 100%)); }
+/* Uma tela so: a altura manda e a largura sai do 16:9. Pela largura, o tile
+   passaria da trilha sempre que a tira existe. */
+.grid-main[data-count="1"] > .tile {
+  align-self: stretch;
+  justify-self: center;
+  width: auto;
+  max-width: 100%;
+}
+.grid-main[data-count="2"],
+.grid-main[data-count="3"],
+.grid-main[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-main[data-count="5"],
+.grid-main[data-count="6"],
+.grid-main[data-count="many"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-strip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  /* `safe`: com a tira transbordando, centralizar puro jogaria a primeira
+     miniatura pra fora pela esquerda, onde a rolagem nao alcanca. */
+  justify-content: safe center;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* :not(.fullscreen) -- camera da tira tambem vira tela cheia, e
+   .tile.fullscreen nao zera max-height: sem isto ela ficava 1920x148. */
+.grid-strip .tile:not(.fullscreen) {
+  flex: 0 0 auto;
+  height: 100%;
+  max-height: 148px;
+}
+
 /* Janela estreita: o palco perde ~300px pra coluna lateral quando ela esta
    aberta, que e o caso comum -- por isso o corte e em 1100px de JANELA, e
    nao uma consulta de container (que criaria um contexto de contencao novo
@@ -1088,9 +1154,13 @@ button.busy { cursor: default; }
   .grid[data-count="5"],
   .grid[data-count="6"],
   .grid[data-count="many"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-main[data-count="5"],
+  .grid-main[data-count="6"],
+  .grid-main[data-count="many"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .grid[data-count] { grid-template-columns: minmax(0, 1fr); }
+  .grid-main[data-count] { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Ordem estavel: tela e o conteudo, camera e o acompanhamento. Sem isto a
@@ -1310,7 +1380,7 @@ button.busy { cursor: default; }
 .tile-watchers-label {
   display: block;
   color: var(--text-2);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1343,11 +1413,11 @@ button.busy { cursor: default; }
   overflow: hidden;
   display: grid;
   place-items: center;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 .tile-watchers-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tile-watchers-avatar .peer-avatar-fallback { font-size: 9px; }
+.tile-watchers-avatar .peer-avatar-fallback { font-size: 11px; }
 .tile-watchers-name { overflow: hidden; text-overflow: ellipsis; }
 
 /* Camada por cima do video em fullscreen onde as miniaturas flutuam livres
@@ -1879,7 +1949,7 @@ button.busy { cursor: default; }
   position: absolute; top: 6px; right: 6px;
   padding: 2px 7px; border-radius: var(--r-full);
   background: var(--scrim-tint-2); border: 1px solid var(--line2);
-  font-size: 10px; font-weight: 700; letter-spacing: .03em; color: var(--tx);
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--tx);
 }
 
 /* Corpo de altura fixa (duas linhas): cards de alturas diferentes na mesma
@@ -1963,11 +2033,23 @@ button.busy { cursor: default; }
 
 .audio-mode { margin-bottom: 10px; }
 
-.picker-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+/* A .picker-box e o container que rola; o rodape fica disponivel sem tirar
+   o espaco que o ultimo controle precisa quando chega ao fim. */
+.picker-actions {
+  /* O sticky gruda na borda do padding da caixa, e o conteudo rolado
+     aparecia por baixo do rodape nessa faixa. O rodape desce sobre o padding
+     (bottom/margem negativos) e o devolve por dentro (padding-bottom). */
+  position: sticky; bottom: calc(var(--s-5) * -1);
+  display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 16px; margin-bottom: calc(var(--s-5) * -1);
+  padding-top: 16px; padding-bottom: var(--s-5);
+  background: var(--surface-modal); border-top: 1px solid var(--line);
+}
 
 /* ---------- Estatisticas ---------- */
 
 .stats { font-size: 12px; }
+.stats-empty { color: var(--tx2); font-size: 13px; }
 .stat { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .stat span { color: var(--muted); }
 .stat b { font-variant-numeric: tabular-nums; }
@@ -2008,7 +2090,7 @@ button.busy { cursor: default; }
 }
 .stats-table td.good { color: var(--good); }
 .stats-table td.warn-text { color: var(--warn); }
-.stats-kind { display: block; color: var(--muted); font-size: 10px; }
+.stats-kind { display: block; color: var(--tx3); font-size: 11px; }
 
 .stat-warn {
   margin-top: 10px;
@@ -2212,7 +2294,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   padding: 0;
 }
 .annot-tool svg { width: 15px; height: 15px; }
-.annot-tool em { font-style: normal; font-size: 9px; margin-left: 2px; }
+.annot-tool em { font-style: normal; font-size: 11px; margin-left: 2px; }
 .annot-tool:hover:not(:disabled) { background: var(--s3); }
 /* Qual ferramenta esta escolhida: preenchimento DISCRETO. O preenchimento
    forte (--act) e so do toggle -- ele e a chave geral da barra, e dois
@@ -2242,7 +2324,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   gap: 5px;
 }
 .annot-tool.wide svg { width: 12px; height: 12px; }
-.annot-tool.wide em { font-size: 10.5px; font-weight: 600; margin-left: 0; letter-spacing: .01em; }
+.annot-tool.wide em { font-size: 11px; font-weight: 600; margin-left: 0; letter-spacing: .01em; }
 /* A pilula encolhe junto: com 4px de folga em volta de um botao de 22px a
    barra parecia um botao de 30px de novo. */
 .tile-annot-bar:has(.annot-tool.wide:only-child) { padding: 2px; }
@@ -2475,7 +2557,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   border-radius: var(--r-full);
   background: var(--live-dim);
   color: var(--live-soft);
-  font-size: 8px; font-weight: 700; letter-spacing: .04em;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
 }
 .theme-preview-side { width: 104px; display: flex; flex-direction: column; gap: 5px; }
 .theme-preview-row { display: flex; align-items: center; gap: 5px; }
@@ -2491,7 +2573,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   border-radius: var(--r-xs);
   background: var(--act);
   color: var(--on-act);
-  font-size: 9px; font-weight: 600;
+  font-size: 11px; font-weight: 600;
 }
 .theme-legend {
   display: flex;
@@ -2500,7 +2582,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   margin: var(--s-2) 0 0;
   padding: 0;
   list-style: none;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--tx3);
 }
 .theme-legend li { display: flex; align-items: center; gap: 5px; }
