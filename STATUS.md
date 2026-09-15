@@ -45,9 +45,9 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Botões de **compartilhar tela e câmera mostram o próprio estado**: rótulo,
   ícone e preenchimento mudam ao ligar (`Parar de compartilhar` / `Desligar
   câmera`), e a câmera tem um estado de carregando enquanto o driver abre.
-- **Temas de cor** (Configurações > Aparência): seis predefinições
-  (Superfície e sinal, Meia-noite, Carvão, Âmbar quente, Floresta, Papel —
-  a única clara), cada uma com a **cor de ação** trocável por cima, e trava
+- **Temas de cor** (Configurações > Aparência): sete predefinições
+  (GoLive — o padrão, com as cores da logo —, Superfície e sinal, Meia-noite,
+  Carvão, Âmbar quente, Floresta, Papel — a única clara), cada uma com a **cor de ação** trocável por cima, e trava
   de contraste que reprova combinações ilegíveis antes de aplicar.
   `--live`/`--warn`/`--danger` ficam travados em todo tema, e as superfícies
   também: só o acento é escolha da pessoa.
@@ -104,16 +104,25 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.15.0` (tag `v0.15.0`, 2026-09-14). Electron `^32` (fora de suporte — ver
+`0.16.0` (tag `v0.16.0`, 2026-09-15). Electron `^32` (fora de suporte — ver
 backlog), `electron-builder` na `^26`.
-Testes: `npm test` → **719 passando** (710 na 0.14.0). `npm run lint` → 0
+Testes: `npm test` → **733 passando** (719 na 0.15.0). `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
 
-## Corrigido depois da 0.15.0 (ainda sem versão)
+## Lançado na 0.16.0 (2026-09-15)
 
-Tirado do log de quem assiste de 2026-09-15 (0.15.0): "tive que sair e entrar
+Duas frentes do mesmo dia, juntas em `feat/integracao-2026-09-15`: a correção
+de um log real ("tive que sair e entrar da sala", branch
+`fix/retomada-e-espiar`) e o redesign com as cores da logo e estrutura de app
+(branch `feat/redesign-marca`). **Lançado sem teste em PCs reais** — só
+`npm test`/lint, prints do app real pelo hook `--require` e revisões de
+código (Codex terra, high). Todo mundo da sala precisa estar na 0.16.0.
+
+### Correções
+
+Tiradas do log de quem assiste de 2026-09-15 (0.15.0): "tive que sair e entrar
 da sala".
 
 - **A tela não voltava depois de uma queda curta da sinalização.** Sequência
@@ -142,7 +151,73 @@ da sala".
   única nunca eram aplicados. Reproduzido e confirmado corrigido no app real pelo
   hook de screenshot (`--require`).
 
-Testes: `npm test` → **723 passando**. `npm run lint` → 0 erros, 9 avisos.
+
+### Redesign "Marca" — cores
+
+Spec: `docs/superpowers/specs/2026-09-15-redesign-marca-design.md`. O app passa
+a ter a cara da logo e do site (`golive-website`), em vez de parecer outro
+produto.
+
+- **Tema padrão novo "GoLive" (`marca`)**: neutros com tom violeta
+  (`#0A0A0F` → `#292936`), texto na cor do traço da logo (`#EDEDF2`), ação
+  violeta `#5B4BE8` (branco sobre ela 5,81:1). Passa pela mesma trava de
+  contraste dos outros temas. "Superfície e sinal" continua escolhível.
+  Config antigo com `signal` e sem cor de ação própria migra uma vez só
+  (`themeMigration`); escolha feita depois nunca é desfeita.
+- **Fontes da marca, locais**: Outfit (títulos, nome da sala, rótulos de
+  seção) e Work Sans (corpo), `.woff2` em `src/renderer/assets/fonts/` com a
+  licença OFL. Splash e Espiar também — o CSP do splash ganhou `font-src
+  'self'` (sem ele as fontes eram recusadas em silêncio).
+- **Acabamento**: foco visível por `--ring`, Configurações com cabeçalho e o
+  fechar fora da área que rola, placeholder e borda do chat legíveis, rótulos
+  de seção num estilo só.
+- **Aparência**: o card "GoLive" vem primeiro e marcado. A lista de cards é um
+  array fixo em `ui.js` que tinha ficado sem `marca`; `theme.test.js` agora
+  cobra que todo preset esteja nela.
+
+- **Texto do botão primário ilegível em quatro temas (vinha da 0.15.0)**:
+  preset puro não escrevia `--on-act`, então valia o `#fff` do `:root` —
+  Meia-noite 3,21:1, Floresta 2,99:1, Carvão 2,54:1, Âmbar 2,28:1. A trava
+  aprovava porque `validate` deriva o texto certo sozinho; o `apply` é que não
+  o aplicava. Agora todo preset escreve o `onAct` de `deriveAction` (5,68–8,00:1),
+  com teste por preset. Achado da revisão do Codex (terra, high).
+- A busca de emoji ganhou anel de foco na linha inteira (o campo zerava o
+  próprio e não tinha substituto).
+
+### Estrutura de app
+
+Spec: `docs/superpowers/specs/2026-09-15-estrutura-de-app-design.md`. Pedido
+depois das cores: "mudar a estrutura, posicionamento de botões, cara de app
+moderno" e, na sequência, "o posicionamento e o tamanho das coisas dentro da
+sala". Nenhum id sumiu (o JS usa ~130); só `btn-room-settings-dock`, criado e
+removido no caminho.
+
+- **Lobby em casca**: a faixa do topo virou barra lateral fixa (marca, "Criar
+  sala", "Entrar por endereço", cartão "Sua rede") com o painel do usuário
+  preso ao rodapé (avatar, nome, atualizar, configurações). Salas em grade de
+  cards no painel principal; o texto de apresentação mora no estado vazio.
+- **Sala**: cabeçalho de 56 px (nome, "N pessoas", chips de endereço e PIN,
+  copiar com ✓ e aviso em `aria-live`); palco com menos margem; palco vazio
+  desenhado; **dock** centralizado no fluxo do layout (nunca por cima dos
+  tiles) — "Compartilhar tela" com rótulo, câmera/pausar/trocar/configurações
+  redondos de 48 px com a dica saindo do próprio `.btn-label`, "Sair" redondo
+  em `--danger`. Coluna lateral de 320 px com abas **Pessoas · N / Chat** e
+  ponto de não lido (só mensagem de outra pessoa; reinicia ao trocar de sala,
+  não numa retomada).
+- **Diálogos e Configurações**: rodapé de ações padronizado; ícones na
+  navegação de Configurações. Escala de `z-index` em tokens.
+- **Defeitos pegos no caminho**: o estilo novo do palco vazio pegava a classe
+  `.empty` de qualquer elemento e transformou o contador de salas do lobby numa
+  bolha com ícone (mesma classe de bug da 0.12.0) — agora é `.grid > .empty`,
+  com teste que reprova `.empty` sem escopo; rótulos do dock escondidos com
+  `display:none` a 900 px deixavam "Compartilhar tela" sem nome acessível;
+  `aria-label` fixo em câmera/pausa mascarava o estado ("Desligar câmera",
+  "Retomar"). Três rodadas de revisão do Codex (terra, high).
+- Medido no tamanho mínimo da janela (900x600) com o dock cheio e a coluna
+  aberta: dock em 68–504 px dentro de um palco de 8–564 px.
+
+Conferido com prints do app real (hook `--require`) a 1440x900, 1366x768 e
+900x600, tema Papel incluído. Testes da versão: ver "Versão atual".
 
 ## Lançado na 0.15.0 (2026-09-14)
 

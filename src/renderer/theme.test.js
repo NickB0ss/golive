@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   PRESETS,
+  DANGER,
   contrast,
   hueOf,
   hueDistance,
@@ -12,6 +13,20 @@ const {
   tokensFor,
   apply,
 } = require('./theme');
+const fs = require('node:fs');
+const path = require('node:path');
+
+// A lista de cartoes em Aparencia e um array fixo em ui.js. Quando o tema
+// `marca` entrou, ele ficou de fora dela: o padrao novo nao aparecia para
+// escolher e nenhum cartao ficava marcado.
+test('Aparencia mostra um cartao para cada predefinicao, sem id inventado', () => {
+  const uiSource = fs.readFileSync(path.join(__dirname, 'ui.js'), 'utf8');
+  const match = /const THEME_PRESET_ORDER = \[([^\]]*)\]/.exec(uiSource);
+  assert.ok(match, 'THEME_PRESET_ORDER nao encontrado em ui.js');
+  const order = [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...order].sort(), Object.keys(PRESETS).sort());
+  assert.equal(order.length, new Set(order).size);
+});
 
 function luminanceOf(hex) {
   // Aproximacao simples de "quao claro" pra comparar dois hex sem
@@ -33,6 +48,14 @@ test('contrast e simetrico na ordem dos argumentos', () => {
   const a = contrast('#4F46E5', '#0E0F13');
   const b = contrast('#0E0F13', '#4F46E5');
   assert.equal(a, b);
+});
+
+test('botao de sair usa texto legivel sobre perigo nos sete presets', () => {
+  for (const nome of Object.keys(PRESETS)) {
+    const texto = deriveAction(DANGER).onAct;
+    const razao = contrast(texto, DANGER);
+    assert.ok(razao >= 4.5, `${nome}: texto do botao Sair deu ${razao.toFixed(2)}:1`);
+  }
 });
 
 test('hueDistance e circular -- 350deg e 10deg estao a 20deg, nao a 340', () => {
@@ -92,6 +115,18 @@ test('todo preset do catalogo passa em validate', () => {
   }
 });
 
+test('marca usa os tokens do site e passa na trava de contraste', () => {
+  const marca = PRESETS.marca;
+  assert.deepEqual(marca.surfaces, {
+    bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
+    tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
+    line: 'rgba(237,237,242,.08)', line2: 'rgba(237,237,242,.14)',
+  });
+  assert.equal(marca.act, '#5B4BE8');
+  assert.equal(marca.actHover, '#6D5CF6');
+  assert.deepEqual(validate(tokensFor({ preset: 'marca' })), { ok: true, failures: [], nearestAct: null });
+});
+
 test('acento vermelho perto de --live e reprovado por distancia de matiz, e nearestAct passa', () => {
   const tokens = { ...tokensFor({ preset: 'signal' }), act: '#E63946' };
   const result = validate(tokens);
@@ -114,25 +149,25 @@ test('deriveAction com acento escuro comum aceita branco', () => {
   assert.equal(derived.onAct.toLowerCase(), '#ffffff');
 });
 
-test('tokensFor com preset desconhecido cai no padrao (signal)', () => {
+test('tokensFor com preset desconhecido cai no padrao (marca)', () => {
   const tokens = tokensFor({ preset: 'nao-existe' });
-  assert.deepEqual(tokens, PRESETS.signal);
+  assert.deepEqual(tokens, PRESETS.marca);
 });
 
 test('tokensFor com custom sem act valido cai no padrao', () => {
   const tokens = tokensFor({ preset: 'custom', base: { temp: 0.5, level: 0.5 }, act: 'nao-e-hex' });
-  assert.deepEqual(tokens, PRESETS.signal);
+  assert.deepEqual(tokens, PRESETS.marca);
 });
 
 test('tokensFor com custom sem base valida cai no padrao', () => {
   const tokens = tokensFor({ preset: 'custom', base: { temp: 2, level: 0.5 }, act: '#4F46E5' });
-  assert.deepEqual(tokens, PRESETS.signal);
+  assert.deepEqual(tokens, PRESETS.marca);
 });
 
 test('tokensFor com custom ausente/vazio cai no padrao', () => {
-  assert.deepEqual(tokensFor(undefined), PRESETS.signal);
-  assert.deepEqual(tokensFor({}), PRESETS.signal);
-  assert.deepEqual(tokensFor({ preset: 'custom' }), PRESETS.signal);
+  assert.deepEqual(tokensFor(undefined), PRESETS.marca);
+  assert.deepEqual(tokensFor({}), PRESETS.marca);
+  assert.deepEqual(tokensFor({ preset: 'custom' }), PRESETS.marca);
 });
 
 test('tokensFor com custom valido deriva surfaces e action, nao devolve preset fixo', () => {
@@ -147,14 +182,14 @@ test('hueOf de --live e estavel (regressao simples)', () => {
   assert.ok(h >= 355 || h <= 5, `esperava matiz perto de 0/360 (vermelho), veio ${h}`);
 });
 
-test('apply com preset "signal" remove data-theme; outro preset seta o atributo', () => {
+test('apply com preset "marca" remove data-theme; outro preset seta o atributo', () => {
   const doc = { documentElement: { attrs: {}, style: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } } };
   doc.documentElement.style.setProperty = function setProperty(k, v) { this[k] = v; };
 
   apply({ preset: 'midnight' }, doc);
   assert.equal(doc.documentElement.attrs['data-theme'], 'midnight');
 
-  apply({ preset: 'signal' }, doc);
+  apply({ preset: 'marca' }, doc);
   assert.equal(doc.documentElement.attrs['data-theme'], undefined);
 });
 
@@ -202,7 +237,7 @@ test('apply de um preset APAGA as variaveis inline de um custom anterior', () =>
   apply({ preset: 'custom', base: { temp: 0.3, level: 0.9 }, act: '#4F8EF7' }, doc);
   assert.ok(props['--bg'], 'o custom precisa ter escrito --bg');
 
-  apply({ preset: 'signal' }, doc);
+  apply({ preset: 'marca' }, doc);
   assert.equal(props['--bg'], undefined);
   assert.equal(props['--act'], undefined);
   assert.equal(doc.documentElement.attrs['data-theme'], undefined);
@@ -264,7 +299,7 @@ test('apply de preset + act escreve SO as variaveis de acao, nunca as superficie
   assert.equal(doc.documentElement.attrs['data-theme'], 'paper');
 });
 
-test('apply de signal + act mantem o acento e nao poe data-theme', () => {
+test('apply de marca + act mantem o acento e nao poe data-theme', () => {
   const props = {};
   const doc = {
     documentElement: {
@@ -278,9 +313,33 @@ test('apply de signal + act mantem o acento e nao poe data-theme', () => {
     },
   };
 
-  apply({ preset: 'signal', act: '#22A06B' }, doc);
-  assert.equal(doc.documentElement.attrs['data-theme'], undefined, 'signal e o :root, sem atributo');
+  apply({ preset: 'marca', act: '#22A06B' }, doc);
+  assert.equal(doc.documentElement.attrs['data-theme'], undefined, 'marca e o :root, sem atributo');
   assert.equal(props['--act'], '#22A06B');
+});
+
+test('preset puro escreve um texto legivel sobre o proprio botao de acao', () => {
+  // Carvao: branco sobre #9CA3AF da ~2,5:1. validate aprovava porque deriva
+  // onAct sozinho, mas apply nao o escrevia e valia o #fff do :root.
+  const props = {};
+  const doc = {
+    documentElement: {
+      attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; },
+      removeAttribute(k) { delete this.attrs[k]; },
+      style: {
+        setProperty(k, v) { props[k] = v; },
+        removeProperty(k) { delete props[k]; },
+      },
+    },
+  };
+  for (const id of Object.keys(PRESETS)) {
+    apply({ preset: id }, doc);
+    const onAct = props['--on-act'];
+    assert.ok(onAct, `${id} precisa escrever --on-act`);
+    assert.ok(contrast(onAct, PRESETS[id].act) >= 4.5, `${id}: ${onAct} sobre ${PRESETS[id].act}`);
+    assert.equal(props['--act'], undefined, `${id}: o acento continua vindo do bloco CSS`);
+  }
 });
 
 test('custom legado salvo em disco continua abrindo igual', () => {

@@ -1896,7 +1896,8 @@
   const LOCK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
   const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
   const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const ANTENNA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M7.76 16.24a6 6 0 0 1 0-8.48"/><path d="M16.24 7.76a6 6 0 0 1 0 8.48"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><circle cx="12" cy="12" r="1.6"/></svg>`;
+  // Sem sala, os tres nos ficam neutros: vermelho continua reservado ao ao vivo.
+  const ANTENNA_ICON = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M20.71 14.20 L11.35 9.06"/><path d="M20.71 17.80 L11.35 22.94"/><circle cx="8.5" cy="7.5" r="3.25"/><circle cx="8.5" cy="24.5" r="3.25"/><circle cx="24" cy="16" r="3.75"/></svg>`;
 
   function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown, appVersion }) {
     listEl.innerHTML = '';
@@ -1905,8 +1906,8 @@
       empty.className = 'rooms-empty';
       empty.innerHTML = `
         ${ANTENNA_ICON}
-        <span class="rooms-empty-title">Nenhuma sala aberta na rede agora</span>
-        <span class="rooms-empty-hint">Crie uma sala aqui do lado, ou entre por endereço — quem criou pode ter deixado o anúncio desligado.</span>`;
+        <span class="rooms-empty-title">Sua tela, na casa dos seus amigos.</span>
+        <span class="rooms-empty-hint">Ainda não há salas abertas. Crie uma sala ou entre por endereço pela barra lateral.</span>`;
       listEl.appendChild(empty);
       return;
     }
@@ -1921,13 +1922,9 @@
       const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
       const name = room.name || room.hostName || 'sala';
       const li = document.createElement('li');
-      li.className = 'room-row';
+      li.className = 'room-row room-card';
       if (isActive) li.classList.add('active');
       if (incompatible) li.classList.add('incompatible');
-
-      const meta = room.peers != null
-        ? `${room.address} · ${room.peers} ${room.peers === 1 ? 'pessoa' : 'pessoas'}`
-        : room.address;
 
       const versionNote = incompatible
         ? version.mismatchText({ mine: appVersion, theirs: room.version })
@@ -1943,7 +1940,10 @@
             <span class="room-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
             ${incompatible ? `<span class="room-version" title="${escapeHtml(versionNote)}">${escapeHtml(version.mismatchBadge({ mine: appVersion, theirs: room.version }))}</span>` : ''}
           </span>
-          <span class="room-meta" title="${escapeHtml(incompatible ? versionNote : meta)}">${escapeHtml(incompatible ? versionNote : meta)}</span>
+          ${incompatible
+            ? `<span class="room-meta room-version-note" title="${escapeHtml(versionNote)}">${escapeHtml(versionNote)}</span>`
+            : `<span class="room-meta room-address" title="${escapeHtml(room.address)}">${escapeHtml(room.address)}</span>${room.peers != null ? `<span class="room-meta room-people">${room.peers} ${room.peers === 1 ? 'pessoa' : 'pessoas'}</span>` : ''}`
+          }
         </span>`;
       li.appendChild(info);
 
@@ -2354,8 +2354,10 @@
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
-  function append(entry) {
+  function append(entry, { received = false } = {}) {
     appendEntry(entry);
+    // Historico, eco proprio e sistema nao sao mensagem nova de outra pessoa.
+    if (received) document.dispatchEvent(new CustomEvent('golive:chat-received'));
   }
 
   function setHistory(entries) {
@@ -2791,10 +2793,11 @@
   }
 
   // Ordem de exibicao dos cartoes de predefinicao (spec 2026-09-03, 5.2):
-  // do escuro neutro ao unico claro. Array explicito, nao
-  // Object.keys(theme.PRESETS) -- ainda que coincidam hoje, a ordem de
-  // exibicao nao deveria depender da ordem de insercao de theme.js.
-  const THEME_PRESET_ORDER = ['signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+  // o padrao (a marca) primeiro, depois do escuro neutro ao unico claro.
+  // Array explicito, nao Object.keys(theme.PRESETS) -- a ordem de exibicao
+  // nao deveria depender da ordem de insercao de theme.js. O preco e ter de
+  // lembrar de acrescentar aqui cada predefinicao nova: theme.test.js cobra.
+  const THEME_PRESET_ORDER = ['marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
 
   /** Um cartao por predefinicao: o app EM MINIATURA, com as cores daquela
    * predefinicao aplicadas inline -- nao um quadrado solido com o nome
@@ -2838,11 +2841,11 @@
 
   /** Qual cartao de predefinicao esta marcado agora. A cor de acao e um
    * acento POR CIMA de uma predefinicao -- nunca um estado sem predefinicao
-   * nenhuma --, entao sempre ha uma resposta; 'signal' e a rede de seguranca
-   * se o DOM ainda nao foi montado. */
+   * nenhuma --, entao sempre ha uma resposta; 'marca' (o padrao) e a rede de
+   * seguranca se o DOM ainda nao foi montado. */
   function selectedThemePreset() {
     const card = $('theme-presets')?.querySelector('.theme-preset-card.active');
-    return card?.dataset.preset || 'signal';
+    return card?.dataset.preset || 'marca';
   }
 
   /** Le a cor de acao, valida e aplica ao vivo. E chamada a cada evento
@@ -2888,8 +2891,8 @@
    * padrao e o seletor mostra o acento salvo. O tema em uso so muda quando a
    * pessoa mexer em alguma coisa -- abrir as Configuracoes nao repinta nada. */
   function initThemeControls(config) {
-    const themeCfg = (config && config.theme) || { preset: 'signal' };
-    const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'signal';
+    const themeCfg = (config && config.theme) || { preset: 'marca' };
+    const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'marca';
 
     renderThemePresets(knownPreset);
     $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;

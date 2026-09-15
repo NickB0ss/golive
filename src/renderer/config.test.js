@@ -332,12 +332,32 @@ test('eixo desconhecido cai no padrao em vez de lancar', () => {
 
 // ---------- cfg.theme (spec 2026-09-03, secao 5) ----------
 
-test('theme: default e o preset "signal", config antigo sem theme cai nele', () => {
-  assert.deepEqual(DEFAULTS.theme, { preset: 'signal' });
-  assert.deepEqual(load(null).theme, { preset: 'signal' });
+test('theme: signal legado sem acento migra uma vez para marca', () => {
+  const legado = JSON.stringify({ v: 1, theme: { preset: 'signal' } });
+  assert.deepEqual(load(legado).theme, { preset: 'marca' });
+
+  // A configuracao gravada depois da migracao e uma escolha explicita e nao
+  // pode voltar sozinha para outro preset numa abertura futura.
+  const escolhido = JSON.stringify({ v: 1, theme: { preset: 'signal', act: '#4F46E5' } });
+  assert.deepEqual(load(escolhido).theme, { preset: 'signal', act: '#4F46E5' });
+});
+
+test('theme: signal escolhido depois da migracao sobrevive a reabertura (pelo marcador, nao pelo acento)', () => {
+  const migrado = load(JSON.stringify({ v: 1, theme: { preset: 'signal' } }));
+  assert.equal(migrado.themeMigration, true);
+  // A pessoa volta pro "Superficie e sinal" puro, sem acento proprio -- o
+  // mesmo formato que a migracao reconhece como padrao implicito antigo.
+  const reaberto = load(serialize({ ...migrado, theme: { preset: 'signal' } }));
+  assert.deepEqual(reaberto.theme, { preset: 'signal' });
+  assert.deepEqual(load(serialize(reaberto)).theme, { preset: 'signal' });
+});
+
+test('theme: default e o preset "marca", config antigo sem theme cai nele', () => {
+  assert.deepEqual(DEFAULTS.theme, { preset: 'marca' });
+  assert.deepEqual(load(null).theme, { preset: 'marca' });
 
   const antigo = JSON.stringify({ v: 1, name: 'Nicolas' }); // de antes do theme existir
-  assert.deepEqual(load(antigo).theme, { preset: 'signal' });
+  assert.deepEqual(load(antigo).theme, { preset: 'marca' });
 });
 
 test('theme: round-trip preserva um preset conhecido', () => {
