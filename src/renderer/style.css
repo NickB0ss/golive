@@ -994,6 +994,7 @@ button.busy { cursor: default; }
 .chat-compose {
   margin: var(--s-2); background: var(--s2); border: 1px solid var(--line2);
   border-radius: var(--r-sm); padding: 9px 11px; display: flex; align-items: flex-end; gap: 6px;
+  position: relative;
   transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
 }
 .chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px var(--act-focus-ring); }
@@ -1011,7 +1012,13 @@ button.busy { cursor: default; }
 /* A pilula da sala (--r-full) vira capsula quando a caixa cresce e os
    cantos comem o texto. Passa de uma linha, o raio cai. */
 .chat-compose.is-multiline { border-radius: var(--r-md); }
-.chat-input-count { font-size: 11px; color: var(--tx3); flex: none; }
+/* Fora do fluxo: como item flex ele roubava largura do textarea ao
+   aparecer, e a caixa inteira pulava enquanto a pessoa digitava. */
+.chat-input-count {
+  position: absolute; right: 12px; bottom: calc(100% + 4px);
+  font-size: 11px; color: var(--tx3);
+}
+.chat-input-count.near-limit { color: var(--warn); }
 .chat-compose.disabled { opacity: .6; pointer-events: none; }
 
 .offbar {
@@ -2480,6 +2487,12 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 }
 .chat-compose-btn svg { width: 16px; height: 16px; }
 .chat-compose-btn:hover { background: var(--s3); color: var(--tx); }
+/* Apagado ate haver o que mandar: um botao de enviar sempre aceso promete
+   uma acao que nao acontece. */
+.chat-send-btn { color: var(--tx3); }
+.chat-send-btn:not(:disabled) { color: var(--act); }
+.chat-send-btn:disabled { cursor: default; }
+.chat-send-btn:not(:disabled):hover { background: var(--s3); }
 
 /* Arrastar imagem sobre a coluna do chat. */
 .chat-section.dropping { outline: 2px dashed var(--act); outline-offset: -4px; border-radius: var(--r-sm); }

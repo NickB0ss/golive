@@ -2388,15 +2388,17 @@
     if (!pendingAttachment) {
       attachmentEl.classList.add('hidden');
       attachmentImgEl.src = '';
-      return;
+    } else {
+      attachmentImgEl.src = pendingAttachment.dataUrl;
+      attachmentInfoEl.textContent = pendingAttachment.label || '';
+      attachmentEl.classList.remove('hidden');
+      chatInputEl.focus();
     }
-    attachmentImgEl.src = pendingAttachment.dataUrl;
-    attachmentInfoEl.textContent = pendingAttachment.label || '';
-    attachmentEl.classList.remove('hidden');
-    chatInputEl.focus();
+    syncComposeState();
   }
   function clearAttachment() {
     setAttachment(null);
+    syncComposeState();
   }
   $('chat-attachment-remove').addEventListener('click', clearAttachment);
 
@@ -2410,12 +2412,21 @@
     chatComposeEl.classList.toggle('is-multiline', chatInputEl.scrollHeight > 30);
   }
 
+  /** O botao de enviar so acende quando ha o que mandar -- texto aparado ou
+   * anexo. Mesma condicao que `sendCurrentInput` ja usa pra decidir se sai
+   * alguma coisa, pra as duas nunca discordarem. */
+  function syncComposeState() {
+    const temTexto = chatInputEl.value.trim().length > 0;
+    $('btn-chat-send').disabled = !temTexto && !pendingAttachment;
+  }
+
   function sendCurrentInput() {
     const text = chatInputEl.value.trim();
     if (!text && !pendingAttachment) return;
     onChatSend?.(text, pendingAttachment);
     chatInputEl.value = '';
     autoResizeInput();
+    syncComposeState();
     chatCountEl.classList.add('hidden');
     clearAttachment();
   }
@@ -2441,11 +2452,14 @@
         sendCurrentInput();
       }
     });
+    $('btn-chat-send').addEventListener('click', sendCurrentInput);
     chatInputEl.addEventListener('input', () => {
       autoResizeInput();
+      syncComposeState();
       const len = chatInputEl.value.length;
       chatCountEl.textContent = `${len}/500`;
-      chatCountEl.classList.toggle('hidden', len < 400);
+      chatCountEl.classList.toggle('hidden', len < 450);
+      chatCountEl.classList.toggle('near-limit', len >= 500);
     });
 
     // Colar (Ctrl+V): print de tela vem como `image/png` nos itens da area
