@@ -1000,9 +1000,17 @@ button.busy { cursor: default; }
 .chat-compose textarea {
   flex: 1; resize: none; background: transparent; border: none; color: var(--tx);
   font-family: inherit; font-size: 12.5px; line-height: 1.4; max-height: 88px;
+  /* Casa com os 28px do .chat-compose-btn: 17,5px de linha + 5+5 de padding.
+     A caixa alinha pela base (align-items: flex-end) pra crescer pra cima --
+     com alturas diferentes o texto ficava ~3px abaixo do centro dos icones. */
+  padding: 5px 0; min-height: 28px;
+  overflow-y: auto;
 }
 .chat-compose textarea::placeholder { color: var(--tx3); opacity: 1; }
 .chat-compose textarea:focus { outline: none; }
+/* A pilula da sala (--r-full) vira capsula quando a caixa cresce e os
+   cantos comem o texto. Passa de uma linha, o raio cai. */
+.chat-compose.is-multiline { border-radius: var(--r-md); }
 .chat-input-count { font-size: 11px; color: var(--tx3); flex: none; }
 .chat-compose.disabled { opacity: .6; pointer-events: none; }
 

@@ -80,6 +80,17 @@ test('estrutura moderna mantem dock no fluxo e camadas por tokens', () => {
   assert.match(css, /\.room-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill, minmax\(260px, 1fr\)\)/s, 'a lista de salas deve ser uma grade de cards');
 });
 
+test('o campo do chat tem a mesma altura dos botoes da caixa', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const rules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose textarea');
+  const byProp = Object.fromEntries(rules.map(({ property, value }) => [property, value]));
+  // Os .chat-compose-btn tem 28px. Coladas pela base (align-items: flex-end),
+  // duas caixas de MESMA altura centralizam o texto contra os icones; com
+  // alturas diferentes o placeholder fica ~3px abaixo -- o bug relatado.
+  assert.equal(byProp['min-height'], '28px', 'o textarea precisa casar com os 28px do botao');
+  assert.equal(byProp.padding, '5px 0', '17.5px de linha + 10 de padding = 27.5 ~ 28');
+});
+
 test('estado vazio da grade nao vaza para outros elementos', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const unscoped = declarations(css).filter(({ stack }) => /^\.empty(?:::?(?:before|after))?$/.test(stack.at(-1)));

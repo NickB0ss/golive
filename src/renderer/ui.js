@@ -2400,11 +2400,22 @@
   }
   $('chat-attachment-remove').addEventListener('click', clearAttachment);
 
+  /** O campo nasce com rows="1" e nada ajustava a altura: o `max-height: 88px`
+   * do CSS era regra morta e uma mensagem longa virava uma fresta que rolava
+   * por dentro. Zerar pra `auto` antes de ler `scrollHeight` e o que permite
+   * a caixa ENCOLHER de volta ao apagar texto -- sem isso ela so cresce. */
+  function autoResizeInput() {
+    chatInputEl.style.height = 'auto';
+    chatInputEl.style.height = `${chatInputEl.scrollHeight}px`;
+    chatComposeEl.classList.toggle('is-multiline', chatInputEl.scrollHeight > 30);
+  }
+
   function sendCurrentInput() {
     const text = chatInputEl.value.trim();
     if (!text && !pendingAttachment) return;
     onChatSend?.(text, pendingAttachment);
     chatInputEl.value = '';
+    autoResizeInput();
     chatCountEl.classList.add('hidden');
     clearAttachment();
   }
@@ -2431,6 +2442,7 @@
       }
     });
     chatInputEl.addEventListener('input', () => {
+      autoResizeInput();
       const len = chatInputEl.value.length;
       chatCountEl.textContent = `${len}/500`;
       chatCountEl.classList.toggle('hidden', len < 400);
