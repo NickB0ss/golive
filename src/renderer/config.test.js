@@ -458,6 +458,17 @@ test('nome de tema fora de 1-24 caracteres e rejeitado', () => {
   }
 });
 
+test('nome de tema conta emojis como pontos de codigo', () => {
+  const base = { temp: 0.2, level: 0.7 };
+  const act = '#5B4BE8';
+  const raw = JSON.stringify({ themes: [
+    { id: '13-emojis', name: '😀'.repeat(13), base, act },
+    { id: '25-emojis', name: '😀'.repeat(25), base, act },
+  ] });
+
+  assert.deepEqual(load(raw).themes.map((theme) => theme.id), ['13-emojis']);
+});
+
 test('nome de tema e aparado ao carregar', () => {
   const raw = JSON.stringify({ themes: [{ id: 'a', name: '  Meu tema  ', base: { temp: 0.2, level: 0.7 }, act: '#5B4BE8' }] });
   assert.equal(load(raw).themes[0].name, 'Meu tema');

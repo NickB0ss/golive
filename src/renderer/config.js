@@ -287,7 +287,7 @@
       if (typeof item.id !== 'string' || item.id === '') continue;
       if (typeof item.name !== 'string') continue;
       const name = item.name.trim();
-      if (name.length < 1 || name.length > 24) continue;
+      if ([...name].length < 1 || [...name].length > 24) continue;
       if (!isValidThemeBase(item.base)) continue;
       if (!isValidHexColor(item.act)) continue;
       out.push({
