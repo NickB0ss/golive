@@ -443,6 +443,18 @@ test('themes descarta entrada torta SEM derrubar as boas', () => {
   assert.deepEqual(load(raw).themes.map((t) => t.id), ['a', 'e']);
 });
 
+test('themes descarta IDs repetidos e preserva o primeiro tema valido', () => {
+  const raw = JSON.stringify({
+    themes: [
+      { id: 'repetido', name: 'Primeiro', base: { temp: 0.2, level: 0.7 }, act: '#5B4BE8' },
+      { id: 'repetido', name: 'Segundo', base: { temp: 0.9, level: 0.1 }, act: '#FFFFFF' },
+      { id: 'outro', name: 'Outro', base: { temp: 0.4, level: 0.5 }, act: '#123456' },
+    ],
+  });
+
+  assert.deepEqual(load(raw).themes.map((theme) => theme.name), ['Primeiro', 'Outro']);
+});
+
 test('themes corta no teto de 12', () => {
   const muitos = Array.from({ length: 20 }, (_, i) => ({
     id: `t${i}`, name: `Tema ${i}`, base: { temp: 0.5, level: 0.5 }, act: '#5B4BE8',

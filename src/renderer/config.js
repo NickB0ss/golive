@@ -281,10 +281,12 @@
   function loadCustomThemes(incoming) {
     if (!Array.isArray(incoming)) return [];
     const out = [];
+    const ids = new Set();
     for (const item of incoming) {
       if (out.length >= MAX_CUSTOM_THEMES) break;
       if (!isObject(item)) continue;
       if (typeof item.id !== 'string' || item.id === '') continue;
+      if (ids.has(item.id)) continue;
       if (typeof item.name !== 'string') continue;
       const name = item.name.trim();
       if ([...name].length < 1 || [...name].length > 24) continue;
@@ -296,6 +298,7 @@
         base: { temp: item.base.temp, level: item.base.level },
         act: item.act,
       });
+      ids.add(item.id);
     }
     return out;
   }

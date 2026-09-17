@@ -923,6 +923,9 @@ button.busy { cursor: default; }
 .member-menu-item svg { width: 15px; height: 15px; flex: none; }
 .member-menu-item.warn { color: var(--warn); }
 .member-menu-item.danger { color: var(--danger-soft); }
+.member-menu button.member-menu-item {
+  width: 100%; border: 0; background: transparent; font: inherit; text-align: left;
+}
 .member-menu-sep { height: 1px; background: var(--line); margin: 5px 4px; }
 .member-menu-hint { font-size: 11px; color: var(--tx3); padding: 4px 9px 5px; line-height: 1.45; }
 
@@ -1780,7 +1783,6 @@ button.busy { cursor: default; }
   background: var(--scrim-3);
   display: grid;
   place-items: center;
-  z-index: 100;
   opacity: 1;
   transition: opacity var(--t-modal) var(--ease-enter),
               display var(--t-modal) allow-discrete;
@@ -2915,6 +2917,7 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
   background: var(--scrim-tint-2);
   box-shadow: var(--shadow-2);
 }
+#dialog-confirm, #dialog-text { z-index: var(--z-toast); }
 .tile.fullscreen .tile-react-bar { right: 82px; }
 .tile-react-toggle {
   width: 28px; height: 28px; min-height: 0; flex: none; padding: 0;

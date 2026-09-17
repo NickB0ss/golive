@@ -2194,6 +2194,7 @@
   function closeMemberMenu() {
     memberMenuEl.classList.add('hidden');
     memberMenuEl.innerHTML = '';
+    memberMenuEl.onkeydown = null;
   }
   document.addEventListener('click', (e) => {
     if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn, .my-theme-menu-btn')) closeMemberMenu();
@@ -2866,7 +2867,10 @@
     if (event.target === settingsModalEl) closeSettings();
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !settingsModalEl.classList.contains('hidden')) closeSettings();
+    if (event.key === 'Escape'
+      && !settingsModalEl.classList.contains('hidden')
+      && $('dialog-confirm').classList.contains('hidden')
+      && $('dialog-text').classList.contains('hidden')) closeSettings();
   });
 
   // Preview de camera do modal de Configuracoes. E independente da "camera
@@ -2916,6 +2920,7 @@
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
   let lastFocusedBeforeModal = null;
+  let lastFocusedBeforeDialog = null;
 
   function focusFirstInteractive(modalEl) {
     lastFocusedBeforeModal = document.activeElement;
@@ -2925,6 +2930,11 @@
   function restoreFocusAfterModal() {
     lastFocusedBeforeModal?.focus?.();
     lastFocusedBeforeModal = null;
+  }
+
+  function restoreFocusAfterDialog() {
+    lastFocusedBeforeDialog?.focus?.();
+    lastFocusedBeforeDialog = null;
   }
 
   function bandwidthLine(quality) {
@@ -3049,7 +3059,7 @@
             <span class="theme-preset-label">${escapeHtml(t.name)}</span>
           </button>
           <button class="my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
-                  title="Opcoes de ${escapeHtml(t.name)}" aria-label="Opcoes de ${escapeHtml(t.name)}">⋮</button>
+                  title="Opções de ${escapeHtml(t.name)}" aria-label="Opções de ${escapeHtml(t.name)}">⋮</button>
         </div>`;
     }).join('');
   }
@@ -3057,18 +3067,35 @@
   function renderThemeMenu(itens, anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
     memberMenuEl.innerHTML = itens.map((item, index) => `
-      <div class="member-menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</div>
+      <button type="button" class="member-menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
     `).join('');
     memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
     memberMenuEl.style.top = `${rect.bottom + 4}px`;
     memberMenuEl.classList.remove('hidden');
     for (const item of memberMenuEl.querySelectorAll('[data-theme-action]')) {
       item.addEventListener('click', () => {
+        closeThemeMenu(anchorEl);
         itens[Number(item.dataset.themeAction)].acao();
-        closeMemberMenu();
       });
     }
-    memberMenuEl.querySelector('[role="menuitem"]')?.focus();
+    const items = Array.from(memberMenuEl.querySelectorAll('[data-theme-action]'));
+    items[0]?.focus();
+    memberMenuEl.onkeydown = (event) => {
+      const current = items.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        items[(current + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeThemeMenu(anchorEl);
+      }
+    };
+  }
+
+  function closeThemeMenu(anchorEl) {
+    closeMemberMenu();
+    anchorEl?.focus();
   }
 
   function themeName(nome) {
@@ -3090,11 +3117,11 @@
           },
         });
       } },
-      { rotulo: 'Copiar codigo', acao: () => copiarCodigoDoTema(t, anchorEl) },
+      { rotulo: 'Copiar código', acao: () => copiarCodigoDoTema(t, anchorEl) },
       { rotulo: 'Apagar', tom: 'danger', acao: () => {
         openConfirm({
           title: 'Apagar tema',
-          text: `"${t.name}" some da lista. Quem ja tem o codigo continua podendo usar.`,
+          text: `"${t.name}" some da lista. Quem já tem o código continua podendo usar.`,
           confirmLabel: 'Apagar',
           onConfirm: () => {
             myThemes = myThemes.filter((x) => x.id !== id);
@@ -3283,7 +3310,7 @@
         <p class="settings-hint">Cole aqui o código que um amigo te mandou.</p>
         <div class="theme-code-row">
           <input id="theme-code-input" type="text" placeholder="GL-XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off" />
-          <button id="btn-theme-code-use" type="button" class="secondary small" disabled>Ver tema</button>
+          <button id="btn-theme-code-use" type="button" class="secondary small" disabled>Salvar como…</button>
         </div>
         <p id="theme-code-status" class="hint" role="status"></p>
       </div>`;
@@ -3431,6 +3458,19 @@
 
     onThemesChange = deps.onThemesChange;
     let temaColado = null;
+    let ultimoTemaImportado = null;
+    function aplicarPreviaImportada(importado) {
+      $('theme-act').value = importado.act;
+      $('theme-temp').value = String(Math.round(importado.base.temp * 100));
+      $('theme-level').value = String(Math.round(importado.base.level * 100));
+      Array.from($('theme-presets').children).forEach((c) => {
+        c.classList.remove('active');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      applyCustomThemeFromControls(deps, { comSuperficies: true });
+      renderMyThemes(null);
+      updateThemeSaveState();
+    }
     $('theme-code-input').addEventListener('input', () => {
       const status = $('theme-code-status');
       temaColado = themecode.decode($('theme-code-input').value);
@@ -3441,29 +3481,23 @@
       }
       // Codigo invalido nao muda NADA na tela: a pessoa colou errado, nao
       // pediu tema novo.
-      status.textContent = temaColado ? 'Código válido. Veja como fica antes de salvar.' : 'Esse código não parece certo.';
+      if (!temaColado) {
+        status.textContent = 'Esse código não parece certo.';
+        return;
+      }
+      status.textContent = 'Código válido. Dê um nome para salvar.';
+      const mesmoTema = ultimoTemaImportado
+        && ultimoTemaImportado.act === temaColado.act
+        && ultimoTemaImportado.base.temp === temaColado.base.temp
+        && ultimoTemaImportado.base.level === temaColado.base.level;
+      if (!mesmoTema) {
+        aplicarPreviaImportada(temaColado);
+        ultimoTemaImportado = temaColado;
+      }
     });
     $('btn-theme-code-use').addEventListener('click', () => {
       if (!temaColado) return;
-      const importado = temaColado;
-
-      // Previa ao vivo, e o mesmo aviso de contraste que os controles ja
-      // mostram. Nao recusa: o app inteiro e aplica-e-avisa, e recusar o
-      // tema de um amigo sem oferecer o conserto seria pior.
-      $('theme-act').value = importado.act;
-      $('theme-temp').value = String(Math.round(importado.base.temp * 100));
-      $('theme-level').value = String(Math.round(importado.base.level * 100));
-      Array.from($('theme-presets').children).forEach((c) => {
-        c.classList.remove('active');
-        c.setAttribute('aria-pressed', 'false');
-      });
-      const aplicado = applyCustomThemeFromControls(deps, { comSuperficies: true });
-      renderMyThemes(null);
-      updateThemeSaveState();
-
       if (myThemes.length >= 12) {
-        // A previa ja esta no ar e continua valendo -- so nao da pra
-        // guardar. Nada se perde: o codigo continua no campo.
         deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar este.');
         return;
       }
@@ -3471,7 +3505,7 @@
         title: 'Nome do tema',
         value: 'Tema importado',
         onAccept: (nome) => {
-          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: aplicado.base, act: aplicado.act };
+          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: temaColado.base, act: temaColado.act };
           myThemes = [...myThemes, novo];
           onThemesChange?.(myThemes);
           renderMyThemes(novo.id);
@@ -3479,6 +3513,7 @@
           $('theme-code-status').textContent = '';
           $('btn-theme-code-use').disabled = true;
           temaColado = null;
+          ultimoTemaImportado = null;
         },
       });
     });
@@ -3946,19 +3981,23 @@
     okBtn.className = tone === 'destructive' ? 'destructive' : 'primary';
     onConfirmAccept = onConfirm;
     dlgConfirmEl.classList.remove('hidden');
-    // Guarda o foco anterior pra restaura-lo no close (restoreFocusAfterModal).
-    lastFocusedBeforeModal = document.activeElement;
+    lastFocusedBeforeDialog = document.activeElement;
     // Foco no Cancelar, nunca no botao que age (ver a spec de 2026-09-02, 8.3).
     $('btn-confirm-cancel').focus();
   }
   function closeConfirm() {
     dlgConfirmEl.classList.add('hidden');
-    restoreFocusAfterModal();
+    restoreFocusAfterDialog();
     onConfirmAccept = null;
   }
   $('btn-confirm-cancel').addEventListener('click', closeConfirm);
   $('btn-confirm-ok').addEventListener('click', () => { onConfirmAccept?.(); closeConfirm(); });
-  dlgConfirmEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConfirm(); });
+  dlgConfirmEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeConfirm();
+    }
+  });
 
   const dlgTextEl = $('dialog-text');
   let onTextAccept = null;
@@ -3969,13 +4008,13 @@
     $('btn-text-ok').textContent = confirmLabel;
     onTextAccept = onAccept;
     dlgTextEl.classList.remove('hidden');
-    lastFocusedBeforeModal = document.activeElement;
+    lastFocusedBeforeDialog = document.activeElement;
     $('dialog-text-input').focus();
     $('dialog-text-input').select();
   }
   function closeText() {
     dlgTextEl.classList.add('hidden');
-    restoreFocusAfterModal();
+    restoreFocusAfterDialog();
     onTextAccept = null;
   }
   $('btn-text-cancel').addEventListener('click', closeText);
@@ -3985,7 +4024,12 @@
     closeText();
     if (valor) aceitar?.(valor);
   });
-  dlgTextEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeText(); });
+  dlgTextEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeText();
+    }
+  });
 
   function openBan({ name, onConfirm }) {
     openConfirm({
