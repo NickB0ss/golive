@@ -154,6 +154,11 @@
     if (!canGoIdle()) return;
     idleTimer = setTimeout(() => {
       document.body.classList.add('room-idle');
+      // Transparencia so esconde a barra; fechar tambem restaura inert e
+      // aria-expanded para que Tab nao alcance controles invisiveis.
+      document.querySelectorAll('.tile-react-bar.is-open').forEach((bar) => {
+        bar._fecharReacoes?.();
+      });
       if (fullscreenTileId) {
         closePipMenu();
         closeTileMenu();
@@ -279,11 +284,18 @@
       const entering = !tile.classList.contains('fullscreen');
       tile.classList.toggle('fullscreen', entering);
       if (entering) {
-        // O painel de emoji e position: fixed no body (z-index 70), fora do
-        // alcance do seletor que esconde a casca -- ele vazaria por cima do
-        // video se ficasse aberto. `closeEmojiPanel` ja existe (ui.js, ~2503)
-        // e tambem devolve o aria-expanded do botao; nao mexa na classe a mao.
+        // Estes popovers sao fixed no body, fora da casca que o fullscreen
+        // esconde. Fechar por suas funcoes preserva os estados ARIA e evita
+        // qualquer um deles sobre o video.
+        closeMemberMenu();
+        closeTileMenu();
+        closePipMenu();
         closeEmojiPanel();
+        // A lateral acabou de ficar invisivel; foco fora deste tile ficaria
+        // preso nela (por exemplo, na busca de emoji).
+        if (!tile.contains(document.activeElement)) {
+          tile.querySelector('.tile-fullscreen-btn')?.focus();
+        }
       }
       window.golive.setFullScreen(entering);
       if (entering) {

@@ -125,11 +125,15 @@ test('o campo do chat tem a mesma altura dos botoes da caixa', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const rules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose textarea');
   const byProp = Object.fromEntries(rules.map(({ property, value }) => [property, value]));
+  const buttonRules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose-btn');
+  const buttonByProp = Object.fromEntries(buttonRules.map(({ property, value }) => [property, value]));
   // Os .chat-compose-btn tem 28px. Coladas pela base (align-items: flex-end),
   // duas caixas de MESMA altura centralizam o texto contra os icones; com
   // alturas diferentes o placeholder fica ~3px abaixo -- o bug relatado.
   assert.equal(byProp['min-height'], '28px', 'o textarea precisa casar com os 28px do botao');
   assert.equal(byProp.padding, '5px 0', '17.5px de linha + 10 de padding = 27.5 ~ 28');
+  assert.equal(buttonByProp.height, '28px', 'o botao da caixa precisa ter 28px de altura');
+  assert.equal(buttonByProp['min-height'], '0', 'o minimo global de 44px nao pode esticar o botao da caixa');
 });
 
 test('estado vazio da grade nao vaza para outros elementos', () => {

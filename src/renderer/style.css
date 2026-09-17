@@ -936,10 +936,10 @@ button.busy { cursor: default; }
 /* ---- Chat ---- */
 
 .chat-section { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-messages { flex: 1; min-height: 0; overflow-y: auto; overflow-x: clip; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
+.chat-messages { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: clip; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
 
 .chat-jump-new {
-  position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
   z-index: 2; min-height: 0; padding: 5px 12px;
   border: 1px solid var(--line2); border-radius: var(--r-full);
   background: var(--s3); color: var(--tx); font-size: 11.5px;
@@ -2499,6 +2499,9 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 
 .chat-compose-btn {
   width: 28px; height: 28px; flex: none;
+  /* Como .tile-watchers-eye: anula o alvo global de 44px; aqui os 28px
+     precisam casar exatamente com o textarea para texto e icones alinharem. */
+  min-height: 0;
   display: grid; place-items: center;
   padding: 0;
   border: none; border-radius: var(--r-sm);
@@ -2893,10 +2896,13 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
    os emojis que chegam (.tile-react-pops) ficam, porque sao conteudo --
    uma reacao que chega com o mouse parado precisa aparecer. */
 .tile.fullscreen.idle .tile-react-bar { opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.tile.fullscreen.idle .tile-react-list { opacity: 0; visibility: hidden; }
 
 .tile-react-bar {
   position: absolute;
-  right: 12px;
+  /* Fica 8px a esquerda do selo: na grade ele termina em 76px (selo
+     48px..68px); fullscreen desloca selo/avatar 6px para a esquerda. */
+  right: 76px;
   bottom: 12px;
   z-index: 5;
   display: flex;
@@ -2908,6 +2914,7 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
   background: var(--scrim-tint-2);
   box-shadow: var(--shadow-2);
 }
+.tile.fullscreen .tile-react-bar { right: 82px; }
 .tile-react-toggle {
   width: 28px; height: 28px; min-height: 0; flex: none; padding: 0;
   display: grid; place-items: center;
@@ -2916,18 +2923,20 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 }
 .tile-react-toggle svg { width: 17px; height: 17px; }
 .tile-react-toggle:hover { background: var(--s3); }
-/* Fechada nao ocupa largura nenhuma. `transform`/`opacity` e nao `width`:
-   animar largura forca layout a cada quadro, na mesma GPU do encoder. */
+/* A lista flutua a esquerda do toggle: abrir nao recalcula a largura da
+   barra, so muda opacidade/transform (a GPU continua livre para o encoder). */
 .tile-react-list {
+  position: absolute; right: calc(100% + 6px); top: 50%;
   display: flex; align-items: center; gap: 2px;
-  max-width: 0; opacity: 0; overflow: hidden;
-  transform: translateX(8px);
-  transition: max-width var(--dur-fast) var(--ease-in-out),
-              opacity var(--dur-fast) var(--ease-in-out),
-              transform var(--dur-fast) var(--ease-in-out);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(8px, -50%);
+  transition: opacity var(--dur-fast) var(--ease-in-out),
+              transform var(--dur-fast) var(--ease-in-out),
+              visibility 0s linear var(--dur-fast);
 }
 .tile-react-bar.is-open .tile-react-list {
-  max-width: 220px; opacity: 1; transform: translateX(0);
+  opacity: 1; visibility: visible; pointer-events: auto; transform: translate(0, -50%);
+  transition-delay: 0s;
 }
 .tile-react-btn {
   width: 30px;
