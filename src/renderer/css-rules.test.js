@@ -119,3 +119,42 @@ test('estado vazio da grade nao vaza para outros elementos', () => {
   const unscoped = declarations(css).filter(({ stack }) => /^\.empty(?:::?(?:before|after))?$/.test(stack.at(-1)));
   assert.deepEqual(unscoped, [], `seletor .empty sem escopo: ${unscoped.map((rule) => rule.line).join(', ')}`);
 });
+
+test('todo overlay do tile some com o mouse parado', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+
+  // Excecoes declaradas, em tres grupos, cada um dispensado por um motivo
+  // diferente (spec 2026-09-15, frente 4.2):
+  //   conteudo -- um rabisco ou uma reacao que chega com o mouse parado
+  //               PRECISA aparecer, senao o recurso so funciona pra quem
+  //               esta mexendo no mouse;
+  //   estado   -- esconder deixaria uma tela preta sem explicacao;
+  //   herdado  -- descendente de quem ja tem a regra, some junto.
+  const EXCECOES = new Set([
+    '.tile-annot-canvas', '.tile-react-pops', '.tile-react-pop', '.pip-strip', // conteudo
+    '.tile-paused', '.tile-paused-shot', '.tile-gate',                         // estado
+    '.tile-watchers-panel',                                                    // herdado
+  ]);
+
+  const rules = declarations(css);
+  const overlays = new Set(
+    rules
+      .filter(({ property, value, stack }) =>
+        property === 'position' && value === 'absolute'
+        && /^\.tile-[\w-]+$/.test(stack.at(-1) || ''))
+      .map(({ stack }) => stack.at(-1)),
+  );
+
+  const semSumico = [...overlays].filter((sel) => {
+    if (EXCECOES.has(sel)) return false;
+    const nome = sel.replace('.', '\\.');
+    // As duas sao alcances do MESMO timer (ui.js, IDLE_MS): .tile.fullscreen.idle
+    // cobre o que e so do tile, body.room-idle cobre o que tambem some em janela.
+    // O limite nao aceita hifen: `\\b` tambem aceitaria .tile-watchers-eye.
+    const idle = new RegExp(`\\.tile\\.fullscreen\\.idle[^{,]*${nome}(?![\\w-])`);
+    const room = new RegExp(`\\.room-idle[^{,]*${nome}(?![\\w-])`);
+    return !idle.test(css) && !room.test(css);
+  });
+
+  assert.deepEqual(semSumico, [], `overlay do tile sem regra de ociosidade: ${semSumico.join(', ')}`);
+});
