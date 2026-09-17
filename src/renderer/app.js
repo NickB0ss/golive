@@ -869,6 +869,7 @@
   // aparece (decisao 3), e a faixa mora no #lobby-view, entao isso vale de
   // graca -- a view inteira some ao entrar numa sala.
   const updateBarEl = $('update-bar');
+  let lastUpdateVersion = null;
 
   function renderUpdateBar(estado, { version = null, progress = null } = {}) {
     if (!estado) {
@@ -894,22 +895,23 @@
   }
 
   window.golive.onUpdateStatus?.((payload) => {
-    const { status, manual, version, progress, reason } = payload || {};
+    const { status, manual, version, progress, reason, ready } = payload || {};
     switch (status) {
       case 'checking':
         if (manual) spinCheck(true);
         break;
       case 'available':
         spinCheck(false);
-        renderUpdateBar('disponivel', { version });
+        if (version) lastUpdateVersion = version;
+        renderUpdateBar(ready === true ? 'pronta' : 'disponivel', { version });
         if (manual) showToast(`Atualização ${version || 'nova'} disponível.`);
         break;
       case 'downloading':
-        renderUpdateBar('baixando', { version, progress: progress ?? 0 });
+        renderUpdateBar('baixando', { version: version || lastUpdateVersion, progress: progress ?? 0 });
         break;
       case 'downloaded':
       case 'installing':
-        renderUpdateBar('pronta', { version });
+        renderUpdateBar('pronta', { version: version || lastUpdateVersion });
         break;
       case 'not-available':
         spinCheck(false);
