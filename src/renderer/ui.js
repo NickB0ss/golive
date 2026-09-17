@@ -155,6 +155,8 @@
     idleTimer = setTimeout(() => {
       document.body.classList.add('room-idle');
       if (fullscreenTileId) {
+        closePipMenu();
+        closeTileMenu();
         document.getElementById(`tile-${fullscreenTileId}`)?.classList.add('idle');
       }
     }, IDLE_MS);
