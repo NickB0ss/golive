@@ -452,6 +452,12 @@ input[type="range"] { accent-color: var(--live); }
   transform: translateY(0);
 }
 .toast { z-index: var(--z-toast); }
+/* Dentro da sala o canto inferior DIREITO e a caixa de escrever do chat --
+   "Transmissao pausada" e "Transmissao retomada" caiam em cima dela. Na
+   tela cheia a esquerda tambem e o canto mais vazio: o dock e central, o
+   selo de audiencia fica em cima a esquerda e os botoes em cima a direita.
+   No lobby continua a direita. */
+body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 @starting-style {
   .toast { opacity: 0; transform: translateY(12px); }
 }
@@ -1215,6 +1221,18 @@ button.busy { cursor: default; }
   height: 100%;
   max-height: 148px;
 }
+/* Miniatura da tira tem 104-148px de altura: quatro overlays disputam a
+   area de um selo so. Fica o rotulo do nome e o botao de tela cheia.
+   `:not(.fullscreen)` e obrigatorio -- a camera da tira TAMBEM vira tela
+   cheia, e ao maximizar tudo isto volta, que e exatamente o pedido.
+   `display` e nao `visibility`: nao ha layout a preservar, sao overlays
+   absolutos sobre o video. O que sai e o BOTAO de reagir, nao a reacao:
+   .tile-react-pops fica, entao um emoji mandado por outra pessoa ainda
+   sobe ali -- em tamanho proporcional (ver spawnReactionPop). */
+.grid-strip .tile:not(.fullscreen) .tile-react-bar,
+.grid-strip .tile:not(.fullscreen) .tile-watchers,
+.grid-strip .tile:not(.fullscreen) .tile-annot-bar,
+.grid-strip .tile:not(.fullscreen) .tile-unwatch-btn { display: none; }
 
 /* Janela estreita: o palco perde ~300px pra coluna lateral quando ela esta
    aberta, que e o caso comum -- por isso o corte e em 1100px de JANELA, e
@@ -2920,7 +2938,9 @@ body:has(.tile.fullscreen) .titlebar { display: none; }
 .tile-react-pop {
   position: absolute;
   bottom: 14%;
-  font-size: clamp(24px, 5vw, 48px);
+  /* Rede de seguranca: o tamanho de verdade vem de spawnReactionPop, que
+     mede o tile. Isto so vale enquanto a medida nao existe. */
+  font-size: clamp(14px, 5vw, 48px);
   line-height: 1;
   animation: tile-react-rise 1.4s var(--ease-out) both;
 }

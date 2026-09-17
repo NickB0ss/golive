@@ -1174,6 +1174,15 @@
     // Posicao horizontal aleatoria (dentro de uma faixa central) pra
     // reacoes simultaneas nao empilharem exatamente uma em cima da outra.
     el.style.left = `${28 + Math.round(Math.random() * 44)}%`;
+    // 5vw era a largura da JANELA, nao a do tile: numa grade de seis o
+    // emoji saia desproporcional, e na tira ficava maior que a miniatura
+    // inteira. O clamp() do CSS fica de rede pra quando a medida vier 0
+    // (tile ainda nao medido). Redimensionar a janela no meio da animacao
+    // nao reajusta -- irrelevante: o emoji vive 1,4s.
+    const larguraTile = tile.clientWidth || 0;
+    if (larguraTile) {
+      el.style.fontSize = `${Math.round(Math.min(72, Math.max(14, larguraTile * 0.12)))}px`;
+    }
     host.appendChild(el);
     const remove = () => el.remove();
     el.addEventListener('animationend', remove, { once: true });
