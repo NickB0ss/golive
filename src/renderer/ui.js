@@ -2283,6 +2283,34 @@
     return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  let lastChatDayKey = null;
+
+  function dayKey(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }
+
+  /** "Hoje" / "Ontem" / "14 de setembro". Sem ano: o historico de uma sala
+   * nao atravessa anos, e escrever 2026 em toda linha so faz ruido. */
+  function dayLabel(ts) {
+    const d = new Date(ts);
+    const hoje = new Date();
+    const ontem = new Date(hoje.getTime() - 86400000);
+    if (dayKey(ts) === dayKey(hoje.getTime())) return 'Hoje';
+    if (dayKey(ts) === dayKey(ontem.getTime())) return 'Ontem';
+    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+  }
+
+  function appendDaySeparatorIfNeeded(ts) {
+    const key = dayKey(ts);
+    if (key === lastChatDayKey) return;
+    lastChatDayKey = key;
+    const div = document.createElement('div');
+    div.className = 'chat-day';
+    div.textContent = dayLabel(ts);
+    chatMessagesEl.appendChild(div);
+  }
+
   function appendSystemLine(entry) {
     const div = document.createElement('div');
     const tone = SYSTEM_TONE[entry.event] || '';
@@ -2313,7 +2341,9 @@
     const div = document.createElement('div');
     div.className = `chat-line${grouped ? ' grouped' : ''}`;
     div.innerHTML = `
-      <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
+      <span class="chat-avatar-slot">${grouped
+        ? `<span class="chat-grouped-time">${formatTime(entry.ts)}</span>`
+        : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
       <span class="chat-body">
         ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
         ${entry.text ? `<span class="chat-text">${escapeHtml(entry.text)}</span>` : ''}
@@ -2367,6 +2397,7 @@
     // Decide ANTES de inserir: depois da insercao a lista ja cresceu e
     // "estava no fim" viraria sempre falso.
     const seguir = estaNoFim();
+    if (entry.ts) appendDaySeparatorIfNeeded(entry.ts);
     if (entry.system) appendSystemLine(entry);
     else appendMessage(entry);
     if (seguir) descerParaOFim();
@@ -2382,7 +2413,9 @@
   function setHistory(entries) {
     chatMessagesEl.innerHTML = '';
     lastChatAuthorId = null;
+    lastChatDayKey = null;
     for (const entry of entries || []) {
+      if (entry.ts) appendDaySeparatorIfNeeded(entry.ts);
       if (entry.system) appendSystemLine(entry);
       else appendMessage(entry);
     }
