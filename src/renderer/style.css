@@ -2875,14 +2875,27 @@ body:has(.tile.fullscreen) .titlebar { display: none; }
   border-radius: var(--r-full);
   background: var(--scrim-tint-2);
   box-shadow: var(--shadow-2);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-fast) var(--ease-out);
 }
-.tile:hover .tile-react-bar,
-.tile:focus-within .tile-react-bar {
-  opacity: 1;
-  pointer-events: auto;
+.tile-react-toggle {
+  width: 28px; height: 28px; min-height: 0; flex: none; padding: 0;
+  display: grid; place-items: center;
+  border: none; border-radius: var(--r-full);
+  background: transparent; color: var(--tx);
+}
+.tile-react-toggle svg { width: 17px; height: 17px; }
+.tile-react-toggle:hover { background: var(--s3); }
+/* Fechada nao ocupa largura nenhuma. `transform`/`opacity` e nao `width`:
+   animar largura forca layout a cada quadro, na mesma GPU do encoder. */
+.tile-react-list {
+  display: flex; align-items: center; gap: 2px;
+  max-width: 0; opacity: 0; overflow: hidden;
+  transform: translateX(8px);
+  transition: max-width var(--dur-fast) var(--ease-in-out),
+              opacity var(--dur-fast) var(--ease-in-out),
+              transform var(--dur-fast) var(--ease-in-out);
+}
+.tile-react-bar.is-open .tile-react-list {
+  max-width: 220px; opacity: 1; transform: translateX(0);
 }
 .tile-react-btn {
   width: 30px;

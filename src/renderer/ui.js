@@ -12,6 +12,24 @@
   const laser = root.GoLive.laser;
   const reactions = root.GoLive.reactions;
   const gridLayout = root.GoLive.gridLayout;
+  let tileReactionGlobalListenersWired = false;
+
+  function wireTileReactionGlobalListeners() {
+    if (tileReactionGlobalListenersWired) return;
+    tileReactionGlobalListenersWired = true;
+    document.addEventListener('click', (e) => {
+      for (const bar of document.querySelectorAll('.tile-react-bar.is-open')) {
+        if (!bar.contains(e.target)) bar._fecharReacoes?.();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      for (const bar of document.querySelectorAll('.tile-react-bar.is-open')) {
+        bar._fecharReacoes?.();
+      }
+    });
+  }
+  wireTileReactionGlobalListeners();
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -654,7 +672,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
         <div class="tile-annot-bar" hidden></div>
-        <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">${reactionBarButtonsHtml()}</div>
+        <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">
+          <button class="tile-react-toggle" type="button" aria-expanded="false" aria-label="Reagir" title="Reagir">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
+          <span class="tile-react-list" inert>${reactionBarButtonsHtml()}</span>
+        </div>
         <div class="tile-react-pops"></div>
         <div class="pip-strip"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
@@ -1092,12 +1115,43 @@
   function wireTileReactions(tile, tileId) {
     const bar = tile.querySelector('.tile-react-bar');
     if (!bar) return;
-    bar.addEventListener('click', (e) => {
+    const toggle = bar.querySelector('.tile-react-toggle');
+    const list = bar.querySelector('.tile-react-list');
+    let fecharTimer = null;
+
+    function fechar() {
+      clearTimeout(fecharTimer);
+      fecharTimer = null;
+      bar.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+      list.inert = true;
+    }
+    function adiarFechamento() {
+      clearTimeout(fecharTimer);
+      fecharTimer = setTimeout(fechar, 3000);
+    }
+    function abrir() {
+      bar.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+      list.inert = false;
+      adiarFechamento();
+    }
+
+    bar._fecharReacoes = fechar;
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (bar.classList.contains('is-open')) fechar();
+      else abrir();
+    });
+    list.addEventListener('click', (e) => {
       e.stopPropagation();
       const btn = e.target.closest('.tile-react-btn');
       if (!btn) return;
       emitReactionOp(tileId, btn.dataset.emoji);
+      adiarFechamento();
     });
+    bar.addEventListener('mouseenter', () => { if (bar.classList.contains('is-open')) clearTimeout(fecharTimer); });
+    bar.addEventListener('mouseleave', () => { if (bar.classList.contains('is-open')) adiarFechamento(); });
     // Mesma razao do annot-bar: a barra fica por cima do video, um clique
     // nela nao pode disparar o duplo-clique do fullscreen nem o arrasto do PiP.
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
