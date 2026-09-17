@@ -51,6 +51,24 @@ function declarations(css) {
   return found;
 }
 
+function selectorParts(selector) {
+  const parts = [];
+  let part = '';
+  let parentheses = 0;
+  for (const char of selector) {
+    if (char === '(') parentheses += 1;
+    if (char === ')') parentheses -= 1;
+    if (char === ',' && parentheses === 0) {
+      parts.push(part.trim());
+      part = '';
+    } else {
+      part += char;
+    }
+  }
+  parts.push(part.trim());
+  return parts;
+}
+
 function isRootBlock(stack) {
   return stack.some((entry) => /^:root(?:\[data-theme=(?:"[^"]+"|'[^']+'|[^\]]+)\])?$/.test(entry));
 }
@@ -141,19 +159,26 @@ test('todo overlay do tile some com o mouse parado', () => {
     rules
       .filter(({ property, value, stack }) =>
         property === 'position' && value === 'absolute'
-        && /^\.tile-[\w-]+$/.test(stack.at(-1) || ''))
-      .map(({ stack }) => stack.at(-1)),
+        && selectorParts(stack.at(-1) || '').some((selector) => /^\.tile-[\w-]+$/.test(selector)))
+      .flatMap(({ stack }) => selectorParts(stack.at(-1) || '').filter((selector) => /^\.tile-[\w-]+$/.test(selector))),
   );
 
   const semSumico = [...overlays].filter((sel) => {
     if (EXCECOES.has(sel)) return false;
-    const nome = sel.replace('.', '\\.');
     // As duas sao alcances do MESMO timer (ui.js, IDLE_MS): .tile.fullscreen.idle
     // cobre o que e so do tile, body.room-idle cobre o que tambem some em janela.
     // O limite nao aceita hifen: `\\b` tambem aceitaria .tile-watchers-eye.
-    const idle = new RegExp(`\\.tile\\.fullscreen\\.idle[^{,]*${nome}(?![\\w-])`);
-    const room = new RegExp(`\\.room-idle[^{,]*${nome}(?![\\w-])`);
-    return !idle.test(css) && !room.test(css);
+    return !rules.some(({ property, value, stack }) => {
+      if (stack.length !== 1 || !(
+        (property === 'opacity' && value === '0')
+        || (property === 'visibility' && value === 'hidden')
+        || (property === 'display' && value === 'none')
+      )) return false;
+      return selectorParts(stack[0]).some((selector) => (
+        (selector.includes('.tile.fullscreen.idle') || selector.includes('.room-idle'))
+        && new RegExp(`${sel.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(?![\\w-])$`).test(selector)
+      ));
+    });
   });
 
   assert.deepEqual(semSumico, [], `overlay do tile sem regra de ociosidade: ${semSumico.join(', ')}`);
