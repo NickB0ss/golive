@@ -3074,7 +3074,7 @@
     return Array.from(nome).slice(0, 24).join('');
   }
 
-  function openMyThemeMenu(id, anchorEl, deps) {
+  function openMyThemeMenu(id, anchorEl) {
     const t = myThemes.find((x) => x.id === id);
     if (!t) return;
     const itens = [
@@ -3089,7 +3089,6 @@
           },
         });
       } },
-      { rotulo: 'Copiar codigo', acao: () => copiarCodigoDoTema(t, anchorEl) },
       { rotulo: 'Apagar', tom: 'danger', acao: () => {
         openConfirm({
           title: 'Apagar tema',
@@ -3160,7 +3159,6 @@
     $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;
     $('theme-warning').textContent = '';
     myThemes = (config && Array.isArray(config.themes)) ? config.themes : [];
-    onThemesChange = null;
     const base = themeCfg.preset === 'custom' && themeCfg.base ? themeCfg.base : { temp: 0.5, level: 0.2 };
     $('theme-temp').value = String(Math.round(base.temp * 100));
     $('theme-level').value = String(Math.round(base.level * 100));
@@ -3418,7 +3416,7 @@
         return;
       }
       const menuBtn = event.target.closest('[data-theme-menu]');
-      if (menuBtn) openMyThemeMenu(menuBtn.dataset.themeMenu, menuBtn, deps);
+      if (menuBtn) openMyThemeMenu(menuBtn.dataset.themeMenu, menuBtn);
     });
 
     // Voltar ao padrao: aplica o tema de fabrica E devolve os controles pro
