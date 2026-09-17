@@ -870,8 +870,14 @@
   // graca -- a view inteira some ao entrar numa sala.
   const updateBarEl = $('update-bar');
   let lastUpdateVersion = null;
+  let updateBarState = null;
 
   function renderUpdateBar(estado, { version = null, progress = null } = {}) {
+    // Um evento "available" que ficou enfileirado antes de o pacote terminar
+    // nao pode apagar o estado pronto ja mostrado. So uma nova transferencia
+    // ou a confirmacao de que nao ha update muda essa faixa.
+    if (estado === 'disponivel' && updateBarState === 'pronta') return;
+    updateBarState = estado;
     if (!estado) {
       updateBarEl.classList.add('hidden');
       return;
