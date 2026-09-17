@@ -2195,7 +2195,7 @@
     memberMenuEl.innerHTML = '';
   }
   document.addEventListener('click', (e) => {
-    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn')) closeMemberMenu();
+    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn, .my-theme-menu-btn')) closeMemberMenu();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMemberMenu(); });
 
@@ -3114,6 +3114,19 @@
     return card?.dataset.preset || 'marca';
   }
 
+  function hasActiveThemePreset() {
+    return Boolean($('theme-presets')?.querySelector('.theme-preset-card.active'));
+  }
+
+  function updateThemeSaveState() {
+    const button = $('btn-theme-save');
+    const hint = $('theme-save-hint');
+    if (!button || !hint) return;
+    const custom = !hasActiveThemePreset();
+    button.disabled = !custom;
+    hint.classList.toggle('hidden', custom);
+  }
+
   function themeCfgFromControls({ comSuperficies = false } = {}) {
     const act = $('theme-act').value;
     if (!comSuperficies) return { preset: selectedThemePreset(), act };
@@ -3155,14 +3168,15 @@
     const themeCfg = (config && config.theme) || { preset: 'marca' };
     const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'marca';
 
-    renderThemePresets(knownPreset);
+    renderThemePresets(themeCfg.preset === 'custom' ? null : knownPreset);
     $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;
     $('theme-warning').textContent = '';
-    myThemes = (config && Array.isArray(config.themes)) ? config.themes : [];
+    if (config && Array.isArray(config.themes)) myThemes = config.themes;
     const base = themeCfg.preset === 'custom' && themeCfg.base ? themeCfg.base : { temp: 0.5, level: 0.2 };
     $('theme-temp').value = String(Math.round(base.temp * 100));
     $('theme-level').value = String(Math.round(base.level * 100));
     renderMyThemes(null);
+    updateThemeSaveState();
   }
 
   function isHexColor(v) {
@@ -3246,6 +3260,7 @@
       <div id="my-themes" class="theme-presets"></div>
       <div class="settings-actions">
         <button id="btn-theme-save" type="button" class="secondary small">Salvar tema atual</button>
+        <p id="theme-save-hint" class="settings-hint hidden">Mexa na temperatura ou na claridade pra montar um tema seu.</p>
       </div>`;
 
     settingsPanes.voice.innerHTML = `
@@ -3368,8 +3383,15 @@
       // uma combinacao que ninguem escolheu. O seletor de cor acompanha.
       $('theme-act').value = theme.PRESETS[card.dataset.preset].act;
       deps.onThemeChange({ preset: card.dataset.preset });
+      renderMyThemes(null);
+      updateThemeSaveState();
     });
-    $('theme-act').addEventListener('input', () => applyCustomThemeFromControls(deps));
+    $('theme-act').addEventListener('input', () => {
+      const comSuperficies = !hasActiveThemePreset();
+      applyCustomThemeFromControls(deps, { comSuperficies });
+      if (comSuperficies) renderMyThemes(null);
+      updateThemeSaveState();
+    });
     for (const id of ['theme-temp', 'theme-level']) {
       $(id).addEventListener('input', () => {
         Array.from($('theme-presets').children).forEach((c) => {
@@ -3377,6 +3399,8 @@
           c.setAttribute('aria-pressed', 'false');
         });
         applyCustomThemeFromControls(deps, { comSuperficies: true });
+        renderMyThemes(null);
+        updateThemeSaveState();
       });
     }
 
@@ -3413,6 +3437,7 @@
         $('theme-level').value = String(Math.round(t.base.level * 100));
         deps.onThemeChange({ preset: 'custom', base: t.base, act: t.act });
         renderMyThemes(t.id);
+        updateThemeSaveState();
         return;
       }
       const menuBtn = event.target.closest('[data-theme-menu]');
