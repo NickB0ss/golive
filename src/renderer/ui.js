@@ -2193,6 +2193,7 @@
 
   function closeMemberMenu() {
     memberMenuEl.classList.add('hidden');
+    memberMenuEl.classList.remove('in-modal');
     memberMenuEl.innerHTML = '';
     memberMenuEl.onkeydown = null;
   }
@@ -2222,6 +2223,7 @@
    * botao ⋮ (menu sem item nao abre). */
   function openMemberMenu(btn, id, name, { live = false, targetIsOwner = false, onModerate } = {}) {
     const rect = btn.getBoundingClientRect();
+    memberMenuEl.classList.remove('in-modal');
     memberMenuEl.innerHTML = `
       ${live ? `<div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>` : ''}
       ${targetIsOwner ? '' : `<div class="member-menu-item" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</div>`}
@@ -3066,6 +3068,7 @@
 
   function renderThemeMenu(itens, anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
+    memberMenuEl.classList.toggle('in-modal', Boolean(anchorEl.closest('.modal')));
     memberMenuEl.innerHTML = itens.map((item, index) => `
       <button type="button" class="member-menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
     `).join('');
@@ -3458,7 +3461,6 @@
 
     onThemesChange = deps.onThemesChange;
     let temaColado = null;
-    let ultimoTemaImportado = null;
     function aplicarPreviaImportada(importado) {
       $('theme-act').value = importado.act;
       $('theme-temp').value = String(Math.round(importado.base.temp * 100));
@@ -3486,14 +3488,7 @@
         return;
       }
       status.textContent = 'Código válido. Dê um nome para salvar.';
-      const mesmoTema = ultimoTemaImportado
-        && ultimoTemaImportado.act === temaColado.act
-        && ultimoTemaImportado.base.temp === temaColado.base.temp
-        && ultimoTemaImportado.base.level === temaColado.base.level;
-      if (!mesmoTema) {
-        aplicarPreviaImportada(temaColado);
-        ultimoTemaImportado = temaColado;
-      }
+      aplicarPreviaImportada(temaColado);
     });
     $('btn-theme-code-use').addEventListener('click', () => {
       if (!temaColado) return;
@@ -3513,7 +3508,6 @@
           $('theme-code-status').textContent = '';
           $('btn-theme-code-use').disabled = true;
           temaColado = null;
-          ultimoTemaImportado = null;
         },
       });
     });

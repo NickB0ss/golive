@@ -106,11 +106,13 @@
   --r-lg: 18px;
   --r-full: 999px;
 
-  /* Camadas com nomes evitam que um menu novo passe por cima do modal. */
+  /* Camadas com nomes mantem popovers, dialogos e avisos em ordem. */
   --z-stage: 1;
   --z-popover: 50;
   --z-modal: 1000;
-  --z-toast: 1001;
+  --z-modal-popover: 1001; /* menu aberto a partir de dentro de um modal */
+  --z-dialog: 1002; /* confirmacoes e campos acima do menu do modal */
+  --z-toast: 10000; /* aviso transitório acima de todas as camadas */
   --z-titlebar: 9999;
 
   --s-1: 4px;  --s-2: 8px;   --s-3: 12px;
@@ -915,6 +917,7 @@ button.busy { cursor: default; }
   position: fixed; z-index: var(--z-popover); background: var(--s2); border: 1px solid var(--line2);
   border-radius: var(--r-md); padding: 5px; width: 210px; box-shadow: var(--shadow-3);
 }
+.member-menu.in-modal { z-index: var(--z-modal-popover); }
 .member-menu-item {
   display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 9px;
   border-radius: var(--r-xs); font-size: 12.5px; color: var(--tx); cursor: pointer;
@@ -2917,7 +2920,7 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
   background: var(--scrim-tint-2);
   box-shadow: var(--shadow-2);
 }
-#dialog-confirm, #dialog-text { z-index: var(--z-toast); }
+#dialog-confirm, #dialog-text { z-index: var(--z-dialog); }
 .tile.fullscreen .tile-react-bar { right: 82px; }
 .tile-react-toggle {
   width: 28px; height: 28px; min-height: 0; flex: none; padding: 0;

@@ -112,6 +112,8 @@ test('estrutura moderna mantem dock no fluxo e camadas por tokens', () => {
   assert.match(css, /--z-stage:\s*\d+;/, 'falta token da camada do palco');
   assert.match(css, /--z-popover:\s*\d+;/, 'falta token da camada de popovers');
   assert.match(css, /--z-modal:\s*\d+;/, 'falta token da camada de dialogos');
+  assert.match(css, /--z-modal-popover:\s*\d+;/, 'falta token do popover aberto em modal');
+  assert.match(css, /--z-dialog:\s*\d+;/, 'falta token da camada de dialogos filhos');
   assert.match(css, /--z-toast:\s*\d+;/, 'falta token da camada de toasts');
   assert.match(css, /--z-titlebar:\s*\d+;/, 'falta token da camada da faixa de titulo');
   assert.match(css, /\.control-bar\s*\{[^}]*position:\s*static;/s, 'o dock deve permanecer no fluxo');
