@@ -936,7 +936,8 @@ button.busy { cursor: default; }
 /* ---- Chat ---- */
 
 .chat-section { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-messages { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: clip; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
+.chat-messages-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; overflow-x: clip; padding: 0 var(--s-2) var(--s-2); display: flex; flex-direction: column; gap: 2px; }
 
 .chat-jump-new {
   position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);

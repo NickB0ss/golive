@@ -7,6 +7,15 @@ const path = require('node:path');
 
 const cssPath = path.join(__dirname, 'style.css');
 
+test('botao de novas mensagens nao fica dentro da lista limpa pelo historico', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const chatMessages = html.match(/<div id="chat-messages"[^>]*>([\s\S]*?)<\/div>/);
+  assert.ok(chatMessages, 'a lista de mensagens do chat precisa existir');
+  // setHistory limpa #chat-messages com innerHTML; o botao perderia o DOM
+  // junto com o historico se voltasse a ser filho direto da lista.
+  assert.ok(!chatMessages[1].includes('chat-jump-new'), 'o botao de novas mensagens precisa ficar fora da lista');
+});
+
 test('o banner de atualizacao do canto nao voltou', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
