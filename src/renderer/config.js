@@ -202,6 +202,11 @@
     // theme.js, que este arquivo deliberadamente nao importa, pra manter os
     // dois modulos desacoplados; quem cruza os dois e o app.js).
     theme: { preset: 'marca' },
+    // Temas montados pela pessoa (spec 2026-09-15, frente 8). Lista, ao
+    // lado de `theme`, que continua sendo "qual esta em uso". Nenhuma
+    // migracao: usar um destes grava a forma {preset:'custom', base, act}
+    // em `theme`, que loadTheme ja aceita desde 2026-09-03.
+    themes: [],
     // Marca que este config ja passou pela troca do padrao: sem isto uma
     // escolha posterior de "Superficie e sinal" seria migrada de novo.
     themeMigration: true,
@@ -263,6 +268,36 @@
       return { preset: incoming.preset };
     }
     return DEFAULTS.theme;
+  }
+
+  // Teto de temas salvos. Um arquivo de config precisa ter tamanho
+  // limitado, e doze cartoes ja enchem a aba.
+  const MAX_CUSTOM_THEMES = 12;
+
+  /** Le a lista `themes`. Valida ITEM A ITEM e descarta so o que estiver
+   * torto -- uma entrada corrompida nao pode custar os outros temas, que
+   * a pessoa montou a mao. Lista ausente, de outro tipo, ou toda torta,
+   * vira `[]` sem lancar. */
+  function loadCustomThemes(incoming) {
+    if (!Array.isArray(incoming)) return [];
+    const out = [];
+    for (const item of incoming) {
+      if (out.length >= MAX_CUSTOM_THEMES) break;
+      if (!isObject(item)) continue;
+      if (typeof item.id !== 'string' || item.id === '') continue;
+      if (typeof item.name !== 'string') continue;
+      const name = item.name.trim();
+      if (name.length < 1 || name.length > 24) continue;
+      if (!isValidThemeBase(item.base)) continue;
+      if (!isValidHexColor(item.act)) continue;
+      out.push({
+        id: item.id,
+        name,
+        base: { temp: item.base.temp, level: item.base.level },
+        act: item.act,
+      });
+    }
+    return out;
   }
 
   function isObject(v) {
@@ -330,6 +365,7 @@
       theme: parsed.themeMigration !== true && parsed.theme?.preset === 'signal' && !isValidHexColor(parsed.theme?.act)
         ? { preset: 'marca' }
         : loadTheme(parsed.theme),
+      themes: loadCustomThemes(parsed.themes),
       themeMigration: true,
       annotations: { allow: parsed.annotations?.allow === true },
       emojiRecents: loadStringList(parsed.emojiRecents, 24),

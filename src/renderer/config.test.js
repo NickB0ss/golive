@@ -422,6 +422,47 @@ test('theme: custom com base fora de 0-1 ou faltando cai no padrao', () => {
   }
 });
 
+test('themes ausente ou torto vira lista vazia', () => {
+  assert.deepEqual(load('{}').themes, []);
+  assert.deepEqual(load('{"themes":"nao e lista"}').themes, []);
+  assert.deepEqual(load('{"themes":{}}').themes, []);
+});
+
+test('themes descarta entrada torta SEM derrubar as boas', () => {
+  const raw = JSON.stringify({
+    themes: [
+      { id: 'a', name: 'Bom', base: { temp: 0.2, level: 0.7 }, act: '#5B4BE8' },
+      { id: 'b', name: 'Sem base', act: '#5B4BE8' },
+      { id: 'c', name: 'Hex torto', base: { temp: 0.2, level: 0.7 }, act: 'azul' },
+      { id: 'd', name: 'Fora de faixa', base: { temp: 5, level: 0.7 }, act: '#5B4BE8' },
+      { id: 'e', name: 'Outro bom', base: { temp: 0.9, level: 0.1 }, act: '#FFFFFF' },
+    ],
+  });
+  // Uma entrada corrompida nao pode custar a lista inteira -- e o tema que
+  // a pessoa montou a mao que estaria sendo jogado fora.
+  assert.deepEqual(load(raw).themes.map((t) => t.id), ['a', 'e']);
+});
+
+test('themes corta no teto de 12', () => {
+  const muitos = Array.from({ length: 20 }, (_, i) => ({
+    id: `t${i}`, name: `Tema ${i}`, base: { temp: 0.5, level: 0.5 }, act: '#5B4BE8',
+  }));
+  assert.equal(load(JSON.stringify({ themes: muitos })).themes.length, 12);
+});
+
+test('nome de tema fora de 1-24 caracteres e rejeitado', () => {
+  const nomes = ['', '   ', 'x'.repeat(25)];
+  for (const name of nomes) {
+    const raw = JSON.stringify({ themes: [{ id: 'a', name, base: { temp: 0.2, level: 0.7 }, act: '#5B4BE8' }] });
+    assert.deepEqual(load(raw).themes, [], `nome ${JSON.stringify(name)} deveria cair`);
+  }
+});
+
+test('nome de tema e aparado ao carregar', () => {
+  const raw = JSON.stringify({ themes: [{ id: 'a', name: '  Meu tema  ', base: { temp: 0.2, level: 0.7 }, act: '#5B4BE8' }] });
+  assert.equal(load(raw).themes[0].name, 'Meu tema');
+});
+
 test('theme: valor solto (nao objeto) cai no padrao', () => {
   for (const theme of [null, 'signal', 42, undefined]) {
     const saved = serialize({ ...DEFAULTS, theme });
