@@ -3114,6 +3114,8 @@
     const codigo = themecode.encode({ base: t.base, act: t.act });
     void navigator.clipboard.writeText(codigo).then(() => {
       anchorEl.classList.add('copied-flash');
+      const status = $('theme-code-status');
+      if (status) status.textContent = 'Código copiado.';
       setTimeout(() => anchorEl.classList.remove('copied-flash'), 1200);
     }).catch(() => {});
   }
@@ -3160,7 +3162,7 @@
 
     const warningEl = $('theme-warning');
     warningEl.textContent = '';
-    if (result.ok) return;
+    if (result.ok) return themeCfg;
 
     warningEl.append(result.failures[0]);
     if (result.nearestAct) {
@@ -3174,6 +3176,7 @@
       });
       warningEl.append(' ', fixBtn);
     }
+    return themeCfg;
   }
 
   /** Inicializa a aba Aparencia a partir de `cfg.theme`. */
@@ -3454,7 +3457,7 @@
         c.classList.remove('active');
         c.setAttribute('aria-pressed', 'false');
       });
-      applyCustomThemeFromControls(deps, { comSuperficies: true });
+      const aplicado = applyCustomThemeFromControls(deps, { comSuperficies: true });
       renderMyThemes(null);
       updateThemeSaveState();
 
@@ -3468,7 +3471,7 @@
         title: 'Nome do tema',
         value: 'Tema importado',
         onAccept: (nome) => {
-          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: importado.base, act: importado.act };
+          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: aplicado.base, act: aplicado.act };
           myThemes = [...myThemes, novo];
           onThemesChange?.(myThemes);
           renderMyThemes(novo.id);
