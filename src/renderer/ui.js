@@ -2348,10 +2348,29 @@
     if (e.key === 'Escape' && !lightboxEl.classList.contains('hidden')) closeImageLightbox();
   });
 
+  // Tolerancia pra "ja estava no fim". Zero seria fragil: subpixel de
+  // zoom e a altura fracionaria da ultima linha fazem scrollTop quase
+  // nunca bater exatamente no fundo.
+  const FIM_TOLERANCIA_PX = 48;
+
+  function estaNoFim() {
+    const el = chatMessagesEl;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= FIM_TOLERANCIA_PX;
+  }
+
+  function descerParaOFim() {
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    $('chat-jump-new').classList.add('hidden');
+  }
+
   function appendEntry(entry) {
+    // Decide ANTES de inserir: depois da insercao a lista ja cresceu e
+    // "estava no fim" viraria sempre falso.
+    const seguir = estaNoFim();
     if (entry.system) appendSystemLine(entry);
     else appendMessage(entry);
-    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    if (seguir) descerParaOFim();
+    else $('chat-jump-new').classList.remove('hidden');
   }
 
   function append(entry, { received = false } = {}) {
@@ -2363,7 +2382,11 @@
   function setHistory(entries) {
     chatMessagesEl.innerHTML = '';
     lastChatAuthorId = null;
-    for (const entry of entries || []) appendEntry(entry);
+    for (const entry of entries || []) {
+      if (entry.system) appendSystemLine(entry);
+      else appendMessage(entry);
+    }
+    descerParaOFim();
   }
 
   function setEnabled(enabled) {
@@ -2444,6 +2467,10 @@
     onChatSend = onSend;
     onChatPickImage = onPickImage;
     initEmojiPanel({ getEmojiRecents, onEmojiUsed });
+    $('chat-jump-new').addEventListener('click', descerParaOFim);
+    chatMessagesEl.addEventListener('scroll', () => {
+      if (estaNoFim()) $('chat-jump-new').classList.add('hidden');
+    });
     // #chat-compose e um <form> sem action -- um submit acidental (Enter num
     // futuro <input>, extensao) navegaria o renderer pra file://.../?. Corta.
     chatComposeEl.addEventListener('submit', (e) => e.preventDefault());
