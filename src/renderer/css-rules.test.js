@@ -91,6 +91,18 @@ test('estrutura moderna mantem dock no fluxo e camadas por tokens', () => {
   assert.match(css, /\.room-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill, minmax\(260px, 1fr\)\)/s, 'a lista de salas deve ser uma grade de cards');
 });
 
+test('a casca da sala fica escondida com um tile em tela cheia', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  // visibility (e nao display): mata pintura e clique de TODOS os
+  // descendentes, qualquer que seja o z-index deles, e preserva o layout --
+  // tirar o dock do fluxo faria a grade atras recalcular tamanho de tile
+  // pra um layout que ninguem esta vendo.
+  for (const alvo of ['.stage-header', '.control-bar', '.room-side']) {
+    const re = new RegExp(`body:has\\(\\.tile\\.fullscreen\\)[^{]*${alvo.replace('.', '\\.')}` + `[^{]*\\{[^}]*visibility:\\s*hidden`, 's');
+    assert.match(css, re, `${alvo} precisa ser escondido em tela cheia`);
+  }
+});
+
 test('o campo do chat tem a mesma altura dos botoes da caixa', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const rules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose textarea');

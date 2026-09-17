@@ -2751,6 +2751,15 @@ body.has-titlebar #room-view {
 /* Tile em tela cheia (win.setFullScreen): a faixa some. */
 body:has(.tile.fullscreen) .titlebar { display: none; }
 
+/* O tile em tela cheia tem z-index 50 -- empatado com --z-popover (os
+   rotulos do dock, que vem depois no DOM e ganham o empate) e abaixo do
+   painel de emoji (70) e do toast (1001). Subir o tile so moveria a fila:
+   o proximo elemento de camada alta voltaria a vazar. A casca some de
+   verdade. Ver spec 2026-09-15, decisoes 4 e 5. */
+body:has(.tile.fullscreen) .stage-header,
+body:has(.tile.fullscreen) .control-bar,
+body:has(.tile.fullscreen) .room-side { visibility: hidden; }
+
 /* ============ Estrutura de app: casca, cards e dock ============ */
 
 /* A navegacao fica estavel e o conteudo vivo ganha toda a outra coluna. */
@@ -2879,6 +2888,11 @@ body:has(.tile.fullscreen) .titlebar { display: none; }
 }
 
 /* ============ Laser e reacoes (frente interacao, 2026-09-12) ============ */
+
+/* A barra de reacao nasceu sem regra de ociosidade. O BOTAO some (e cromo);
+   os emojis que chegam (.tile-react-pops) ficam, porque sao conteudo --
+   uma reacao que chega com o mouse parado precisa aparecer. */
+.tile.fullscreen.idle .tile-react-bar { opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 
 .tile-react-bar {
   position: absolute;

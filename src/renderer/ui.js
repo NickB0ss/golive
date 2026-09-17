@@ -276,6 +276,13 @@
     const apply = () => {
       const entering = !tile.classList.contains('fullscreen');
       tile.classList.toggle('fullscreen', entering);
+      if (entering) {
+        // O painel de emoji e position: fixed no body (z-index 70), fora do
+        // alcance do seletor que esconde a casca -- ele vazaria por cima do
+        // video se ficasse aberto. `closeEmojiPanel` ja existe (ui.js, ~2503)
+        // e tambem devolve o aria-expanded do botao; nao mexa na classe a mao.
+        closeEmojiPanel();
+      }
       window.golive.setFullScreen(entering);
       if (entering) {
         fullscreenTileId = id;
