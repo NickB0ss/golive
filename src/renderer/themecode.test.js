@@ -24,9 +24,16 @@ test('o codigo tem prefixo, 12 caracteres e tres grupos', () => {
 
 test('checksum quebrado devolve null', () => {
   const bom = themecode.encode(TEMA);
-  // Troca o ULTIMO caractere, que carrega o checksum.
-  const ruim = bom.slice(0, -1) + (bom.at(-1) === '0' ? '1' : '0');
+  const corpo = bom.slice(3).replace(/-/g, '');
+  const indice = 5;
+  const troca = themecode.ALPHABET[(themecode.ALPHABET.indexOf(corpo[indice]) + 1) % themecode.ALPHABET.length];
+  const mutado = corpo.slice(0, indice) + troca + corpo.slice(indice + 1);
+  const ruim = `GL-${mutado.slice(0, 4)}-${mutado.slice(4, 8)}-${mutado.slice(8)}`;
   assert.equal(themecode.decode(ruim), null);
+});
+
+test('bits de enchimento diferentes de zero devolvem null', () => {
+  assert.equal(themecode.decode('GL-040G-0000-0011'), null);
 });
 
 test('tamanho errado devolve null', () => {

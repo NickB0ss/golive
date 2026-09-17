@@ -73,9 +73,11 @@
     let bits = 0;
     let value = 0;
     const out = [];
+    let ultimoIndice = 0;
     for (const ch of texto) {
       const idx = ALPHABET.indexOf(ch);
       if (idx < 0) return null;
+      ultimoIndice = idx;
       value = (value << 5) | idx;
       bits += 5;
       if (bits >= 8) {
@@ -83,6 +85,7 @@
         bits -= 8;
       }
     }
+    if (out.length === 7 && ultimoIndice !== 0 && ultimoIndice !== 16) return null;
     return out;
   }
 
