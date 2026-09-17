@@ -2309,6 +2309,7 @@
     div.className = 'chat-day';
     div.textContent = dayLabel(ts);
     chatMessagesEl.appendChild(div);
+    lastChatAuthorId = null;
   }
 
   function appendSystemLine(entry) {
