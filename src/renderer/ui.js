@@ -3011,6 +3011,101 @@
     $('theme-presets').innerHTML = THEME_PRESET_ORDER.map((id) => renderThemePresetCard(id, activeId)).join('');
   }
 
+  let myThemes = [];
+  let onThemesChange = null;
+
+  /** Cartao de tema proprio. Reaproveita o desenho dos fixos: a diferenca
+   * e so quem desenhou o tema; clicar no cartao continua significando usar. */
+  function renderMyThemes(ativoId) {
+    const host = $('my-themes');
+    if (!host) return;
+    if (!myThemes.length) {
+      host.innerHTML = '<p class="settings-hint">Nenhum tema salvo ainda.</p>';
+      return;
+    }
+    host.innerHTML = myThemes.map((t) => {
+      const tokens = theme.tokensFor({ preset: 'custom', base: t.base, act: t.act });
+      const s = tokens.surfaces;
+      const active = t.id === ativoId;
+      return `
+        <div class="my-theme-slot">
+          <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-theme-id="${escapeHtml(t.id)}" aria-pressed="${active}">
+            <span class="theme-preset-mini" style="background:${s.bg}">
+              <span class="tpm-top" style="background:${s.s1};border-color:${s.line2}">
+                <i style="background:${tokens.act}"></i>
+                <b style="background:${s.s3}"></b>
+                <u style="background:var(--live)"></u>
+              </span>
+              <span class="tpm-body">
+                <span class="tpm-stage" style="background:${s.s2}"></span>
+                <span class="tpm-side">
+                  <b style="background:${s.s3}"></b>
+                  <b style="background:${s.s3}"></b>
+                  <span class="tpm-cta" style="background:${tokens.act}"></span>
+                </span>
+              </span>
+            </span>
+            <span class="theme-preset-label">${escapeHtml(t.name)}</span>
+          </button>
+          <button class="my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
+                  title="Opcoes de ${escapeHtml(t.name)}" aria-label="Opcoes de ${escapeHtml(t.name)}">⋮</button>
+        </div>`;
+    }).join('');
+  }
+
+  function renderThemeMenu(itens, anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    memberMenuEl.innerHTML = itens.map((item, index) => `
+      <div class="member-menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</div>
+    `).join('');
+    memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    memberMenuEl.style.top = `${rect.bottom + 4}px`;
+    memberMenuEl.classList.remove('hidden');
+    for (const item of memberMenuEl.querySelectorAll('[data-theme-action]')) {
+      item.addEventListener('click', () => {
+        itens[Number(item.dataset.themeAction)].acao();
+        closeMemberMenu();
+      });
+    }
+    memberMenuEl.querySelector('[role="menuitem"]')?.focus();
+  }
+
+  function themeName(nome) {
+    return Array.from(nome).slice(0, 24).join('');
+  }
+
+  function openMyThemeMenu(id, anchorEl, deps) {
+    const t = myThemes.find((x) => x.id === id);
+    if (!t) return;
+    const itens = [
+      { rotulo: 'Renomear', acao: () => {
+        openText({
+          title: 'Renomear tema',
+          value: t.name,
+          onAccept: (nome) => {
+            t.name = themeName(nome);
+            onThemesChange?.(myThemes);
+            renderMyThemes(id);
+          },
+        });
+      } },
+      { rotulo: 'Copiar codigo', acao: () => copiarCodigoDoTema(t, anchorEl) },
+      { rotulo: 'Apagar', tom: 'danger', acao: () => {
+        openConfirm({
+          title: 'Apagar tema',
+          text: `"${t.name}" some da lista. Quem ja tem o codigo continua podendo usar.`,
+          confirmLabel: 'Apagar',
+          onConfirm: () => {
+            myThemes = myThemes.filter((x) => x.id !== id);
+            onThemesChange?.(myThemes);
+            renderMyThemes(null);
+          },
+        });
+      } },
+    ];
+    renderThemeMenu(itens, anchorEl);
+  }
+
   /** Qual cartao de predefinicao esta marcado agora. A cor de acao e um
    * acento POR CIMA de uma predefinicao -- nunca um estado sem predefinicao
    * nenhuma --, entao sempre ha uma resposta; 'marca' (o padrao) e a rede de
@@ -3020,19 +3115,21 @@
     return card?.dataset.preset || 'marca';
   }
 
-  /** Le a cor de acao, valida e aplica ao vivo. E chamada a cada evento
-   * `input` (nunca so `change`) -- a pessoa precisa ver o app mudando
-   * enquanto arrasta o seletor de cor, que e o unico jeito de avaliar um
-   * tema (spec 5.6). Aplica MESMO quando a validacao reprova -- o aviso
-   * abaixo do controle e que carrega a reprovacao, a aplicacao ao vivo
-   * continua sendo o feedback principal.
-   *
-   * O cartao da predefinicao CONTINUA marcado: trocar o acento nao tira a
-   * pessoa do conjunto fechado, so troca a cor de acao dentro dele. Isso
-   * mudou quando os sliders de superficie sairam -- antes, mexer em
-   * qualquer controle daqui significava sair de todos os presets. */
-  function applyCustomThemeFromControls(deps) {
-    const themeCfg = { preset: selectedThemePreset(), act: $('theme-act').value };
+  function themeCfgFromControls({ comSuperficies = false } = {}) {
+    const act = $('theme-act').value;
+    if (!comSuperficies) return { preset: selectedThemePreset(), act };
+    return {
+      preset: 'custom',
+      base: { temp: Number($('theme-temp').value) / 100, level: Number($('theme-level').value) / 100 },
+      act,
+    };
+  }
+
+  /** Le os controles e aplica ao vivo. Chamada a cada `input`: arrastar e
+   * ver o app mudar e o unico jeito de avaliar um tema. Aplica mesmo quando
+   * a validacao reprova; o aviso abaixo do controle mostra a reprovacao. */
+  function applyCustomThemeFromControls(deps, opcoes) {
+    const themeCfg = themeCfgFromControls(opcoes);
     const result = theme.validate(theme.tokensFor(themeCfg));
     deps.onThemeChange(themeCfg);
 
@@ -3048,20 +3145,13 @@
       fixBtn.textContent = `usar ${result.nearestAct}`;
       fixBtn.addEventListener('click', () => {
         $('theme-act').value = result.nearestAct;
-        applyCustomThemeFromControls(deps);
+        applyCustomThemeFromControls(deps, opcoes);
       });
       warningEl.append(' ', fixBtn);
     }
   }
 
-  /** Inicializa a aba Aparencia a partir de `cfg.theme`. Sempre ha um cartao
-   * marcado; o seletor de cor nasce no `act` salvo, ou no do proprio preset
-   * quando nao ha acento proprio.
-   *
-   * Um `custom` legado (config salvo quando ainda dava pra mexer nas
-   * superficies) nao tem mais controle que o represente: os cartoes caem no
-   * padrao e o seletor mostra o acento salvo. O tema em uso so muda quando a
-   * pessoa mexer em alguma coisa -- abrir as Configuracoes nao repinta nada. */
+  /** Inicializa a aba Aparencia a partir de `cfg.theme`. */
   function initThemeControls(config) {
     const themeCfg = (config && config.theme) || { preset: 'marca' };
     const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'marca';
@@ -3069,6 +3159,12 @@
     renderThemePresets(knownPreset);
     $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;
     $('theme-warning').textContent = '';
+    myThemes = (config && Array.isArray(config.themes)) ? config.themes : [];
+    onThemesChange = null;
+    const base = themeCfg.preset === 'custom' && themeCfg.base ? themeCfg.base : { temp: 0.5, level: 0.2 };
+    $('theme-temp').value = String(Math.round(base.temp * 100));
+    $('theme-level').value = String(Math.round(base.level * 100));
+    renderMyThemes(null);
   }
 
   function isHexColor(v) {
@@ -3134,9 +3230,24 @@
         <p class="settings-hint">Botão principal, foco do teclado e seleção. O vermelho de "ao vivo" e o âmbar de aviso não mudam — eles significam uma coisa só.</p>
         <input id="theme-act" type="color" value="#4F46E5" aria-describedby="theme-warning" />
       </div>
+      <div class="settings-field">
+        <label for="theme-temp">Temperatura das superfícies</label>
+        <input id="theme-temp" type="range" min="0" max="100" value="50" />
+      </div>
+      <div class="settings-field">
+        <label for="theme-level">Claridade das superfícies</label>
+        <input id="theme-level" type="range" min="0" max="100" value="20" />
+      </div>
       <p id="theme-warning" class="hint" role="alert"></p>
       <div class="settings-actions">
         <button id="btn-theme-reset" type="button" class="ghost small">Voltar ao padrão</button>
+      </div>
+
+      <h3>Meus temas</h3>
+      <p class="settings-hint">Guarde a combinação que você montou e mande o código pra quem quiser usar igual.</p>
+      <div id="my-themes" class="theme-presets"></div>
+      <div class="settings-actions">
+        <button id="btn-theme-save" type="button" class="secondary small">Salvar tema atual</button>
       </div>`;
 
     settingsPanes.voice.innerHTML = `
@@ -3261,6 +3372,54 @@
       deps.onThemeChange({ preset: card.dataset.preset });
     });
     $('theme-act').addEventListener('input', () => applyCustomThemeFromControls(deps));
+    for (const id of ['theme-temp', 'theme-level']) {
+      $(id).addEventListener('input', () => {
+        Array.from($('theme-presets').children).forEach((c) => {
+          c.classList.remove('active');
+          c.setAttribute('aria-pressed', 'false');
+        });
+        applyCustomThemeFromControls(deps, { comSuperficies: true });
+      });
+    }
+
+    onThemesChange = deps.onThemesChange;
+    $('btn-theme-save').addEventListener('click', () => {
+      if (myThemes.length >= 12) {
+        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar outro.');
+        return;
+      }
+      const cfg = themeCfgFromControls({ comSuperficies: true });
+      openText({
+        title: 'Nome do tema',
+        value: 'Meu tema',
+        onAccept: (nome) => {
+          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: cfg.base, act: cfg.act };
+          myThemes = [...myThemes, novo];
+          onThemesChange?.(myThemes);
+          renderMyThemes(novo.id);
+        },
+      });
+    });
+
+    $('my-themes').addEventListener('click', (event) => {
+      const card = event.target.closest('[data-theme-id]');
+      if (card) {
+        const t = myThemes.find((x) => x.id === card.dataset.themeId);
+        if (!t) return;
+        Array.from($('theme-presets').children).forEach((c) => {
+          c.classList.remove('active');
+          c.setAttribute('aria-pressed', 'false');
+        });
+        $('theme-act').value = t.act;
+        $('theme-temp').value = String(Math.round(t.base.temp * 100));
+        $('theme-level').value = String(Math.round(t.base.level * 100));
+        deps.onThemeChange({ preset: 'custom', base: t.base, act: t.act });
+        renderMyThemes(t.id);
+        return;
+      }
+      const menuBtn = event.target.closest('[data-theme-menu]');
+      if (menuBtn) openMyThemeMenu(menuBtn.dataset.themeMenu, menuBtn, deps);
+    });
 
     // Voltar ao padrao: aplica o tema de fabrica E devolve os controles pro
     // estado inicial. Sem o initThemeControls, o seletor de cor continuaria
@@ -3700,6 +3859,33 @@
   $('btn-confirm-cancel').addEventListener('click', closeConfirm);
   $('btn-confirm-ok').addEventListener('click', () => { onConfirmAccept?.(); closeConfirm(); });
   dlgConfirmEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConfirm(); });
+
+  const dlgTextEl = $('dialog-text');
+  let onTextAccept = null;
+
+  function openText({ title, value = '', confirmLabel = 'Salvar', onAccept }) {
+    $('dialog-text-title').textContent = title;
+    $('dialog-text-input').value = value;
+    $('btn-text-ok').textContent = confirmLabel;
+    onTextAccept = onAccept;
+    dlgTextEl.classList.remove('hidden');
+    lastFocusedBeforeModal = document.activeElement;
+    $('dialog-text-input').focus();
+    $('dialog-text-input').select();
+  }
+  function closeText() {
+    dlgTextEl.classList.add('hidden');
+    restoreFocusAfterModal();
+    onTextAccept = null;
+  }
+  $('btn-text-cancel').addEventListener('click', closeText);
+  $('btn-text-ok').addEventListener('click', () => {
+    const valor = themeName($('dialog-text-input').value.trim());
+    const aceitar = onTextAccept;
+    closeText();
+    if (valor) aceitar?.(valor);
+  });
+  dlgTextEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeText(); });
 
   function openBan({ name, onConfirm }) {
     openConfirm({

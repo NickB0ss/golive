@@ -743,6 +743,11 @@
         persist();
         theme.apply(themeCfg);
       },
+      onThemesChange: (lista) => {
+        cfg = { ...cfg, themes: lista };
+        persist();
+      },
+      onToast: showToast,
     });
   }
 

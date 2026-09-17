@@ -3034,3 +3034,18 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
   transition: width 120ms linear;
 }
 .update-bar-action { flex: none; }
+
+/* ============ Meus temas (2026-09-15) ============ */
+.my-theme-slot { position: relative; }
+.my-theme-menu-btn {
+  position: absolute; top: 4px; right: 4px;
+  width: 22px; height: 22px; min-height: 0; padding: 0;
+  display: grid; place-items: center;
+  border: none; border-radius: var(--r-xs);
+  background: var(--scrim-tint-2); color: var(--tx2);
+  font-size: 13px; line-height: 1;
+  opacity: 0; transition: opacity var(--dur-fast) var(--ease-in-out);
+}
+.my-theme-slot:hover .my-theme-menu-btn,
+.my-theme-slot:focus-within .my-theme-menu-btn { opacity: 1; }
+.my-theme-menu-btn:hover { background: var(--s3); color: var(--tx); }

@@ -310,6 +310,20 @@
   </div>
 </div>
 
+<!-- Segundo dialogo generico: mesma casca do #dialog-confirm, com campo.
+     O foco nasce no campo: aqui a acao esperada e digitar. -->
+<div id="dialog-text" class="modal hidden">
+  <div class="modal-box dialog-box">
+    <h2 id="dialog-text-title"></h2>
+    <label for="dialog-text-input" class="visually-hidden">Valor</label>
+    <input id="dialog-text-input" type="text" maxlength="48" autocomplete="off" />
+    <div class="dialog-actions">
+      <button id="btn-text-cancel" class="ghost" type="button">Cancelar</button>
+      <button id="btn-text-ok" class="primary" type="button">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL DE CONFIGURACOES ============ -->
 <div id="settings-modal" class="modal hidden">
   <div class="modal-box settings-box">
