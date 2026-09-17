@@ -3049,3 +3049,13 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 .my-theme-slot:hover .my-theme-menu-btn,
 .my-theme-slot:focus-within .my-theme-menu-btn { opacity: 1; }
 .my-theme-menu-btn:hover { background: var(--s3); color: var(--tx); }
+.my-theme-menu-btn.copied-flash {
+  width: auto; padding: 0 var(--s-2); opacity: 1;
+  font-size: 0;
+}
+.my-theme-menu-btn.copied-flash::after { content: 'Copiado'; font-size: 11px; }
+.theme-code-row { display: flex; gap: var(--s-2); align-items: center; }
+.theme-code-row input {
+  flex: 1; min-width: 0;
+  font-family: ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase;
+}

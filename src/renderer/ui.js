@@ -11,6 +11,7 @@
   const annotate = root.GoLive.annotate;
   const laser = root.GoLive.laser;
   const reactions = root.GoLive.reactions;
+  const themecode = root.GoLive.themecode;
   const gridLayout = root.GoLive.gridLayout;
   let tileReactionGlobalListenersWired = false;
 
@@ -3089,6 +3090,7 @@
           },
         });
       } },
+      { rotulo: 'Copiar codigo', acao: () => copiarCodigoDoTema(t, anchorEl) },
       { rotulo: 'Apagar', tom: 'danger', acao: () => {
         openConfirm({
           title: 'Apagar tema',
@@ -3103,6 +3105,17 @@
       } },
     ];
     renderThemeMenu(itens, anchorEl);
+  }
+
+  /** Confirmacao NO LUGAR (motion #4): o botao vira "Copiado" onde o dedo
+   * ja esta, em vez de um toast num canto que ninguem esta olhando --
+   * mesmo caminho que o endereco da sala usa. */
+  function copiarCodigoDoTema(t, anchorEl) {
+    const codigo = themecode.encode({ base: t.base, act: t.act });
+    void navigator.clipboard.writeText(codigo).then(() => {
+      anchorEl.classList.add('copied-flash');
+      setTimeout(() => anchorEl.classList.remove('copied-flash'), 1200);
+    }).catch(() => {});
   }
 
   /** Qual cartao de predefinicao esta marcado agora. A cor de acao e um
@@ -3261,6 +3274,15 @@
       <div class="settings-actions">
         <button id="btn-theme-save" type="button" class="secondary small">Salvar tema atual</button>
         <p id="theme-save-hint" class="settings-hint hidden">Mexa na temperatura ou na claridade pra montar um tema seu.</p>
+      </div>
+      <div class="settings-field">
+        <label for="theme-code-input">Usar um código</label>
+        <p class="settings-hint">Cole aqui o código que um amigo te mandou.</p>
+        <div class="theme-code-row">
+          <input id="theme-code-input" type="text" placeholder="GL-XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off" />
+          <button id="btn-theme-code-use" type="button" class="secondary small" disabled>Ver tema</button>
+        </div>
+        <p id="theme-code-status" class="hint" role="status"></p>
       </div>`;
 
     settingsPanes.voice.innerHTML = `
@@ -3405,6 +3427,58 @@
     }
 
     onThemesChange = deps.onThemesChange;
+    let temaColado = null;
+    $('theme-code-input').addEventListener('input', () => {
+      const status = $('theme-code-status');
+      temaColado = themecode.decode($('theme-code-input').value);
+      $('btn-theme-code-use').disabled = !temaColado;
+      if (!$('theme-code-input').value.trim()) {
+        status.textContent = '';
+        return;
+      }
+      // Codigo invalido nao muda NADA na tela: a pessoa colou errado, nao
+      // pediu tema novo.
+      status.textContent = temaColado ? 'Código válido. Veja como fica antes de salvar.' : 'Esse código não parece certo.';
+    });
+    $('btn-theme-code-use').addEventListener('click', () => {
+      if (!temaColado) return;
+      const importado = temaColado;
+
+      // Previa ao vivo, e o mesmo aviso de contraste que os controles ja
+      // mostram. Nao recusa: o app inteiro e aplica-e-avisa, e recusar o
+      // tema de um amigo sem oferecer o conserto seria pior.
+      $('theme-act').value = importado.act;
+      $('theme-temp').value = String(Math.round(importado.base.temp * 100));
+      $('theme-level').value = String(Math.round(importado.base.level * 100));
+      Array.from($('theme-presets').children).forEach((c) => {
+        c.classList.remove('active');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      applyCustomThemeFromControls(deps, { comSuperficies: true });
+      renderMyThemes(null);
+      updateThemeSaveState();
+
+      if (myThemes.length >= 12) {
+        // A previa ja esta no ar e continua valendo -- so nao da pra
+        // guardar. Nada se perde: o codigo continua no campo.
+        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar este.');
+        return;
+      }
+      openText({
+        title: 'Nome do tema',
+        value: 'Tema importado',
+        onAccept: (nome) => {
+          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: importado.base, act: importado.act };
+          myThemes = [...myThemes, novo];
+          onThemesChange?.(myThemes);
+          renderMyThemes(novo.id);
+          $('theme-code-input').value = '';
+          $('theme-code-status').textContent = '';
+          $('btn-theme-code-use').disabled = true;
+          temaColado = null;
+        },
+      });
+    });
     $('btn-theme-save').addEventListener('click', () => {
       if (myThemes.length >= 12) {
         deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar outro.');
