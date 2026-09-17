@@ -27,15 +27,6 @@
   </div>
 </div>
 
-<!-- So progresso real daqui pra frente (baixando/instalando) -- "ha
-     atualizacao disponivel" e o botao #btn-update-available do topbar do
-     lobby, chamativo o bastante pra nao precisar de banner tambem. Ver
-     docs/superpowers/specs/2026-09-12-abertura-com-atualizacao-design.md. -->
-<div id="update-banner" class="update-banner hidden">
-  <span id="update-banner-text"></span>
-  <div id="update-progress" class="update-progress hidden"><div id="update-progress-fill" class="update-progress-fill"></div></div>
-</div>
-
 <div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <!-- ============ LOBBY (fora de sala) ============ -->
@@ -81,13 +72,6 @@
         <span id="user-panel-avatar-fallback"></span>
       </button>
       <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
-      <!-- So aparece quando ha atualizacao disponivel (boot, checagem
-           periodica ou busca manual). Fora da sala por construcao: mora
-           dentro do #lobby-view, que some inteiro ao entrar numa sala. -->
-      <button id="btn-update-available" class="primary small update-available-btn hidden" type="button"
-              title="Atualização disponível — clique para atualizar agora">
-        <span class="update-dot" aria-hidden="true"></span>Atualizar
-      </button>
       <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" aria-label="Buscar atualizações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
       </button>
@@ -98,6 +82,20 @@
   </aside>
 
   <main class="lobby-main">
+    <!-- Um lugar so pede pra atualizar (spec 2026-09-15, decisao 1). Mora
+         DENTRO do #lobby-view: "nao aparece na sala" sai de graca da troca
+         de view que ja existe, sem logica nova. -->
+    <section id="update-bar" class="update-bar hidden" role="status">
+      <svg class="update-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      <div class="update-bar-text">
+        <strong id="update-bar-title"></strong>
+        <span id="update-bar-sub"></span>
+      </div>
+      <div id="update-bar-progress" class="update-bar-progress hidden">
+        <div id="update-bar-fill" class="update-bar-fill"></div>
+      </div>
+      <button id="btn-update-available" class="primary update-bar-action" type="button">Atualizar agora</button>
+    </section>
     <section class="lobby-rooms">
       <div class="rooms-head">
         <div class="rooms-intro"><div class="rooms-title-line"><h1 class="rooms-title">Salas na sua rede</h1><span id="rooms-count" class="rooms-count">0</span></div><p class="rooms-subtitle">Encontre amigos na sua LAN virtual e entre em segundos.</p></div>

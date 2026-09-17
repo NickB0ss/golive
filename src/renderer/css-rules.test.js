@@ -7,6 +7,17 @@ const path = require('node:path');
 
 const cssPath = path.join(__dirname, 'style.css');
 
+test('o banner de atualizacao do canto nao voltou', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  // Um so lugar pede pra atualizar: a faixa do lobby. O banner do canto
+  // inferior direito era justamente o que ninguem via (spec 2026-09-15,
+  // decisao 1).
+  assert.ok(!css.includes('.update-banner'), 'o CSS do banner do canto tem de sair');
+  assert.ok(!html.includes('update-banner'), 'a marcacao do banner do canto tem de sair');
+  assert.match(html, /id="update-bar"/, 'a faixa do lobby tem de existir');
+});
+
 function declarations(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const found = [];

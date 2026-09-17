@@ -828,14 +828,12 @@
   });
 
   // Atualizacao. A abertura (tela de carregamento, src/main/boot.js) ja
-  // baixa e instala sozinha SEM perguntar antes de existir janela nenhuma
-  // -- ver a spec 2026-09-12. Com o app ja aberto o fluxo continua
-  // explicito: uma checagem periodica de 60 min (main.js) e a busca manual
-  // deste botao so ACENDEM #btn-update-available; baixar so acontece no
-  // clique nele (ou no banner "Atualizar" antigo, que saiu -- o botao do
-  // topo e chamativo o bastante sozinho). Quando o download termina fora
-  // da sala, instala e reinicia; dentro da sala fica pronto e so instala
-  // no proximo clique, ja no lobby (ver src/main/update-policy.js).
+  // baixa e instala sozinha SEM perguntar antes de existir janela nenhuma.
+  // Com o app ja aberto o fluxo continua explicito: uma checagem periodica
+  // de 60 min (main.js) e a busca manual acendem a faixa do lobby; baixar so
+  // acontece no clique nela. Quando o download termina fora da sala, instala
+  // e reinicia; dentro da sala fica pronto e so instala no proximo clique,
+  // ja no lobby (ver src/main/update-policy.js).
   void appVersionReady.then(() => {  // appVersionReady nunca rejeita (ja tem .catch)
     if (appVersion) $('app-version').textContent = `v${appVersion}`;
     renderRoomList(); // a lista da rede so sabe marcar sala incompativel com a nossa versao em maos
@@ -866,27 +864,33 @@
   const updateErrorText = (reason) =>
     UPDATE_ERROR_TEXT[reason] || 'Não consegui verificar a atualização. Tente de novo mais tarde.';
 
-  // So progresso real daqui -- "ha atualizacao" e o botao do topo, nunca o
-  // banner (ver decisao 10 da spec 2026-09-12).
-  function showUpdateBanner({ text, progress = null, indeterminate = false }) {
-    $('update-banner').classList.remove('hidden');
-    $('update-banner-text').textContent = text;
-    const wrap = $('update-progress');
-    const fill = $('update-progress-fill');
-    const showBar = progress != null || indeterminate;
-    wrap.classList.toggle('hidden', !showBar);
-    fill.classList.toggle('indeterminate', indeterminate);
-    if (progress != null) fill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-  }
+  // Um lugar so, trocando de estado (spec 2026-09-15, decisao 1). O banner
+  // do canto inferior direito saiu: dentro da sala nada de atualizacao
+  // aparece (decisao 3), e a faixa mora no #lobby-view, entao isso vale de
+  // graca -- a view inteira some ao entrar numa sala.
+  const updateBarEl = $('update-bar');
 
-  function showUpdateAvailable(version) {
-    btnUpdateAvailable.title = version
-      ? `Atualização ${version} disponível — clique para atualizar agora`
-      : 'Atualização disponível — clique para atualizar agora';
-    btnUpdateAvailable.classList.remove('hidden');
-  }
-  function hideUpdateAvailable() {
-    btnUpdateAvailable.classList.add('hidden');
+  function renderUpdateBar(estado, { version = null, progress = null } = {}) {
+    if (!estado) {
+      updateBarEl.classList.add('hidden');
+      return;
+    }
+    const v = version || 'nova';
+    const textos = {
+      disponivel: [`Atualização ${v} disponível`, 'Reinicia rápido e volta sozinho.', 'Atualizar agora'],
+      baixando:   ['Baixando atualização…', `${v} — ${progress ?? 0}%`, 'Atualizar agora'],
+      pronta:     ['Atualização pronta', `${v} — instala ao reiniciar.`, 'Reiniciar e instalar'],
+    };
+    const [titulo, sub, rotulo] = textos[estado];
+    $('update-bar-title').textContent = titulo;
+    $('update-bar-sub').textContent = sub;
+    btnUpdateAvailable.textContent = rotulo;
+    btnUpdateAvailable.disabled = estado === 'baixando';
+    $('update-bar-progress').classList.toggle('hidden', estado !== 'baixando');
+    if (estado === 'baixando') {
+      $('update-bar-fill').style.width = `${Math.max(0, Math.min(100, progress ?? 0))}%`;
+    }
+    updateBarEl.classList.remove('hidden');
   }
 
   window.golive.onUpdateStatus?.((payload) => {
@@ -897,24 +901,19 @@
         break;
       case 'available':
         spinCheck(false);
-        showUpdateAvailable(version);
-        if (manual) {
-          showToast(`Atualização ${version || 'nova'} disponível — clique em "Atualizar" no topo.`);
-        }
+        renderUpdateBar('disponivel', { version });
+        if (manual) showToast(`Atualização ${version || 'nova'} disponível.`);
         break;
       case 'downloading':
-        hideUpdateAvailable(); // o banner de progresso assume dali pra frente
-        showUpdateBanner({ text: `Baixando atualização… ${progress ?? 0}%`, progress: progress ?? 0 });
+        renderUpdateBar('baixando', { version, progress: progress ?? 0 });
         break;
       case 'downloaded':
-        showUpdateBanner({ text: 'Instalando atualização…', indeterminate: true });
-        break;
       case 'installing':
-        showUpdateBanner({ text: 'Instalando atualização…', indeterminate: true });
+        renderUpdateBar('pronta', { version });
         break;
       case 'not-available':
         spinCheck(false);
-        hideUpdateAvailable();
+        renderUpdateBar(null);
         if (manual) showToast(`Você já está na versão mais recente${appVersion ? ` (${appVersion})` : ''}.`);
         break;
       case 'error':
@@ -935,8 +934,7 @@
   });
 
   btnUpdateAvailable.addEventListener('click', () => {
-    hideUpdateAvailable();
-    showUpdateBanner({ text: 'Baixando atualização… 0%', progress: 0 });
+    renderUpdateBar('baixando', { progress: 0 });
     window.golive.downloadUpdate?.();
   });
 
