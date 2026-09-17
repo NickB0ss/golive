@@ -2486,7 +2486,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   align-self: flex-end;
 }
 .chat-compose-btn svg { width: 16px; height: 16px; }
-.chat-compose-btn:hover { background: var(--s3); color: var(--tx); }
+.chat-compose-btn:not(:disabled):hover { background: var(--s3); color: var(--tx); }
 /* Apagado ate haver o que mandar: um botao de enviar sempre aceso promete
    uma acao que nao acontece. */
 .chat-send-btn { color: var(--tx3); }

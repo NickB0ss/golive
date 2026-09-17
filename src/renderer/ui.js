@@ -2370,6 +2370,7 @@
     chatInputEl.disabled = !enabled;
     chatComposeEl.classList.toggle('disabled', !enabled);
     chatOfflineBarEl.classList.toggle('hidden', enabled);
+    syncComposeState();
   }
 
   // ---------- Anexo de imagem (previa antes de mandar) ----------
@@ -2417,7 +2418,7 @@
    * alguma coisa, pra as duas nunca discordarem. */
   function syncComposeState() {
     const temTexto = chatInputEl.value.trim().length > 0;
-    $('btn-chat-send').disabled = !temTexto && !pendingAttachment;
+    $('btn-chat-send').disabled = chatInputEl.disabled || (!temTexto && !pendingAttachment);
   }
 
   function sendCurrentInput() {
