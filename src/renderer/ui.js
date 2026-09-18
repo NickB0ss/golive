@@ -11,7 +11,26 @@
   const annotate = root.GoLive.annotate;
   const laser = root.GoLive.laser;
   const reactions = root.GoLive.reactions;
+  const themecode = root.GoLive.themecode;
   const gridLayout = root.GoLive.gridLayout;
+  let tileReactionGlobalListenersWired = false;
+
+  function wireTileReactionGlobalListeners() {
+    if (tileReactionGlobalListenersWired) return;
+    tileReactionGlobalListenersWired = true;
+    document.addEventListener('click', (e) => {
+      for (const bar of document.querySelectorAll('.tile-react-bar.is-open')) {
+        if (!bar.contains(e.target)) bar._fecharReacoes?.();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      for (const bar of document.querySelectorAll('.tile-react-bar.is-open')) {
+        bar._fecharReacoes?.();
+      }
+    });
+  }
+  wireTileReactionGlobalListeners();
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -136,7 +155,14 @@
     if (!canGoIdle()) return;
     idleTimer = setTimeout(() => {
       document.body.classList.add('room-idle');
+      // Transparencia so esconde a barra; fechar tambem restaura inert e
+      // aria-expanded para que Tab nao alcance controles invisiveis.
+      document.querySelectorAll('.tile-react-bar.is-open').forEach((bar) => {
+        bar._fecharReacoes?.();
+      });
       if (fullscreenTileId) {
+        closePipMenu();
+        closeTileMenu();
         document.getElementById(`tile-${fullscreenTileId}`)?.classList.add('idle');
       }
     }, IDLE_MS);
@@ -258,6 +284,20 @@
     const apply = () => {
       const entering = !tile.classList.contains('fullscreen');
       tile.classList.toggle('fullscreen', entering);
+      if (entering) {
+        // Estes popovers sao fixed no body, fora da casca que o fullscreen
+        // esconde. Fechar por suas funcoes preserva os estados ARIA e evita
+        // qualquer um deles sobre o video.
+        closeMemberMenu();
+        closeTileMenu();
+        closePipMenu();
+        closeEmojiPanel();
+        // A lateral acabou de ficar invisivel; foco fora deste tile ficaria
+        // preso nela (por exemplo, na busca de emoji).
+        if (!tile.contains(document.activeElement)) {
+          tile.querySelector('.tile-fullscreen-btn')?.focus();
+        }
+      }
       window.golive.setFullScreen(entering);
       if (entering) {
         fullscreenTileId = id;
@@ -654,7 +694,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
         <div class="tile-annot-bar" hidden></div>
-        <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">${reactionBarButtonsHtml()}</div>
+        <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">
+          <button class="tile-react-toggle" type="button" aria-expanded="false" aria-label="Reagir" title="Reagir">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
+          <span class="tile-react-list" inert>${reactionBarButtonsHtml()}</span>
+        </div>
         <div class="tile-react-pops"></div>
         <div class="pip-strip"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
@@ -1092,12 +1137,43 @@
   function wireTileReactions(tile, tileId) {
     const bar = tile.querySelector('.tile-react-bar');
     if (!bar) return;
-    bar.addEventListener('click', (e) => {
+    const toggle = bar.querySelector('.tile-react-toggle');
+    const list = bar.querySelector('.tile-react-list');
+    let fecharTimer = null;
+
+    function fechar() {
+      clearTimeout(fecharTimer);
+      fecharTimer = null;
+      bar.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+      list.inert = true;
+    }
+    function adiarFechamento() {
+      clearTimeout(fecharTimer);
+      fecharTimer = setTimeout(fechar, 3000);
+    }
+    function abrir() {
+      bar.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+      list.inert = false;
+      adiarFechamento();
+    }
+
+    bar._fecharReacoes = fechar;
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (bar.classList.contains('is-open')) fechar();
+      else abrir();
+    });
+    list.addEventListener('click', (e) => {
       e.stopPropagation();
       const btn = e.target.closest('.tile-react-btn');
       if (!btn) return;
       emitReactionOp(tileId, btn.dataset.emoji);
+      adiarFechamento();
     });
+    bar.addEventListener('mouseenter', () => { if (bar.classList.contains('is-open')) clearTimeout(fecharTimer); });
+    bar.addEventListener('mouseleave', () => { if (bar.classList.contains('is-open')) adiarFechamento(); });
     // Mesma razao do annot-bar: a barra fica por cima do video, um clique
     // nela nao pode disparar o duplo-clique do fullscreen nem o arrasto do PiP.
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1120,6 +1196,15 @@
     // Posicao horizontal aleatoria (dentro de uma faixa central) pra
     // reacoes simultaneas nao empilharem exatamente uma em cima da outra.
     el.style.left = `${28 + Math.round(Math.random() * 44)}%`;
+    // 5vw era a largura da JANELA, nao a do tile: numa grade de seis o
+    // emoji saia desproporcional, e na tira ficava maior que a miniatura
+    // inteira. O clamp() do CSS fica de rede pra quando a medida vier 0
+    // (tile ainda nao medido). Redimensionar a janela no meio da animacao
+    // nao reajusta -- irrelevante: o emoji vive 1,4s.
+    const larguraTile = tile.clientWidth || 0;
+    if (larguraTile) {
+      el.style.fontSize = `${Math.round(Math.min(72, Math.max(14, larguraTile * 0.12)))}px`;
+    }
     host.appendChild(el);
     const remove = () => el.remove();
     el.addEventListener('animationend', remove, { once: true });
@@ -2108,10 +2193,12 @@
 
   function closeMemberMenu() {
     memberMenuEl.classList.add('hidden');
+    memberMenuEl.classList.remove('in-modal');
     memberMenuEl.innerHTML = '';
+    memberMenuEl.onkeydown = null;
   }
   document.addEventListener('click', (e) => {
-    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn')) closeMemberMenu();
+    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn, .my-theme-menu-btn')) closeMemberMenu();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMemberMenu(); });
 
@@ -2136,6 +2223,7 @@
    * botao ⋮ (menu sem item nao abre). */
   function openMemberMenu(btn, id, name, { live = false, targetIsOwner = false, onModerate } = {}) {
     const rect = btn.getBoundingClientRect();
+    memberMenuEl.classList.remove('in-modal');
     memberMenuEl.innerHTML = `
       ${live ? `<div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>` : ''}
       ${targetIsOwner ? '' : `<div class="member-menu-item" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</div>`}
@@ -2283,6 +2371,35 @@
     return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  let lastChatDayKey = null;
+
+  function dayKey(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }
+
+  /** "Hoje" / "Ontem" / "14 de setembro". Sem ano: o historico de uma sala
+   * nao atravessa anos, e escrever 2026 em toda linha so faz ruido. */
+  function dayLabel(ts) {
+    const d = new Date(ts);
+    const hoje = new Date();
+    const ontem = new Date(hoje.getTime() - 86400000);
+    if (dayKey(ts) === dayKey(hoje.getTime())) return 'Hoje';
+    if (dayKey(ts) === dayKey(ontem.getTime())) return 'Ontem';
+    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+  }
+
+  function appendDaySeparatorIfNeeded(ts) {
+    const key = dayKey(ts);
+    if (key === lastChatDayKey) return;
+    lastChatDayKey = key;
+    const div = document.createElement('div');
+    div.className = 'chat-day';
+    div.textContent = dayLabel(ts);
+    chatMessagesEl.appendChild(div);
+    lastChatAuthorId = null;
+  }
+
   function appendSystemLine(entry) {
     const div = document.createElement('div');
     const tone = SYSTEM_TONE[entry.event] || '';
@@ -2313,7 +2430,9 @@
     const div = document.createElement('div');
     div.className = `chat-line${grouped ? ' grouped' : ''}`;
     div.innerHTML = `
-      <span class="chat-avatar-slot">${grouped ? '' : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
+      <span class="chat-avatar-slot">${grouped
+        ? `<span class="chat-grouped-time">${formatTime(entry.ts)}</span>`
+        : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
       <span class="chat-body">
         ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
         ${entry.text ? `<span class="chat-text">${escapeHtml(entry.text)}</span>` : ''}
@@ -2348,10 +2467,30 @@
     if (e.key === 'Escape' && !lightboxEl.classList.contains('hidden')) closeImageLightbox();
   });
 
+  // Tolerancia pra "ja estava no fim". Zero seria fragil: subpixel de
+  // zoom e a altura fracionaria da ultima linha fazem scrollTop quase
+  // nunca bater exatamente no fundo.
+  const FIM_TOLERANCIA_PX = 48;
+
+  function estaNoFim() {
+    const el = chatMessagesEl;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= FIM_TOLERANCIA_PX;
+  }
+
+  function descerParaOFim() {
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    $('chat-jump-new').classList.add('hidden');
+  }
+
   function appendEntry(entry) {
+    // Decide ANTES de inserir: depois da insercao a lista ja cresceu e
+    // "estava no fim" viraria sempre falso.
+    const seguir = estaNoFim();
+    if (entry.ts) appendDaySeparatorIfNeeded(entry.ts);
     if (entry.system) appendSystemLine(entry);
     else appendMessage(entry);
-    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    if (seguir) descerParaOFim();
+    else $('chat-jump-new').classList.remove('hidden');
   }
 
   function append(entry, { received = false } = {}) {
@@ -2363,13 +2502,20 @@
   function setHistory(entries) {
     chatMessagesEl.innerHTML = '';
     lastChatAuthorId = null;
-    for (const entry of entries || []) appendEntry(entry);
+    lastChatDayKey = null;
+    for (const entry of entries || []) {
+      if (entry.ts) appendDaySeparatorIfNeeded(entry.ts);
+      if (entry.system) appendSystemLine(entry);
+      else appendMessage(entry);
+    }
+    descerParaOFim();
   }
 
   function setEnabled(enabled) {
     chatInputEl.disabled = !enabled;
     chatComposeEl.classList.toggle('disabled', !enabled);
     chatOfflineBarEl.classList.toggle('hidden', enabled);
+    syncComposeState();
   }
 
   // ---------- Anexo de imagem (previa antes de mandar) ----------
@@ -2388,23 +2534,45 @@
     if (!pendingAttachment) {
       attachmentEl.classList.add('hidden');
       attachmentImgEl.src = '';
-      return;
+    } else {
+      attachmentImgEl.src = pendingAttachment.dataUrl;
+      attachmentInfoEl.textContent = pendingAttachment.label || '';
+      attachmentEl.classList.remove('hidden');
+      chatInputEl.focus();
     }
-    attachmentImgEl.src = pendingAttachment.dataUrl;
-    attachmentInfoEl.textContent = pendingAttachment.label || '';
-    attachmentEl.classList.remove('hidden');
-    chatInputEl.focus();
+    syncComposeState();
   }
   function clearAttachment() {
     setAttachment(null);
+    syncComposeState();
   }
   $('chat-attachment-remove').addEventListener('click', clearAttachment);
+
+  /** O campo nasce com rows="1" e nada ajustava a altura: o `max-height: 88px`
+   * do CSS era regra morta e uma mensagem longa virava uma fresta que rolava
+   * por dentro. Zerar pra `auto` antes de ler `scrollHeight` e o que permite
+   * a caixa ENCOLHER de volta ao apagar texto -- sem isso ela so cresce. */
+  function autoResizeInput() {
+    chatInputEl.style.height = 'auto';
+    chatInputEl.style.height = `${chatInputEl.scrollHeight}px`;
+    chatComposeEl.classList.toggle('is-multiline', chatInputEl.scrollHeight > 30);
+  }
+
+  /** O botao de enviar so acende quando ha o que mandar -- texto aparado ou
+   * anexo. Mesma condicao que `sendCurrentInput` ja usa pra decidir se sai
+   * alguma coisa, pra as duas nunca discordarem. */
+  function syncComposeState() {
+    const temTexto = chatInputEl.value.trim().length > 0;
+    $('btn-chat-send').disabled = chatInputEl.disabled || (!temTexto && !pendingAttachment);
+  }
 
   function sendCurrentInput() {
     const text = chatInputEl.value.trim();
     if (!text && !pendingAttachment) return;
     onChatSend?.(text, pendingAttachment);
     chatInputEl.value = '';
+    autoResizeInput();
+    syncComposeState();
     chatCountEl.classList.add('hidden');
     clearAttachment();
   }
@@ -2421,6 +2589,10 @@
     onChatSend = onSend;
     onChatPickImage = onPickImage;
     initEmojiPanel({ getEmojiRecents, onEmojiUsed });
+    $('chat-jump-new').addEventListener('click', descerParaOFim);
+    chatMessagesEl.addEventListener('scroll', () => {
+      if (estaNoFim()) $('chat-jump-new').classList.add('hidden');
+    });
     // #chat-compose e um <form> sem action -- um submit acidental (Enter num
     // futuro <input>, extensao) navegaria o renderer pra file://.../?. Corta.
     chatComposeEl.addEventListener('submit', (e) => e.preventDefault());
@@ -2430,10 +2602,14 @@
         sendCurrentInput();
       }
     });
+    $('btn-chat-send').addEventListener('click', sendCurrentInput);
     chatInputEl.addEventListener('input', () => {
+      autoResizeInput();
+      syncComposeState();
       const len = chatInputEl.value.length;
       chatCountEl.textContent = `${len}/500`;
-      chatCountEl.classList.toggle('hidden', len < 400);
+      chatCountEl.classList.toggle('hidden', len < 450);
+      chatCountEl.classList.toggle('near-limit', len >= 500);
     });
 
     // Colar (Ctrl+V): print de tela vem como `image/png` nos itens da area
@@ -2693,7 +2869,10 @@
     if (event.target === settingsModalEl) closeSettings();
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !settingsModalEl.classList.contains('hidden')) closeSettings();
+    if (event.key === 'Escape'
+      && !settingsModalEl.classList.contains('hidden')
+      && $('dialog-confirm').classList.contains('hidden')
+      && $('dialog-text').classList.contains('hidden')) closeSettings();
   });
 
   // Preview de camera do modal de Configuracoes. E independente da "camera
@@ -2743,6 +2922,7 @@
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
   let lastFocusedBeforeModal = null;
+  let lastFocusedBeforeDialog = null;
 
   function focusFirstInteractive(modalEl) {
     lastFocusedBeforeModal = document.activeElement;
@@ -2752,6 +2932,11 @@
   function restoreFocusAfterModal() {
     lastFocusedBeforeModal?.focus?.();
     lastFocusedBeforeModal = null;
+  }
+
+  function restoreFocusAfterDialog() {
+    lastFocusedBeforeDialog?.focus?.();
+    lastFocusedBeforeDialog = null;
   }
 
   function bandwidthLine(quality) {
@@ -2839,6 +3024,132 @@
     $('theme-presets').innerHTML = THEME_PRESET_ORDER.map((id) => renderThemePresetCard(id, activeId)).join('');
   }
 
+  let myThemes = [];
+  let onThemesChange = null;
+
+  /** Cartao de tema proprio. Reaproveita o desenho dos fixos: a diferenca
+   * e so quem desenhou o tema; clicar no cartao continua significando usar. */
+  function renderMyThemes(ativoId) {
+    const host = $('my-themes');
+    if (!host) return;
+    if (!myThemes.length) {
+      host.innerHTML = '<p class="settings-hint">Nenhum tema salvo ainda.</p>';
+      return;
+    }
+    host.innerHTML = myThemes.map((t) => {
+      const tokens = theme.tokensFor({ preset: 'custom', base: t.base, act: t.act });
+      const s = tokens.surfaces;
+      const active = t.id === ativoId;
+      return `
+        <div class="my-theme-slot">
+          <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-theme-id="${escapeHtml(t.id)}" aria-pressed="${active}">
+            <span class="theme-preset-mini" style="background:${s.bg}">
+              <span class="tpm-top" style="background:${s.s1};border-color:${s.line2}">
+                <i style="background:${tokens.act}"></i>
+                <b style="background:${s.s3}"></b>
+                <u style="background:var(--live)"></u>
+              </span>
+              <span class="tpm-body">
+                <span class="tpm-stage" style="background:${s.s2}"></span>
+                <span class="tpm-side">
+                  <b style="background:${s.s3}"></b>
+                  <b style="background:${s.s3}"></b>
+                  <span class="tpm-cta" style="background:${tokens.act}"></span>
+                </span>
+              </span>
+            </span>
+            <span class="theme-preset-label">${escapeHtml(t.name)}</span>
+          </button>
+          <button class="my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
+                  title="Opções de ${escapeHtml(t.name)}" aria-label="Opções de ${escapeHtml(t.name)}">⋮</button>
+        </div>`;
+    }).join('');
+  }
+
+  function renderThemeMenu(itens, anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    memberMenuEl.classList.toggle('in-modal', Boolean(anchorEl.closest('.modal')));
+    memberMenuEl.innerHTML = itens.map((item, index) => `
+      <button type="button" class="member-menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
+    `).join('');
+    memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    memberMenuEl.style.top = `${rect.bottom + 4}px`;
+    memberMenuEl.classList.remove('hidden');
+    for (const item of memberMenuEl.querySelectorAll('[data-theme-action]')) {
+      item.addEventListener('click', () => {
+        closeThemeMenu(anchorEl);
+        itens[Number(item.dataset.themeAction)].acao();
+      });
+    }
+    const items = Array.from(memberMenuEl.querySelectorAll('[data-theme-action]'));
+    items[0]?.focus();
+    memberMenuEl.onkeydown = (event) => {
+      const current = items.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        items[(current + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeThemeMenu(anchorEl);
+      }
+    };
+  }
+
+  function closeThemeMenu(anchorEl) {
+    closeMemberMenu();
+    anchorEl?.focus();
+  }
+
+  function themeName(nome) {
+    return Array.from(nome).slice(0, 24).join('');
+  }
+
+  function openMyThemeMenu(id, anchorEl) {
+    const t = myThemes.find((x) => x.id === id);
+    if (!t) return;
+    const itens = [
+      { rotulo: 'Renomear', acao: () => {
+        openText({
+          title: 'Renomear tema',
+          value: t.name,
+          onAccept: (nome) => {
+            t.name = themeName(nome);
+            onThemesChange?.(myThemes);
+            renderMyThemes(id);
+          },
+        });
+      } },
+      { rotulo: 'Copiar código', acao: () => copiarCodigoDoTema(t, anchorEl) },
+      { rotulo: 'Apagar', tom: 'danger', acao: () => {
+        openConfirm({
+          title: 'Apagar tema',
+          text: `"${t.name}" some da lista. Quem já tem o código continua podendo usar.`,
+          confirmLabel: 'Apagar',
+          onConfirm: () => {
+            myThemes = myThemes.filter((x) => x.id !== id);
+            onThemesChange?.(myThemes);
+            renderMyThemes(null);
+          },
+        });
+      } },
+    ];
+    renderThemeMenu(itens, anchorEl);
+  }
+
+  /** Confirmacao NO LUGAR (motion #4): o botao vira "Copiado" onde o dedo
+   * ja esta, em vez de um toast num canto que ninguem esta olhando --
+   * mesmo caminho que o endereco da sala usa. */
+  function copiarCodigoDoTema(t, anchorEl) {
+    const codigo = themecode.encode({ base: t.base, act: t.act });
+    void navigator.clipboard.writeText(codigo).then(() => {
+      anchorEl.classList.add('copied-flash');
+      const status = $('theme-code-status');
+      if (status) status.textContent = 'Código copiado.';
+      setTimeout(() => anchorEl.classList.remove('copied-flash'), 1200);
+    }).catch(() => {});
+  }
+
   /** Qual cartao de predefinicao esta marcado agora. A cor de acao e um
    * acento POR CIMA de uma predefinicao -- nunca um estado sem predefinicao
    * nenhuma --, entao sempre ha uma resposta; 'marca' (o padrao) e a rede de
@@ -2848,25 +3159,40 @@
     return card?.dataset.preset || 'marca';
   }
 
-  /** Le a cor de acao, valida e aplica ao vivo. E chamada a cada evento
-   * `input` (nunca so `change`) -- a pessoa precisa ver o app mudando
-   * enquanto arrasta o seletor de cor, que e o unico jeito de avaliar um
-   * tema (spec 5.6). Aplica MESMO quando a validacao reprova -- o aviso
-   * abaixo do controle e que carrega a reprovacao, a aplicacao ao vivo
-   * continua sendo o feedback principal.
-   *
-   * O cartao da predefinicao CONTINUA marcado: trocar o acento nao tira a
-   * pessoa do conjunto fechado, so troca a cor de acao dentro dele. Isso
-   * mudou quando os sliders de superficie sairam -- antes, mexer em
-   * qualquer controle daqui significava sair de todos os presets. */
-  function applyCustomThemeFromControls(deps) {
-    const themeCfg = { preset: selectedThemePreset(), act: $('theme-act').value };
+  function hasActiveThemePreset() {
+    return Boolean($('theme-presets')?.querySelector('.theme-preset-card.active'));
+  }
+
+  function updateThemeSaveState() {
+    const button = $('btn-theme-save');
+    const hint = $('theme-save-hint');
+    if (!button || !hint) return;
+    const custom = !hasActiveThemePreset();
+    button.disabled = !custom;
+    hint.classList.toggle('hidden', custom);
+  }
+
+  function themeCfgFromControls({ comSuperficies = false } = {}) {
+    const act = $('theme-act').value;
+    if (!comSuperficies) return { preset: selectedThemePreset(), act };
+    return {
+      preset: 'custom',
+      base: { temp: Number($('theme-temp').value) / 100, level: Number($('theme-level').value) / 100 },
+      act,
+    };
+  }
+
+  /** Le os controles e aplica ao vivo. Chamada a cada `input`: arrastar e
+   * ver o app mudar e o unico jeito de avaliar um tema. Aplica mesmo quando
+   * a validacao reprova; o aviso abaixo do controle mostra a reprovacao. */
+  function applyCustomThemeFromControls(deps, opcoes) {
+    const themeCfg = themeCfgFromControls(opcoes);
     const result = theme.validate(theme.tokensFor(themeCfg));
     deps.onThemeChange(themeCfg);
 
     const warningEl = $('theme-warning');
     warningEl.textContent = '';
-    if (result.ok) return;
+    if (result.ok) return themeCfg;
 
     warningEl.append(result.failures[0]);
     if (result.nearestAct) {
@@ -2876,27 +3202,27 @@
       fixBtn.textContent = `usar ${result.nearestAct}`;
       fixBtn.addEventListener('click', () => {
         $('theme-act').value = result.nearestAct;
-        applyCustomThemeFromControls(deps);
+        applyCustomThemeFromControls(deps, opcoes);
       });
       warningEl.append(' ', fixBtn);
     }
+    return themeCfg;
   }
 
-  /** Inicializa a aba Aparencia a partir de `cfg.theme`. Sempre ha um cartao
-   * marcado; o seletor de cor nasce no `act` salvo, ou no do proprio preset
-   * quando nao ha acento proprio.
-   *
-   * Um `custom` legado (config salvo quando ainda dava pra mexer nas
-   * superficies) nao tem mais controle que o represente: os cartoes caem no
-   * padrao e o seletor mostra o acento salvo. O tema em uso so muda quando a
-   * pessoa mexer em alguma coisa -- abrir as Configuracoes nao repinta nada. */
+  /** Inicializa a aba Aparencia a partir de `cfg.theme`. */
   function initThemeControls(config) {
     const themeCfg = (config && config.theme) || { preset: 'marca' };
     const knownPreset = theme.PRESETS[themeCfg.preset] ? themeCfg.preset : 'marca';
 
-    renderThemePresets(knownPreset);
+    renderThemePresets(themeCfg.preset === 'custom' ? null : knownPreset);
     $('theme-act').value = isHexColor(themeCfg.act) ? themeCfg.act : theme.PRESETS[knownPreset].act;
     $('theme-warning').textContent = '';
+    if (config && Array.isArray(config.themes)) myThemes = config.themes;
+    const base = themeCfg.preset === 'custom' && themeCfg.base ? themeCfg.base : { temp: 0.5, level: 0.2 };
+    $('theme-temp').value = String(Math.round(base.temp * 100));
+    $('theme-level').value = String(Math.round(base.level * 100));
+    renderMyThemes(null);
+    updateThemeSaveState();
   }
 
   function isHexColor(v) {
@@ -2962,9 +3288,34 @@
         <p class="settings-hint">Botão principal, foco do teclado e seleção. O vermelho de "ao vivo" e o âmbar de aviso não mudam — eles significam uma coisa só.</p>
         <input id="theme-act" type="color" value="#4F46E5" aria-describedby="theme-warning" />
       </div>
+      <div class="settings-field">
+        <label for="theme-temp">Temperatura das superfícies</label>
+        <input id="theme-temp" type="range" min="0" max="100" value="50" />
+      </div>
+      <div class="settings-field">
+        <label for="theme-level">Claridade das superfícies</label>
+        <input id="theme-level" type="range" min="0" max="100" value="20" />
+      </div>
       <p id="theme-warning" class="hint" role="alert"></p>
       <div class="settings-actions">
         <button id="btn-theme-reset" type="button" class="ghost small">Voltar ao padrão</button>
+      </div>
+
+      <h3>Meus temas</h3>
+      <p class="settings-hint">Guarde a combinação que você montou e mande o código pra quem quiser usar igual.</p>
+      <div id="my-themes" class="theme-presets"></div>
+      <div class="settings-actions">
+        <button id="btn-theme-save" type="button" class="secondary small">Salvar tema atual</button>
+        <p id="theme-save-hint" class="settings-hint hidden">Mexa na temperatura ou na claridade pra montar um tema seu.</p>
+      </div>
+      <div class="settings-field">
+        <label for="theme-code-input">Usar um código</label>
+        <p class="settings-hint">Cole aqui o código que um amigo te mandou.</p>
+        <div class="theme-code-row">
+          <input id="theme-code-input" type="text" placeholder="GL-XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off" />
+          <button id="btn-theme-code-use" type="button" class="secondary small" disabled>Salvar como…</button>
+        </div>
+        <p id="theme-code-status" class="hint" role="status"></p>
       </div>`;
 
     settingsPanes.voice.innerHTML = `
@@ -3087,8 +3438,117 @@
       // uma combinacao que ninguem escolheu. O seletor de cor acompanha.
       $('theme-act').value = theme.PRESETS[card.dataset.preset].act;
       deps.onThemeChange({ preset: card.dataset.preset });
+      renderMyThemes(null);
+      updateThemeSaveState();
     });
-    $('theme-act').addEventListener('input', () => applyCustomThemeFromControls(deps));
+    $('theme-act').addEventListener('input', () => {
+      const comSuperficies = !hasActiveThemePreset();
+      applyCustomThemeFromControls(deps, { comSuperficies });
+      if (comSuperficies) renderMyThemes(null);
+      updateThemeSaveState();
+    });
+    for (const id of ['theme-temp', 'theme-level']) {
+      $(id).addEventListener('input', () => {
+        Array.from($('theme-presets').children).forEach((c) => {
+          c.classList.remove('active');
+          c.setAttribute('aria-pressed', 'false');
+        });
+        applyCustomThemeFromControls(deps, { comSuperficies: true });
+        renderMyThemes(null);
+        updateThemeSaveState();
+      });
+    }
+
+    onThemesChange = deps.onThemesChange;
+    let temaColado = null;
+    function aplicarPreviaImportada(importado) {
+      $('theme-act').value = importado.act;
+      $('theme-temp').value = String(Math.round(importado.base.temp * 100));
+      $('theme-level').value = String(Math.round(importado.base.level * 100));
+      Array.from($('theme-presets').children).forEach((c) => {
+        c.classList.remove('active');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      applyCustomThemeFromControls(deps, { comSuperficies: true });
+      renderMyThemes(null);
+      updateThemeSaveState();
+    }
+    $('theme-code-input').addEventListener('input', () => {
+      const status = $('theme-code-status');
+      temaColado = themecode.decode($('theme-code-input').value);
+      $('btn-theme-code-use').disabled = !temaColado;
+      if (!$('theme-code-input').value.trim()) {
+        status.textContent = '';
+        return;
+      }
+      // Codigo invalido nao muda NADA na tela: a pessoa colou errado, nao
+      // pediu tema novo.
+      if (!temaColado) {
+        status.textContent = 'Esse código não parece certo.';
+        return;
+      }
+      status.textContent = 'Código válido. Dê um nome para salvar.';
+      aplicarPreviaImportada(temaColado);
+    });
+    $('btn-theme-code-use').addEventListener('click', () => {
+      if (!temaColado) return;
+      if (myThemes.length >= 12) {
+        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar este.');
+        return;
+      }
+      openText({
+        title: 'Nome do tema',
+        value: 'Tema importado',
+        onAccept: (nome) => {
+          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: temaColado.base, act: temaColado.act };
+          myThemes = [...myThemes, novo];
+          onThemesChange?.(myThemes);
+          renderMyThemes(novo.id);
+          $('theme-code-input').value = '';
+          $('theme-code-status').textContent = '';
+          $('btn-theme-code-use').disabled = true;
+          temaColado = null;
+        },
+      });
+    });
+    $('btn-theme-save').addEventListener('click', () => {
+      if (myThemes.length >= 12) {
+        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar outro.');
+        return;
+      }
+      const cfg = themeCfgFromControls({ comSuperficies: true });
+      openText({
+        title: 'Nome do tema',
+        value: 'Meu tema',
+        onAccept: (nome) => {
+          const novo = { id: `t${Date.now()}`, name: themeName(nome), base: cfg.base, act: cfg.act };
+          myThemes = [...myThemes, novo];
+          onThemesChange?.(myThemes);
+          renderMyThemes(novo.id);
+        },
+      });
+    });
+
+    $('my-themes').addEventListener('click', (event) => {
+      const card = event.target.closest('[data-theme-id]');
+      if (card) {
+        const t = myThemes.find((x) => x.id === card.dataset.themeId);
+        if (!t) return;
+        Array.from($('theme-presets').children).forEach((c) => {
+          c.classList.remove('active');
+          c.setAttribute('aria-pressed', 'false');
+        });
+        $('theme-act').value = t.act;
+        $('theme-temp').value = String(Math.round(t.base.temp * 100));
+        $('theme-level').value = String(Math.round(t.base.level * 100));
+        deps.onThemeChange({ preset: 'custom', base: t.base, act: t.act });
+        renderMyThemes(t.id);
+        updateThemeSaveState();
+        return;
+      }
+      const menuBtn = event.target.closest('[data-theme-menu]');
+      if (menuBtn) openMyThemeMenu(menuBtn.dataset.themeMenu, menuBtn);
+    });
 
     // Voltar ao padrao: aplica o tema de fabrica E devolve os controles pro
     // estado inicial. Sem o initThemeControls, o seletor de cor continuaria
@@ -3515,19 +3975,55 @@
     okBtn.className = tone === 'destructive' ? 'destructive' : 'primary';
     onConfirmAccept = onConfirm;
     dlgConfirmEl.classList.remove('hidden');
-    // Guarda o foco anterior pra restaura-lo no close (restoreFocusAfterModal).
-    lastFocusedBeforeModal = document.activeElement;
+    lastFocusedBeforeDialog = document.activeElement;
     // Foco no Cancelar, nunca no botao que age (ver a spec de 2026-09-02, 8.3).
     $('btn-confirm-cancel').focus();
   }
   function closeConfirm() {
     dlgConfirmEl.classList.add('hidden');
-    restoreFocusAfterModal();
+    restoreFocusAfterDialog();
     onConfirmAccept = null;
   }
   $('btn-confirm-cancel').addEventListener('click', closeConfirm);
   $('btn-confirm-ok').addEventListener('click', () => { onConfirmAccept?.(); closeConfirm(); });
-  dlgConfirmEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConfirm(); });
+  dlgConfirmEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeConfirm();
+    }
+  });
+
+  const dlgTextEl = $('dialog-text');
+  let onTextAccept = null;
+
+  function openText({ title, value = '', confirmLabel = 'Salvar', onAccept }) {
+    $('dialog-text-title').textContent = title;
+    $('dialog-text-input').value = value;
+    $('btn-text-ok').textContent = confirmLabel;
+    onTextAccept = onAccept;
+    dlgTextEl.classList.remove('hidden');
+    lastFocusedBeforeDialog = document.activeElement;
+    $('dialog-text-input').focus();
+    $('dialog-text-input').select();
+  }
+  function closeText() {
+    dlgTextEl.classList.add('hidden');
+    restoreFocusAfterDialog();
+    onTextAccept = null;
+  }
+  $('btn-text-cancel').addEventListener('click', closeText);
+  $('btn-text-ok').addEventListener('click', () => {
+    const valor = themeName($('dialog-text-input').value.trim());
+    const aceitar = onTextAccept;
+    closeText();
+    if (valor) aceitar?.(valor);
+  });
+  dlgTextEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeText();
+    }
+  });
 
   function openBan({ name, onConfirm }) {
     openConfirm({

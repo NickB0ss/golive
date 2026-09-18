@@ -582,10 +582,10 @@ function releaseApp() {
   // tempo (timeout de checagem/download travado/erro) -- a informacao nao
   // pode se perder: o botao "Atualizar" do lobby precisa nascer aceso.
   if (sawUpdateAvailable) {
-    const info = sawUpdateAvailable;
     win.webContents.once('did-finish-load', () => {
       if (win && !win.isDestroyed()) {
-        win.webContents.send('update:status', { status: 'available', manual: false, version: info.version });
+        const info = sawUpdateAvailable;
+        if (info) win.webContents.send('update:status', { status: 'available', manual: false, version: info.version, ready: info.ready });
       }
     });
   }
@@ -620,9 +620,9 @@ function dispatchUpdateStatus(payload) {
   const destination = updatePolicy.handleStatus(payload);
   if (destination === 'boot-installing') return;
   if (destination === 'ready') {
-    sawUpdateAvailable = { version: payload.version || null };
+    sawUpdateAvailable = { version: payload.version || null, ready: true };
     if (win && !win.isDestroyed()) {
-      win.webContents.send('update:status', { status: 'available', manual: false, version: payload.version || null });
+      win.webContents.send('update:status', { status: 'available', manual: false, version: payload.version || null, ready: true });
     }
     return;
   }

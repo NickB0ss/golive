@@ -27,15 +27,6 @@
   </div>
 </div>
 
-<!-- So progresso real daqui pra frente (baixando/instalando) -- "ha
-     atualizacao disponivel" e o botao #btn-update-available do topbar do
-     lobby, chamativo o bastante pra nao precisar de banner tambem. Ver
-     docs/superpowers/specs/2026-09-12-abertura-com-atualizacao-design.md. -->
-<div id="update-banner" class="update-banner hidden">
-  <span id="update-banner-text"></span>
-  <div id="update-progress" class="update-progress hidden"><div id="update-progress-fill" class="update-progress-fill"></div></div>
-</div>
-
 <div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <!-- ============ LOBBY (fora de sala) ============ -->
@@ -81,13 +72,6 @@
         <span id="user-panel-avatar-fallback"></span>
       </button>
       <button id="user-panel-name" class="user-panel-name" type="button" title="Abrir perfil nas configurações"></button>
-      <!-- So aparece quando ha atualizacao disponivel (boot, checagem
-           periodica ou busca manual). Fora da sala por construcao: mora
-           dentro do #lobby-view, que some inteiro ao entrar numa sala. -->
-      <button id="btn-update-available" class="primary small update-available-btn hidden" type="button"
-              title="Atualização disponível — clique para atualizar agora">
-        <span class="update-dot" aria-hidden="true"></span>Atualizar
-      </button>
       <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" aria-label="Buscar atualizações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
       </button>
@@ -98,6 +82,20 @@
   </aside>
 
   <main class="lobby-main">
+    <!-- Um lugar so pede pra atualizar (spec 2026-09-15, decisao 1). Mora
+         DENTRO do #lobby-view: "nao aparece na sala" sai de graca da troca
+         de view que ja existe, sem logica nova. -->
+    <section id="update-bar" class="update-bar hidden" role="status">
+      <svg class="update-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      <div class="update-bar-text">
+        <strong id="update-bar-title"></strong>
+        <span id="update-bar-sub"></span>
+      </div>
+      <div id="update-bar-progress" class="update-bar-progress hidden">
+        <div id="update-bar-fill" class="update-bar-fill"></div>
+      </div>
+      <button id="btn-update-available" class="primary update-bar-action" type="button">Atualizar agora</button>
+    </section>
     <section class="lobby-rooms">
       <div class="rooms-head">
         <div class="rooms-intro"><div class="rooms-title-line"><h1 class="rooms-title">Salas na sua rede</h1><span id="rooms-count" class="rooms-count">0</span></div><p class="rooms-subtitle">Encontre amigos na sua LAN virtual e entre em segundos.</p></div>
@@ -243,7 +241,10 @@
     </div>
     <div id="chat-panel" class="room-tab-panel chat-section" role="tabpanel" aria-labelledby="tab-chat">
       <h2 class="members-title visually-hidden">Chat</h2>
-      <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+      <div class="chat-messages-wrap">
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+        <button id="chat-jump-new" class="chat-jump-new hidden" type="button">↓ Novas mensagens</button>
+      </div>
       <div id="chat-offline-bar" class="offbar hidden">Reconectando — o que você escrever agora não vai sair.</div>
       <!-- Previa do anexo: a imagem escolhida (clipe, Ctrl+V ou arrastada)
            espera AQUI ate a pessoa mandar. Colar imagem por engano e comum
@@ -255,13 +256,17 @@
       </div>
       <form id="chat-compose" class="chat-compose">
         <label for="chat-input" class="visually-hidden">Mensagem para a sala</label>
-        <textarea id="chat-input" rows="1" placeholder="Escreva pra sala…" maxlength="500"></textarea>
+        <textarea id="chat-input" rows="1" placeholder="Escreva pra sala…" maxlength="500" aria-describedby="chat-input-hint"></textarea>
+        <span id="chat-input-hint" class="visually-hidden">Enter envia, Shift+Enter quebra linha.</span>
         <span id="chat-input-count" class="chat-input-count hidden"></span>
         <button id="btn-chat-attach" class="chat-compose-btn" type="button" title="Enviar imagem" aria-label="Enviar imagem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
         <button id="btn-chat-emoji" class="chat-compose-btn" type="button" title="Emoji" aria-label="Emoji" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </button>
+        <button id="btn-chat-send" class="chat-compose-btn chat-send-btn" type="button" title="Enviar mensagem" aria-label="Enviar mensagem" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9z"/></svg>
         </button>
         <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden" />
       </form>
@@ -301,6 +306,20 @@
     <div class="dialog-actions">
       <button id="btn-confirm-cancel" class="ghost" type="button">Cancelar</button>
       <button id="btn-confirm-ok" class="destructive" type="button">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Segundo dialogo generico: mesma casca do #dialog-confirm, com campo.
+     O foco nasce no campo: aqui a acao esperada e digitar. -->
+<div id="dialog-text" class="modal hidden">
+  <div class="modal-box dialog-box">
+    <h2 id="dialog-text-title"></h2>
+    <label for="dialog-text-input" class="visually-hidden">Valor</label>
+    <input id="dialog-text-input" type="text" maxlength="48" autocomplete="off" />
+    <div class="dialog-actions">
+      <button id="btn-text-cancel" class="ghost" type="button">Cancelar</button>
+      <button id="btn-text-ok" class="primary" type="button">Salvar</button>
     </div>
   </div>
 </div>
@@ -413,6 +432,7 @@
 <script src="mesh.js"></script>
 <script src="espiar.js"></script>
 <script src="gridlayout.js"></script>
+<script src="themecode.js"></script>
 <script src="ui.js"></script>
 <script src="soundevents.js"></script>
 <script src="sound.js"></script>

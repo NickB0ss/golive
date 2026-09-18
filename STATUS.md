@@ -104,12 +104,108 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.16.0` (tag `v0.16.0`, 2026-09-15). Electron `^32` (fora de suporte — ver
+`0.17.0` (tag `v0.17.0`, 2026-09-17). Electron `^32` (fora de suporte — ver
 backlog), `electron-builder` na `^26`.
-Testes: `npm test` → **733 passando** (719 na 0.15.0). `npm run lint` → 0
+Testes: `npm test` → **759 passando** (733 na 0.16.0). `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
+
+## Lançado na 0.17.0 (2026-09-17)
+
+Oito frentes de interface numa branch só (`feat/chat-atualizacao-tela-cheia`),
+todas saídas de pedidos de uso: o chat, a forma de avisar que existe
+atualização, o que vaza na tela cheia, as reações, e um tema montado pela
+pessoa que dá pra mandar pro amigo por um código. **Lançado sem teste em PCs
+reais** — `npm test`/lint, revisões de código (Codex terra) e uma auditoria no
+app real pelo hook `--require`, que clica pela interface, mede o DOM e tira
+prints. Nada muda no protocolo nem no formato da sala: dá pra estar numa sala
+com quem ainda está na 0.16.0.
+
+### Chat
+
+- **O texto "Escreva pra sala…" ficava acima dos ícones.** A regra global
+  `button { min-height: 44px }` ganhava do `height: 28px` dos botões da caixa,
+  então o campo e os ícones nunca alinhavam. Agora os botões da caixa levam
+  `min-height: 0` e o centro dos dois bate (medido no app: 0px de diferença).
+- **A caixa cresce com a mensagem.** O `max-height: 88px` era CSS morto: nada
+  mexia na altura do `textarea`. Agora `autoResizeInput()` acompanha o texto
+  até 88px e depois rola por dentro; a caixa arredondada vira um retângulo
+  quando passa de uma linha.
+- **Botão de enviar**, junto com o Enter de sempre. Fica apagado com o campo
+  vazio e enquanto o chat está offline — antes dava pra mandar pelo teclado
+  mesmo desligado. A dica do Shift+Enter e o contador saíram de dentro do
+  fluxo do campo.
+- **Quem está lendo o histórico não é mais arrancado de volta pro fim.** Só
+  desce sozinho quem já estava a menos de 48px do fim; pros outros aparece
+  "Novas mensagens" logo acima da caixa.
+- **Separador de dia ("Ontem", "Hoje") e estado vazio.** O separador também
+  quebra o agrupamento por autor, senão a mensagem das 00:01 herdava o nome e
+  o avatar da mensagem das 23:59.
+
+### Atualização
+
+- **Uma faixa no topo do lobby no lugar do botão pequeno e do banner do
+  canto.** Diz a versão, o que fazer e em que pé está o download; o botão
+  muda de "Baixar" pra "Reiniciar e instalar" quando o pacote já veio.
+- **Dentro da sala não aparece nada de atualização** — a faixa vive no lobby
+  e some junto com ele.
+- **O estado "já baixado" não mente mais.** O processo principal manda um
+  `available` sintético pra pacote que já está no disco; sem o `ready: true`
+  a faixa dizia "Atualizar agora" e o clique reinstalava e reiniciava.
+
+### Tela cheia e reações
+
+- **Nada da sala vaza mais por cima da tela cheia** — o rótulo do botão
+  "Compartilhar tela" era o mais visível. Em vez de disputar `z-index`, a
+  casca da sala inteira fica escondida (`visibility`), o que preserva o
+  layout e não faz o `gridlayout` recalcular.
+- **Com o mouse parado some tudo**: rótulo, botão de tela cheia, barra de
+  reações e o próprio cursor. Menus e o seletor de PiP fecham junto. Um teste
+  novo exige regra de ociosidade pra todo overlay novo do tile.
+- **As reações viraram um botão que abre a barra**, em vez de a barra ficar
+  sempre aberta em cima da miniatura da câmera. Nas miniaturas da tira ela
+  nem aparece.
+- **O emoji da reação acompanha o tamanho do tile** (12% da largura, entre 14
+  e 72px), em vez de sair do mesmo tamanho numa miniatura e na tela cheia.
+- **Os avisos da sala** (tela pausada, tela retomada) foram pro canto
+  inferior esquerdo, longe da caixa do chat.
+
+### Tema próprio, com código pra mandar pro amigo
+
+- **Dá pra montar o tema nos controles da aba Aparência e salvar com nome**
+  (até 12 temas). Os temas salvos sobrevivem ao "Voltar ao padrão" e a fechar
+  o app.
+- **Cada tema tem um código curto** (`GL-XXXX-XXXX-XXXX`) que vai pra área de
+  transferência. Colar um código de amigo já mostra a prévia antes de salvar;
+  código inválido não mexe em nada.
+- **O código carrega só as superfícies** — temperatura, contraste e a cor de
+  ação. As cores de estado (o verde do "ao vivo", o amarelo e o vermelho) não
+  entram por construção, então um código de fora não consegue apagar o aviso
+  de perigo.
+
+### Defeitos que só a auditoria no app real pegou
+
+As revisões de código acharam erro de lógica e de API, mas nenhum destes
+quatro — todos de desenho, camada ou ciclo de vida do DOM:
+
+- O texto do campo do chat continuava desalinhado depois da correção, por
+  causa do `min-height: 44px` global.
+- Uma correção tinha posto o "Novas mensagens" dentro de `#chat-messages`,
+  que o `setHistory()` limpa com `innerHTML = ''` — quebrava o chat em toda
+  entrada de sala.
+- O menu do tema e o diálogo de dar nome abriam **por trás** da janela de
+  Configurações (`--z-popover` 50 contra `--z-modal` 1000).
+
+Daí o token novo `--z-modal-popover`, aplicado só quando a âncora está dentro
+de um modal.
+
+**Aceito sem mexer:** o aviso fica numa camada acima da faixa de título
+(`--z-toast` 10000 contra `--z-titlebar` 9999). Na prática não se encontram —
+o aviso fica preso no rodapé, a faixa tem 32px e a janela tem `minHeight: 600`.
+
+**Falta testar com gente:** a atualização com duas versões publicadas de
+verdade, e o código de tema indo de uma máquina pra outra.
 
 ## Lançado na 0.16.0 (2026-09-15)
 

@@ -136,8 +136,10 @@ Sai do ar junto com a transmissão. A escolha fica lembrada pra próxima vez,
 e **não dá pra ligar no meio** — pare e compartilhe de novo.
 
 Com o **mouse parado por 3 segundos**, o cabeçalho, o dock e a
-barra de rabisco somem pra não atrapalhar o vídeo. Voltam no primeiro
-movimento (ou no `Tab`, se você estiver de teclado).
+barra de rabisco somem pra não atrapalhar o vídeo. Na tela cheia some junto o
+que fica em cima do vídeo — nome, botão de tela cheia, botão de reação — e o
+próprio cursor. Voltam no primeiro movimento (ou no `Tab`, se você estiver de
+teclado).
 
 **No chat** dá pra mandar imagem (botão de clipe, `Ctrl+V` ou arrastando em
 cima da aba Chat) — ela é reduzida automaticamente e aparece como miniatura,
@@ -194,9 +196,14 @@ rede também não mora mais lá: virou uma opção do diálogo de criar sala.)
 clara), e você pode trocar a **cor de ação** (botão
 principal, foco do teclado, seleção) por cima de qualquer uma delas. A troca
 é ao vivo, sem botão "aplicar", e o app reprova uma cor que deixaria algum
-texto ilegível. `--live`, `--warn` e `--danger` (os sinais de "ao vivo",
-"atenção" e "perigo") não mudam em nenhum tema, e as superfícies também não:
-só o acento é escolha sua.
+texto ilegível. Dois controles — **temperatura** e **contraste** — montam as
+superfícies do seu jeito, e o que sair dali dá pra **salvar com nome** (até
+12 temas). Os temas salvos ficam: "Voltar ao padrão" troca o tema em uso, não
+apaga a coleção. Cada um tem um **código curto** (`GL-XXXX-XXXX-XXXX`) que vai
+pra área de transferência num clique — o amigo cola o código e já vê a prévia
+antes de salvar. O código carrega só as superfícies e o acento: `--live`,
+`--warn` e `--danger` (os sinais de "ao vivo", "atenção" e "perigo") não mudam
+em nenhum tema, nem por código de fora.
 
 A qualidade é escolhida **no diálogo de compartilhar** (botão "Compartilhar
 tela" → "O que você quer compartilhar?"), em dois controles — **Resolução**
@@ -251,9 +258,10 @@ problema.
 de liberar o app: se houver, baixa e instala sozinha, sem perguntar, e o app
 reabre já atualizado; sem internet, ela desiste em poucos segundos e abre o
 app normalmente. Com o app aberto, nada instala sozinho: quando sai uma versão
-nova, aparece no painel do usuário (rodapé da barra lateral do lobby) um
-botão **Atualizar** (some dentro de uma sala) — clicar baixa e reinstala. No
-mesmo painel fica o botão de **buscar atualizações**.
+nova, aparece uma **faixa no topo do lobby** com a versão, o que fazer e em
+que pé está o download; o botão baixa e, quando o pacote já veio, muda pra
+"Reiniciar e instalar". Dentro de uma sala não aparece nada disso. O botão de
+**buscar atualizações** fica no painel do usuário, no rodapé da barra lateral.
 
 ---
 
