@@ -25,6 +25,11 @@ contextBridge.exposeInMainWorld('golive', {
   /** Informa ao main se a janela esta dentro de uma sala. */
   setRoomActive: (active) => ipcRenderer.send('room:active', active),
 
+  /** Informa ao main o estado que decide o powerSaveBlocker (P5): dentro da
+   * sala, transmitindo, assistindo algum tile. O main decide (shouldKeepAwake
+   * em src/main/awake.js) e liga/desliga o bloqueio de suspensao. */
+  setKeepAwake: (state) => ipcRenderer.send('power:keep-awake', state),
+
   /** Derruba a sala hospedada localmente: para o anuncio UDP e fecha o
    * servidor de sinalizacao embutido. Chamado quando o host sai da propria
    * sala, pra ela nao ficar pendurada em "Ao vivo agora" pros outros. */

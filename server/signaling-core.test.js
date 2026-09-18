@@ -2908,6 +2908,67 @@ test('welcome recebe roomId gerado ou o roomId passado ao servidor', async () =>
   }
 });
 
+test('welcome carrega o roomName normalizado quando quem cria digitou um', async () => {
+  const server = await createSignalingServer({ port: 0, roomName: '  Sala   dos Amigos  ' });
+  try {
+    const ana = await entrar(server.port, 'Ana');
+    assert.equal(ana.welcome.roomName, 'Sala dos Amigos');
+    ana.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('welcome sem roomName cai no padrao "sala de <host>", montado com o nome de quem hospeda', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    // O primeiro a entrar via loopback (127.0.0.1, como entrar() sempre
+    // conecta) E o host -- e quem da nome ao padrao, nao quem pergunta.
+    const host = await entrar(server.port, 'Nicolas');
+    assert.equal(host.welcome.roomName, 'sala de Nicolas');
+    const ana = await entrar(server.port, 'Ana');
+    assert.equal(ana.welcome.roomName, 'sala de Nicolas');
+    host.ws.close();
+    ana.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('roomName so espaco/controle e tratado como ausente (cai no padrao)', async () => {
+  const server = await createSignalingServer({ port: 0, roomName: '   \n\t  ' });
+  try {
+    const host = await entrar(server.port, 'Nicolas');
+    assert.equal(host.welcome.roomName, 'sala de Nicolas');
+    host.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('roomName maior que o teto e cortado em 40 caracteres, nao recusado', async () => {
+  const longo = 'x'.repeat(80);
+  const server = await createSignalingServer({ port: 0, roomName: longo });
+  try {
+    const ana = await entrar(server.port, 'Ana');
+    assert.equal(ana.welcome.roomName, 'x'.repeat(40));
+    ana.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('roomName de tipo errado (nao string) e ignorado sem lancar', async () => {
+  const server = await createSignalingServer({ port: 0, roomName: 42 });
+  try {
+    const host = await entrar(server.port, 'Nicolas');
+    assert.equal(host.welcome.roomName, 'sala de Nicolas');
+    host.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('initialTransferredTo faz o cliente correspondente entrar como dono', async () => {
   const server = await createSignalingServer({ port: 0, initialTransferredTo: 'client-novo-dono' });
   try {

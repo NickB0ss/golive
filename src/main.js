@@ -8,7 +8,7 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, crashReporter } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -172,6 +172,37 @@ let sawUpdateAvailable = null;
 /** Estado confirmado pelo renderer para impedir instalacao dentro da sala. */
 let roomActive = false;
 
+/** Ultimo estado de sala que o renderer reportou pro powerSaveBlocker (P5).
+ * inRoom/sharing/watching -- ver src/main/awake.js pra decisao pura. */
+let keepAwakeState = { inRoom: false, sharing: false, watching: false };
+/** Id do powerSaveBlocker em andamento, ou null. Guardado pra nunca iniciar
+ * dois (start acumula bloqueios independentes -- so o stop com o id certo
+ * libera). */
+let keepAwakeBlockerId = null;
+
+/** Aplica a decisao de shouldKeepAwake ao estado atual, iniciando ou parando
+ * o blocker so quando muda (idempotente). */
+function applyKeepAwake() {
+  const deve = shouldKeepAwake(keepAwakeState);
+  const ligado = keepAwakeBlockerId !== null;
+  if (deve && !ligado) {
+    keepAwakeBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+  } else if (!deve && ligado) {
+    powerSaveBlocker.stop(keepAwakeBlockerId);
+    keepAwakeBlockerId = null;
+  }
+}
+
+/** Libera o blocker incondicionalmente -- janela fechou ou renderer caiu, e
+ * o estado que o renderer mandou por ultimo nao e mais confiavel. */
+function forceStopKeepAwake() {
+  keepAwakeState = { inRoom: false, sharing: false, watching: false };
+  if (keepAwakeBlockerId !== null) {
+    powerSaveBlocker.stop(keepAwakeBlockerId);
+    keepAwakeBlockerId = null;
+  }
+}
+
 // Segunda tentativa de abrir o app: em vez de deixar o SO iniciar outro
 // processo (que ia falhar tentando reusar porta/UDP), o Electron dispara isto
 // no processo original. So resta trazer a janela existente pra frente -- a
@@ -184,7 +215,7 @@ app.on('second-instance', () => {
   target.focus();
 });
 
-const { createSignalingServer } = require('../server/signaling-core');
+const { createSignalingServer, normalizeRoomName } = require('../server/signaling-core');
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
@@ -197,6 +228,7 @@ const updatePolicy = createUpdatePolicy();
 const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
 const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
+const { shouldKeepAwake } = require('./main/awake');
 
 // Criado cedo (antes de whenReady) pra pegar exceptions que acontecam
 // durante a inicializacao tambem. app.getPath('userData') ja funciona
@@ -274,7 +306,12 @@ function logEncerramento(motivo) {
   encerrandoPor = motivo;
   logger.log(`encerrando: ${motivo}`);
 }
-app.on('before-quit', () => logEncerramento('before-quit'));
+app.on('before-quit', () => {
+  logEncerramento('before-quit');
+  // Best-effort: no logoff (session-end) o processo pode nao passar por
+  // win.on('closed'); sem isto o blocker poderia sobreviver ao proprio app.
+  forceStopKeepAwake();
+});
 
 // Processo de GPU caindo repetidamente e o Chromium desligando a
 // aceleracao em silencio depois -- exatamente o quadro do log de
@@ -295,8 +332,9 @@ let embeddedServer = null;
  * a mesma promessa e nao fecharem o servidor duas vezes. */
 let embeddedServerClosing = null;
 let embeddedServerHosting = null;
-/** Nome do host da sala ativa, pra reusar no beacon quando o anuncio e
- * refeito (discovery:refresh) sem o renderer reenviar o nome. */
+/** Nome DA SALA ativa (P1 -- ate a 0.16.0 isto guardava o nome de quem
+ * hospeda, nao o da sala), pra reusar no beacon quando o anuncio e refeito
+ * (discovery:refresh) sem o renderer reenviar o nome. */
 let hostedRoomName = 'anônimo';
 /** PIN da sala ativa (B3), ou null pra sala aberta. Guardado aqui pelo
  * mesmo motivo do nome: o discovery:refresh chama advertiseHostedRoom sem
@@ -466,6 +504,7 @@ function createWindow() {
   win.on('closed', () => {
     destroyOverlayWindow();
     destroySpyWindow();
+    forceStopKeepAwake();
   });
   // No logoff/desligamento do Windows o Electron pode morrer sem before-quit
   // nem will-quit. Fecha ja aqui para o servidor avisar room-closed antes do
@@ -504,6 +543,9 @@ function createWindow() {
   // CPU), isso fecha a conexao de sinalizacao sem deixar rastro nenhum hoje.
   win.webContents.on('render-process-gone', (_event, details) => {
     logger.error(`renderer caiu: reason=${details.reason} exitCode=${details.exitCode}`);
+    // O renderer que caiu nao manda mais 'power:keep-awake(false)' nenhum --
+    // sem isto o blocker fica preso ligado pro resto da vida do processo.
+    forceStopKeepAwake();
   });
   win.webContents.on('unresponsive', () => {
     logger.error('renderer ficou sem responder (unresponsive)');
@@ -1023,7 +1065,7 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 });
 
 ipcMain.handle('room:host', async (_event, {
-  name, advertise, protect, roomId, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory,
+  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory,
 } = {}) => {
   if (embeddedServerHosting) return embeddedServerHosting;
   embeddedServerHosting = (async () => {
@@ -1042,6 +1084,7 @@ ipcMain.handle('room:host', async (_event, {
       pin,
       ownerToken,
       roomId,
+      roomName,
       initialTransferredTo,
       initialBans,
       initialChatHistory,
@@ -1054,7 +1097,10 @@ ipcMain.handle('room:host', async (_event, {
     const picked = pickAddress();
     const address = picked ? `${picked.address}:${embeddedServer.port}` : null;
 
-    hostedRoomName = name || 'anônimo';
+    // P1: o beacon anuncia o nome da SALA, nao mais o nome de quem hospeda.
+    // Mesma normalizacao do servidor (normalizeRoomName), pro card do lobby
+    // e o cabecalho de quem entra nunca discordarem entre si.
+    hostedRoomName = normalizeRoomName(roomName) || `sala de ${name || 'anônimo'}`;
     await ensureDiscoveryStarted();
     if (advertise && address) {
       advertiseHostedRoom();
@@ -1149,6 +1195,17 @@ ipcMain.on('room:active', (event, active) => {
   if (event.sender !== win?.webContents || typeof active !== 'boolean') return;
   roomActive = active;
   updatePolicy.setRoomActive(roomActive);
+});
+
+// P5: powerSaveBlocker enquanto ha video correndo. O renderer manda o
+// estado inteiro (nao so um "on") porque a decisao (shouldKeepAwake) exige
+// as tres pontas -- so "na sala" nao basta, ver src/main/awake.js.
+ipcMain.on('power:keep-awake', (event, state) => {
+  if (event.sender !== win?.webContents || !state || typeof state !== 'object') return;
+  const { inRoom, sharing, watching } = state;
+  if (typeof inRoom !== 'boolean' || typeof sharing !== 'boolean' || typeof watching !== 'boolean') return;
+  keepAwakeState = { inRoom, sharing, watching };
+  applyKeepAwake();
 });
 
 ipcMain.handle('app:version', () => app.getVersion());

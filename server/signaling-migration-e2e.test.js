@@ -147,6 +147,38 @@ test('close({ migrate: true }) anuncia a migracao aos sobreviventes, sem avisar 
   assert.deepEqual(host.entrada.filter((msg) => msg.type === 'room-migrating'), []);
 });
 
+test('close({ migrate: true }) leva o nome escolhido da sala no room-migrating (P1)', async (t) => {
+  const p = palco(t);
+  await p.servidor({ roomId: 'sala-com-nome', roomName: 'Sala dos Amigos' });
+  const host = await p.cliente('host');
+  const bruno = await p.cliente('bruno');
+
+  await host.entra('Host', { clientId: 'client-host' });
+  await bruno.entra('Bruno', { clientId: 'client-bruno' });
+  const migrando = bruno.esperaTipo('room-migrating');
+
+  await p.closeServer({ migrate: true });
+
+  const msg = await migrando;
+  assert.equal(msg.roomName, 'Sala dos Amigos');
+});
+
+test('close({ migrate: true }) sem nome escolhido leva o padrao "sala de <host>" no room-migrating', async (t) => {
+  const p = palco(t);
+  await p.servidor();
+  const host = await p.cliente('host');
+  const bruno = await p.cliente('bruno');
+
+  await host.entra('Host', { clientId: 'client-host' });
+  await bruno.entra('Bruno', { clientId: 'client-bruno' });
+  const migrando = bruno.esperaTipo('room-migrating');
+
+  await p.closeServer({ migrate: true });
+
+  const msg = await migrando;
+  assert.equal(msg.roomName, 'sala de Host');
+});
+
 test('close({ migrate: true }) com somente o host segue o room-closed normal', async (t) => {
   const p = palco(t);
   await p.servidor();

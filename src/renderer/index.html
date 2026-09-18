@@ -56,6 +56,9 @@
       </button>
     </div>
     <p id="lobby-error" class="error" role="alert"></p>
+    <!-- Canal separado do erro: "Conectando..." e o countdown de reconexao
+         sao progresso, nao alerta -- ver A6 na auditoria de 2026-09-18. -->
+    <p id="lobby-status" role="status"></p>
     <section class="lobby-network">
       <p class="sidebar-label">Sua rede</p>
       <div class="lobby-net">
@@ -113,6 +116,15 @@
   <div class="modal-box dialog-box">
     <h2>Criar sala</h2>
 
+    <!-- Opcional: quem nao digita nada mantem o comportamento de sempre
+         ("Sala de <seu nome>"), preenchido pelo JS ao abrir o dialogo --
+         so ali cfg.name existe. Mesmo teto do campo `room` no protocolo
+         (40 caracteres). -->
+    <div class="dialog-field">
+      <label for="in-room-name">Nome da sala (opcional)</label>
+      <input id="in-room-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
+    </div>
+
     <!-- "Anunciar na rede" mora AQUI, nao em Configuracoes: e uma
          propriedade da sala que esta sendo criada, decidida no momento em
          que ela e criada. O estado inicial vem do config (ultima escolha). -->
@@ -130,7 +142,7 @@
         <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
         <span class="check-text">
           <span class="check-title">Proteger com um PIN</span>
-          <span class="check-desc">Quatro dígitos, pedidos na entrada.</span>
+          <span class="check-desc">Seis dígitos, pedidos na entrada.</span>
         </span>
       </label>
     </div>
@@ -161,7 +173,10 @@
     <p id="setup-error" class="error"></p>
     <div class="dialog-actions">
       <button id="btn-join-room-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-connect" class="primary" type="button">Conectar</button>
+      <button id="btn-connect" class="primary" type="button">
+        <svg class="btn-spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
+        <span class="btn-label">Conectar</span>
+      </button>
     </div>
   </div>
 </div>
@@ -393,7 +408,7 @@
       </label>
     </div>
 
-    <h3>Anotações</h3>
+    <h3>Rabisco</h3>
     <!-- Propriedade DESTA transmissao, decidida onde ela nasce -- nao uma
          configuracao global escondida em Configuracoes (mesmo racional que
          pos "anunciar na rede" no dialogo de criar sala). Ver a spec de
@@ -428,6 +443,7 @@
 <script src="reconnect.js"></script>
 <script src="resume.js"></script>
 <script src="succession.js"></script>
+<script src="roomname.js"></script>
 <script src="tree.js"></script>
 <script src="networktiming.js"></script>
 <script src="mesh.js"></script>

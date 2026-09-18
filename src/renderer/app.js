@@ -66,6 +66,12 @@
   let notifyTracker = livenotify.createTracker();
   let roomId = null;
   let hostId = null;
+  // Nome da sala tal como o servidor mandou no welcome (P1 da auditoria
+  // 2026-09-18: antes disto o cabecalho so tinha o proprio nome de quem
+  // olha). Guardado aqui pra sobreviver a uma migracao sem servidor --
+  // becomeMigrationHost precisa semear a sala nova com o nome de hoje mesmo
+  // quando a queda foi abrupta e nenhum 'room-migrating' explicito chegou.
+  let currentRoomName = null;
   let joinedPin = null;
   let localChatTail = [];
   let migrationState = null;
@@ -1029,6 +1035,14 @@
     if (el) el.textContent = msg || '';
   }
 
+  // Canal separado do erro: "Conectando..." nao e uma falha, e pintar de
+  // vermelho com role="alert" (como o #lobby-error) faz progresso soar
+  // como erro -- ver A6 na auditoria de 2026-09-18.
+  function showLobbyStatus(msg) {
+    const el = $('lobby-status');
+    if (el) el.textContent = msg || '';
+  }
+
   let toastTimer = null;
   function showToast(msg, ms = 4000) {
     $('toast-text').textContent = msg;
@@ -1052,7 +1066,10 @@
   // Corpo compartilhado do "Conectar" do dialogo de entrar numa sala -- usado
   // pelo botao do lobby, pela sala protegida da lista e pela reabertura do
   // dialogo apos um 'join-denied'. O #btn-connect do dialogo e ligado dentro
-  // de ui.js, que chama este onConnect.
+  // de ui.js, que chama este onConnect e AGUARDA a promessa devolvida pra
+  // manter o botao ocupado ate a tentativa se resolver (ver A6). Quem
+  // fecha o dialogo agora e o proprio joinRoom, em cada desfecho que faz
+  // sentido fechar -- esta funcao so dispara a tentativa.
   function handleJoinConnect({ address, pin }) {
     const addr = (address || '').trim();
     if (!addr) {
@@ -1061,9 +1078,10 @@
     }
     hostInfo = null;
     renderHostWarning();
-    ui.dialogs.closeJoinRoom();
     const url = addr.startsWith('ws://') || addr.startsWith('wss://') ? addr : `ws://${addr}`;
-    joinRoom(url, cfg.name, undefined, undefined, 0, pin || null);
+    return new Promise((resolve) => {
+      joinRoom(url, cfg.name, undefined, resolve, 0, pin || null);
+    });
   }
 
   $('btn-join-address').addEventListener('click', () => {
@@ -1131,6 +1149,9 @@
       initialTransferredTo: migration.newOwnerClientId || null,
       initialBans: migration.bans,
       initialChatHistory: migration.chat.length ? migration.chat : localChatTail,
+      // P1: o sucessor preserva o nome da sala em vez de a sala nova cair
+      // no proprio nome de quem assumiu.
+      roomName: migration.roomName || currentRoomName || null,
     };
     const result = await hostRoomFlow(Boolean(migration.pin || joinedPin), false, seed, true);
     if (!result.ok) {
@@ -1161,10 +1182,13 @@
       // Ultima escolha do usuario vira o padrao da caixa "anunciar" -- quem
       // sempre anuncia (ou nunca) nao precisa marcar nada de novo.
       advertise: cfg.network.advertise,
+      // P1: padrao do campo "Nome da sala" -- quem nao digita nada mantem o
+      // comportamento de sempre (a sala se chama "Sala de <seu nome>").
+      roomNameDefault: `Sala de ${cfg.name || 'anônimo'}`,
       // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
       // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
       // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
-      onConfirm: async ({ protect, advertise }) => {
+      onConfirm: async ({ protect, advertise, roomName }) => {
         ui.dialogs.setCreateRoomError('');
         // Persistido ANTES do resultado: a preferencia e da pessoa, nao da
         // sala que talvez nem suba.
@@ -1172,7 +1196,7 @@
           cfg = { ...cfg, network: { ...cfg.network, advertise } };
           persist();
         }
-        const res = await hostRoomFlow(protect, advertise);
+        const res = await hostRoomFlow(protect, advertise, { roomName });
         if (res.ok) ui.dialogs.closeCreateRoom();
         else ui.dialogs.setCreateRoomError(res.error);
       },
@@ -1496,6 +1520,14 @@
     // volta: reconexao/welcome -> renderMembersPanel -> renderRoomStatus),
     // cobre os dois sentidos e `ui.chat.setEnabled` e idempotente.
     ui.chat.setEnabled(!orphanSession || Boolean(currentSession?.preserveMigrationOrphan && currentSession.opened));
+    // P5: o main decide (shouldKeepAwake) se prende a maquina acordada.
+    // watchedScreens.size > 0 ja cobre "largou todas as telas" (autoWatchSuppressed
+    // so liga quando o set esvazia, entao os dois nunca discordam aqui).
+    window.golive.setKeepAwake?.({
+      inRoom: Boolean(session),
+      sharing: Boolean(localStream),
+      watching: watchedScreens.size > 0,
+    });
   }
 
   // ---------- Conexao de sinalizacao ----------
@@ -1534,12 +1566,14 @@
       resumeToken = null;
       joinedPin = typeof pin === 'string' && pin ? pin : null;
       $('setup-error').textContent = '';
-      // Tentativa deliberada -- o dialogo de entrar ja fechou (ou nunca
-      // abriu, no caso de hospedar / clicar numa sala da lista), entao o
-      // feedback vai pro lobby (ledger T17). Limpo no onOpen; trocado pela
-      // mensagem de falha no onError/onClose. Numa reconexao automatica
-      // (reconnectAttempt > 0) o countdown fica: e ele que informa o progresso.
-      showLobbyError('Conectando…');
+      // Tentativa deliberada -- o dialogo de entrar continua aberto (ou
+      // nunca abriu, no caso de hospedar / clicar numa sala da lista),
+      // entao o feedback vai pro lobby tambem (ledger T17), num canal
+      // NEUTRO: isto e progresso, nao erro (A6). Limpo no onOpen; trocado
+      // pela mensagem de falha no onError/onClose. Numa reconexao
+      // automatica (reconnectAttempt > 0) o countdown fica: e ele que
+      // informa o progresso.
+      showLobbyStatus('Conectando…');
     }
     // Join deliberado do usuario: qualquer retry pendente de uma queda
     // anterior morre aqui (esta chamada e por si so a nova intencao). O
@@ -1650,7 +1684,12 @@
           ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           window.golive.setRoomActive?.(true);
           if (attempts > 0) $('setup-error').textContent = '';
-          showLobbyError(''); // conectou -- limpa "Conectando…" / countdown de reconexao
+          showLobbyError(''); // limpa erro/countdown de reconexao pendente
+          showLobbyStatus(''); // conectou -- limpa "Conectando…"
+          // Conectou de verdade: fecha o dialogo se ele ainda estava
+          // aberto (join deliberado). closeJoinRoom e idempotente -- em
+          // hospedar sala / reconexao automatica o dialogo nunca abriu.
+          ui.dialogs.closeJoinRoom();
           stableTimer = setTimeout(() => { attempts = 0; }, STABLE_MS);
           // A retomada nao e uma nova entrada. O som, nesse caso, espera o
           // welcome decidir se a orfa foi adotada ou renegociada do zero.
@@ -1666,11 +1705,14 @@
         onMessage: (msg) => session.signalQueue.push(() => handleSignal(session, msg)),
         onError: () => {
           if (currentSession === session && attempts === 0) {
-            // O dialogo de entrar ja fechou antes de chamar joinRoom -- o erro
-            // vai pro lobby, nao pro #setup-error invisivel.
+            // O erro vai pro lobby (nao pro #setup-error, que so aparece
+            // com o dialogo aberto) E fecha o dialogo, se ainda estivesse
+            // aberto esperando esta tentativa.
+            showLobbyStatus('');
             showLobbyError(
               'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.'
             );
+            ui.dialogs.closeJoinRoom();
           }
           onSettled?.();
         },
@@ -1704,8 +1746,10 @@
             if (reason === 'version') {
               const info = session.joinDeniedInfo || {};
               const aviso = version.mismatchText({ mine: info.yourVersion || appVersion, theirs: info.hostVersion || null });
+              showLobbyStatus('');
               showLobbyError(aviso);
               showToast(aviso, 8000);
+              ui.dialogs.closeJoinRoom();
               renderMembersPanel();
               renderRoomList();
               onSettled?.();
@@ -1713,11 +1757,13 @@
             }
             // #dialog-join-room substituiu o #join-address-form inline (Task 8) --
             // reabre ja preenchido com o endereco pra pessoa nao redigitar.
+            // openJoinRoom ja zera o estado ocupado do botao.
             ui.dialogs.openJoinRoom({
               address: roomAddress,
               showPinField: reason === 'pin',
               onConnect: handleJoinConnect,
             });
+            showLobbyStatus('');
             showLobbyError(''); // o aviso vai pro #setup-error do dialogo reaberto
             $('setup-error').textContent =
               reason === 'pin' ? 'PIN incorreto ou ausente. Confira o PIN da sala e tente de novo.'
@@ -1759,7 +1805,9 @@
             ui.stageHeader.clear();
             window.golive.setRoomActive?.(false);
             renderHostWarning();
-            showLobbyError('O host encerrou a sala.');
+            showLobbyStatus('');
+            showLobbyError('Quem criou a sala encerrou.');
+            ui.dialogs.closeJoinRoom();
             renderMembersPanel();
             renderRoomList();
             onSettled?.();
@@ -1789,6 +1837,8 @@
             stopStatsLoop();
             ui.stageHeader.clear();
             window.golive.setRoomActive?.(false);
+            showLobbyStatus('');
+            ui.dialogs.closeJoinRoom();
             renderMembersPanel();
             renderRoomList();
             onSettled?.();
@@ -1881,16 +1931,21 @@
                 newOwnerClientId: null,
                 newOwnerConnectionId,
                 pin: null,
+                // Sem 'room-migrating' explicito (a queda foi abrupta demais
+                // pro host mandar), o nome vem do que o welcome anterior ja
+                // tinha ensinado -- e o servidor novo cai no proprio padrao
+                // se nem isso existir.
+                roomName: currentRoomName,
                 bans: [],
                 chat: [],
                 becoming: false,
               };
-              showLobbyError('Anfitrião sumiu. Tentando restaurar a sala automaticamente...');
+              showLobbyError('O líder da sala sumiu. Tentando restaurar a sala automaticamente...');
               if (successorId === myId) void becomeMigrationHost();
               else armMigrationWait(candidates, hostId);
             } else {
               showLobbyError(
-                'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+                'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Sair da sala pra encerrar.'
               );
             }
           } else if (session.opened && !abnormal && !migratingRoomClosed) {
@@ -1900,7 +1955,7 @@
             // acima: o video segue e o usuario precisa saber disso e que o
             // botao Desconectar e a saida.
             showLobbyError(
-              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Desconectar pra encerrar.'
+              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Sair da sala pra encerrar.'
             );
           }
 
@@ -2700,6 +2755,13 @@
         }
         roomId = typeof msg.roomId === 'string' ? msg.roomId : null;
         hostId = typeof msg.hostId === 'string' ? msg.hostId : null;
+        // P1: nome real da sala, escolhido por quem a criou -- nao o nosso
+        // proprio nome. Servidor de versao antiga (sem o campo) preserva o
+        // texto otimista que joinRoom ja escreveu no cabecalho.
+        if (typeof msg.roomName === 'string' && msg.roomName) {
+          currentRoomName = msg.roomName;
+          ui.stageHeader.setName(currentRoomName);
+        }
         if (migrationState && roomId === migrationState.roomId) clearMigrationState();
         myId = msg.id;
         joinedAtMs = Date.now();
@@ -2974,17 +3036,21 @@
       case 'room-migrating': {
         clearTimeout(migrationBeaconTimer);
         migrationBeaconTimer = null;
+        // P1: server antigo sem o campo cai no que o welcome anterior ja
+        // ensinou (mesmo padrao do ramo de queda abrupta acima).
+        if (typeof msg.roomName === 'string' && msg.roomName) currentRoomName = msg.roomName;
         migrationState = {
           roomId: msg.roomId,
           successor: msg.successor,
           successorName: msg.successorName,
           newOwnerClientId: msg.newOwnerClientId,
           pin: msg.pin ?? null,
+          roomName: currentRoomName,
           bans: Array.isArray(msg.bans) ? msg.bans : [],
           chat: Array.isArray(msg.chat) ? msg.chat : [],
           becoming: false,
         };
-        showLobbyError(`Anfitrião saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
+        showLobbyError(`O líder da sala saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
         renderRoomStatus();
         if (msg.successor === myId) {
           void becomeMigrationHost();
@@ -4504,6 +4570,9 @@
       });
     }
     broadcastViewState();
+    // O powerSaveBlocker (P5) depende de watchedScreens.size -- toda troca de
+    // escolha de tela (inclusive largar a ultima) precisa recalcular.
+    renderRoomStatus();
   }
 
   /** A tela de alguem saiu do ar (parou de transmitir, ou a pessoa saiu). */
@@ -5525,7 +5594,7 @@
 
     if (!rows.length) {
       ui.settings.setStatsHtml(
-        rxHtml || '<div class="stat"><span>enviando pra</span><b>0 peer(s)</b></div>'
+        rxHtml || '<div class="stat"><span>enviando pra</span><b>0 pessoas</b></div>'
       );
       return;
     }
@@ -5590,7 +5659,7 @@
 
     ui.settings.setStatsHtml(`${summary}
       <table class="stats-table">
-        <thead><tr><th>peer</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perda rede</th><th>perdidos</th></tr></thead>
+        <thead><tr><th>pessoa</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perda rede</th><th>perdidos</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       ${limitWarn}
@@ -5608,7 +5677,7 @@
     const software = screen.filter((r) => isSoftwareEncoder(r.encoder));
     const next =
       software.length && screen.length > 1
-        ? 'Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de espectadores.'
+        ? 'Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de pessoas assistindo.'
         : '';
     if (next === encoderWarning) return;
     encoderWarning = next;

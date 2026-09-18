@@ -13,6 +13,7 @@
   const reactions = root.GoLive.reactions;
   const themecode = root.GoLive.themecode;
   const gridLayout = root.GoLive.gridLayout;
+  const roomname = root.GoLive.roomname;
   let tileReactionGlobalListenersWired = false;
 
   function wireTileReactionGlobalListeners() {
@@ -2116,19 +2117,26 @@
     btnCreateConfirmEl.querySelector('.btn-label').textContent = busy ? 'Criando sala…' : 'Criar';
     $('chk-protect-room').disabled = busy;
     $('chk-advertise-room').disabled = busy;
+    $('in-room-name').disabled = busy;
   }
 
-  function openCreateRoom({ onConfirm, advertise = true }) {
+  function openCreateRoom({ onConfirm, advertise = true, roomNameDefault = '' }) {
     $('create-room-error').textContent = '';
     $('chk-protect-room').checked = false;
     // Ultima escolha do usuario (persistida no config) vira o padrao.
     $('chk-advertise-room').checked = advertise !== false;
+    // P1: campo vem pre-preenchido com o padrao de hoje -- quem nao mexe
+    // nao perde nada. Placeholder repete o valor pra sobreviver a pessoa
+    // apagando tudo e deixando em branco de proposito.
+    $('in-room-name').value = roomNameDefault;
+    $('in-room-name').placeholder = roomNameDefault;
     setCreateRoomBusy(false);
     onCreateConfirm = onConfirm;
     dlgCreateEl.classList.remove('hidden');
-    // focusFirstInteractive guarda o foco anterior (pro restore no close),
-    // mas o primeiro focavel aqui e a caixa "anunciar" -- e as duas ja vem
-    // com um padrao razoavel. O foco vai pro "Criar": Enter cria a sala.
+    // focusFirstInteractive so guarda o foco anterior (pro restore no
+    // close) -- o campo que ela focaria de fato (nome da sala) ja vem com
+    // um padrao razoavel, e a linha de baixo redireciona pro "Criar":
+    // Enter cria a sala sem exigir Tab nenhum.
     focusFirstInteractive(dlgCreateEl);
     btnCreateConfirmEl.focus();
   }
@@ -2150,6 +2158,10 @@
       await handler({
         protect: $('chk-protect-room').checked,
         advertise: $('chk-advertise-room').checked,
+        // P1: mesma normalizacao do servidor (roomname.js, espelhado em
+        // signaling-core.js) -- o servidor normaliza de novo de qualquer
+        // jeito, isto so evita a viagem ida-e-volta com um nome sujo.
+        roomName: roomname.normalizeRoomName($('in-room-name').value),
       });
     } finally {
       // closeCreateRoom ja zerou o estado quando deu certo; quando deu
@@ -2161,18 +2173,46 @@
 
   // ---------- Dialogo: Entrar numa sala ----------
   const dlgJoinEl = $('dialog-join-room');
+  const btnConnectEl = $('btn-connect');
+  const btnJoinCancelEl = $('btn-join-room-cancel');
   let onJoinConnect = null;
+  let connectingRoom = false;
+
+  /** Estado ocupado do "Conectar" -- mesmo molde do setCreateRoomBusy: o
+   * dialogo fica aberto e o botao ocupado ate a tentativa se resolver
+   * (onOpen/onError/onClose em app.js), em vez de fechar na hora e deixar
+   * "Conectando..." solto no lobby sem nenhum feedback no proprio dialogo
+   * (ver A6 na auditoria de 2026-09-18). */
+  function setJoinRoomBusy(busy) {
+    connectingRoom = busy;
+    btnConnectEl.disabled = busy;
+    btnJoinCancelEl.disabled = busy;
+    btnConnectEl.classList.toggle('busy', busy);
+    btnConnectEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
+    btnConnectEl.querySelector('.btn-label').textContent = busy ? 'Conectando…' : 'Conectar';
+    $('in-server').disabled = busy;
+    $('in-pin').disabled = busy;
+  }
 
   function openJoinRoom({ onConnect, address, showPinField = false }) {
     $('setup-error').textContent = '';
     $('in-server').value = address || '';
     $('in-pin').value = '';
     $('join-pin-field').classList.toggle('hidden', !showPinField);
+    setJoinRoomBusy(false);
     onJoinConnect = onConnect;
     dlgJoinEl.classList.remove('hidden');
     focusFirstInteractive(dlgJoinEl);
   }
   function closeJoinRoom() {
+    // Idempotente: app.js chama isto de dentro de joinRoom (sucesso, erro,
+    // recusa por versao) mesmo quando o dialogo nao foi aberto por ele --
+    // hospedar sala e reconexao automatica tambem passam por joinRoom. Sem
+    // a guarda, fechar um dialogo ja fechado ainda disparava
+    // restoreFocusAfterModal() e roubava o foco de volta pra quem abriu
+    // OUTRO modal (o "ultimo foco salvo" e uma variavel só).
+    if (dlgJoinEl.classList.contains('hidden')) return;
+    setJoinRoomBusy(false);
     dlgJoinEl.classList.add('hidden');
     restoreFocusAfterModal();
     onJoinConnect = null;
@@ -2180,8 +2220,9 @@
   function setJoinRoomPinVisible(visible) {
     $('join-pin-field').classList.toggle('hidden', !visible);
   }
-  $('btn-join-room-cancel').addEventListener('click', closeJoinRoom);
-  $('btn-connect').addEventListener('click', () => {
+  $('btn-join-room-cancel').addEventListener('click', () => { if (!connectingRoom) closeJoinRoom(); });
+  btnConnectEl.addEventListener('click', async () => {
+    if (connectingRoom || !onJoinConnect) return;
     // So exige PIN quando o campo esta visivel (sala anunciada como
     // protegida, ou reabertura apos join-denied por pin). O servidor so
     // aceita PIN de 6 digitos (ver signaling-core.js); cobrar isso aqui
@@ -2192,9 +2233,18 @@
       $('setup-error').textContent = 'Informe um PIN de 6 dígitos.';
       return;
     }
-    onJoinConnect?.({ address: $('in-server').value.trim(), pin: pinDigits || null });
+    const handler = onJoinConnect;
+    setJoinRoomBusy(true);
+    try {
+      await handler({ address: $('in-server').value.trim(), pin: pinDigits || null });
+    } finally {
+      // closeJoinRoom ja zerou o estado quando a conexao pegou; nos demais
+      // desfechos o dialogo continua aberto (ou foi reaberto por
+      // openJoinRoom) e precisa voltar a ser usavel.
+      if (!dlgJoinEl.classList.contains('hidden')) setJoinRoomBusy(false);
+    }
   });
-  dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJoinRoom(); });
+  dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !connectingRoom) closeJoinRoom(); });
 
   // ---------- Lista de membros / moderacao ----------
 
@@ -2270,7 +2320,7 @@
       </span>
       <span class="peer-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
       ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
-      ${isOwner ? '<span class="peer-crown" title="Dono da sala" role="img" aria-label="Dono da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
+      ${isOwner ? '<span class="peer-crown" title="Líder da sala" role="img" aria-label="Líder da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
       ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
       ${live
         ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
@@ -2804,6 +2854,13 @@
     roomViewEl.classList.remove('hidden');
   }
 
+  /** So o nome, sem mexer em endereco/PIN/visibilidade -- usado quando o
+   * welcome chega com o nome de verdade da sala (P1) depois que joinRoom ja
+   * abriu a tela com o palpite otimista de setStageHeader. */
+  function setStageHeaderName(name) {
+    $('stage-room-name').textContent = name;
+  }
+
   function clearStageHeader() {
     $('stage-header').classList.add('hidden');
     $('stage-room-name').textContent = '';
@@ -2953,7 +3010,7 @@
     // Virgula: a linha inteira e em portugues, e "2.5 Mbps" no meio dela
     // era o unico numero do app com ponto decimal.
     const texto = screenMbps.toFixed(1).replace(/\.0$/, '').replace('.', ',');
-    return `≈${texto} Mbps por espectador enquanto você estiver transmitindo`;
+    return `≈${texto} Mbps por pessoa assistindo enquanto você estiver transmitindo`;
   }
 
   /** Linha de resumo do seletor de qualidade: o custo exato da combinacao
@@ -4037,7 +4094,7 @@
   function openBan({ name, onConfirm }) {
     openConfirm({
       title: `Banir ${name} da sala?`,
-      text: `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de membros.`,
+      text: `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de pessoas.`,
       confirmLabel: 'Banir',
       tone: 'destructive',
       onConfirm,
@@ -4132,7 +4189,7 @@
       openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,
       openBan, openTransferOwner, openConfirm, closeConfirm,
     },
-    stageHeader: { set: setStageHeader, clear: clearStageHeader, setStatus: setStageStatus },
+    stageHeader: { set: setStageHeader, clear: clearStageHeader, setStatus: setStageStatus, setName: setStageHeaderName },
     settings: { open: openSettings, close: closeSettings, setStatsHtml },
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },

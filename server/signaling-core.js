@@ -67,6 +67,9 @@ const MAX_ANNOTATE_SYNC_ITEMS = 400; // itens de um snapshot pra quem chegou dep
 const MAX_CONNECTIONS = 16;
 const MAX_PENDING_CONNECTIONS = MAX_CONNECTIONS * 2;
 const MAX_AVATAR_CHARS = 64 * 1024;
+// Mesmo teto do campo `room` no join (linha 828 abaixo) -- nome de sala e
+// nome de peer sao a mesma classe de texto curto de interface.
+const MAX_ROOM_NAME_CHARS = 40;
 const PIN_FAILURE_LIMIT = 5;
 const PIN_FAILURE_WINDOW_MS = 60 * 1000;
 const PIN_BLOCK_MS = 60 * 1000;
@@ -395,6 +398,30 @@ function send(ws, payload) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
 }
 
+// P1 (auditoria 2026-09-18, anexo 5-produto.md): nome da sala escolhido por
+// quem a cria. Vem do main.js (room:host) hoje, mas normalizado aqui com a
+// mesma disciplina de qualquer campo de texto de entrada -- o CLI
+// (server/signaling.js) tambem chama createSignalingServer diretamente, sem
+// passar pelo dialogo do renderer que ja normaliza a digitacao.
+//
+// Loop em vez de regex com classe de controle: o eslint deste projeto trava
+// (no-control-regex) em qualquer intervalo de controle literal na regex.
+function isControlChar(codePoint) {
+  return codePoint <= 0x1f || codePoint === 0x7f;
+}
+
+/** Caracteres de controle viram espaco (nao somem: "a\nb" nao pode colar em
+ * "ab"), espacos repetidos colapsam, e as pontas sao aparadas. Vazio depois
+ * disso (ou tipo errado, ou maior que o teto) volta null -- quem usa cai no
+ * nome padrao "sala de <host>", montado por effectiveRoomName(). */
+function normalizeRoomName(raw) {
+  if (typeof raw !== 'string') return null;
+  let semControle = '';
+  for (const ch of raw) semControle += isControlChar(ch.codePointAt(0)) ? ' ' : ch;
+  const colapsado = semControle.replace(/\s+/g, ' ').trim().slice(0, MAX_ROOM_NAME_CHARS);
+  return colapsado || null;
+}
+
 /** Cria o servidor de sinalizacao. Resolve quando a porta esta escutando,
  * rejeita (com err.code === 'EADDRINUSE' se for o caso) se nao conseguir.
  *
@@ -410,7 +437,7 @@ function send(ws, payload) {
  *
  * `resumeGraceMs`: quanto um peer com close anormal continua membro antes
  * de sair de verdade. `getPeerCount()` inclui esses peers suspensos. */
-function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, initialTransferredTo = null, initialBans, initialChatHistory }) {
+function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory }) {
   if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
     return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
   }
@@ -432,6 +459,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
   // a sempre. Normalizado pra string pra comparar com o que vem do cliente.
   const roomPin = pin != null && String(pin) !== '' ? String(pin) : null;
   const stableRoomId = typeof roomId === 'string' && roomId !== '' && roomId.length <= 100 ? roomId : randomUUID();
+  // Nome da sala (P1), ja normalizado -- null quando quem criou nao digitou
+  // nada (ou digitou so espaco/controle). effectiveRoomName() decide o
+  // padrao na hora de montar welcome/room-migrating, ali onde ha acesso ao
+  // peer do host pra montar "sala de <nome dele>".
+  const stableRoomName = normalizeRoomName(roomName);
   // Token de dono (opcional). Gerado pelo main.js e devolvido so pro
   // renderer de quem criou a sala -- nunca sai da maquina. Comparado por
   // igualdade estrita: string vazia/null nunca marca dono.
@@ -544,6 +576,16 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
         if ((room === null || peer.room === room) && isLoopback(normalizeAddress(peer.address))) return id;
       }
       return null;
+    }
+    // P1: nome de exibicao da sala. Quando ninguem escolheu um (stableRoomName
+    // null), cai no mesmo texto que o cabecalho sempre mostrou -- so que
+    // montado com o nome de quem REALMENTE hospeda (o peer do loopback),
+    // nao com o nome de quem esta perguntando.
+    function effectiveRoomName(room = null) {
+      if (stableRoomName) return stableRoomName;
+      const hostPeerId = findHostPeerId(room);
+      const hostPeer = hostPeerId ? peers.get(hostPeerId) : null;
+      return `sala de ${hostPeer?.name || 'anônimo'}`;
     }
     function banKeysFor({ address, clientId }) {
       const keys = [];
@@ -883,7 +925,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                   type: 'welcome', id: resumedId, owner: resumedPeer.owner, peers: roomPeers(room, resumedId),
                   chat: chatHistory.slice(), banned: resumedPeer.owner ? listBans() : [],
                   resumeToken: resumedPeer.resumeToken, resumed: true,
-                  roomId: stableRoomId, hostId: findHostPeerId(room),
+                  roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
                 });
                 // Quem ficou nao recebe peer-joined na retomada, mas precisa
                 // saber que o socket voltou para refazer uma oferta perdida.
@@ -903,7 +945,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 type: 'welcome', id, owner, peers: roomPeers(room, id),
                 chat: chatHistory.slice(), banned: owner ? listBans() : [],
                 resumeToken: newResumeToken,
-                roomId: stableRoomId, hostId: findHostPeerId(room),
+                roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
               });
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
               pushSystemLine(room, 'join', name, undefined, id);
@@ -1310,6 +1352,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               successorName: successorPeer ? successorPeer.name : null,
               newOwnerClientId: newOwnerId ? peers.get(newOwnerId)?.clientId ?? null : null,
               pin: roomPin,
+              // P1: o sucessor precisa saber o nome pra semear a sala nova
+              // com ele (o proprio hostPeer esta saindo -- sem isto
+              // effectiveRoomName() do servidor NOVO cairia no nome de quem
+              // assumiu, nao no nome que a sala tinha).
+              roomName: effectiveRoomName(hostPeer.room),
               bans: listBans(),
               chat: chatHistory.slice(),
             });
@@ -1341,8 +1388,10 @@ module.exports = {
   sanitizeInitialBan,
   sanitizeInitialChatEntry,
   clampDim,
+  normalizeRoomName,
   MAX_IMAGE_CHARS,
   CHAT_IMAGE_HISTORY_MAX,
   MAX_CONNECTIONS,
   MAX_AVATAR_CHARS,
+  MAX_ROOM_NAME_CHARS,
 };
