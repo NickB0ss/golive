@@ -163,10 +163,11 @@ tela e câmera também mudam de rótulo e cor quando ligados ("Parar de
 compartilhar", "Desligar câmera"), pra não ter dúvida do que um clique vai
 fazer.
 
-**Se quem criou a sala sair, a sala continua.** Ela passa sozinha pra
-outra pessoa da sala, que sobe o servidor, e todo mundo reconecta nela sem
-derrubar o vídeo. Se o PC de quem criou cair sem avisar, o mesmo acontece
-depois que a reconexão desiste.
+**Se quem criou a sala sair normalmente, a sala continua.** Ela passa sozinha
+pra outra pessoa da sala, que sobe o servidor, e todo mundo reconecta nela sem
+derrubar o vídeo. Se o PC de quem criou travar ou perder energia sem avisar,
+os sobreviventes também tentam migrar depois que a reconexão desiste, mas essa
+queda abrupta ainda pode falhar e partir a sala, especialmente no Tailscale.
 
 ## Gerar o instalador pros amigos
 
@@ -356,10 +357,11 @@ upload de quem transmite passa a ser fixo, independente da plateia — mas aí
 alguém precisa hospedar o SFU numa máquina com upload folgado, ou numa VPS.
 Essa decisão está registrada como adiada — ver `STATUS.md`.
 
-### Se o host cai, a sala morre
+### Se o host cai
 
 O servidor de sinalização mora no processo de quem criou a sala. Se essa
-pessoa fecha o app, a sinalização cai. Desde o H1 (nesta branch de robustez) a
-queda de sinalização vira um estado "reconectando" — os vídeos continuam
-correndo enquanto ninguém entra nem sai — mas não há transferência de sala:
-esgotado o retry, a sessão acaba pra todo mundo.
+pessoa fecha o app normalmente, a sinalização cai e, desde a 0.14.0, a sala
+passa pro sucessor e os outros reconectam nela. Se o PC trava ou perde energia
+sem avisar, a queda abrupta ainda pode falhar e partir a sala, especialmente
+no Tailscale; os vídeos podem continuar enquanto a migração é tentada, mas
+não há garantia de que ela termine.
