@@ -3,13 +3,31 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   computeTree, allDirect, isAllDirect, sameAssignments,
-  FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX,
+  FANOUT_RELAY,
 } = require('./tree');
 
-test('constantes batem com a spec de 2026-08-23 (F2)', () => {
-  assert.equal(FANOUT_ORIGEM, 1);
+test('relay atende no maximo dois filhos', () => {
   assert.equal(FANOUT_RELAY, 2);
-  assert.equal(PROFUNDIDADE_MAX, 2);
+});
+
+test('segunda origem prefere relay sem carga anunciada por outra arvore', () => {
+  const pool = [
+    { id: 'b', joinedAt: 1, rtt: 5, transmitting: false, suspended: false, relayLoad: 0 },
+    { id: 'c', joinedAt: 2, rtt: 10, transmitting: false, suspended: false, relayLoad: 0 },
+    { id: 'd', joinedAt: 3, rtt: 20, transmitting: false, suspended: false, relayLoad: 0 },
+  ];
+  const first = computeTree('a', pool);
+  const firstRelay = [...first].find(([, assignment]) => assignment.role === 'relay')[0];
+  const secondPool = pool.map((candidate) => ({
+    ...candidate,
+    relayLoad: candidate.id === firstRelay ? first.get(firstRelay).filhosIds.length : 0,
+  }));
+
+  const second = computeTree('x', secondPool);
+  const secondRelay = [...second].find(([, assignment]) => assignment.role === 'relay')[0];
+
+  assert.notEqual(secondRelay, firstRelay);
+  assert.equal(secondPool.find((candidate) => candidate.id === secondRelay).relayLoad, 0);
 });
 
 test('sala de 4 (origem + 3): 1 relay, 2 folhas -- cenario de validacao da spec', () => {
@@ -312,8 +330,8 @@ test('computeTree respeita as invariantes da spec pra qualquer sala (1000 casos 
     const relays = [...out.entries()].filter(([, a]) => a.role === 'relay');
     const folhas = [...out.entries()].filter(([, a]) => a.role === 'folha');
 
-    // 2. no maximo um relay (FANOUT_ORIGEM).
-    assert.ok(relays.length <= FANOUT_ORIGEM, `${ctx}: <=1 relay, veio ${relays.length}`);
+    // 2. no maximo um relay (topologia atual).
+    assert.ok(relays.length <= 1, `${ctx}: <=1 relay, veio ${relays.length}`);
 
     if (relays.length === 0) {
       // sem relay: ou sala vazia, ou todo mundo direct (malha degenerada).

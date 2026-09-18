@@ -110,14 +110,14 @@ function palco(t) {
 
 test('close({ migrate: true }) anuncia a migracao aos sobreviventes, sem avisar o host', async (t) => {
   const p = palco(t);
-  await p.servidor({ roomId: 'sala-da-migracao', pin: '4821', ownerToken: 'segredo' });
+  await p.servidor({ roomId: 'sala-da-migracao', pin: '482100', ownerToken: 'segredo' });
   const host = await p.cliente('host');
   const bruno = await p.cliente('bruno');
   const carla = await p.cliente('carla');
 
-  const welcomeHost = await host.entra('Host', { clientId: 'client-host', ownerToken: 'segredo', pin: '4821' });
-  const welcomeBruno = await bruno.entra('Bruno', { clientId: 'client-bruno', pin: '4821' });
-  const welcomeCarla = await carla.entra('Carla', { clientId: 'client-carla', pin: '4821' });
+  const welcomeHost = await host.entra('Host', { clientId: 'client-host', ownerToken: 'segredo', pin: '482100' });
+  const welcomeBruno = await bruno.entra('Bruno', { clientId: 'client-bruno', pin: '482100' });
+  const welcomeCarla = await carla.entra('Carla', { clientId: 'client-carla', pin: '482100' });
 
   const mudouDono = carla.esperaTipo('owner-changed');
   host.ws.send(JSON.stringify({ type: 'moderate', action: 'transfer-owner', target: welcomeCarla.id }));
@@ -138,7 +138,7 @@ test('close({ migrate: true }) anuncia a migracao aos sobreviventes, sem avisar 
     assert.equal(msg.successor, successor);
     assert.equal(msg.successorName, 'Bruno');
     assert.equal(msg.newOwnerClientId, 'client-carla');
-    assert.equal(msg.pin, '4821');
+    assert.equal(msg.pin, '482100');
     assert.deepEqual(msg.bans, []);
     assert.ok(Array.isArray(msg.chat));
   }

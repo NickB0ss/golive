@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('./networktiming');
 const {
   createMesh, withStartBitrate, withOpusParams, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG,
 } = require('./mesh');
@@ -651,7 +652,7 @@ test('offerTo so marca renegociacao quando a outConn ja existia (#A8)', async ()
   delete global.RTCRtpSender;
 });
 
-test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-conn pra relay)', () => {
+test('falha de entrada limpa o slot antes de avisar o app (R1)', async () => {
   // makeConnection nao e exportado -- exercita via ensureOutConn/ensureInConn,
   // que criam RTCPeerConnection de verdade. Sem RTCPeerConnection no
   // ambiente Node, isto so roda com o fake instalado (mesmo do teste
@@ -680,7 +681,8 @@ test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-co
   // ensureOutConn nao e exportado; usa offerTo indiretamente via relayTo
   // seria mais indireto -- em vez disso, cria a conexao via handleOffer
   // (dir 'in') que E exportado, e cobre o mesmo trecho de connectionstatechange.
-  mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  await mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const pc = mesh.peers.get('7').inConns.screen;
 
   assert.equal(listeners.length, 1);
   listeners[0](); // dispara connectionstatechange com pc.connectionState = 'failed'
@@ -689,6 +691,8 @@ test('onPeerState recebe dir e failed no payload (F2: distinguir falha de out-co
   assert.equal(events[0].dir, 'in');
   assert.equal(events[0].failed, true);
   assert.equal(events[0].removedTile, true);
+  assert.equal(mesh.peers.get('7').inConns.screen, null, 'o reoffer ve que a entrada morreu');
+  assert.equal(pc.closed, true, 'a PC de entrada falhada e fechada explicitamente');
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;

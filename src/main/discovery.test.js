@@ -155,11 +155,47 @@ test('parseBeacon rejeita porta invalida ou ausente', () => {
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 'nao-numero', address: '1.2.3.4:9000' })), null);
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: -1, address: '1.2.3.4:9000' })), null);
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 1.5, address: '1.2.3.4:9000' })), null);
+  assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 65536, address: '1.2.3.4:9000' })), null);
 });
 
 test('parseBeacon rejeita endereco ausente/vazio', () => {
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000, address: '' })), null);
   assert.equal(parseBeacon(JSON.stringify({ type: 'golive-room', port: 9000 })), null);
+});
+
+test('descoberta usa IP+porta remotos como chave, preserva endpoint e aplica teto de salas', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ maxRooms: 2, deps: { dgram } });
+  await d.start();
+  handlers.message(Buffer.from(formatBeacon({ name: 'A', port: 1, address: 'forjado:1' })), { address: '10.0.0.1' });
+  handlers.message(Buffer.from(formatBeacon({ name: 'B', port: 2, address: 'forjado:2' })), { address: '10.0.0.2' });
+  handlers.message(Buffer.from(formatBeacon({ name: 'C', port: 3, address: 'forjado:3' })), { address: '10.0.0.3' });
+  assert.deepEqual(d.getRooms().map((room) => room.address), ['10.0.0.2:2', '10.0.0.3:3']);
+  d.stop();
+});
+
+test('descoberta mantem duas salas do mesmo IP em portas distintas', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  handlers.message(Buffer.from(formatBeacon({ name: 'A', port: 9001, address: 'forjado:9001' })), { address: '10.0.0.1' });
+  handlers.message(Buffer.from(formatBeacon({ name: 'B', port: 9002, address: 'forjado:9002' })), { address: '10.0.0.1' });
+  assert.deepEqual(d.getRooms().map((room) => room.address), ['10.0.0.1:9001', '10.0.0.1:9002']);
+  d.stop();
+});
+
+test('descoberta coalesce atualizacoes da lista', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ roomListUpdatesPerSecond: 20, deps: { dgram } });
+  await d.start();
+  let updates = 0;
+  d.setOnRoomsChange(() => { updates += 1; });
+  handlers.message(Buffer.from(formatBeacon({ name: 'A', port: 1, address: 'a' })), { address: '10.0.0.1' });
+  handlers.message(Buffer.from(formatBeacon({ name: 'B', port: 2, address: 'b' })), { address: '10.0.0.2' });
+  assert.equal(updates, 1);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(updates, 2);
+  d.stop();
 });
 
 test('startAdvertising nao emite beacon quando a sala esta vazia (0 peers)', async () => {

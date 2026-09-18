@@ -20,6 +20,8 @@ const BEACON_TYPE = 'golive-room';
 const MIGRATION_BEACON_TYPE = 'golive-room-migrate';
 const MIGRATION_BEACON_INTERVAL_MS = 1500;
 const MIGRATION_BEACON_WINDOW_MS = 45000;
+const MAX_DISCOVERED_ROOMS = 64;
+const ROOM_LIST_UPDATES_PER_SECOND = 4;
 
 // --- Funcoes puras, testaveis sem abrir socket -------------------------
 
@@ -88,7 +90,7 @@ function parseBeacon(raw) {
   }
   if (!data || typeof data !== 'object') return null;
   if (data.type !== BEACON_TYPE) return null;
-  if (typeof data.port !== 'number' || !Number.isInteger(data.port) || data.port <= 0) return null;
+  if (typeof data.port !== 'number' || !Number.isInteger(data.port) || data.port < 1 || data.port > 65535) return null;
   if (typeof data.address !== 'string' || !data.address.trim()) return null;
 
   const result = {
@@ -182,6 +184,8 @@ function createDiscovery({
   ttlMs = ROOM_TTL_MS,
   migrationBeaconIntervalMs = MIGRATION_BEACON_INTERVAL_MS,
   migrationBeaconWindowMs = MIGRATION_BEACON_WINDOW_MS,
+  maxRooms = MAX_DISCOVERED_ROOMS,
+  roomListUpdatesPerSecond = ROOM_LIST_UPDATES_PER_SECOND,
   deps = {},
 } = {}) {
   const dgram = deps.dgram || require('dgram');
@@ -196,16 +200,37 @@ function createDiscovery({
   let advertising = false;
   let onMigrationBeaconCallback = null;
   let socket = null;
+  let lastNotifyAt = 0;
+  let pendingNotifyTimer = null;
 
   function notify() {
-    if (onRoomsChange) onRoomsChange(toRoomList(rooms));
+    if (!onRoomsChange) return;
+    const now = Date.now();
+    const interval = 1000 / roomListUpdatesPerSecond;
+    if (now - lastNotifyAt >= interval) {
+      lastNotifyAt = now;
+      onRoomsChange(toRoomList(rooms));
+    } else if (!pendingNotifyTimer) {
+      pendingNotifyTimer = setTimeout(() => {
+        pendingNotifyTimer = null;
+        lastNotifyAt = Date.now();
+        onRoomsChange(toRoomList(rooms));
+      }, interval - (now - lastNotifyAt));
+    }
   }
 
   function bindSocket(sock) {
-    sock.on('message', (msg) => {
+    sock.on('message', (msg, rinfo = {}) => {
       const beacon = parseBeacon(msg);
       if (beacon) {
-        rooms.set(beacon.address, { ...beacon, lastSeen: Date.now() });
+        const sourceIp = typeof rinfo.address === 'string' && rinfo.address ? rinfo.address : null;
+        if (!sourceIp) return;
+        const key = `${sourceIp}:${beacon.port}`;
+        if (!rooms.has(key) && rooms.size >= maxRooms) {
+          const oldest = rooms.keys().next().value;
+          rooms.delete(oldest);
+        }
+        rooms.set(key, { ...beacon, address: key, lastSeen: Date.now() });
         notify();
         return;
       }
@@ -298,6 +323,8 @@ function createDiscovery({
     stopAdvertising();
     stopAdvertisingMigration();
     if (pruneTimer) clearInterval(pruneTimer);
+    if (pendingNotifyTimer) clearTimeout(pendingNotifyTimer);
+    pendingNotifyTimer = null;
     pruneTimer = null;
     rooms.clear();
     notify();
@@ -349,6 +376,8 @@ module.exports = {
   MIGRATION_BEACON_TYPE,
   MIGRATION_BEACON_INTERVAL_MS,
   MIGRATION_BEACON_WINDOW_MS,
+  MAX_DISCOVERED_ROOMS,
+  ROOM_LIST_UPDATES_PER_SECOND,
   computeBroadcastAddress,
   listBroadcastTargets,
   formatBeacon,
