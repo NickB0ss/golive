@@ -54,6 +54,7 @@
     "asarUnpack": [
       "build/Release/golive_audio.node"
     ],
+    "beforeBuild": "./scripts/check-native-build.js",
     "win": {
       "target": "nsis",
       "icon": "src/renderer/assets/icon.ico"

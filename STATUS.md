@@ -106,10 +106,21 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 `0.17.0` (tag `v0.17.0`, 2026-09-17). Electron `^32` (fora de suporte — ver
 backlog), `electron-builder` na `^26`.
-Testes: `npm test` → **759 passando** (733 na 0.16.0). `npm run lint` → 0
+Testes: `node --test` → **764 testes, 764 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
+
+### Frente 0 (auditoria 2026-09-18)
+
+Esta branch corrige o P0-1 (`logger.js`), o P0-2 (`firewall.js`, incluindo
+comando manual seguro), o P0-3 (validação completa de data URL de imagem no
+cliente e nas duas cópias do servidor, mais `escapeHtml`), o P0-5 (hook
+`beforeBuild` que exige o `.node`), o P0-6 (remoção do `@media` 1040px morto),
+`js-yaml` e o CI: `.github/workflows/ci.yml` substitui `test.yml`, com matriz
+Node 20/22, portão de `npm audit --omit=dev` e job `empacotar` que confere o
+addon nativo no pacote. O CI ficou vermelho de 05/09 (execução #61) até esta
+correção por causa do `require('electron')` no topo de `src/main/logger.js`.
 
 ## Lançado na 0.17.0 (2026-09-17)
 
@@ -862,22 +873,25 @@ feito e não está explicitamente fora de escopo (abaixo): **C5, F3, G6, H5,
 H6** e o resto do **B2**.
 
 Sobre o **B2**: a premissa da auditoria ("14 vulnerabilidades, todas na cadeia
-do `node-gyp@9`") não vale mais. Com o `node-gyp` da raiz na 11 **e o
-`electron-builder` na 26**, `npm audit` cai a **2** — e as 2 são o
-`electron@32` (e o `extract-zip` dele). Zerar exige subir `electron 32 → 44`,
-o que é o item **B1** e precisa do app rodando. `npm audit --omit=dev`
-sempre esteve em **0**: nada disso alcança quem usa o app.
+do `node-gyp@9`") não vale mais. Com o `node-gyp` da raiz na 11, o
+`electron-builder` na 26 e `js-yaml` em **4.3.2**, o `npm audit` completo
+continua com **2 altas de dev** — o `electron@32` e o `extract-zip` dele.
+`npm audit --omit=dev` está em **0**: a produção chegou a ficar em **1 alta**
+(`js-yaml`, via `electron-updater`) de algum ponto até esta correção. Zerar as
+duas altas restantes exige subir `electron 32 → 44`, o que é o item **B1** e
+precisa do app rodando.
 
-**F3** (host cai, sala morre) e **G6** (teto de ~4 pessoas) são "confirmado,
-por desenho" — limites conhecidos, não bugs. **B3** (sala sem autenticação)
+**F3** (queda abrupta do host ainda pode partir a sala) e **G6** (teto de ~4
+pessoas) são "confirmado, por desenho" — limites conhecidos, não bugs. A
+migração graciosa de F3 funciona desde a 0.14.0. **B3** (sala sem autenticação)
 saiu dessa lista de vez: núcleo, protocolo e UI (caixa, campo de PIN, cadeado
 na lista, selo no cabeçalho) foram lançados na 0.4.0.
 
 **C4** (`dist/` de 1,2 GB) é higiene de disco local. **C5** (branches
-obsoletas) segue aberto: `claude/backlog-pos-leyjak`,
-`claude/planejamentos-futuros-projeto-leyjak` e `claude/redesign-discord-style`
-já estão inteiramente mescladas na `main` e só precisam ser apagadas do
-remoto.
+obsoletas) segue aberto: **17 branches mescladas no remoto** ainda não foram
+apagadas (entre elas `claude/backlog-pos-leyjak`,
+`claude/planejamentos-futuros-projeto-leyjak` e
+`claude/redesign-discord-style`).
 
 ## Fora de escopo (adiado de propósito)
 
@@ -885,7 +899,7 @@ Precisam de verificação manual rodando o app, ou de esforço de dias.
 
 | Item | O que é | Por que ficou de fora |
 |---|---|---|
-| **B1** | Subir Electron (32 → 44) | Meio dia + verificação manual; flags de WGC e assinatura do `console-message` mudam entre versões e precisam de teste no app rodando. Fecha as 2 vulnerabilidades que sobram no `npm audit`. |
+| **B1** | Subir Electron (32 → 44) | Meio dia + verificação manual; flags de WGC e assinatura do `console-message` mudam entre versões e precisam de teste no app rodando. Fecha as 2 altas de dev que sobram no `npm audit`. |
 | **`npm run dist` pós-`electron-builder@26`** | Rodar um build completo | O 26 muda default de scripts de pacote e nomes de artefato; não dá pra validar sem gerar o instalador. |
 | **D1** | Extrair de `app.js` um módulo puro de orquestração de sessão/árvore | 1–2 dias de refatoração; ganho a prazo, não corrige bug aberto. |
 | **G1–G3** | Áudio nativo em C++ (batching do IPC, cancelamento do `Stop()`, leak no `NonBlockingCall`) | Mexe em C++ nativo; só testável rodando o app com captura real. |

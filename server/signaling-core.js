@@ -276,8 +276,10 @@ function sanitizeInitialChatEntry(entry) {
   if (typeof entry.from === 'string') safe.from = entry.from.slice(0, 64);
   if (typeof entry.name === 'string') safe.name = entry.name.slice(0, 40);
   if (typeof entry.ts === 'number' && Number.isFinite(entry.ts)) safe.ts = entry.ts;
+  // Mantida igual a validacao no renderer (src/renderer/chatmedia.js) e a
+  // segunda validacao de chat abaixo: servidor e renderer nao compartilham modulo.
   if (typeof entry.image === 'string'
-    && /^data:image\/(png|jpeg|gif|webp);base64,/.test(entry.image)
+    && /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(entry.image)
     && entry.image.length <= MAX_IMAGE_CHARS) {
     safe.image = entry.image;
     safe.w = clampDim(entry.w);
@@ -921,8 +923,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               // imagem: uma `http(s)://` viraria o renderer buscando de um
               // endereco que quem mandou escolheu (e o CSP so permite
               // `data:`/`blob:` em img-src, entao nem carregaria).
+              // Mesma regex da sanitizacao de historico acima e do renderer
+              // (src/renderer/chatmedia.js); os modulos nao sao compartilhados.
               const image = typeof msg.image === 'string'
-                && /^data:image\/(png|jpeg|gif|webp);base64,/.test(msg.image)
+                && /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(msg.image)
                 && msg.image.length <= MAX_IMAGE_CHARS
                 ? msg.image
                 : null;

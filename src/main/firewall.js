@@ -13,7 +13,14 @@ const RULE_NAME = 'GoLive';
 // compartilhamento em LAN nunca precisou de acesso publico. program= restringe
 // a regra a este executavel, senao vira uma porta liberada pra qualquer processo.
 function manualCommandFor(port, execPath) {
-  return `netsh advfirewall firewall add rule name="${RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=private,domain program="${execPath}"`;
+  // O renderer instrui o usuario a abrir PowerShell elevado; use literais
+  // PowerShell para que o caminho copiado nao execute expansoes nele.
+  const netshArgs = [
+    'advfirewall', 'firewall', 'add', 'rule', `name="${RULE_NAME}"`,
+    'dir=in', 'action=allow', 'protocol=TCP', `localport=${port}`,
+    'profile=private,domain', `program="${execPath}"`,
+  ].map(psQuote).join(' ');
+  return `& "$env:SystemRoot\\System32\\netsh.exe" ${netshArgs}`;
 }
 
 // Consulta estruturada via PowerShell (Get-NetFirewallRule), nao `netsh
@@ -43,6 +50,23 @@ function firewallQueryScript() {
 
 function encodedCommand(script) {
   return Buffer.from(script, 'utf16le').toString('base64');
+}
+
+/** Literal de string PowerShell: aspas simples internas sao duplicadas. */
+function psQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+// A escrita tambem usa -EncodedCommand, como a consulta acima: evita que o
+// script atravesse cmd.exe e PowerShell como uma unica string interpolada.
+function firewallRuleScript(port, execPath) {
+  return [
+    `$ruleName = ${psQuote(RULE_NAME)}`,
+    `$port = ${psQuote(port)}`,
+    `$program = ${psQuote(execPath)}`,
+    '$netshArgs = @(\'advfirewall\', \'firewall\', \'add\', \'rule\', "name=`"$ruleName`"", \'dir=in\', \'action=allow\', \'protocol=TCP\', "localport=$port", \'profile=private,domain\', "program=`"$program`"") -join \' \'',
+    'Start-Process "$env:SystemRoot\\System32\\netsh.exe" -ArgumentList $netshArgs -Verb RunAs -WindowStyle Hidden -Wait',
+  ].join('\n');
 }
 
 /** Uma regra "cobre" a porta pra este programa se o LocalPort bate E o
@@ -88,10 +112,8 @@ async function ensureFirewallRule(port, { exec = defaultExec, execPath = process
 
   if (await ruleCoversPort(port, exec, execPath)) return { ok: true };
 
-  const netshArgs = `advfirewall firewall add rule name="${RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=private,domain program="${execPath}"`;
-  const psCommand = `Start-Process netsh -ArgumentList '${netshArgs}' -Verb RunAs -WindowStyle Hidden -Wait`;
   try {
-    await exec(`powershell -Command "${psCommand}"`);
+    await exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${encodedCommand(firewallRuleScript(port, execPath))}`);
   } catch (err) {
     console.warn('[firewall] elevacao falhou ou foi cancelada:', err.message);
     return { ok: false, manualCommand };
@@ -101,4 +123,4 @@ async function ensureFirewallRule(port, { exec = defaultExec, execPath = process
   return { ok: false, manualCommand };
 }
 
-module.exports = { ensureFirewallRule, RULE_NAME };
+module.exports = { ensureFirewallRule, RULE_NAME, psQuote, firewallRuleScript };

@@ -703,27 +703,6 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 }
 .user-avatar:hover, .user-panel-name:hover { color: var(--tx); opacity: .82; }
 
-/* Janela estreita (o minWidth da janela e 900px, entao isto acontece de
-   verdade): as duas colunas viram uma pilha e a pagina inteira rola. */
-@media (max-width: 1040px) {
-  .lobby-bounds { padding: 0 var(--s-4); }
-  /* Nome longo comendo os botoes de icone numa janela estreita: some com o
-     nome e fica so o avatar (que abre o mesmo perfil). */
-  .user-panel-name { max-width: 120px; }
-  .lobby-body {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--s-4);
-    overflow-y: auto;
-    align-content: start;
-  }
-  /* Empilhado, o painel ocupa a largura toda: dois CTAs de 830px um em
-     cima do outro seriam duas faixas, nao dois botoes. Lado a lado, e o
-     comprimento da linha do titulo fica legivel. */
-  .lobby-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  .lobby-title, .lobby-lede { max-width: 42ch; }
-  .lobby-rooms { max-width: none; height: auto; min-height: 260px; }
-  .room-list { overflow: visible; }
-}
 /* Janela baixa: o paragrafo de apoio e a primeira coisa que empurra a
    lista pra fora da area visivel. */
 @media (max-height: 700px) {
