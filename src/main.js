@@ -294,6 +294,7 @@ let embeddedServer = null;
 /** Fechamento em andamento, pra eventos de encerramento concorrentes usarem
  * a mesma promessa e nao fecharem o servidor duas vezes. */
 let embeddedServerClosing = null;
+let embeddedServerHosting = null;
 /** Nome do host da sala ativa, pra reusar no beacon quando o anuncio e
  * refeito (discovery:refresh) sem o renderer reenviar o nome. */
 let hostedRoomName = 'anônimo';
@@ -1024,13 +1025,13 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 ipcMain.handle('room:host', async (_event, {
   name, advertise, protect, roomId, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory,
 } = {}) => {
+  if (embeddedServerHosting) return embeddedServerHosting;
+  embeddedServerHosting = (async () => {
   try {
     if (embeddedServer || embeddedServerClosing) await closeEmbeddedServer();
-    // PIN de 4 digitos gerado com a sala (B3). Nao e cripto -- so corta o
-    // entrar-por-acidente. `Math.random` basta: nao ha modelo de ameaca de
-    // forca bruta aqui (o servidor derruba o socket a cada tentativa, e a
-    // sala vive minutos). 1000-9999 pra sempre ter 4 casas.
-    const pin = forcedPin !== undefined ? forcedPin : (protect ? String(1000 + Math.floor(Math.random() * 9000)) : null);
+    const pin = forcedPin !== undefined ? forcedPin : (protect
+      ? require('crypto').randomInt(0, 1000000).toString().padStart(6, '0')
+      : null);
     // Token de dono (novo): gerado por sala, nunca sai desta maquina -- so
     // volta pro renderer que criou a sala, que o reenvia no proprio 'join'.
     const ownerToken = require('crypto').randomUUID();
@@ -1073,6 +1074,8 @@ ipcMain.handle('room:host', async (_event, {
   } catch (err) {
     return { ok: false, error: err.code === 'PORTS_EXHAUSTED' ? 'PORTS_EXHAUSTED' : err.message };
   }
+  })().finally(() => { embeddedServerHosting = null; });
+  return embeddedServerHosting;
 });
 
 // Quem hospeda e sai da sala tem que derrubar a sala junto: para o anuncio

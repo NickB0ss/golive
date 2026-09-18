@@ -654,12 +654,12 @@ test('fuzz: frames aleatorios (bytes, JSON torto, tipos desconhecidos) nao derru
 });
 
 test('PIN da sala: join com o PIN certo entra, com o errado ou sem PIN e negado (B3)', async () => {
-  const server = await createSignalingServer({ port: 0, pin: '4821' });
+  const server = await createSignalingServer({ port: 0, pin: '482100' });
   try {
     // PIN certo -> welcome normal
     const ok = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => ok.once('open', r));
-    ok.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: '4821' }));
+    ok.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: '482100' }));
     const welcome = await once(ok, 'welcome');
     assert.equal(welcome.type, 'welcome');
 
@@ -668,7 +668,7 @@ test('PIN da sala: join com o PIN certo entra, com o errado ou sem PIN e negado 
     await new Promise((r) => bad.once('open', r));
     const deniedMsg = onceWithin(bad, 'join-denied');
     const closed = new Promise((r) => bad.once('close', (code) => r(code)));
-    bad.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', pin: '0000' }));
+    bad.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', pin: '000000' }));
     const denied = await deniedMsg;
     assert.equal(denied.reason, 'pin');
     assert.equal(await closed, 1008);
@@ -689,12 +689,23 @@ test('PIN da sala: join com o PIN certo entra, com o errado ou sem PIN e negado 
   }
 });
 
+test('recusa criar sala protegida com PIN que nao tenha seis digitos', async () => {
+  await assert.rejects(
+    createSignalingServer({ port: 0, pin: '4821' }),
+    /PIN da sala deve ter exatamente 6 d.gitos/,
+  );
+  await assert.rejects(
+    createSignalingServer({ port: 0, pin: '12ab56' }),
+    /PIN da sala deve ter exatamente 6 d.gitos/,
+  );
+});
+
 test('PIN da sala: tentativa errada de um intruso nao afeta quem ja esta dentro (B3)', async () => {
-  const server = await createSignalingServer({ port: 0, pin: '1234' });
+  const server = await createSignalingServer({ port: 0, pin: '123400' });
   try {
     const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => a.once('open', r));
-    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: '1234' }));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', pin: '123400' }));
     await once(a, 'welcome');
 
     const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
@@ -706,7 +717,7 @@ test('PIN da sala: tentativa errada de um intruso nao afeta quem ja esta dentro 
     const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => b.once('open', r));
     const introB = once(a, 'peer-joined');
-    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', pin: '1234' }));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', pin: '123400' }));
     await once(b, 'welcome');
     assert.equal((await introB).name, 'Bruno');
 
@@ -766,12 +777,12 @@ test('versao da sala: so entra quem manda exatamente a mesma appVersion', async 
 });
 
 test('versao e checada ANTES do PIN: quem esta em outra versao nem descobre se acertou o PIN', async () => {
-  const server = await createSignalingServer({ port: 0, pin: '4821', appVersion: '0.6.0' });
+  const server = await createSignalingServer({ port: 0, pin: '482100', appVersion: '0.6.0' });
   try {
     const velho = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => velho.once('open', r));
     const deniedMsg = onceWithin(velho, 'join-denied');
-    velho.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', pin: '4821', appVersion: '0.5.0' }));
+    velho.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', pin: '482100', appVersion: '0.5.0' }));
     assert.equal((await deniedMsg).reason, 'version');
   } finally {
     await server.close();
@@ -1979,7 +1990,7 @@ test('laser e reaction sem join sao descartados sem derrubar o servidor', async 
   }
 });
 
-test('annotate-sync: snapshot vai so pro destinatario, com teto de itens', async () => {
+test('annotate-sync: snapshot real e reconstruido, sem campos forjados, e vai so pro destinatario', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
     const a = await entrar(server.port, 'Ana');
@@ -1992,18 +2003,131 @@ test('annotate-sync: snapshot vai so pro destinatario, com teto de itens', async
     });
 
     const noBruno = once(b.ws, 'annotate-sync');
-    const itens = Array.from({ length: 500 }, (_, i) => ({ kind: 'stroke', id: `i${i}`, from: '1', points: [[0, 0]] }));
-    a.ws.send(JSON.stringify({ type: 'annotate-sync', to: b.welcome.id, surface: a.welcome.id, items: itens }));
+    // Formato fiel de annotate.js#snapshot(), nao as ops incrementais.
+    const itens = Array.from({ length: 500 }, (_, i) => ({
+      kind: 'stroke', id: `i${i}`, from: a.welcome.id, width: 5.2,
+      points: [[0.1234, 0.9876]], color: '#A1B2C3', forged: 'nope',
+    }));
+    a.ws.send(JSON.stringify({ type: 'annotate-sync', to: b.welcome.id, surface: `${a.welcome.id}:screen`, items: itens }));
 
     const msg = await noBruno;
     assert.equal(msg.from, a.welcome.id);
-    assert.equal(msg.surface, a.welcome.id);
+    assert.equal(msg.surface, `${a.welcome.id}:screen`);
     assert.equal(msg.items.length, 400);
+    assert.deepEqual(msg.items[0], {
+      kind: 'stroke', id: 'i0', from: a.welcome.id, width: 5.2,
+      points: [[0.123, 0.988]], color: '#a1b2c3',
+    });
     assert.equal(chegouNaCarla, false);
 
     a.ws.close();
     b.ws.close();
     c.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('annotate-sync aceita rajada para seis destinatarios e corta o abuso sustentado', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const sender = await entrar(server.port, 'Ana');
+    const targets = [];
+    for (let i = 0; i < 6; i += 1) targets.push(await entrar(server.port, `Pessoa ${i}`));
+    const item = { kind: 'text', id: 'nota', from: sender.welcome.id, text: 'oi', x: 0.5, y: 0.5, size: 20 };
+    const delivered = targets.map(({ ws }) => onceWithin(ws, 'annotate-sync'));
+    for (const target of targets) {
+      sender.ws.send(JSON.stringify({ type: 'annotate-sync', to: target.welcome.id, surface: `${sender.welcome.id}:screen`, items: [item] }));
+    }
+    assert.equal((await Promise.all(delivered)).length, 6);
+
+    for (let i = 0; i < 10; i += 1) sender.ws.send(JSON.stringify({ type: 'annotate-sync', to: targets[0].welcome.id, surface: `${sender.welcome.id}:screen`, items: [item] }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    let seventhDelivered = false;
+    targets[0].ws.once('message', (raw) => { if (JSON.parse(raw.toString()).type === 'annotate-sync') seventhDelivered = true; });
+    sender.ws.send(JSON.stringify({ type: 'annotate-sync', to: targets[0].welcome.id, surface: `${sender.welcome.id}:screen`, items: [item] }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(seventhDelivered, false);
+    sender.ws.close();
+    for (const target of targets) target.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('cinco sockets com PIN errado no mesmo IP bloqueiam a proxima tentativa', async () => {
+  const server = await createSignalingServer({ port: 0, pin: '123456' });
+  try {
+    for (let i = 0; i < 5; i += 1) {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+      await new Promise((resolve) => ws.once('open', resolve));
+      const denied = onceWithin(ws, 'join-denied');
+      ws.send(JSON.stringify({ type: 'join', room: 'geral', name: `X${i}`, pin: '000000' }));
+      assert.equal((await denied).reason, 'pin');
+    }
+    const blocked = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((resolve) => blocked.once('open', resolve));
+    const denied = onceWithin(blocked, 'join-denied');
+    blocked.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Certo', pin: '123456' }));
+    assert.equal((await denied).reason, 'pin');
+  } finally {
+    await server.close();
+  }
+});
+
+test('limitador de PIN bloqueia cinco erros por IP, isola outro IP e expira', () => {
+  const { createPinFailureLimiter } = require('./signaling-core');
+  const limiter = createPinFailureLimiter({ limit: 5, windowMs: 60, blockMs: 60 });
+  for (let i = 0; i < 5; i += 1) limiter.fail('10.0.0.1', 0);
+  assert.equal(limiter.blocked('10.0.0.1', 1), true);
+  assert.equal(limiter.blocked('10.0.0.2', 1), false);
+  assert.equal(limiter.blocked('10.0.0.1', 61), false);
+});
+
+test('limitador de PIN normaliza IPv4 mapeado e limita IPs lembrados', () => {
+  const { createPinFailureLimiter } = require('./signaling-core');
+  const limiter = createPinFailureLimiter({ limit: 1, maxEntries: 2, windowMs: 1000, blockMs: 1000 });
+  limiter.fail('::ffff:10.0.0.1', 0);
+  assert.equal(limiter.blocked('10.0.0.1', 1), true);
+  limiter.fail('10.0.0.2', 2);
+  limiter.fail('10.0.0.3', 3);
+  assert.equal(limiter.blocked('10.0.0.1', 4), false, 'o IP mais antigo e descartado no teto');
+  assert.equal(limiter.blocked('10.0.0.2', 4), true);
+  assert.equal(limiter.blocked('10.0.0.3', 4), true);
+});
+
+test('sockets ainda sem join nao ocupam vagas da sala', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const host = await entrar(server.port, 'Host');
+    const pending = [];
+    for (let i = 0; i < 15; i += 1) {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+      await new Promise((resolve) => ws.once('open', resolve));
+      pending.push(ws);
+    }
+    const guest = await entrar(server.port, 'Convidado');
+    assert.equal(guest.welcome.type, 'welcome');
+    host.ws.close();
+    guest.ws.close();
+    for (const ws of pending) ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('join invalida avatar malformado ou maior que 64 KB sem recusar a pessoa', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const observer = await entrar(server.port, 'Ana');
+    const joined = once(observer.ws, 'peer-joined');
+    const guest = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((resolve) => guest.once('open', resolve));
+    guest.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno', avatar: `data:image/gif;base64,${'A'.repeat(64 * 1024)}` }));
+    await once(guest, 'welcome');
+    assert.equal((await joined).avatar, null);
+    observer.ws.close();
+    guest.close();
   } finally {
     await server.close();
   }
@@ -2676,10 +2800,10 @@ test('close() limpa o timer de retomada pendente', async () => {
 });
 
 test('join recusado por PIN nao retoma nem derruba um peer suspenso', async () => {
-  const server = await createSignalingServer({ port: 0, pin: '4321', resumeGraceMs: 150 });
+  const server = await createSignalingServer({ port: 0, pin: '432100', resumeGraceMs: 150 });
   try {
-    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana', pin: '4321' });
-    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno', pin: '4321' });
+    const ana = await entrar(server.port, 'Ana', { clientId: 'c-ana', pin: '432100' });
+    const bruno = await entrar(server.port, 'Bruno', { clientId: 'c-bruno', pin: '432100' });
     const vistoPeloBruno = coletar(bruno.ws);
     const fechou = new Promise((r) => ana.ws.once('close', r));
     ana.ws.terminate();
@@ -2688,7 +2812,7 @@ test('join recusado por PIN nao retoma nem derruba um peer suspenso', async () =
     const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => intruso.once('open', r));
     const negado = once(intruso, 'join-denied');
-    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', clientId: 'c-ana', resumeToken: ana.welcome.resumeToken, pin: '0000' }));
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Intruso', clientId: 'c-ana', resumeToken: ana.welcome.resumeToken, pin: '000000' }));
     assert.equal((await negado).reason, 'pin');
     await new Promise((r) => setTimeout(r, 25));
     assert.equal(server.getPeerCount(), 2);
@@ -2728,16 +2852,16 @@ test('log injetado recebe a entrada e a saida, sem endereco nem clientId', async
 
 test('log injetado registra join recusado, heartbeat e room-closed', async () => {
   const linhas = [];
-  const server = await createSignalingServer({ port: 0, heartbeatMs: 50, pin: '4321', log: (...a) => linhas.push(a.join(' ')) });
+  const server = await createSignalingServer({ port: 0, heartbeatMs: 50, pin: '432100', log: (...a) => linhas.push(a.join(' ')) });
   try {
     const intruso = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => intruso.once('open', r));
-    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'X', pin: '0000' }));
+    intruso.send(JSON.stringify({ type: 'join', room: 'geral', name: 'X', pin: '000000' }));
     await once(intruso, 'join-denied');
 
     const mudo = new WebSocket(`ws://127.0.0.1:${server.port}`, { autoPong: false });
     await new Promise((r) => mudo.once('open', r));
-    mudo.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Mudo', pin: '4321' }));
+    mudo.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Mudo', pin: '432100' }));
     const { id } = await once(mudo, 'welcome');
     await new Promise((r) => mudo.once('close', r));
 

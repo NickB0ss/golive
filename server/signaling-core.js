@@ -14,7 +14,7 @@ const { chooseSuccessor, chooseNewOwner } = require('../src/renderer/succession.
 // O servidor de sinalizacao roda no MESMO processo do app de quem criou a
 // sala. O `maxPayload` padrao do `ws` e 100 MB: um cliente hostil (ou com
 // bug) poderia estourar a memoria desse processo com um unico frame. A
-// maior mensagem legitima e o avatar (256 KB, cortado no 'join'); 512 KB da
+// maior mensagem legitima e o avatar (64 KB, validado no 'join'); 512 KB da
 // folga pra base64 + envelope JSON sem abrir espaco pra abuso.
 const MAX_PAYLOAD_BYTES = 512 * 1024;
 
@@ -64,6 +64,13 @@ const MAX_ANNOTATE_PER_SECOND = 60;
 const MAX_ANNOTATE_POINTS = 200; // pontos por mensagem (lote de um quadro)
 const MAX_ANNOTATE_TEXT = 120; // caracteres de uma escrita
 const MAX_ANNOTATE_SYNC_ITEMS = 400; // itens de um snapshot pra quem chegou depois
+const MAX_CONNECTIONS = 16;
+const MAX_PENDING_CONNECTIONS = MAX_CONNECTIONS * 2;
+const MAX_AVATAR_CHARS = 64 * 1024;
+const PIN_FAILURE_LIMIT = 5;
+const PIN_FAILURE_WINDOW_MS = 60 * 1000;
+const PIN_BLOCK_MS = 60 * 1000;
+const MAX_PIN_FAILURE_ENTRIES = 1024;
 
 // Ids de conexao nascem em `String(nextId++)`: decimal positivo, sem zeros
 // a esquerda. Number conserva inteiros exatos ate 16 algarismos; o teto
@@ -101,6 +108,39 @@ function createRateLimiter({ limit = MAX_MSGS_PER_SECOND, windowMs = RATE_WINDOW
       }
       count += 1;
       return count <= limit;
+    },
+  };
+}
+
+/** Limita tentativas de PIN por endereco remoto, nao por socket. */
+function createPinFailureLimiter({ limit = PIN_FAILURE_LIMIT, windowMs = PIN_FAILURE_WINDOW_MS, blockMs = PIN_BLOCK_MS, maxEntries = MAX_PIN_FAILURE_ENTRIES } = {}) {
+  const entries = new Map();
+  const normalizeIp = (ip) => typeof ip === 'string' ? ip.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1') : null;
+  function prune(now) {
+    for (const [ip, entry] of entries) {
+      if (entry.blockedUntil <= now && now - entry.windowStart >= windowMs) entries.delete(ip);
+    }
+  }
+  return {
+    blocked(ip, now) {
+      prune(now);
+      const key = normalizeIp(ip);
+      return Boolean(key && entries.get(key)?.blockedUntil > now);
+    },
+    fail(ip, now) {
+      prune(now);
+      const key = normalizeIp(ip);
+      if (!key) return false;
+      let entry = entries.get(key);
+      if (!entry || now - entry.windowStart >= windowMs) entry = { windowStart: now, failures: 0, blockedUntil: 0 };
+      entry.failures += 1;
+      if (entry.failures >= limit) entry.blockedUntil = now + blockMs;
+      // A ordem do Map e LRU: ao atingir o teto, IPs que nao tentaram PIN
+      // ha mais tempo saem antes de criar outra entrada.
+      entries.delete(key);
+      while (entries.size >= maxEntries) entries.delete(entries.keys().next().value);
+      entries.set(key, entry);
+      return entry.blockedUntil > now;
     },
   };
 }
@@ -234,6 +274,54 @@ function sanitizeAnnotateOp(msg) {
   }
 }
 
+/** Reconstrui um item de snapshot no mesmo formato de annotate.js#snapshot.
+ * Snapshots nao sao ops incrementais: carregam `kind` e `from`, alem de todos
+ * os pontos ja acumulados em um traco. */
+function sanitizeAnnotateSnapshotItem(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const id = typeof raw.id === 'string' && raw.id ? raw.id.slice(0, 64) : null;
+  const from = raw.from == null ? null : String(raw.from).slice(0, 64);
+  if (!id || !from) return null;
+  if (raw.kind === 'stroke') {
+    if (!Array.isArray(raw.points)) return null;
+    const points = [];
+    // O snapshot pode conter um traco inteiro (annotate.js: 2.000 pontos),
+    // maior que um lote incremental (200 pontos).
+    for (const point of raw.points.slice(0, 2000)) {
+      if (!Array.isArray(point)) continue;
+      const x = normPoint(point[0]);
+      const y = normPoint(point[1]);
+      if (x !== null && y !== null) points.push([x, y]);
+    }
+    if (!points.length) return null;
+    const width = Number(raw.width);
+    const item = { kind: 'stroke', id, from, width: Number.isFinite(width) ? Math.min(Math.max(width, 1), 20) : 4, points };
+    const color = normColor(raw.color);
+    if (color) item.color = color;
+    return item;
+  }
+  if (raw.kind === 'text') {
+    const x = normPoint(raw.x);
+    const y = normPoint(raw.y);
+    const text = typeof raw.text === 'string' ? raw.text.slice(0, MAX_ANNOTATE_TEXT) : '';
+    if (x === null || y === null || !text.trim()) return null;
+    const size = Number(raw.size);
+    const item = { kind: 'text', id, from, text, x, y, size: Number.isFinite(size) ? Math.min(Math.max(size, 8), 96) : 20 };
+    const color = normColor(raw.color);
+    if (color) item.color = color;
+    return item;
+  }
+  return null;
+}
+
+function sanitizeAvatar(avatar) {
+  return typeof avatar === 'string'
+    && /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(avatar)
+    && Buffer.byteLength(avatar, 'utf8') <= MAX_AVATAR_CHARS
+    ? avatar
+    : null;
+}
+
 function sanitizeLaserOp(msg) {
   if (typeof msg.x !== 'number' || typeof msg.y !== 'number') return null;
   const x = normPoint(msg.x);
@@ -323,6 +411,9 @@ function send(ws, payload) {
  * `resumeGraceMs`: quanto um peer com close anormal continua membro antes
  * de sair de verdade. `getPeerCount()` inclui esses peers suspensos. */
 function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, initialTransferredTo = null, initialBans, initialChatHistory }) {
+  if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
+    return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
+  }
   // O servidor roda no processo de quem hospeda: um logger que lance (disco
   // cheio, arquivo travado) dentro de um handler do ws subiria como uncaught
   // e derrubaria a sala inteira por causa de uma linha de diagnostico. A
@@ -378,8 +469,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     const laserLimiters = new Map(); // peerId -> limiter, 30 msg/s
     const reactionLimiters = new Map(); // peerId -> limiter, rajada 5, 1 / 300ms
     const reofferLimiters = new Map(); // peerId -> limiter, 2 reofertas/s
+    const annotateSyncLimiters = new Map(); // peerId -> limiter, snapshots sao caros
+    const pinFailures = createPinFailureLimiter();
     // 'watchers' e reenviado pra sala inteira com os avatares (data URL de
-    // ate 256 KB cada): sem teto proprio, um cliente em loop faria o host
+    // ate 64 KB cada): sem teto proprio, um cliente em loop faria o host
     // replicar megabytes por mensagem. Uso legitimo e rajada curta em
     // mudanca de topologia (tela + camera + cada origem repassada).
     const MAX_WATCHERS_PER_SECOND = 20;
@@ -582,6 +675,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
       chatRateLimiters.delete(peerId);
       chatImageLimiters.delete(peerId);
       annotateLimiters.delete(peerId);
+      annotateSyncLimiters.delete(peerId);
       laserLimiters.delete(peerId);
       reactionLimiters.delete(peerId);
       reofferLimiters.delete(peerId);
@@ -650,6 +744,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
         // Pro log do heartbeat: ele itera wss.clients, nao o mapa de peers.
         ws.peerId = id;
         ws.lastPongAt = Date.now();
+        ws.joined = false;
+        const pendingConnections = Array.from(wss.clients).filter((client) => !client.joined).length;
+        if (pendingConnections > MAX_PENDING_CONNECTIONS) {
+          ws.close(1013, 'too-many-pending');
+          return;
+        }
         ws.on('pong', () => {
           ws.isAlive = true;
           ws.lastPongAt = Date.now();
@@ -708,19 +808,31 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 ws.close(1008, 'version');
                 return;
               }
+              if (roomPin && pinFailures.blocked(remoteAddress, Date.now())) {
+                log(`join recusado (#${id}): PIN bloqueado`);
+                send(ws, { type: 'join-denied', reason: 'pin' });
+                ws.close(1008, 'pin');
+                return;
+              }
               // Sala protegida: PIN ausente ou errado e recusa explicita
               // (o cliente distingue "PIN errado" de "conexao caiu") seguida
               // de close 1008. Descartar em silencio faria o cliente ficar
               // preso em "Conectando...".
               if (roomPin && String(msg.pin == null ? '' : msg.pin) !== roomPin) {
+                pinFailures.fail(remoteAddress, Date.now());
                 log(`join recusado (#${id}): PIN ausente ou errado`);
                 send(ws, { type: 'join-denied', reason: 'pin' });
                 ws.close(1008, 'pin');
                 return;
               }
               const room = String(msg.room || 'geral').slice(0, 40);
+              if (roomPeers(room).length >= MAX_CONNECTIONS) {
+                send(ws, { type: 'join-denied', reason: 'full' });
+                ws.close(1013, 'full');
+                return;
+              }
               const name = String(msg.name || 'anonimo').slice(0, 40);
-              const avatar = typeof msg.avatar === 'string' ? msg.avatar.slice(0, 256 * 1024) : null;
+              const avatar = sanitizeAvatar(msg.avatar);
               // `tokenHolder` e um fato imutavel do peer (apresentou o token
               // de quem criou a sala); `owner` e quem manda AGORA. Enquanto
               // a lideranca nunca foi passada os dois coincidem -- depois de
@@ -748,6 +860,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 const suspendedAt = resumedPeer._suspendedAt;
                 clearResumeTimer(resumedPeer);
                 resumedPeer.ws = ws;
+                ws.joined = true;
                 resumedPeer.name = name;
                 resumedPeer.avatar = avatar;
                 resumedPeer.address = remoteAddress;
@@ -756,6 +869,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 chatRateLimiters.delete(resumedId);
                 chatImageLimiters.delete(resumedId);
                 annotateLimiters.delete(resumedId);
+                annotateSyncLimiters.delete(resumedId);
                 laserLimiters.delete(resumedId);
                 reactionLimiters.delete(resumedId);
                 reofferLimiters.delete(resumedId);
@@ -783,6 +897,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               const newResumeToken = randomUUID();
               peers.set(id, { ws, name, room, avatar, owner, tokenHolder, clientId, resumeToken: newResumeToken, address: remoteAddress });
               joined = true;
+              ws.joined = true;
               log(`+ ${logName(name)} (#${id}) entrou na sala ${logName(room)}${owner ? ' (dono)' : ''}`);
               send(ws, {
                 type: 'welcome', id, owner, peers: roomPeers(room, id),
@@ -1012,14 +1127,27 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
             // quem chegou depois precisa dele.
             case 'annotate-sync': {
               const me = peers.get(peerId);
-              const target = peers.get(String(msg.to));
-              if (!me || !target || me.room !== target.room) return;
-              if (!Array.isArray(msg.items)) return;
+              if (!me || typeof msg.to !== 'string' || !CONNECTION_ID_RE.test(msg.to)) return;
+              const target = peers.get(msg.to);
+              const surface = parseSurface(msg.surface);
+              if (!target || me.room !== target.room || !surface) return;
+              const owner = peers.get(surface.ownerId);
+              if (!owner || owner.room !== me.room || !Array.isArray(msg.items)) return;
+              // Um snapshot sai para cada peer-joined. Balde por remetente
+              // comporta uma sala inteira entrando junta, mas repoe so 2/s.
+              const limiter = annotateSyncLimiters.get(peerId) || createBurstLimiter({ capacity: MAX_CONNECTIONS, refillMs: 500 });
+              annotateSyncLimiters.set(peerId, limiter);
+              if (!limiter.hit(Date.now())) return;
+              const items = [];
+              for (const item of msg.items.slice(0, MAX_ANNOTATE_SYNC_ITEMS)) {
+                const safe = sanitizeAnnotateSnapshotItem(item);
+                if (safe) items.push(safe);
+              }
               send(target.ws, {
                 type: 'annotate-sync',
                 from: peerId,
-                surface: String(msg.surface),
-                items: msg.items.slice(0, MAX_ANNOTATE_SYNC_ITEMS),
+                surface: surface.surface,
+                items,
               });
               break;
             }
@@ -1207,10 +1335,14 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
 module.exports = {
   createSignalingServer,
   createRateLimiter,
+  createPinFailureLimiter,
   sanitizeAnnotateOp,
+  sanitizeAnnotateSnapshotItem,
   sanitizeInitialBan,
   sanitizeInitialChatEntry,
   clampDim,
   MAX_IMAGE_CHARS,
   CHAT_IMAGE_HISTORY_MAX,
+  MAX_CONNECTIONS,
+  MAX_AVATAR_CHARS,
 };

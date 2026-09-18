@@ -1,15 +1,8 @@
 'use strict';
 
 (function (root) {
-  // Valores travados na spec de 2026-08-23 (F2, "Papeis e escolha do
-  // relay"). A origem manda pra UM so relay; cada relay atende no maximo
-  // dois; a arvore nao passa de origem -> relay -> folha. Profundidade
-  // maxima 2 e o freio de latencia E a garantia contra ciclo -- com a
-  // arvore recalculada so pela origem, nao ha como um no virar ancestral
-  // de si mesmo.
-  const FANOUT_ORIGEM = 1;
+  // A origem manda pra um relay; cada relay atende no maximo dois filhos.
   const FANOUT_RELAY = 2;
-  const PROFUNDIDADE_MAX = 2;
 
   // Orcamento de encode POR QUADRO usado na eleicao de relay (H2). O gargalo
   // medido nao e rede, e encode: o relay carrega 2 encoders + 1 decoder, o
@@ -72,7 +65,8 @@
 
   // candidates: Array<{ id, joinedAt, rtt: number|null, transmitting,
   // suspended, relayIneligible,
-  //   encodeHealth?: { softwareEncoder: boolean, msPerFrame: number|null } | null
+  //   encodeHealth?: { softwareEncoder: boolean, msPerFrame: number|null } | null,
+  //   relayLoad?: number
   // }> -- todo peer da sala, exceto a propria origem. `encodeHealth` e
   // opcional: sobe do proprio peer junto do 'view-state' (ver app.js) e so
   // existe quando ele esta de fato codificando algum kind.
@@ -95,7 +89,10 @@
     // arvore fica batendo entre os mesmos dois estados. Ver app.js.
     const eligible = candidates.filter((c) => !c.transmitting && !c.suspended && !c.relayIneligible);
 
-    // H2: ordena por SAUDE DE ENCODE antes de RTT. RTT e a metrica que menos
+    // R2: carga de relay vem PRIMEIRO. Cada origem calcula sua propria
+    // arvore, entao escolher por RTT sem esse sinal concentrava varios
+    // repasses no mesmo peer. Campo ausente (cliente antigo) vale zero.
+    // Depois dela, H2 ordena por SAUDE DE ENCODE antes de RTT. RTT e a metrica que menos
     // importa aqui -- o gargalo e o encoder do relay, nao a rede.
     //  1. encoder em software e VETO quando ha alternativa que nao codifica
     //     em software (encodeHealth ausente conta como alternativa: e
@@ -109,6 +106,9 @@
     // task -- rtt, depois joinedAt.
     const algumNaoSoftware = eligible.some((c) => !encoderEhSoftware(c));
     eligible.sort((a, b) => {
+      const cargaA = Number.isInteger(a.relayLoad) && a.relayLoad >= 0 ? a.relayLoad : 0;
+      const cargaB = Number.isInteger(b.relayLoad) && b.relayLoad >= 0 ? b.relayLoad : 0;
+      if (cargaA !== cargaB) return cargaA - cargaB;
       if (algumNaoSoftware) {
         const sa = encoderEhSoftware(a) ? 1 : 0;
         const sb = encoderEhSoftware(b) ? 1 : 0;
@@ -160,7 +160,7 @@
     return true;
   }
 
-  const api = { computeTree, allDirect, isAllDirect, sameAssignments, FANOUT_ORIGEM, FANOUT_RELAY, PROFUNDIDADE_MAX };
+  const api = { computeTree, allDirect, isAllDirect, sameAssignments, FANOUT_RELAY };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.tree = api;

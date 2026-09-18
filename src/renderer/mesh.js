@@ -1,6 +1,7 @@
 'use strict';
 
 (function (root) {
+  const { DISCONNECT_GRACE_MS } = root.GoLive.networktiming;
   // Sem STUN o ICE so junta candidatos host, entao a unica rota possivel
   // entre dois peers fora da mesma LAN e o adaptador virtual da VPN -- todo
   // o video passa dentro do tunel, que costuma ser o gargalo (jitter e perda
@@ -19,8 +20,6 @@
   // a maquina inteira de recuperacao -- fechar repasses, vetar o relay,
   // recalcular a arvore -- por algo que ia se curar sozinho. Ver a
   // auditoria de 2026-08-27, item A2.
-  const DISCONNECT_GRACE_MS = 15000;
-
   // Estados de sinalizacao em que uma pc de ENTRADA ainda pode receber uma
   // oferta remota: 'stable' (a negociacao anterior fechou) e
   // 'have-remote-offer' (reenvio da mesma oferta, antes de respondermos).
@@ -349,12 +348,30 @@
         settled = true;
         clearDisconnectTimer();
         if (dir === 'in') {
+          const peer = peers.get(peerId);
+          // Uma inConn morta nao pode continuar ocupando o slot: quem
+          // recebe usa esse slot para decidir se ainda ha video entrando e,
+          // sem limpa-lo, nunca pede a oferta de volta. Se ja entrou uma PC
+          // nova no lugar, a falha e da velha e nao deve apagar o estado sao.
+          if (peer?.inConns[kind] !== pc) return;
+          peer.inConns[kind] = null;
           // A stream guardada morre junto com a conexao que a trouxe --
           // sem limpar aqui, relayTo repassaria adiante uma stream cujas
           // tracks ja estao 'ended' e o filho ficaria com tela preta sem
           // nenhum evento pra corrigir depois.
           clearInStream(peerId, kind);
           onPeerState(peerId, { removedTile: true, kind, dir, failed: true });
+          // Depois de soltar o unico slot que a referencia, esta PC nao tem
+          // mais dono que possa fecha-la. `settled` evita reentrar pela
+          // mudanca para 'closed'; ainda assim, registre uma falha de close
+          // em vez de escondê-la num catch vazio.
+          if (pc.connectionState !== 'closed') {
+            try {
+              pc.close();
+            } catch (err) {
+              console.error(`[mesh] nao foi possivel fechar inConn falhada de #${peerId} (kind=${kind}):`, err);
+            }
+          }
         } else {
           onPeerState(peerId, { kind, dir, failed: true });
         }

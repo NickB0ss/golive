@@ -156,7 +156,7 @@
     </div>
     <div id="join-pin-field" class="dialog-field hidden">
       <label for="in-pin">PIN da sala</label>
-      <input id="in-pin" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 dígitos" spellcheck="false" />
+      <input id="in-pin" type="text" inputmode="numeric" maxlength="16" pattern="[0-9]{6}" autocomplete="off" placeholder="6 dígitos" spellcheck="false" />
     </div>
     <p id="setup-error" class="error"></p>
     <div class="dialog-actions">
@@ -429,7 +429,9 @@
 <script src="resume.js"></script>
 <script src="succession.js"></script>
 <script src="tree.js"></script>
+<script src="networktiming.js"></script>
 <script src="mesh.js"></script>
+<script src="broadcastguards.js"></script>
 <script src="espiar.js"></script>
 <script src="gridlayout.js"></script>
 <script src="themecode.js"></script>
@@ -447,6 +449,7 @@
 <script src="rxstats.js"></script>
 <script src="peerquality.js"></script>
 <script src="screenres.js"></script>
+<script src="meshfallbackquality.js"></script>
 <script src="titlebar.js"></script>
 <script src="stallwatch.js"></script>
 <script src="capturewatch.js"></script>
