@@ -62,8 +62,10 @@ jobs:
         run: npm audit || true
 
   empacotar:
-    # O addon nativo exige o toolchain MSVC disponivel no runner Windows.
-    runs-on: windows-latest
+    # O addon nativo exige o toolchain MSVC. windows-2022 e nao -latest: o
+    # -latest passou a trazer o VS 2026 ("18"), que o node-gyp 11 nao
+    # reconhece ("unknown version") e o configure falha antes de compilar.
+    runs-on: windows-2022
     env:
       # Nao procurar certificado: este job so gera o diretorio desempacotado.
       CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -76,8 +78,11 @@ jobs:
           node-version: '22'
           cache: npm
 
-      # Com scripts: o Electron precisa preparar o ambiente para o build nativo.
-      - run: npm ci
+      # Sem scripts tambem aqui: com eles o npm dispara um `node-gyp rebuild`
+      # implicito (existe binding.gyp) sem o patch de toolset do build:native.
+      # O addon e N-API contra os headers do Node, e o electron-builder baixa
+      # o proprio Electron -- o binario de node_modules/electron nao e usado.
+      - run: npm ci --ignore-scripts
 
       # Gera o .node antes do electron-builder e satisfaz o beforeBuild do package.json.
       - run: npm run build:native
