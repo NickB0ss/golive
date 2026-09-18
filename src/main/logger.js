@@ -22,12 +22,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const { app } = require('electron');
 
 const MAX_FILES = 8;
 
 function logsDir() {
-  return path.join(app.getPath('userData'), 'logs');
+  // Preguicoso como em updater.js: com `npm ci --ignore-scripts` (o CI) o
+  // binario do Electron nao existe e `require('electron')` lanca. Os testes
+  // injetam `dir` e nunca chegam aqui.
+  return path.join(require('electron').app.getPath('userData'), 'logs');
 }
 
 function rotateOldFiles(dir, maxFiles) {

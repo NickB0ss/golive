@@ -1,0 +1,94 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    # O app e so Windows, mas estes testes sao JS puro e nao dependem do addon.
+    # A matriz cobre as duas versoes de Node suportadas pelo CI.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      # @v5: as @v4 rodam em Node 20, ja deprecado nos runners.
+      - uses: actions/checkout@v5
+
+      # O cache reduz o custo de reinstalar as dependencias em cada matriz.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # Sem scripts: os testes nao precisam do toolchain nativo nem do Electron instalado.
+      - run: npm ci --ignore-scripts
+
+      # Lint primeiro: separa erros de estilo dos erros de comportamento dos testes.
+      - run: npm run lint
+
+      # O teste falha o job se houver regressao funcional.
+      - run: npm test
+
+      # A cobertura fica visivel no log, mas nao bloqueia o CI por ter denominador parcial.
+      - name: cobertura (informativa)
+        run: node --test --experimental-test-coverage
+        continue-on-error: true
+
+  seguranca:
+    # O audit consulta o registro e nao precisa do ambiente Windows.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # O cache acelera a instalacao das dependencias usadas pelo audit.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Sem scripts: o audit so precisa da arvore de dependencias.
+      - run: npm ci --ignore-scripts
+
+      # Vulnerabilidades de producao sao portao: qualquer nivel baixo reprova o job.
+      - name: producao sem vulnerabilidade
+        run: npm audit --omit=dev --audit-level=low
+
+      # O audit completo e informativo enquanto vulnerabilidades de desenvolvimento existem.
+      - name: dev (informativo)
+        run: npm audit || true
+
+  empacotar:
+    # O addon nativo exige o toolchain MSVC disponivel no runner Windows.
+    runs-on: windows-latest
+    env:
+      # Nao procurar certificado: este job so gera o diretorio desempacotado.
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+      - uses: actions/checkout@v5
+
+      # O cache reduz o custo do build nativo e do empacotamento.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Com scripts: o Electron precisa preparar o ambiente para o build nativo.
+      - run: npm ci
+
+      # Gera o .node antes do electron-builder e satisfaz o beforeBuild do package.json.
+      - run: npm run build:native
+
+      # --dir valida o empacotamento sem gastar tempo gerando o instalador NSIS.
+      # --publish never impede qualquer tentativa de publicar artefatos.
+      - run: npx electron-builder --win --dir --publish never
+
+      # Confirma que o glob de files/asarUnpack levou o addon compilado ao pacote final.
+      - name: o addon nativo entrou no pacote?
+        shell: pwsh
+        run: |
+          $p = 'dist/win-unpacked/resources/app.asar.unpacked/build/Release/golive_audio.node'
+          if (!(Test-Path $p)) { throw "addon nativo ausente do pacote -- rode npm run build:native (auditoria 2026-09-18, P0-5)" }
