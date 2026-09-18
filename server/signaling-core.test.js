@@ -1528,10 +1528,11 @@ test('chat: imagem sozinha (sem legenda) e mensagem valida', async () => {
   }
 });
 
-test('chat: recusa imagem grande demais, tipo nao-imagem e endereco remoto', async () => {
+test('chat: recusa imagem grande demais, tipo nao-imagem, endereco remoto e base64 malformado', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
     const a = await entrar(server.port, 'Ana');
+    const remetentes = await Promise.all(['Bia', 'Caio', 'Dani', 'Eli', 'Fabi'].map((name) => entrar(server.port, name)));
 
     let chegou = 0;
     a.ws.on('message', (raw) => {
@@ -1543,6 +1544,14 @@ test('chat: recusa imagem grande demais, tipo nao-imagem e endereco remoto', asy
     a.ws.send(JSON.stringify({ type: 'chat', image: 'data:text/html;base64,PHNjcmlwdD4=' }));
     a.ws.send(JSON.stringify({ type: 'chat', image: 'https://exemplo.invalido/foto.png' }));
     a.ws.send(JSON.stringify({ type: 'chat', image: 12345 }));
+    const malformadas = [
+      'data:image/png;base64,AAAA" onerror="X',
+      'data:image/png;base64,AAAA<',
+      'data:image/png;base64,AAAA AAAA',
+      'data:image/png;base64,AAAA\nAAAA',
+      "data:image/png;base64,AAAA'",
+    ];
+    remetentes.forEach(({ ws }, index) => ws.send(JSON.stringify({ type: 'chat', image: malformadas[index] })));
 
     const eco = onceChatWhere(a.ws, (m) => !m.system && m.text === 'ping');
     a.ws.send(JSON.stringify({ type: 'chat', text: 'ping' }));
@@ -1550,6 +1559,7 @@ test('chat: recusa imagem grande demais, tipo nao-imagem e endereco remoto', asy
     assert.equal(chegou, 0);
 
     a.ws.close();
+    remetentes.forEach(({ ws }) => ws.close());
   } finally {
     await server.close();
   }

@@ -2414,14 +2414,13 @@
    * (ver o servidor), entao a caixa ja nasce com a altura certa e a lista
    * nao "pula" quando o bitmap decodifica.
    *
-   * `src` sempre vem de um data URL validado (chatmedia.isImageDataUrl) --
-   * o atributo e montado com o valor cru de proposito: escapar um data URL
-   * o quebraria, e a validacao ja garantiu que ele nao e outra coisa. */
+   * `src` vem de um data URL validado (chatmedia.isImageDataUrl), e ainda e
+   * escapado como defesa em profundidade antes de entrar no HTML. */
   function chatImageHtml(entry) {
     if (!chatmedia.isImageDataUrl(entry.image)) return '';
     const box = chatmedia.thumbBox(entry.w, entry.h);
     const dims = box ? ` style="width:${box.w}px;height:${box.h}px"` : '';
-    return `<button class="chat-image" type="button" title="Ver em tela cheia"${dims}><img src="${entry.image}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
+    return `<button class="chat-image" type="button" title="Ver em tela cheia"${dims}><img src="${escapeHtml(entry.image)}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
   }
 
   function appendMessage(entry) {

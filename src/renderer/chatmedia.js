@@ -56,7 +56,7 @@
    * `blob:` em img-src, entao nem carregaria -- ficaria um quadrado
    * quebrado sem explicacao). */
   function isImageDataUrl(value) {
-    return typeof value === 'string' && /^data:image\/(png|jpeg|gif|webp);base64,/.test(value);
+    return typeof value === 'string' && /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
   }
 
   /** Tamanho aproximado, em bytes, do que um data URL base64 carrega. Pro

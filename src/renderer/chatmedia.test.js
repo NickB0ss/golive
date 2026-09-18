@@ -27,11 +27,20 @@ test('GIF nao passa por canvas (senao perde a animacao)', () => {
   assert.ok(!needsCanvas('text/plain'));
 });
 
-test('isImageDataUrl aceita data URL de imagem e recusa endereco remoto', () => {
+test('isImageDataUrl aceita data URL de imagem completa e recusa valores hostis', () => {
   assert.ok(isImageDataUrl('data:image/png;base64,iVBORw0KGgo='));
   assert.ok(!isImageDataUrl('https://exemplo.invalido/foto.png'));
   assert.ok(!isImageDataUrl('data:text/html;base64,PHNjcmlwdD4='));
   assert.ok(!isImageDataUrl('data:image/svg+xml;base64,PHN2Zz4='));
+  for (const value of [
+    'data:image/png;base64,AAAA" onerror="X',
+    'data:image/png;base64,AAAA<',
+    'data:image/png;base64,AAAA AAAA',
+    'data:image/png;base64,AAAA\nAAAA',
+    "data:image/png;base64,AAAA'",
+  ]) {
+    assert.ok(!isImageDataUrl(value), value);
+  }
   assert.ok(!isImageDataUrl(null));
 });
 
