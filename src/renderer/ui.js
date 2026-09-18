@@ -2182,7 +2182,17 @@
   }
   $('btn-join-room-cancel').addEventListener('click', closeJoinRoom);
   $('btn-connect').addEventListener('click', () => {
-    onJoinConnect?.({ address: $('in-server').value.trim(), pin: $('in-pin').value.trim() || null });
+    // So exige PIN quando o campo esta visivel (sala anunciada como
+    // protegida, ou reabertura apos join-denied por pin). O servidor so
+    // aceita PIN de 6 digitos (ver signaling-core.js); cobrar isso aqui
+    // evita a viagem ida-e-volta so pra descobrir que o PIN estava incompleto.
+    const pinVisible = !$('join-pin-field').classList.contains('hidden');
+    const pinDigits = $('in-pin').value.replace(/\D/g, '');
+    if (pinVisible && pinDigits.length !== 6) {
+      $('setup-error').textContent = 'Informe um PIN de 6 dígitos.';
+      return;
+    }
+    onJoinConnect?.({ address: $('in-server').value.trim(), pin: pinDigits || null });
   });
   dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJoinRoom(); });
 

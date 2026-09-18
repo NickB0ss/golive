@@ -28,7 +28,6 @@ const DEADLINE_MS = 5000;
 // Limites que o servidor aplica (B4). Duplicados aqui de proposito: se
 // alguem afrouxar o valor la, o teste desta ponta reclama.
 const MAX_PAYLOAD_BYTES = 512 * 1024;
-const MAX_AVATAR_CHARS = 256 * 1024;
 
 let nonceSeq = 0;
 function nonce(prefixo) {
@@ -391,20 +390,19 @@ test('frame acima do maxPayload derruba so quem mandou (B4)', async (t) => {
   assert.equal(bruno.ws.readyState, WebSocket.OPEN);
 });
 
-test('avatar grande passa no limite de payload e chega cortado em 256 KB', async (t) => {
+test('avatar grande abaixo do limite de payload nao impede join e e descartado inteiro', async (t) => {
   const p = palco(t);
   const servidor = await p.servidor();
   const ana = await p.cliente(servidor, 'ana');
   const bruno = await p.cliente(servidor, 'bruno');
 
   await ana.entra('geral', 'Ana');
-  // 400 KB: acima do corte do avatar, abaixo do maxPayload -- o frame tem de
-  // ser aceito e o avatar guardado ja truncado, senao a sala inteira paga o
-  // custo de repassar o original a cada 'welcome'.
-  await bruno.entra('geral', 'Bruno', { avatar: 'y'.repeat(400 * 1024) });
+  // Acima de 64 KB, abaixo do maxPayload: a pessoa entra, mas nunca recebe
+  // um data URL truncado e invalido de volta.
+  await bruno.entra('geral', 'Bruno', { avatar: `data:image/gif;base64,${'A'.repeat(400 * 1024)}` });
 
   const joined = await ana.esperaTipo('peer-joined');
-  assert.equal(joined.avatar.length, MAX_AVATAR_CHARS);
+  assert.equal(joined.avatar, null);
   assert.equal(bruno.ws.readyState, WebSocket.OPEN, 'o join grande porem legal nao derruba ninguem');
 });
 
