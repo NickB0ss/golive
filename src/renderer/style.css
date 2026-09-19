@@ -769,6 +769,33 @@ button.busy { cursor: default; }
 .control-btn { min-width: 0; }
 .control-btn-end { margin-left: auto; }
 
+/* P7 (auditoria 2026-09-18): nivel do audio compartilhado, colado no botao
+   de pausa. Puramente decorativo (por isso aria-hidden no HTML) -- o aviso
+   de verdade (silencio absoluto) sai por #stage-warning, que ja tem
+   aria-live e um "x" pra dispensar. Sem cor saturada: o acento e reservado
+   a "alguem esta ao vivo" (ver a nota no topo do arquivo) -- aceso aqui e
+   so ELEVACAO/CONTRASTE (--text-1 sobre --line2), nao uma segunda cor viva
+   competindo com o selo AO VIVO. */
+.sound-meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+  padding: 0 var(--s-1);
+  flex: none;
+}
+.sound-meter-bar {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--line2);
+  transition: height 0.1s linear, background 0.1s linear;
+}
+.sound-meter-bar:nth-child(1) { height: 25%; }
+.sound-meter-bar:nth-child(2) { height: 50%; }
+.sound-meter-bar:nth-child(3) { height: 75%; }
+.sound-meter-bar:nth-child(4) { height: 100%; }
+.sound-meter-bar.is-lit { background: var(--text-1); }
+
 /* Ligado: forma diferente, nao so cor mais forte -- o rotulo e o icone ja
    mudaram em ui.js, isto e so o preenchimento que faz a mudanca ser vista
    sem ler (spec 2026-09-03, secao 3.2). Especificidade de duas classes
@@ -1059,6 +1086,20 @@ button.busy { cursor: default; }
   font-size: 11px;
   color: var(--text-2);
   background: var(--surface-3);
+  border-radius: var(--r-full);
+  padding: 1px var(--s-2);
+  white-space: nowrap;
+  flex: none;
+}
+
+/* P4 (auditoria 2026-09-18): do lado de quem transmite/repassa -- quem,
+   na lista, esta recebendo mal. Ao contrario do .member-quality-tag (dado
+   neutro, ver comentario acima), este E um alerta -- por isso --warn, nao
+   a superficie neutra. */
+.member-health-tag {
+  font-size: 11px;
+  color: var(--warn);
+  background: var(--warn-dim);
   border-radius: var(--r-full);
   padding: 1px var(--s-2);
   white-space: nowrap;
@@ -1360,6 +1401,31 @@ button.busy { cursor: default; }
 .tile-kind-badge svg { width: 12px; height: 12px; }
 .tile.fullscreen .tile-kind-badge { bottom: 22px; right: 54px; opacity: 1; transition: opacity 0.25s; }
 .tile.fullscreen.idle .tile-kind-badge { opacity: 0; }
+
+/* P4 (auditoria 2026-09-18): saude de recepcao do lado de quem assiste --
+   "travando, e de quem e a culpa". Empilha ACIMA do .tile-label (que fica
+   em bottom:10px) pra nao brigar por espaco com o nome. Fica visivel em
+   .tile.fullscreen.idle de proposito -- ver a excecao em css-rules.test.js:
+   e um alerta, nao decoracao, e sumir com o mouse parado esconderia o
+   problema bem na hora em que ninguem esta mexendo pra notar sozinho. */
+.tile-health-chip {
+  position: absolute;
+  left: 10px; bottom: 40px;
+  max-width: calc(100% - 20px);
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  background: var(--warn-dim);
+  border: 1px solid var(--warn-border);
+  color: var(--text-1);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.tile-health-chip.is-ruim { background: var(--danger-dim); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 
 /* Overlay de "transmissao pausada" -- ver a spec de 2026-09-03, secao 4.
    Duas camadas: um bitmap ESTATICO borrado (nenhuma animacao, nenhum

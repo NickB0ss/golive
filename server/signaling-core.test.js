@@ -416,6 +416,84 @@ test('broadcast-state: annotate nao vaza de um cliente que mandou lixo', async (
   }
 });
 
+// P4 (auditoria 2026-09-18): `limit` e o unico campo novo do
+// 'broadcast-state' -- a origem anuncia a propria limitacao de encode pra
+// quem assiste poder nomear o culpado quando a tela trava.
+test('broadcast-state: limit atravessa pra sala inteira quando e um valor valido', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, limit: 'cpu' }));
+    const msg = await atB;
+    assert.equal(msg.limit, 'cpu');
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('broadcast-state: limit ausente chega como null, nao undefined', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true }));
+    const msg = await atB;
+    assert.equal(msg.limit, null);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('broadcast-state: limit fora do enum fechado nao vaza de um cliente hostil', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const atB = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, limit: 'sql-injection-tentativa' }));
+    const msg = await atB;
+    assert.equal(msg.limit, null);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('broadcast-state: paused ausente chega como false, nao undefined', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {

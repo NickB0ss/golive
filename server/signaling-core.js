@@ -325,6 +325,21 @@ function sanitizeAvatar(avatar) {
     : null;
 }
 
+// P4 (auditoria 2026-09-18, anexo 5-produto.md): o UNICO campo novo do
+// 'broadcast-state' -- a origem anuncia a propria limitacao de encode
+// (qualityLimitationReason do WebRTC, ja resumido em
+// summarizeScreenEncodeHealth) pra quem assiste poder nomear o culpado
+// quando a tela trava. Enum fechado: qualquer outra coisa (campo ausente,
+// lixo de cliente hostil, versao futura com valor novo) vira null -- o
+// mesmo tratamento de ausencia neutra que o resto do protocolo ja usa pra
+// campo opcional (`annotate`/`paused` sao booleanos e caem em `false`; este
+// e tri-estado e cair em `false` inventaria uma limitacao que nao existe).
+const BROADCAST_LIMIT_VALUES = new Set(['bandwidth', 'cpu', 'other']);
+
+function sanitizeLimit(raw) {
+  return typeof raw === 'string' && BROADCAST_LIMIT_VALUES.has(raw) ? raw : null;
+}
+
 function sanitizeLaserOp(msg) {
   if (typeof msg.x !== 'number' || typeof msg.y !== 'number') return null;
   const x = normPoint(msg.x);
@@ -1215,6 +1230,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 // Estado reapresentado apos migracao: informa o cliente que
                 // recebe para nao tratar a sincronizacao como transicao nova.
                 bootstrap: msg.bootstrap === true,
+                // P4: ver sanitizeLimit acima. Reconstruido campo a campo
+                // como todo o resto desta mensagem -- e exatamente onde
+                // `annotate` sumiu calado na 0.10.2 e `color` na 0.12.0.
+                limit: sanitizeLimit(msg.limit),
               });
               break;
             }

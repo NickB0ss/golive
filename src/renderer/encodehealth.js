@@ -57,6 +57,20 @@
       load: comMs.length
         ? Math.max(...comMs.map((r) => r.msPerFrame / budgetMsFor(targetFpsFor?.(r))))
         : null,
+      // P4 (auditoria 2026-09-18): o UNICO dado novo que sai pro
+      // 'broadcast-state' (campo `limit`), pra quem assiste poder saber DE
+      // QUEM e a culpa quando a tela trava. Prioridade cpu > bandwidth >
+      // other -- cpu e o sinal mais AUTORITATIVO (o proprio Chromium so
+      // marca quando o encode de fato nao acompanha; bandwidth pode ser so
+      // o GCC rampando no inicio da conexao, ver peerquality WARMUP_MS).
+      // null == nenhum sender de tela reportou limitacao nenhuma.
+      limit: screen.some((r) => r.limitation === 'cpu')
+        ? 'cpu'
+        : screen.some((r) => r.limitation === 'bandwidth')
+          ? 'bandwidth'
+          : screen.some((r) => r.limitation === 'other')
+            ? 'other'
+            : null,
     };
   }
 
