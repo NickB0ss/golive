@@ -143,6 +143,11 @@
   // Histerese da re-eleicao, por kind (Parte B): instante da ultima
   // re-eleicao aplicada e o handle de um recalculo comum que caiu dentro da
   // janela e foi adiado. Ver REELECTION_HYSTERESIS_MS e recomputeTree.
+  // Declarado aqui em cima, longe do resto do estado de audiencia: o
+  // renderRoomStatus (chamado ja na carga, via renderMembersPanel) le
+  // watchedScreens.size pro powerSaveBlocker, e um `const` declarado mais
+  // abaixo dava ReferenceError de TDZ e abortava o resto da inicializacao.
+  const watchedScreens = new Set(); // ids de quem transmite a tela que eu assisto
   const reelectionAt = { screen: 0, camera: 0 };
   const deferredRecompute = { screen: null, camera: null };
 
@@ -4500,7 +4505,8 @@
   // vira `view-state {watching:false}` no broadcastViewState logo abaixo, e
   // quem transmite solta o encoder daquele espectador (mesh.setPeerDemand,
   // F1.3). O caminho ja existia -- era usado so pra janela minimizada.
-  const watchedScreens = new Set(); // ids de quem transmite a tela que eu assisto
+  // (watchedScreens e declarado no topo do modulo: renderRoomStatus o le
+  // durante a carga, antes deste ponto -- ver comentario la.)
 
   // Uma vez que o usuario para de assistir DE PROPOSITO (menu de botao
   // direito) e fica sem nenhuma tela, a auto-escolha nao repoe outra: ele
