@@ -68,6 +68,20 @@
           <span id="lobby-net-addr" class="lobby-net-addr"></span>
         </span>
       </div>
+      <!-- P2 (auditoria 2026-09-18): Tailscale e L3, nao repassa broadcast --
+           "Salas na sua rede" nunca acha nada sozinha ali. So aparece quando
+           renderNetworkStatus detecta essa rede (ver src/renderer/ui.js). -->
+      <p id="lobby-net-tailscale-warn" class="lobby-net-warn hidden">
+        No Tailscale as salas não aparecem sozinhas.
+        <button id="btn-tailscale-join" class="link-button" type="button">Entrar por endereço</button>
+      </p>
+    </section>
+    <!-- P2: enderecos de amigos salvos (nao "salas" -- o estado exibido vem
+         sempre da sonda, nunca de um bookmark morto). So aparece com pelo
+         menos um endereco salvo. -->
+    <section id="known-hosts-section" class="lobby-known-hosts hidden">
+      <p class="sidebar-label">Amigos salvos</p>
+      <ul id="known-hosts-list" class="known-hosts-list"></ul>
     </section>
     <div class="user-panel">
       <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
@@ -440,6 +454,7 @@
   </div>
 </div>
 
+<script src="knownhosts.js"></script>
 <script src="config.js"></script>
 <script src="emoji.js"></script>
 <script src="chatmedia.js"></script>

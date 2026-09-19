@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, knownhosts } = window.GoLive;
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
@@ -910,10 +910,18 @@
 
   // ---------- Lista de salas ----------
 
+  // P2 (auditoria 2026-09-18): salas achadas pela sonda dirigida aos amigos
+  // salvos -- endereco (chave IP:porta) -> resumo no MESMO formato que o
+  // beacon UDP ja produz. Fundida com discoveredRooms na hora de renderizar
+  // (mergeRoomSources), sem duplicar quando as duas fontes acham a mesma
+  // maquina. Nunca persistido -- e so o resultado da ULTIMA rodada.
+  let probedRooms = new Map();
+
   function renderRoomList() {
+    const liveRooms = knownhosts.mergeRoomSources(discoveredRooms, Array.from(probedRooms.values()));
     ui.rooms.render({
       activeAddress: activeRoomAddress,
-      liveRooms: discoveredRooms,
+      liveRooms,
       isOnCooldown: (address) => cooldownRemaining(address) > 0,
       appVersion,
       onSelect: (room) => {
@@ -942,6 +950,117 @@
   }
   renderRoomList();
   renderMembersPanel();
+
+  // ---------- Amigos salvos + sonda dirigida (P2) ----------
+
+  function renderKnownHostsList() {
+    ui.rooms.renderKnownHosts?.(cfg.knownHosts, {
+      onSelect: (host) => joinRoom(host.address, cfg.name),
+      onRemove: (host) => {
+        cfg = { ...cfg, knownHosts: knownhosts.removeHost(cfg.knownHosts, host.address) };
+        persist();
+        renderKnownHostsList();
+      },
+    });
+  }
+  renderKnownHostsList();
+
+  // Entra na lista sozinho quando um 'welcome' confirma que um endereco
+  // funcionou de verdade (chamado do case 'welcome' de handleSignal, mais
+  // abaixo) -- nunca quando SOU o host (hostInfo truthy: seria salvar o
+  // proprio endereco) e nunca endereco invalido (addHost devolve a MESMA
+  // referencia e o `if` abaixo pula persist/render a toa).
+  function rememberKnownHost(address) {
+    if (hostInfo || !address) return;
+    const updated = knownhosts.addHost(cfg.knownHosts, address, Date.now());
+    if (updated === cfg.knownHosts) return;
+    cfg = { ...cfg, knownHosts: updated };
+    persist();
+    renderKnownHostsList();
+  }
+
+  // Timeout curto e poucas em paralelo: uma sala fora do ar nao pode travar
+  // o refresh do lobby, e uma rodada nunca pode ter mais de
+  // KNOWN_HOST_PROBE_CONCURRENCY sondas abertas ao mesmo tempo.
+  const KNOWN_HOST_PROBE_TIMEOUT_MS = 1500;
+  const KNOWN_HOST_PROBE_CONCURRENCY = 4;
+  // Nunca mais que a cada ~15s (item 2 da tarefa) -- o setInterval roda
+  // sempre, mas o corpo desiste na hora se o lobby nao estiver visivel.
+  const KNOWN_HOST_PROBE_INTERVAL_MS = 15000;
+  let probingKnownHosts = false;
+
+  /** Uma sonda: WebSocket curto pro endereco salvo, manda 'probe' e espera
+   * 'probe-ok' OU o timeout -- nunca entra na sala (mesma mensagem que
+   * server/signaling-core.js aceita de quem nao deu 'join'). Devolve o
+   * resumo no formato de room-list, ou `null` se a maquina nao respondeu. */
+  function probeKnownHost(host) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let conn = null;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        try { conn?.close(); } catch { /* ja fechando */ }
+        resolve(result);
+      };
+      // O connectTimeoutMs de signaling.connect so cobre a fase CONNECTING
+      // (some assim que abre): sem um prazo proprio aqui, uma maquina que
+      // aceita o TCP mas nunca fala o protocolo (porta ocupada por outra
+      // coisa, servidor travado) prenderia esta sonda pra sempre, e com ela
+      // a rodada inteira (Promise.all do batch).
+      const deadline = setTimeout(() => finish(null), KNOWN_HOST_PROBE_TIMEOUT_MS);
+      try {
+        conn = signaling.connect(normalizeRoomUrl(host.address), {
+          onOpen: () => conn.send({ type: 'probe' }),
+          onMessage: (msg) => {
+            if (!msg || msg.type !== 'probe-ok') return;
+            finish({
+              name: typeof msg.roomName === 'string' && msg.roomName ? msg.roomName : 'sala',
+              address: host.address,
+              peers: typeof msg.peers === 'number' ? msg.peers : undefined,
+              protected: msg.protected === true,
+              version: typeof msg.version === 'string' ? msg.version : undefined,
+            });
+          },
+          onError: () => finish(null),
+          onClose: () => finish(null),
+        }, { connectTimeoutMs: KNOWN_HOST_PROBE_TIMEOUT_MS });
+      } catch {
+        finish(null);
+      }
+    });
+  }
+
+  async function runKnownHostProbes() {
+    if (probingKnownHosts || !ui.rooms.isLobbyVisible?.()) return;
+    const hosts = cfg.knownHosts;
+    if (!hosts.length) return;
+    probingKnownHosts = true;
+    try {
+      for (let i = 0; i < hosts.length; i += KNOWN_HOST_PROBE_CONCURRENCY) {
+        if (!ui.rooms.isLobbyVisible?.()) break; // entrou numa sala no meio da rodada
+        const batch = hosts.slice(i, i + KNOWN_HOST_PROBE_CONCURRENCY);
+        const results = await Promise.all(batch.map(probeKnownHost));
+        let changed = false;
+        batch.forEach((host, idx) => {
+          const result = results[idx];
+          if (result) {
+            probedRooms.set(host.address, result);
+            changed = true;
+          } else if (probedRooms.delete(host.address)) {
+            changed = true; // parou de responder -- sai da lista
+          }
+        });
+        if (changed) renderRoomList();
+      }
+    } finally {
+      probingKnownHosts = false;
+    }
+  }
+  const knownHostProbeTimer = setInterval(() => { void runKnownHostProbes(); }, KNOWN_HOST_PROBE_INTERVAL_MS);
+  if (typeof knownHostProbeTimer.unref === 'function') knownHostProbeTimer.unref();
+  void runKnownHostProbes(); // primeira rodada logo na abertura do lobby
 
   // Endereco desta maquina na rede virtual, mostrado no rodape da coluna de
   // acoes do lobby. Relido no botao de atualizar porque o Radmin/Tailscale
@@ -1124,6 +1243,7 @@
     btn.classList.add('spin');
     window.golive.refreshDiscovery();
     refreshNetworkStatus();
+    void runKnownHostProbes(); // P2: o refresh manual tambem sonda de novo
   });
 
   // Corpo compartilhado do "Conectar" do dialogo de entrar numa sala -- usado
@@ -1148,6 +1268,11 @@
   }
 
   $('btn-join-address').addEventListener('click', () => {
+    ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
+  });
+  // P2: mesmo caminho do botao acima -- o aviso de Tailscale so oferece uma
+  // acao a mais pra chegar la, nao um fluxo novo.
+  $('btn-tailscale-join')?.addEventListener('click', () => {
     ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
   });
 
@@ -2835,6 +2960,12 @@
           ui.stageHeader.setName(currentRoomName);
         }
         if (migrationState && roomId === migrationState.roomId) clearMigrationState();
+        // P2: a prova de que um endereco digitado/sondado funciona de
+        // verdade e ELE TER ENTRADO -- entao qualquer 'welcome' recebido
+        // como visitante (nunca como quem hospeda, ver rememberKnownHost)
+        // salva o endereco sozinho. Reconexao automatica so reafirma o
+        // mesmo endereco (ordem por ultimo sucesso), nao machuca nada.
+        rememberKnownHost(activeRoomAddress);
         myId = msg.id;
         joinedAtMs = Date.now();
         session.bootstrapExistingShare = migratedRoom && Boolean(localStream);

@@ -1,6 +1,11 @@
 'use strict';
 
 (function (root) {
+  // knownhosts.js precisa ter carregado antes (index.html carrega os dois
+  // scripts nessa ordem; mesmo padrao de mesh.js dependendo de
+  // networktiming.js via root.GoLive).
+  const knownhosts = root.GoLive.knownhosts;
+
   // UUID de instalacao. Funciona tanto no renderer (crypto global do
   // browser) quanto sob `node --test` (crypto do core). Gerado dentro de
   // load() quando ausente/invalido -- nunca um valor fixo em DEFAULTS, que
@@ -220,6 +225,11 @@
     // aqui so como "lista de strings" -- quais emoji existem e assunto do
     // emoji.js, que este arquivo tambem nao importa.
     emojiRecents: [],
+    // Amigos salvos (P2, auditoria 2026-09-18): enderecos de maquina que a
+    // sonda dirigida (app.js) consulta de novo a cada refresh do lobby --
+    // nunca um nome de sala congelado. Entra sozinho quando um 'welcome'
+    // confirma que um endereco digitado funcionou; sai pela interface.
+    knownHosts: [],
   };
 
   // As seis predefinicoes conhecidas pelo config -- so os NOMES, pra validar
@@ -372,6 +382,7 @@
       themeMigration: true,
       annotations: { allow: parsed.annotations?.allow === true },
       emojiRecents: loadStringList(parsed.emojiRecents, 24),
+      knownHosts: knownhosts.loadList(parsed.knownHosts),
     };
   }
 

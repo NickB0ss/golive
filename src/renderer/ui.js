@@ -2084,6 +2084,47 @@
     roomsCountEl.classList.toggle('empty', liveRooms.length === 0);
   }
 
+  // ---------- Lobby: amigos salvos (P2, auditoria 2026-09-18) ----------
+
+  const REMOVE_HOST_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4 L20 20 M20 4 L4 20"/></svg>`;
+  const knownHostsSectionEl = $('known-hosts-section');
+  const knownHostsListEl = $('known-hosts-list');
+
+  /** `hosts` e a lista crua de cfg.knownHosts ({address, lastSeenAt}) --
+   * nenhum estado exibido aqui vem de disco alem do proprio endereco: quem
+   * quer saber "esta aberta agora?" olha a lista de salas (a sonda ja funde
+   * o que achou ali, ver app.js). Aqui e so gestao: entrar de novo ou
+   * remover. So aparece com pelo menos 1 endereco salvo. */
+  function renderKnownHosts(hosts, { onSelect, onRemove } = {}) {
+    if (!knownHostsSectionEl || !knownHostsListEl) return;
+    const list = Array.isArray(hosts) ? hosts : [];
+    knownHostsSectionEl.classList.toggle('hidden', list.length === 0);
+    knownHostsListEl.innerHTML = '';
+    for (const host of list) {
+      const li = document.createElement('li');
+      li.className = 'known-host-row';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'known-host-address';
+      btn.textContent = host.address;
+      btn.title = `Entrar em ${host.address}`;
+      btn.addEventListener('click', () => onSelect?.(host));
+      li.appendChild(btn);
+
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'icon-btn-inline';
+      rm.title = 'Remover dos amigos salvos';
+      rm.setAttribute('aria-label', `Remover ${host.address} dos amigos salvos`);
+      rm.innerHTML = REMOVE_HOST_ICON;
+      rm.addEventListener('click', () => onRemove?.(host));
+      li.appendChild(rm);
+
+      knownHostsListEl.appendChild(li);
+    }
+  }
+
   // ---------- Lobby: endereco desta maquina na rede ----------
 
   const NET_LABELS = { radmin: 'Radmin VPN', tailscale: 'Tailscale', lan: 'Rede local' };
@@ -2094,6 +2135,7 @@
     const dot = $('lobby-net-dot');
     const kindEl = $('lobby-net-kind');
     const addrEl = $('lobby-net-addr');
+    const tailscaleWarnEl = $('lobby-net-tailscale-warn');
     if (!dot || !kindEl || !addrEl) return;
     // Ponto neutro quando esta tudo certo: --live (vermelho) e reservado a
     // "alguem esta ao vivo", e uma bolinha vermelha aqui ainda leria como
@@ -2104,12 +2146,18 @@
       dot.classList.add('warn');
       kindEl.textContent = 'Sem rede detectada';
       addrEl.textContent = 'ligue o Radmin ou o Tailscale e atualize';
+      tailscaleWarnEl?.classList.add('hidden');
       return;
     }
     if (info.kind === 'lan') dot.classList.add('warn');
     kindEl.textContent = NET_LABELS[info.kind] || 'Rede';
     addrEl.textContent = info.address;
     addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
+    // P2 (auditoria 2026-09-18): Tailscale e L3 e nao repassa broadcast --
+    // reusa a MESMA classificacao que ja pinta a bolinha (src/main/network.js),
+    // em vez de uma segunda deteccao que pudesse divergir dela. Sem isto a
+    // lista de salas fica vazia pra sempre ali sem explicar por que.
+    tailscaleWarnEl?.classList.toggle('hidden', info.kind !== 'tailscale');
   }
 
   // ---------- Dialogo: Criar sala ----------
@@ -4223,7 +4271,15 @@
       dropAuthor: forgetReactionAuthor,
       render: ({ onOp }) => { onReactionOp = onOp; },
     },
-    rooms: { render: renderRooms, setNetworkStatus: renderNetworkStatus },
+    rooms: {
+      render: renderRooms,
+      setNetworkStatus: renderNetworkStatus,
+      renderKnownHosts,
+      // P2: a sonda dirigida so roda com o lobby visivel (item 2 da tarefa)
+      // -- lobbyViewEl/roomViewEl sao a MESMA troca de tela que stageHeader
+      // ja controla (set esconde o lobby, clear devolve).
+      isLobbyVisible: () => !lobbyViewEl.classList.contains('hidden'),
+    },
     dialogs: {
       openCreateRoom, closeCreateRoom, setCreateRoomError,
       openJoinRoom, closeJoinRoom, setJoinRoomPinVisible,

@@ -75,6 +75,13 @@ const PIN_FAILURE_WINDOW_MS = 60 * 1000;
 const PIN_BLOCK_MS = 60 * 1000;
 const MAX_PIN_FAILURE_ENTRIES = 1024;
 
+// Sonda dirigida (P2, auditoria 2026-09-18 -- anexo 5-produto.md): um
+// cliente no lobby manda 'probe' pra perguntar "essa sala existe e esta
+// aberta?" sem entrar nela. Uso legitimo e no maximo 1 por conexao (o
+// servidor fecha o socket logo depois de responder); a cota so segura o
+// caso de alguem mandar varias antes do close ter efeito.
+const MAX_PROBE_PER_SECOND = 3;
+
 // Ids de conexao nascem em `String(nextId++)`: decimal positivo, sem zeros
 // a esquerda. Number conserva inteiros exatos ate 16 algarismos; o teto
 // tambem impede um kind composto de virar uma chave gigante no renderer.
@@ -524,6 +531,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     // mudanca de topologia (tela + camera + cada origem repassada).
     const MAX_WATCHERS_PER_SECOND = 20;
     const watchersLimiters = new Map(); // peerId -> limiter, 20 msg/s
+    // 'probe' e o unico tipo aceito de socket que nunca chegou a entrar --
+    // chaveado pelo id de CONEXAO (nao ha peerId de sala pra quem so sonda).
+    const probeLimiters = new Map();
 
     function pushChatEntry(entry) {
       chatHistory.push(entry);
@@ -837,6 +847,35 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
           if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return;
 
           switch (msg.type) {
+            // Sonda dirigida (P2): o UNICO tipo aceito de um socket que
+            // ainda nao entrou -- por isso vem antes do 'join' e nao mexe
+            // em `peers`. Devolve so o resumo publico que a lista de salas
+            // ja mostra (reconstruido campo a campo, nunca o msg cru): nome,
+            // se pede PIN, quantas pessoas, versao. Nada de PIN, peers ou
+            // id interno -- e por isso a conexao nunca vira peer: nao
+            // conta no teto do R8 (MAX_CONNECTIONS) nem em getPeerCount.
+            case 'probe': {
+              if (joined) return; // quem ja entrou nao sonda a propria sala
+              const limiter = probeLimiters.get(id) || createRateLimiter({ limit: MAX_PROBE_PER_SECOND, windowMs: 1000 });
+              probeLimiters.set(id, limiter);
+              if (!limiter.hit(Date.now())) {
+                ws.close(1008, 'flood');
+                return;
+              }
+              send(ws, {
+                type: 'probe-ok',
+                roomName: effectiveRoomName(),
+                peers: peers.size,
+                protected: Boolean(roomPin),
+                version: hostVersion,
+              });
+              // A sonda nunca fica: pergunta e sai. Fechar aqui (em vez de
+              // esperar o cliente) e o que garante que ela nunca ocupa uma
+              // vaga de MAX_PENDING_CONNECTIONS por mais que o necessario.
+              ws.close(1000, 'probe');
+              break;
+            }
+
             case 'join': {
               if (joined) return;
               // clientId e endereco entram cedo: a checagem de ban precisa
@@ -1313,6 +1352,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
         });
 
         ws.on('close', (code, reason) => {
+          // Socket que so sondou (nunca entrou) nao tem `me` nenhum -- so a
+          // cota da sonda, presa ao id de conexao, pra nao vazar entrada.
+          probeLimiters.delete(peerId);
           const me = peers.get(peerId);
           // O socket de antes da retomada fecha depois do novo welcome. Ele
           // nao representa mais este peer e deve sair em silencio.
@@ -1413,4 +1455,5 @@ module.exports = {
   MAX_CONNECTIONS,
   MAX_AVATAR_CHARS,
   MAX_ROOM_NAME_CHARS,
+  MAX_PROBE_PER_SECOND,
 };
