@@ -165,7 +165,11 @@ test('todo overlay do tile some com o mouse parado', () => {
   //   herdado  -- descendente de quem ja tem a regra, some junto.
   const EXCECOES = new Set([
     '.tile-annot-canvas', '.tile-react-pops', '.tile-react-pop', '.pip-strip', // conteudo
-    '.tile-paused', '.tile-paused-shot', '.tile-gate',                         // estado
+    // .tile-health-chip (P4, auditoria 2026-09-18): e um ALERTA acionavel
+    // (a tela esta travando pra voce, e de quem e a culpa) -- sumir com o
+    // mouse parado esconderia o aviso bem na hora em que ninguem esta
+    // mexendo pra notar sozinho, mesmo racional de .tile-paused abaixo.
+    '.tile-paused', '.tile-paused-shot', '.tile-gate', '.tile-health-chip',    // estado
     '.tile-watchers-panel',                                                    // herdado
   ]);
 

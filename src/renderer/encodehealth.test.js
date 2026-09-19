@@ -80,3 +80,34 @@ test('linha de tela sem msPerFrame -> msPerFrame null, mas ainda classifica enco
   assert.equal(health.softwareEncoder, true);
   assert.equal(health.msPerFrame, null);
 });
+
+// P4 (auditoria 2026-09-18): `limit` e o unico campo novo que sobe pro
+// 'broadcast-state' -- devolvido aqui pra quem assiste poder nomear o
+// culpado quando a tela trava.
+test('limit e null quando nenhum sender de tela reporta limitacao', () => {
+  assert.equal(summarizeScreenEncodeHealth([row('screen', 'openh264', 9)]).limit, null);
+});
+
+test('limit reflete a unica limitacao reportada', () => {
+  assert.equal(summarizeScreenEncodeHealth([row('screen', 'openh264', 9, 'bandwidth')]).limit, 'bandwidth');
+  assert.equal(summarizeScreenEncodeHealth([row('screen', 'openh264', 9, 'other')]).limit, 'other');
+  assert.equal(summarizeScreenEncodeHealth([row('screen', 'nvcodec', 9, 'cpu')]).limit, 'cpu');
+});
+
+test('limit prioriza cpu sobre bandwidth sobre other entre varios senders', () => {
+  assert.equal(summarizeScreenEncodeHealth([
+    row('screen', 'openh264', 9, 'bandwidth'),
+    row('screen@9', 'openh264', 30, 'cpu'),
+  ]).limit, 'cpu');
+  assert.equal(summarizeScreenEncodeHealth([
+    row('screen', 'openh264', 9, 'other'),
+    row('screen@9', 'openh264', 30, 'bandwidth'),
+  ]).limit, 'bandwidth');
+});
+
+test('camera com limitacao nao contamina o limit da tela', () => {
+  assert.equal(summarizeScreenEncodeHealth([
+    row('screen', 'openh264', 9),
+    row('camera', 'libvpx', 3, 'cpu'),
+  ]).limit, null);
+});

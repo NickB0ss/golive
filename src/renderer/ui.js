@@ -433,6 +433,21 @@
     renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
   }
 
+  /** P4 (auditoria 2026-09-18): chip discreto de saude de recepcao, do lado
+   * de quem assiste -- `state` e o retorno de health.next (app.js decide, e
+   * so decide, este modulo so pinta). Sem estado por-modulo (ao contrario
+   * de tileWatchers/tilePaused): um tile recriado nasce sem chip e o
+   * proximo tick de updateStats o repinta -- nao ha janela em que um chip
+   * de saude ANTIGO ficaria preso num tile que renegociou. */
+  function setHealthChip(tileId, state) {
+    const chip = document.getElementById(`tile-${tileId}`)?.querySelector('.tile-health-chip');
+    if (!chip) return;
+    const show = Boolean(state?.text) && state.level !== 'ok';
+    chip.textContent = show ? state.text : '';
+    chip.classList.toggle('hidden', !show);
+    chip.classList.toggle('is-ruim', state?.level === 'ruim');
+  }
+
   // ---------- Escolher qual tela assistir ----------
   //
   // Assistir a TODAS as telas ao mesmo tempo era a decisao do app, nao de
@@ -690,6 +705,7 @@
         <span class="tile-avatar"></span>
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
+        <span class="tile-health-chip hidden"></span>
         <div class="tile-watchers is-empty"></div>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia" aria-label="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
@@ -2307,7 +2323,7 @@
   // `live` liga `.peer-avatar.on` (anel --live via box-shadow, o unico sinal
   // saturado do tema). Sem anel no estado normal -- "conectado" e "ao vivo"
   // sao a mesma afirmacao neste tema.
-  function buildMemberRow({ id, name, avatar, live, isSelf, pulsing, qualityTag, isOwner, canModerate, onModerate }) {
+  function buildMemberRow({ id, name, avatar, live, isSelf, pulsing, qualityTag, strugglingTag, isOwner, canModerate, onModerate }) {
     // O ⋮ so existe quando ha o que fazer: pra quem nao e dono da sala, o
     // menu inteiro ficou vazio quando "Silenciar" saiu dele, e um botao que
     // abre um menu vazio e pior do que botao nenhum.
@@ -2322,6 +2338,7 @@
       ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
       ${isOwner ? '<span class="peer-crown" title="Líder da sala" role="img" aria-label="Líder da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
       ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
+      ${strugglingTag ? '<span class="member-health-tag">travando</span>' : ''}
       ${live
         ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
         : ''
@@ -2337,7 +2354,7 @@
     return li;
   }
 
-  function renderMembers(peers, self, qualityTags, { ownerId, myId, onModerate } = {}) {
+  function renderMembers(peers, self, qualityTags, { ownerId, myId, onModerate, healthTags } = {}) {
     peerListEl.innerHTML = '';
     if (!self && !peers.size) {
       peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
@@ -2373,6 +2390,9 @@
           live: peer.live,
           pulsing: claimPulse(peer.live),
           qualityTag: qualityTags?.get(peer.id) || '',
+          // P4: "travando" ao lado do preset degradado -- so do lado de
+          // quem transmite (ou repassa) pra aquela pessoa.
+          strugglingTag: Boolean(healthTags?.has(peer.id)),
           isOwner: ownerId != null && peer.id === ownerId,
           canModerate: iAmOwner,
           onModerate,
@@ -4114,6 +4134,26 @@
     });
   }
 
+  // ---------- Medidor de som (P7) ----------
+  // Decorativo: quatro barrinhas coladas no botao de pausa que acendem com
+  // o NIVEL (pico 0..1, ja calculado por audiometer.level em app.js -- este
+  // modulo so pinta). O aviso de verdade (silencio absoluto) sai por
+  // #stage-warning, que ja tem aria-live; ver renderHostWarning em app.js.
+  const soundMeterEl = $('sound-meter');
+  const soundMeterBars = soundMeterEl ? [...soundMeterEl.querySelectorAll('.sound-meter-bar')] : [];
+  // Quatro degraus grosseiros -- o suficiente pra "ta saindo som", nao um
+  // medidor de VU de verdade.
+  const SOUND_METER_THRESHOLDS = [0.02, 0.15, 0.35, 0.6];
+
+  function setSoundMeterVisible(visible) {
+    soundMeterEl?.classList.toggle('hidden', !visible);
+  }
+
+  function setSoundMeterLevel(peak) {
+    const p = Number(peak) || 0;
+    soundMeterBars.forEach((bar, i) => bar.classList.toggle('is-lit', p >= SOUND_METER_THRESHOLDS[i]));
+  }
+
   // ---------- Barra de controle: estado visivel dos toggles ----------
   // Compartilhar/camera/pausa sabem o proprio estado (app.js ja escrevia
   // classList direto), mas nada em CSS reagia a isso. Esta e a UNICA funcao
@@ -4160,7 +4200,7 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown, setHealthChip },
     annotations: {
       setSelf: annotSetSelf,
       setSurface: setAnnotSurface,
@@ -4194,6 +4234,7 @@
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },
     chat: { render, append, setHistory, setEnabled, setAttachment, clearAttachment },
+    soundMeter: { setVisible: setSoundMeterVisible, setLevel: setSoundMeterLevel },
     setToggleState,
   };
 })(window);

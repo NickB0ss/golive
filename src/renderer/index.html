@@ -225,6 +225,15 @@
         <svg class="icon-on hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         <span class="btn-label">Pausar</span>
       </button>
+      <!-- P7 (auditoria 2026-09-18): nivel do audio compartilhado, colado no
+           botao de pausa. Decorativo -- o aviso de verdade (silencio
+           absoluto) sai por #stage-warning, que ja tem aria-live. -->
+      <div id="sound-meter" class="sound-meter hidden" title="Nível do áudio compartilhado" aria-hidden="true">
+        <span class="sound-meter-bar"></span>
+        <span class="sound-meter-bar"></span>
+        <span class="sound-meter-bar"></span>
+        <span class="sound-meter-bar"></span>
+      </div>
       <button id="btn-swap-share" class="secondary control-btn hidden" type="button" aria-label="Trocar de tela ou janela">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span class="btn-label">Trocar</span>
@@ -469,6 +478,8 @@
 <script src="titlebar.js"></script>
 <script src="stallwatch.js"></script>
 <script src="capturewatch.js"></script>
+<script src="health.js"></script>
+<script src="audiometer.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
