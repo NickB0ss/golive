@@ -363,3 +363,25 @@ test('toRoomList repassa a versao quando presente', () => {
     { name: 'B', address: 'b:9000', port: 9000 },
   ]);
 });
+
+// Item C da auditoria 2026-09-18: com o segredo da sala o beacon sai
+// assinado, com carimbo novo a cada envio, e o segredo nunca vai no pacote.
+test('startAdvertisingMigration com segredo assina cada envio e nao vaza o segredo', async () => {
+  const { verifyMigrationBeacon } = require('../renderer/migration');
+  const { sent, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  d.startAdvertisingMigration({ roomId: 'room-1', address: '10.0.0.5:9001', port: 9001, secret: 'segredo-da-sala', windowMs: 50 });
+  assert.ok(sent.length >= 1);
+  assert.equal(String(sent[0]).includes('segredo-da-sala'), false);
+  const beacon = parseMigrationBeacon(sent[0]);
+  assert.match(beacon.proof, /^[0-9a-f]{64}$/);
+  assert.equal(await verifyMigrationBeacon({ beacon, roomId: 'room-1', secret: 'segredo-da-sala', now: Date.now() }), true);
+  d.stop();
+});
+
+test('parseMigrationBeacon descarta prova malformada em vez de repassar', () => {
+  const base = { type: MIGRATION_BEACON_TYPE, roomId: 'r', address: '10.0.0.5:9000', port: 9000 };
+  assert.equal('proof' in parseMigrationBeacon(JSON.stringify({ ...base, ts: 1, proof: 'nao-e-hex' })), false);
+  assert.equal('proof' in parseMigrationBeacon(JSON.stringify({ ...base, ts: 'x', proof: 'a'.repeat(64) })), false);
+});

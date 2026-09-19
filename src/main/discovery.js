@@ -12,6 +12,10 @@
 'use strict';
 
 const os = require('os');
+const { createHmac } = require('crypto');
+// Mesma mensagem que o renderer confere (src/renderer/migration.js): uma so
+// definicao, pra assinatura e verificacao nunca divergirem.
+const { proofMessage } = require('../renderer/migration');
 
 const DISCOVERY_PORT = 41235;
 const BEACON_INTERVAL_MS = 2000;
@@ -106,8 +110,16 @@ function parseBeacon(raw) {
   return result;
 }
 
-/** Serializa o beacon que anuncia a migracao de uma sala. */
-function formatMigrationBeacon({ roomId, address, port, protected: isProtected }) {
+/** Prova do beacon de migracao: HMAC-SHA256 do roomId + endereco + carimbo
+ * com o `migrationSecret` da sala (item C da auditoria 2026-09-18). O
+ * segredo nunca entra no pacote nem em log -- so a prova. */
+function signMigrationBeacon(secret, roomId, address, ts) {
+  return createHmac('sha256', secret).update(proofMessage(roomId, address, ts)).digest('hex');
+}
+
+/** Serializa o beacon que anuncia a migracao de uma sala. Com `secret`, leva
+ * `ts` + `proof`; sem ele o beacon sai sem prova e o renderer o ignora. */
+function formatMigrationBeacon({ roomId, address, port, protected: isProtected, secret = null, ts = Date.now() }) {
   if (typeof roomId !== 'string' || !roomId.trim()) throw new Error('roomId invalido');
   if (typeof address !== 'string' || !address.trim()) throw new Error('address invalido');
   if (!Number.isInteger(port) || port <= 0) throw new Error('port invalida');
@@ -118,10 +130,15 @@ function formatMigrationBeacon({ roomId, address, port, protected: isProtected }
     port,
   };
   if (isProtected) payload.protected = true;
+  if (typeof secret === 'string' && secret) {
+    payload.ts = ts;
+    payload.proof = signMigrationBeacon(secret, payload.roomId, payload.address, ts);
+  }
   return JSON.stringify(payload);
 }
 
-/** Parseia e valida um beacon de migracao recebido. */
+/** Parseia e valida um beacon de migracao recebido. So confere o formato: a
+ * prova e checada no renderer, que e quem tem o segredo da sala. */
 function parseMigrationBeacon(raw) {
   let data;
   try {
@@ -139,6 +156,10 @@ function parseMigrationBeacon(raw) {
     port: data.port,
   };
   if (data.protected === true) result.protected = true;
+  if (Number.isFinite(data.ts) && typeof data.proof === 'string' && /^[0-9a-f]{64}$/.test(data.proof)) {
+    result.ts = data.ts;
+    result.proof = data.proof;
+  }
   return result;
 }
 
@@ -303,11 +324,14 @@ function createDiscovery({
     migrationWindowTimer = null;
   }
 
-  function startAdvertisingMigration({ roomId, address, port: migrationPort, protected: isProtected = false, windowMs = migrationBeaconWindowMs }) {
+  function startAdvertisingMigration({ roomId, address, port: migrationPort, protected: isProtected = false, secret = null, windowMs = migrationBeaconWindowMs }) {
     stopAdvertisingMigration();
-    const payload = Buffer.from(formatMigrationBeacon({ roomId, address, port: migrationPort, protected: isProtected }));
+    // Valida ja (lanca pro chamador se faltar campo); o pacote de cada envio
+    // e remontado com carimbo novo, pra prova nunca vencer no meio da janela.
+    formatMigrationBeacon({ roomId, address, port: migrationPort, protected: isProtected, secret });
     const send = () => {
       if (!socket) return;
+      const payload = Buffer.from(formatMigrationBeacon({ roomId, address, port: migrationPort, protected: isProtected, secret }));
       for (const target of listBroadcastTargets()) {
         socket.send(payload, port, target, () => {});
       }
@@ -384,6 +408,7 @@ module.exports = {
   parseBeacon,
   formatMigrationBeacon,
   parseMigrationBeacon,
+  signMigrationBeacon,
   isExpired,
   pruneExpiredRooms,
   toRoomList,

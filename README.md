@@ -166,8 +166,10 @@ fazer.
 **Se quem criou a sala sair normalmente, a sala continua.** Ela passa sozinha
 pra outra pessoa da sala, que sobe o servidor, e todo mundo reconecta nela sem
 derrubar o vídeo. Se o PC de quem criou travar ou perder energia sem avisar,
-os sobreviventes também tentam migrar depois que a reconexão desiste, mas essa
-queda abrupta ainda pode falhar e partir a sala, especialmente no Tailscale.
+os sobreviventes esperam a reconexão desistir (até uns 2 minutos) e procuram o
+sucessor direto pelo IP dele na rede virtual, sem depender de broadcast — então
+isso também vale no Tailscale. Esse caminho da queda abrupta ainda não foi
+testado com PCs reais.
 
 ## Gerar o instalador pros amigos
 
@@ -362,6 +364,9 @@ Essa decisão está registrada como adiada — ver `STATUS.md`.
 O servidor de sinalização mora no processo de quem criou a sala. Se essa
 pessoa fecha o app normalmente, a sinalização cai e, desde a 0.14.0, a sala
 passa pro sucessor e os outros reconectam nela. Se o PC trava ou perde energia
-sem avisar, a queda abrupta ainda pode falhar e partir a sala, especialmente
-no Tailscale; os vídeos podem continuar enquanto a migração é tentada, mas
-não há garantia de que ela termine.
+sem avisar, os sobreviventes tentam reconectar por até uns 2 minutos e depois
+procuram o sucessor direto pelo IP (a mesma porta da sala), um de cada vez e
+com prazos contados a partir da queda, pra a sala não se partir. O anúncio UDP
+da migração virou só um atalho, e é assinado com um segredo que só quem está
+na sala conhece. Os vídeos podem continuar enquanto isso, mas esse caminho
+ainda não foi testado com PCs reais.

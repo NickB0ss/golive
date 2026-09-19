@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, knownhosts } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, knownhosts } = window.GoLive;
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
@@ -76,6 +76,19 @@
   let localChatTail = [];
   let migrationState = null;
   let migrationBeaconTimer = null;
+  // Itens B/C da auditoria 2026-09-18. O que ESTA sessao sabe, ANTES de
+  // qualquer queda, pra achar o sucessor sem depender de broadcast UDP:
+  // o segredo de migracao atual (rotaciona a cada entrada/saida; autentica o
+  // beacon), o IP de cada membro como o servidor o ve e a porta da sala (o
+  // sucessor sobe na mesma). `roomDropAt` e o instante da queda (relogio
+  // monotonico), a ancora comum dos prazos -- nao a desistencia de cada um.
+  let migrationSecret = null;
+  let peerAddresses = {};
+  let roomPort = null;
+  let roomDropAt = null;
+  // O beacon de migracao continua no ar depois que o proprio sucessor entra
+  // na sala nova (e quem chega DEPOIS que precisa dele); so para no Sair.
+  let migrationBeaconActive = false;
 
   const KINDS = ['screen', 'camera'];
   const { relayKindFor, parseKind } = meshModule;
@@ -192,7 +205,14 @@
     hostId = null;
     joinedPin = null;
     localChatTail = [];
-    clearMigrationState();
+    migrationSecret = null;
+    peerAddresses = {};
+    roomPort = null;
+    roomDropAt = null;
+    // O beacon do sucessor sobrevive a troca de sessao: o proprio welcome
+    // da sala migrada passa por aqui, e quem ainda nao chegou precisa dele.
+    // Quem para o beacon e o Sair (leaveRoom).
+    clearMigrationState({ keepBeacon: true });
     screenResolution.clear();
     appliedScreenEncoding.clear();
   }
@@ -992,8 +1012,10 @@
   /** Uma sonda: WebSocket curto pro endereco salvo, manda 'probe' e espera
    * 'probe-ok' OU o timeout -- nunca entra na sala (mesma mensagem que
    * server/signaling-core.js aceita de quem nao deu 'join'). Devolve o
-   * resumo no formato de room-list, ou `null` se a maquina nao respondeu. */
-  function probeKnownHost(host) {
+   * resumo no formato de room-list, ou `null` se a maquina nao respondeu.
+   * `opts.roomId` (migracao, item B): pergunta se e A MESMA sala -- a
+   * resposta vem em `sameRoom`, sem o servidor revelar o id dele. */
+  function probeKnownHost(host, opts = {}) {
     return new Promise((resolve) => {
       let settled = false;
       let conn = null;
@@ -1012,7 +1034,7 @@
       const deadline = setTimeout(() => finish(null), KNOWN_HOST_PROBE_TIMEOUT_MS);
       try {
         conn = signaling.connect(normalizeRoomUrl(host.address), {
-          onOpen: () => conn.send({ type: 'probe' }),
+          onOpen: () => conn.send(opts.roomId ? { type: 'probe', roomId: opts.roomId } : { type: 'probe' }),
           onMessage: (msg) => {
             if (!msg || msg.type !== 'probe-ok') return;
             finish({
@@ -1021,6 +1043,7 @@
               peers: typeof msg.peers === 'number' ? msg.peers : undefined,
               protected: msg.protected === true,
               version: typeof msg.version === 'string' ? msg.version : undefined,
+              ...(opts.roomId ? { sameRoom: msg.sameRoom === true } : {}),
             });
           },
           onError: () => finish(null),
@@ -1081,7 +1104,7 @@
   });
 
   window.golive.onMigrationBeacon?.((beacon) => {
-    handleMigrationBeacon(beacon);
+    void handleMigrationBeacon(beacon);
   });
 
   // Atualizacao. A abertura (tela de carregamento, src/main/boot.js) ja
@@ -1282,7 +1305,7 @@
   // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
   // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
   // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
-  async function hostRoomFlow(protect, advertise, seed = {}, preserveMigrationOrphan = false) {
+  async function hostRoomFlow(protect, advertise, seed = {}, preserveMigrationOrphan = false, canContinue = null) {
     showLobbyError('');
     let result;
     try {
@@ -1298,37 +1321,196 @@
           : `Não consegui subir a sala: ${result.error}`,
       };
     }
+    // A criacao pode ter esperado uma decisao UAC. A migracao pode ter sido
+    // abandonada nesse intervalo; fecha o servidor recem-criado ANTES de
+    // publicar hostInfo, entrar nele ou iniciar qualquer beacon.
+    if (typeof canContinue === 'function' && !canContinue()) {
+      window.golive.abortHosting?.().catch(() => {});
+      return { ok: false, cancelled: true, port: result.port };
+    }
     hostInfo = { port: result.port, address: result.address, pin: result.pin || null, ownerToken: result.ownerToken || null, firewall: result.firewall, addressWarning: result.addressWarning };
     renderHostWarning();
     joinRoom(`ws://127.0.0.1:${result.port}`, cfg.name, hostInfo.address, undefined, 0, result.pin || null, preserveMigrationOrphan);
-    return { ok: true };
+    return { ok: true, port: result.port };
   }
 
-  function clearMigrationState() {
+  // `keepBeacon`: o welcome da propria sala nova tira o estado de migracao,
+  // mas o beacon do sucessor segue a janela dele (45 s) pra quem ainda vem.
+  function clearMigrationState({ keepBeacon = false } = {}) {
     clearTimeout(migrationBeaconTimer);
     migrationBeaconTimer = null;
-    const wasBecoming = migrationState?.becoming;
     migrationState = null;
-    if (wasBecoming) window.golive.stopMigrationBeacon?.().catch(() => {});
+    if (!keepBeacon && migrationBeaconActive) {
+      migrationBeaconActive = false;
+      window.golive.stopMigrationBeacon?.().catch(() => {});
+    }
   }
 
-  function armMigrationWait(candidates, hostIdAtDrop) {
+  /** Segredo de migracao + IPs dos membros, vindos do welcome ou de um
+   * 'migration-info' (o servidor rotaciona a cada entrada/saida). Campo
+   * ausente (servidor antigo) nao apaga o que ja se sabia. O segredo nunca
+   * vai pro log. */
+  function applyMigrationInfo(msg) {
+    if (typeof msg.migrationSecret === 'string' && msg.migrationSecret && msg.migrationSecret.length <= 200) {
+      migrationSecret = msg.migrationSecret;
+    }
+    if (msg.peerAddresses && typeof msg.peerAddresses === 'object' && !Array.isArray(msg.peerAddresses)) {
+      const next = {};
+      for (const [id, addr] of Object.entries(msg.peerAddresses)) {
+        if (typeof addr === 'string' && addr && addr.length <= 64 && /^[0-9a-fA-F.:]+$/.test(addr)) next[id] = addr;
+      }
+      peerAddresses = next;
+    }
+  }
+
+  function portOfRoomUrl(url) {
+    const m = /:(\d{1,5})(?:\/.*)?$/.exec(String(url || ''));
+    const port = m ? Number(m[1]) : NaN;
+    return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+  }
+
+  /** Quem estava na sala na queda. Vem da ultima lista de enderecos do
+   * servidor, que e a MESMA pra todos os sobreviventes (a ordem de sucessao
+   * precisa bater em todas as maquinas); a malha so entra se o servidor for
+   * de versao sem essa lista. */
+  function migrationCandidates(sess) {
+    const ids = Object.keys(peerAddresses);
+    if (!ids.length) ids.push(...(sess?.mesh?.peers?.keys?.() || []));
+    if (myId && !ids.includes(myId)) ids.push(myId);
+    return ids;
+  }
+
+  /** Monta o estado de migracao comum aos dois gatilhos (room-migrating e
+   * desistencia) e ja da o primeiro passo. `dropAt`/`baseMs` definem o prazo
+   * absoluto de cada candidato -- ver src/renderer/migration.js. */
+  function startMigration(fields, { candidates, announcedSuccessor = null, dropAt, abrupt }) {
+    migrationState = {
+      ...fields,
+      order: migrationPlan.successionOrder(candidates, hostId, announcedSuccessor),
+      dropAt,
+      baseMs: migrationPlan.baseDelayMs({ abrupt, worstCaseReconnectMs: reconnect.worstCaseReconnectMs(MAX_RECONNECT) }),
+      // Fotografia do que se sabia na queda: o segredo que assina o beacon
+      // e os enderecos onde procurar os candidatos.
+      secret: migrationSecret,
+      addresses: { ...peerAddresses },
+      port: roomPort,
+      becoming: false,
+      attemptToken: 0,
+      dialing: false,
+      dialPromise: null,
+      joining: false,
+      round: 0,
+    };
+    migrationTick();
+  }
+
+  /** Um passo da migracao: ou e a MINHA vez (sobe o servidor), ou procura
+   * direto os candidatos ate o da vez. Reagenda sozinho a cada
+   * DIAL_INTERVAL_MS ate a sala nova dar welcome ou a pessoa sair. */
+  function migrationTick() {
     clearTimeout(migrationBeaconTimer);
     migrationBeaconTimer = null;
-    const rank = succession.successorRank(candidates, hostIdAtDrop, myId);
-    if (rank < 0) return;
-    const waitingFor = migrationState;
-    migrationBeaconTimer = setTimeout(() => {
-      migrationBeaconTimer = null;
-      if (migrationState !== waitingFor || migrationState.becoming) return;
+    const migration = migrationState;
+    if (!migration) return;
+    const step = migrationPlan.decide({
+      order: migration.order, myId, dropAt: migration.dropAt, baseMs: migration.baseMs, now: performance.now(),
+    });
+    if (step.action === 'none') return;
+    // Uma entrada na sala migrada ja em curso: espera ela terminar (welcome
+    // limpa o estado; falha devolve currentSession a null e a procura volta).
+    const joiningMigrated = Boolean(migration.joining && currentSession);
+    if (step.action === 'host' && !joiningMigrated && !migration.becoming) {
+      console.info(`[migracao] minha vez (posicao ${step.myRank}) -- assumindo a sala`);
       void becomeMigrationHost();
-    }, succession.successorTimeoutMs(rank));
+    }
+    // Mesmo enquanto o UAC/hostRoomFlow esta pendurado, o relogio segue:
+    // quando a vez passa, B continua procurando C em vez de congelar aqui.
+    if (step.action === 'dial' && (!currentSession || migration.becoming)) void dialMigrationTargets(migration, step.targets);
+    scheduleMigrationTick();
+  }
+
+  function scheduleMigrationTick() {
+    clearTimeout(migrationBeaconTimer);
+    migrationBeaconTimer = setTimeout(migrationTick, migrationPlan.DIAL_INTERVAL_MS);
+  }
+
+  /** Sonda o IP de cada candidato na porta da sala (e, de tempos em tempos,
+   * na faixa inteira). O primeiro que responder que e A MESMA sala leva
+   * todo mundo pra ele -- sem broadcast nenhum. */
+  async function dialMigrationTargets(migration, targets) {
+    const found = await probeMigrationTargets(migration, targets);
+    if (!found || migrationState !== migration) return;
+    if (migration.becoming) {
+      yieldMigrationHost(migration, found.address, 'conexao direta');
+      return;
+    }
+    joinMigratedRoom(migration, found.address, 'conexao direta');
+  }
+
+  async function probeMigrationTargets(migration, targets) {
+    if (migration.dialing) return migration.dialPromise;
+    migration.dialing = true;
+    const round = migration.round;
+    migration.round += 1;
+    migration.dialPromise = (async () => {
+      const addresses = migrationPlan.dialAddresses({ targets, addresses: migration.addresses, port: migration.port, round });
+      if (!addresses.length) return null;
+      const results = await Promise.all(addresses.map((address) => probeKnownHost({ address }, { roomId: migration.roomId })));
+      return results.find((r) => r && r.sameRoom === true) || null;
+    })();
+    try {
+      return await migration.dialPromise;
+    } finally {
+      migration.dialing = false;
+      migration.dialPromise = null;
+    }
+  }
+
+  function joinMigratedRoom(migration, address, via) {
+    if (migrationState !== migration || currentSession) return;
+    migration.joining = true;
+    console.info(`[migracao] sala encontrada por ${via}, entrando`);
+    const pin = joinedPin || migration.pin || null;
+    joinRoom(`ws://${address}`, cfg.name, address, undefined, 0, pin, true);
+  }
+
+  function isCurrentMigrationAttempt(migration, token) {
+    return migrationState === migration && migration.attemptToken === token;
+  }
+
+  /** Derruba apenas o servidor que ESTE hostRoomFlow acabou de subir. O
+   * guard pela porta impede uma promessa velha de interferir numa hospedagem
+   * manual que a pessoa tenha iniciado depois. */
+  function discardMigrationHost(port) {
+    if (!Number.isInteger(port) || hostInfo?.port !== port) return;
+    const localSession = currentSession;
+    currentSession = null;
+    activeRoomAddress = null;
+    hostInfo = null;
+    localSession?.sig?.close();
+    renderHostWarning();
+    window.golive.abortHosting?.().catch(() => {});
+  }
+
+  function yieldMigrationHost(migration, address, via) {
+    if (migrationState !== migration) return;
+    migration.attemptToken += 1; // invalida hostRoomFlow/UAC que ainda resolver
+    migration.becoming = false;
+    migration.joining = false;
+    // Normalmente o servidor ja subiu antes de pedir UAC; fecha-o agora. Se
+    // ainda nao subiu, o guard `canContinue` em hostRoomFlow o fecha assim
+    // que a promessa lenta voltar, antes de ele tocar em hostInfo/sessao.
+    window.golive.abortHosting?.().catch(() => {});
+    discardMigrationHost(hostInfo?.port);
+    joinMigratedRoom(migration, address, via);
   }
 
   async function becomeMigrationHost() {
     const migration = migrationState;
     if (!migration || migration.becoming) return;
     migration.becoming = true;
+    const attemptToken = migration.attemptToken + 1;
+    migration.attemptToken = attemptToken;
     clearTimeout(migrationBeaconTimer);
     migrationBeaconTimer = null;
     const seed = {
@@ -1340,29 +1522,90 @@
       // P1: o sucessor preserva o nome da sala em vez de a sala nova cair
       // no proprio nome de quem assumiu.
       roomName: migration.roomName || currentRoomName || null,
+      // Item B: a mesma porta da sala que caiu, onde os outros me procuram.
+      preferredPort: Number.isInteger(migration.port) ? migration.port : undefined,
     };
-    const result = await hostRoomFlow(Boolean(migration.pin || joinedPin), false, seed, true);
+    const result = await hostRoomFlow(
+      Boolean(migration.pin || joinedPin), false, seed, true,
+      () => isCurrentMigrationAttempt(migration, attemptToken),
+    );
     if (!result.ok) {
+      if (result.cancelled) return;
       showLobbyError(result.error);
-      if (migrationState === migration) migration.becoming = false;
+      if (isCurrentMigrationAttempt(migration, attemptToken)) {
+        migration.becoming = false;
+        // Nao conseguiu subir: volta a procurar (e a tentar de novo na vez).
+        scheduleMigrationTick();
+      }
       return;
     }
+    // A promessa pode ter ficado parada no UAC. Se, enquanto isso, uma sonda
+    // achou o sucessor da vez, este servidor novo e lixo: fecha sem beacon.
+    if (migrationPlan.hostSuccessAction({
+      attemptToken, currentAttemptToken: isCurrentMigrationAttempt(migration, attemptToken) ? migration.attemptToken : null,
+    }) === 'discard') {
+      discardMigrationHost(result.port);
+      return;
+    }
+
+    // Defesa em profundidade: mesmo que o tick nao tenha visto a sala, a
+    // conclusao do host sempre reavalia o relogio real antes de anunciar.
+    const check = migrationPlan.hostSuccessCheck({
+      order: migration.order, myId, dropAt: migration.dropAt, baseMs: migration.baseMs, now: performance.now(),
+    });
+    if (check.action === 'probe') {
+      const found = await probeMigrationTargets(migration, check.targets);
+      const action = migrationPlan.hostSuccessAction({
+        attemptToken,
+        currentAttemptToken: isCurrentMigrationAttempt(migration, attemptToken) ? migration.attemptToken : null,
+        check,
+        found,
+      });
+      if (action === 'discard') {
+        discardMigrationHost(result.port);
+        return;
+      }
+      if (action === 'yield') {
+        yieldMigrationHost(migration, found.address, 'validacao apos assumir');
+        return;
+      }
+    }
+    if (migrationPlan.hostSuccessAction({
+      attemptToken, currentAttemptToken: isCurrentMigrationAttempt(migration, attemptToken) ? migration.attemptToken : null,
+    }) === 'discard') {
+      discardMigrationHost(result.port);
+      return;
+    }
+    // O beacon agora e so um atalho (LAN com broadcast); sem o segredo da
+    // sala ele sairia sem prova e ninguem o seguiria, entao nem sai.
+    if (!migration.secret) return;
+    migrationBeaconActive = true;
     window.golive.startMigrationBeacon({
       roomId: migration.roomId,
       address: hostInfo.address,
       port: hostInfo.port,
       protect: Boolean(hostInfo.pin),
+      secret: migration.secret,
     }).catch(() => {});
   }
 
-  function handleMigrationBeacon(beacon) {
-    if (!migrationState || migrationState.becoming || beacon?.roomId !== migrationState.roomId) return;
+  async function handleMigrationBeacon(beacon) {
     const migration = migrationState;
-    clearTimeout(migrationBeaconTimer);
-    migrationBeaconTimer = null;
-    migrationState = null;
-    const pin = joinedPin || migration.pin || null;
-    joinRoom(`ws://${beacon.address}`, cfg.name, beacon.address, undefined, 0, pin, true);
+    if (!migration || migration.becoming || beacon?.roomId !== migration.roomId) return;
+    // Item C: roomId todo ex-membro conhece. So segue quem provar o segredo
+    // que ESTA sala tinha na queda, com carimbo recente.
+    let ok = false;
+    try {
+      ok = await migrationPlan.verifyMigrationBeacon({ beacon, roomId: migration.roomId, secret: migration.secret, now: Date.now() });
+    } catch (err) {
+      console.warn('[migracao] falha ao conferir beacon:', err?.message || err);
+    }
+    if (!ok) {
+      if (!migration.warnedBadBeacon) console.warn('[migracao] beacon de migracao sem prova valida ignorado');
+      migration.warnedBadBeacon = true;
+      return;
+    }
+    joinMigratedRoom(migration, beacon.address, 'beacon');
   }
 
   $('btn-create-room').addEventListener('click', () => {
@@ -1831,6 +2074,7 @@
       mesh: null,
       signalQueue: queue.createSerialQueue(),
       preserveMigrationOrphan,
+      url,
       bootstrapExistingShare: false,
       joinPin: typeof pin === 'string' && pin ? pin : null,
     };
@@ -1923,6 +2167,9 @@
           // que o onOpen marcou pra que a pessoa possa tentar de novo na
           // hora com o PIN certo.
           if (session.joinDenied) {
+            // Recusado pela sala migrada (PIN, ban, versao): procurar de
+            // novo daria a mesma recusa em laco.
+            if (migrationState) clearMigrationState();
             resumeToken = null;
             clearTimeout(retryTimer);
             retryTimer = null;
@@ -2085,6 +2332,10 @@
           // casca vazia substituir a orfa que ainda segura os PCs vivos.
           if (session.opened && !session.reconnectWithOrphan) {
             orphanSession = session;
+            // Item B: o instante da queda e a ancora comum dos prazos da
+            // migracao. So a PRIMEIRA queda conta (as tentativas seguintes
+            // nao reabrem a sessao); o welcome seguinte zera.
+            if (roomDropAt == null) roomDropAt = performance.now();
             console.info(`[signaling] sessao orfa criada (code=${detail?.code}, retry=${canRetry ? 'sim' : 'nao'})`);
             stopStatsLoop();
             renderRoomStatus();
@@ -2113,7 +2364,12 @@
 
           if (abnormal && attempts >= MAX_RECONNECT) {
             resumeToken = null;
-            const candidates = [...session.mesh.peers.keys(), myId].filter(Boolean);
+            // Item B: `session` aqui e a ULTIMA tentativa de reconexao, cuja
+            // malha nasceu vazia -- contar por ela fazia cada sobrevivente se
+            // achar o unico candidato e subir a propria sala. A lista vem da
+            // ultima fotografia do servidor (igual pra todos), com a malha da
+            // orfa de reserva.
+            const candidates = migrationCandidates(orphanSession || session);
             const successorId = succession.chooseSuccessor(candidates, hostId);
             if (successorId && roomId) {
               const survivors = candidates.filter((id) => id !== hostId);
@@ -2121,7 +2377,12 @@
               const newOwnerConnectionId = succession.chooseNewOwner(survivors, currentOwnerId, successorId);
               // O cliente nao conhece o clientId de terceiros, entao nao pode
               // semear a lideranca deles no servidor novo depois de uma queda.
-              migrationState = {
+              showLobbyError('O líder da sala sumiu. Tentando restaurar a sala automaticamente...');
+              // Prazo absoluto desde a QUEDA (roomDropAt, gravado quando a
+              // sessao virou orfa), nao desde esta desistencia: cada maquina
+              // desiste num tempo diferente (60-116 s), mas todas contam a
+              // vez de cada candidato a partir do mesmo evento.
+              startMigration({
                 roomId,
                 successor: successorId,
                 successorName: null,
@@ -2135,11 +2396,7 @@
                 roomName: currentRoomName,
                 bans: [],
                 chat: [],
-                becoming: false,
-              };
-              showLobbyError('O líder da sala sumiu. Tentando restaurar a sala automaticamente...');
-              if (successorId === myId) void becomeMigrationHost();
-              else armMigrationWait(candidates, hostId);
+              }, { candidates, dropAt: roomDropAt ?? performance.now(), abrupt: true });
             } else {
               showLobbyError(
                 'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Sair da sala pra encerrar.'
@@ -2620,6 +2877,10 @@
     roomId = null;
     hostId = null;
     localChatTail = [];
+    migrationSecret = null;
+    peerAddresses = {};
+    roomPort = null;
+    roomDropAt = null;
     clearMigrationState();
     // Desconectar e a intencao final do usuario: qualquer retry de
     // reconexao pendente (o "Reconectando… (n/4)") morre aqui, seja qual for
@@ -2959,7 +3220,14 @@
           currentRoomName = msg.roomName;
           ui.stageHeader.setName(currentRoomName);
         }
-        if (migrationState && roomId === migrationState.roomId) clearMigrationState();
+        if (migrationState && roomId === migrationState.roomId) clearMigrationState({ keepBeacon: true });
+        // Itens B/C: o que precisamos pra achar o proximo sucessor se ESTA
+        // sala cair. A porta sai da URL que de fato conectou.
+        migrationSecret = null;
+        peerAddresses = {};
+        applyMigrationInfo(msg);
+        roomPort = portOfRoomUrl(session.url);
+        roomDropAt = null;
         // P2: a prova de que um endereco digitado/sondado funciona de
         // verdade e ELE TER ENTRADO -- entao qualquer 'welcome' recebido
         // como visitante (nunca como quem hospeda, ver rememberKnownHost)
@@ -3236,13 +3504,23 @@
         await mesh.handleIce(msg.from, msg.dir, msg.candidate, msg.kind);
         break;
       }
+      // Itens B/C: alguem entrou ou saiu -- segredo novo e IPs atualizados.
+      case 'migration-info': {
+        applyMigrationInfo(msg);
+        break;
+      }
       case 'room-migrating': {
         clearTimeout(migrationBeaconTimer);
         migrationBeaconTimer = null;
         // P1: server antigo sem o campo cai no que o welcome anterior ja
         // ensinou (mesmo padrao do ramo de queda abrupta acima).
         if (typeof msg.roomName === 'string' && msg.roomName) currentRoomName = msg.roomName;
-        migrationState = {
+        showLobbyError(`O líder da sala saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
+        renderRoomStatus();
+        // Caminho gracioso: todos recebem isto no mesmo instante, entao a
+        // queda e agora e a base do prazo e zero (tempos iguais aos de
+        // antes: o sucessor assume ja, o proximo aos 15 s, e assim por diante).
+        startMigration({
           roomId: msg.roomId,
           successor: msg.successor,
           successorName: msg.successorName,
@@ -3251,15 +3529,12 @@
           roomName: currentRoomName,
           bans: Array.isArray(msg.bans) ? msg.bans : [],
           chat: Array.isArray(msg.chat) ? msg.chat : [],
-          becoming: false,
-        };
-        showLobbyError(`O líder da sala saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
-        renderRoomStatus();
-        if (msg.successor === myId) {
-          void becomeMigrationHost();
-        } else {
-          armMigrationWait([...mesh.peers.keys(), myId].filter(Boolean), hostId);
-        }
+        }, {
+          candidates: migrationCandidates(session),
+          announcedSuccessor: typeof msg.successor === 'string' ? msg.successor : null,
+          dropAt: performance.now(),
+          abrupt: false,
+        });
         break;
       }
       // O host encerrou a sala (fechou o app ou clicou em Desconectar). O

@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('golive', {
    * servidor de sinalizacao embutido. Chamado quando o host sai da propria
    * sala, pra ela nao ficar pendurada em "Ao vivo agora" pros outros. */
   stopHosting: () => ipcRenderer.invoke('room:unhost'),
+  // Cancela uma tentativa de migracao que perdeu a vez. Diferente de sair da
+  // propria sala, nao avisa migracao para ninguem: o servidor novo ainda nao
+  // pode virar uma sala concorrente.
+  abortHosting: () => ipcRenderer.invoke('room:abort-host'),
 
   /** Nova tentativa de liberar a porta da sala no firewall do Windows
    * (re-dispara o pedido de elevacao). Usado pelo botao "Permitir acesso
