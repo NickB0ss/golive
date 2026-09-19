@@ -175,6 +175,50 @@ app antes de mesclar mudança no renderer.
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
 
+## Lançado na 0.18.0 (2026-09-19)
+
+A auditoria multi-time de 18/09 virou seis levas de trabalho
+(`docs/2026-09-18-auditoria-multi-time.md`). Nada aqui é funcionalidade nova
+pedida por uso: é o que estava quebrado, o que o app media e não contava, e o
+laço que ninguém fechava.
+
+**A rede que se conserta sozinha.** O link do relay para quem assiste, quando
+caía, não era reconstruído por ninguém: a tela sumia para uma pessoa só e nada
+a trazia de volta. Agora o relay tenta de novo (1 s, 2 s, 4 s), a conexão
+morta é fechada, e quem ficou sem imagem pede uma nova oferta. Duas pessoas
+transmitindo deixam de eleger a mesma máquina como relay: a carga de cada uma
+entra na conta da árvore. A qualidade, que descia com cuidado e subia sem
+nenhum, agora espera 10 s de sala estável antes de voltar um degrau.
+
+**A sala não se parte mais quando o líder cai.** Os sobreviventes deixam de
+depender do aviso por broadcast (que o Tailscale não repassa) e conectam
+direto no endereço do sucessor; todos contam o mesmo prazo desde a queda, e só
+um assume por vez. Se o sucessor ficar preso no aviso do firewall, ele cede a
+sala a quem assumiu e derruba o servidor atrasado. O aviso de migração passou
+a ser assinado, então ex-membro ou banido não desvia mais a sala.
+
+**O app conta o que sabe.** Cada tile mostra a saúde da recepção (ok, atenção,
+ruim) com o culpado provável, e quem transmite vê quem está travando. O
+medidor de som mostra que está saindo áudio e avisa quando o áudio ligado está
+mudo. A sala tem nome escolhido por quem cria, e a tela não apaga mais durante
+a sessão.
+
+**Achar a sala no Tailscale.** O endereço de quem você já visitou fica salvo
+em Amigos salvos, e o app pergunta direto a cada um se há sala aberta, pela
+mesma porta da sinalização. A tela inicial avisa que ali as salas não aparecem
+sozinhas.
+
+**Segurança e entrega.** O PIN foi para 6 dígitos com bloqueio por IP; a regra
+de firewall deixou de ser montada com o caminho do executável cru; a imagem do
+chat é validada por inteiro; o `npm run dist` falha se o áudio nativo não foi
+compilado. O CI voltou a existir de verdade (Node 20 e 22, portão de
+vulnerabilidade de produção e um job que confere o addon dentro do pacote) e o
+`release.yml` monta o rascunho do release a partir da tag.
+
+**O que não foi testado.** Nada disto rodou com 2+ PCs reais. A migração
+abrupta, o Tailscale e o caminho elevado do firewall só fecham com máquinas de
+verdade — e é o que falta antes de publicar.
+
 ## Lançado na 0.17.0 (2026-09-17)
 
 Oito frentes de interface numa branch só (`feat/chat-atualizacao-tela-cheia`),

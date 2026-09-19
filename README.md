@@ -53,8 +53,12 @@ o teste de latência roda.
 
 **Se der abaixo de 10 Mbps:** instale o [Tailscale](https://tailscale.com) no
 lugar do Radmin e rode o teste de novo. É WireGuard, faz P2P direto em muito
-mais situações, e é gratuito até 100 dispositivos. Nada no app muda — só o IP
-que vocês digitam (Tailscale usa a faixa `100.x.x.x`).
+mais situações, e é gratuito até 100 dispositivos. Quase nada no app muda — só
+o IP que vocês digitam (Tailscale usa a faixa `100.x.x.x`). A diferença é que
+o Tailscale não repassa broadcast, então **as salas não aparecem sozinhas na
+lista**: o app avisa isso na tela inicial, e o endereço de quem você já entrou
+uma vez fica salvo em **Amigos salvos** — o GoLive pergunta direto pra eles se
+há sala aberta, sem depender do anúncio na rede.
 
 ---
 
@@ -72,9 +76,10 @@ npm install
 
 **1. Alguém da turma clica em "Criar sala"**, na barra lateral da tela
 inicial do GoLive. Um diálogo pergunta se a sala deve ser **anunciada na
-rede** (ligado por padrão) e se deve ser **protegida por um PIN** de 4
-dígitos. Confirmando, o app sobe o servidor de sinalização embutido, libera a
-porta no firewall (pode pedir uma confirmação do Windows na primeira vez) e
+rede** (ligado por padrão), qual o **nome da sala** (o padrão é "Sala de
+<seu nome>") e se deve ser **protegida por um PIN** de 6 dígitos.
+Confirmando, o app sobe o servidor de sinalização embutido, libera a porta no
+firewall (pode pedir uma confirmação do Windows na primeira vez) e
 mostra o endereço no cabeçalho da sala, com um botão de copiar ao lado.
 
 Sem terminal, sem instalar Node à parte, sem digitar porta.
