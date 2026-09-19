@@ -1,6 +1,10 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+// config.js le root.GoLive.knownhosts pra validar cfg.knownHosts -- precisa
+// ter carregado antes (mesmo padrao de mesh.test.js exigindo networktiming
+// antes de mesh).
+require('./knownhosts');
 const {
   DEFAULTS,
   QUALITY_PRESETS,
@@ -522,4 +526,28 @@ test('config antigo (sem annotations nem emojiRecents) abre nos padroes', () => 
   const cfg = load(antigo);
   assert.equal(cfg.annotations.allow, false);
   assert.deepEqual(cfg.emojiRecents, []);
+});
+
+test('knownHosts: ausente cai em lista vazia, e sobrevive ao round-trip', () => {
+  assert.deepEqual(load(null).knownHosts, []);
+  const cfg = load(JSON.stringify({ knownHosts: [{ address: '192.168.1.5:9000', lastSeenAt: 1000 }] }));
+  assert.deepEqual(cfg.knownHosts, [{ address: '192.168.1.5:9000', lastSeenAt: 1000 }]);
+  assert.deepEqual(load(serialize(cfg)).knownHosts, cfg.knownHosts);
+});
+
+test('knownHosts: item invalido e descartado sem custar os validos', () => {
+  const cfg = load(JSON.stringify({
+    knownHosts: [
+      { address: '10.0.0.1:9000', lastSeenAt: 1 },
+      { address: 'lixo' },
+      'nao e objeto',
+      null,
+      { address: '10.0.0.2:9000', lastSeenAt: 2 },
+    ],
+  }));
+  assert.deepEqual(cfg.knownHosts.map((h) => h.address).sort(), ['10.0.0.1:9000', '10.0.0.2:9000']);
+});
+
+test('knownHosts: nao-array vira lista vazia', () => {
+  assert.deepEqual(load(JSON.stringify({ knownHosts: 'nao e lista' })).knownHosts, []);
 });
