@@ -104,12 +104,15 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.17.0` (tag `v0.17.0`, 2026-09-17). Electron `^32` (fora de suporte — ver
-backlog), `electron-builder` na `^26`.
-Testes: `node --test` → **764 testes, 764 passando, 0 falhando**. `npm run lint` → 0
+`0.17.0` (no `package.json`; o release ainda não foi feito). Electron `^32`
+(fora de suporte — ver backlog), `electron-builder` na `^26`.
+Testes: `node --test` → **902 testes, 902 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
+`npm audit --omit=dev` → **0**. `npm audit` completo → **2 altas**, ambas de
+desenvolvimento, na cadeia do Electron/electron-builder (`electron` e
+`extract-zip`). Branches mescladas no remoto ainda não apagadas: **25**.
 
 ### Frente 0 (auditoria 2026-09-18)
 
@@ -121,6 +124,56 @@ cliente e nas duas cópias do servidor, mais `escapeHtml`), o P0-5 (hook
 Node 20/22, portão de `npm audit --omit=dev` e job `empacotar` que confere o
 addon nativo no pacote. O CI ficou vermelho de 05/09 (execução #61) até esta
 correção por causa do `require('electron')` no topo de `src/main/logger.js`.
+
+### Frente A1 (auditoria 2026-09-18)
+
+O relay reconstrói links que caem, a árvore considera a carga de cada relay,
+há época de compartilhamento e histerese de qualidade, o PIN tem seis dígitos
+com limite por IP e os guardas de origem estão fechados (repasse só do pai
+atual, `tree` só de origem ao vivo). Nada disso foi testado com 2+ PCs reais.
+
+### Frente B1 (auditoria 2026-09-18)
+
+O nome da sala passa a ser escolhido por quem cria e viaja na sessão, a tela
+fica acordada enquanto há sala, os defeitos K/L/M/N/O foram fechados e o
+glossário ganhou teste. Nada disso foi testado com 2+ PCs reais.
+
+### Frente B2 (auditoria 2026-09-18)
+
+Entraram a saúde da recepção por pessoa, com histerese e culpado visível, e o
+medidor de som sobre o `AudioContext` existente. Nada disso foi testado com 2+ PCs reais.
+
+### Frente B3 (auditoria 2026-09-18)
+
+Entraram amigos salvos, sonda dirigida pela sinalização e o aviso de que no
+Tailscale as salas não aparecem sozinhas. Nada disso foi testado com 2+ PCs reais.
+
+### Frente A2 (auditoria 2026-09-18)
+
+A migração não depende mais de broadcast: sobreviventes conectam diretamente
+ao sucessor, o beacon de migração é autenticado, há prazo absoluto para a
+sucessão e o sucessor continua sondando enquanto aguarda o firewall. **Nada disso foi testado com 2+ PCs reais** -- a migração
+abrupta, o Tailscale e o caminho elevado do firewall só fecham com máquinas de
+verdade, e é o que falta antes do release.
+
+### Incidente do renderer (PRs #62/#63)
+
+O #62 introduziu um `ReferenceError` de TDZ em `watchedScreens`; o #63 corrigiu
+a declaração antes do primeiro uso. `node --test` não carrega `app.js`: a suíte
+ficou verde, e o erro só apareceu abrindo o app real. A regra nova é rodar o
+app antes de mesclar mudança no renderer.
+
+## Próximos passos
+
+- **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
+  e o teste que mais importa e derrubar o PC do lider de verdade, de
+  preferencia no Tailscale (e o que a Frente A2 mudou);
+- subir a versao e lancar (a tag dispara o `release.yml`, que sobe os
+  artefatos num rascunho; publicar continua sendo clique manual);
+- Frente C: D1, Electron 44 e fanout 2.
+
+Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
+remoto e os 2 releases-rascunho orfaos removidos.
 
 ## Lançado na 0.17.0 (2026-09-17)
 
@@ -888,7 +941,7 @@ saiu dessa lista de vez: núcleo, protocolo e UI (caixa, campo de PIN, cadeado
 na lista, selo no cabeçalho) foram lançados na 0.4.0.
 
 **C4** (`dist/` de 1,2 GB) é higiene de disco local. **C5** (branches
-obsoletas) segue aberto: **17 branches mescladas no remoto** ainda não foram
+obsoletas) segue aberto: **25 branches mescladas no remoto** ainda não foram
 apagadas (entre elas `claude/backlog-pos-leyjak`,
 `claude/planejamentos-futuros-projeto-leyjak` e
 `claude/redesign-discord-style`).

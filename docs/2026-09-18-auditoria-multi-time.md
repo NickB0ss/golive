@@ -15,6 +15,31 @@ Anexos, na íntegra, em `docs/auditoria-2026-09-18/`:
 | 4 | Qualidade | cobertura, lint, `npm audit`, CI/CD, Electron 32→44, release | 959 |
 | 5 | Produto | buracos de fluxo, 10 propostas, APIs novas, roadmap | 949 |
 
+## Execução (2026-09-18/19)
+
+- **PR #59 (Frente 0):** CI novo e verde, correções de firewall e validação de
+  imagem, `js-yaml`, remoção do CSS morto e verificação do addon nativo no build.
+- **PRs #60/#61 (A1):** relay que se recupera, carga na árvore, PIN com limite
+  por IP, guardas de origem e migração mais segura.
+- **PR #62 (B1):** nome da sala, tela acordada em sala, correções de interface e
+  glossário.
+- **PR #63:** hotfix da TDZ de `watchedScreens`, que causava `ReferenceError`
+  na carga do renderer.
+- **PR #64 (B2):** saúde da recepção por pessoa e medidor de som.
+- **PR #65 (B3):** amigos salvos, sonda dirigida e aviso de Tailscale.
+- **PR #66 (A2):** migração sem depender de broadcast, beacon autenticado e
+  sucessão com sondagem enquanto aguarda a elevação do firewall.
+
+Ficaram abertos o painel na tela real (fora de escopo), o selo que diferencia
+sala achada por sonda de sala achada por beacon, o estado "fora do ar" do amigo
+e toda a Frente C (D1, Electron 44, fanout 2, recorte da fonte, ensaio de banda
+e clipe de 30 s).
+
+Duas lições de método: **(a)** o CI ficou verde de novo desde o #59; **(b)** um
+`ReferenceError` de TDZ passou por toda a suíte verde e só apareceu abrindo o
+app real — por isso a regra nova é rodar o app antes de mesclar mudança no
+renderer.
+
 **Como ler os anexos.** Eles são verbatim, com o texto que cada time escreveu.
 Duas correções conhecidas: o anexo 5 abre citando "733 testes" (o número do
 `STATUS.md`, não medido — o real é 728) e estima o Electron 44 em "meio dia"
@@ -267,22 +292,30 @@ anterior ter deixado o chão firme.
 Não tem tema de produto. É o que precisa estar de pé antes de qualquer outra
 coisa ser mexida.
 
-- [ ] **P0-1** `logger.js`: require preguiçoso. Ver o CI verde. *(20 min)*
-- [ ] **H** `npm audit fix` — só o `js-yaml`, sem tocar no Electron. *(5 min)*
-- [ ] **P0-3** validar data URL de imagem por conteúdo, nas três cópias
+- [x] **P0-1** `logger.js`: require preguiçoso. Ver o CI verde. *(20 min)*
+- [x] **H** `npm audit fix` — só o `js-yaml`, sem tocar no Electron. *(5 min)*
+- [x] **P0-3** validar data URL de imagem por conteúdo, nas três cópias
       (cliente e as duas do servidor), com teste do payload que passa hoje. *(2 h)*
-- [ ] **P0-2** `firewall.js` por `-EncodedCommand`, `netsh` por caminho
+- [x] **P0-2** `firewall.js` por `-EncodedCommand`, `netsh` por caminho
       absoluto, teste com apóstrofo/espaço/`;` no `execPath`. *(2-3 h)*
-- [ ] **P0-6** apagar `style.css:734-752`. O mínimo de janela volta a ser o
+- [x] **P0-6** apagar `style.css:734-752`. O mínimo de janela volta a ser o
       anunciado. *(15 min)*
-- [ ] **P0-5** `beforeBuild` que exige o `.node` e falha com mensagem explícita. *(1 h)*
-- [ ] **CI novo** (`ci.yml` + `release.yml`, propostos por inteiro no anexo 4):
-      matriz Node 20/22, `npm audit --omit=dev` como portão que **falha**, job
-      `empacotar` com `electron-builder --win --dir` e uma asserção de que o
-      `.node` entrou no pacote, e `release:check` amarrado à tag. *(1 dia)*
-- [ ] **P2** corrigir `STATUS.md:109`,`:770-773`,`:792` e `README.md:351-357`
+- [x] **P0-5** `beforeBuild` que exige o `.node` e falha com mensagem explícita. *(1 h)*
+- [x] **CI novo** — `ci.yml` entrou no #59 (matriz Node 20/22, `npm audit
+      --omit=dev` como portão que falha, job `empacotar` com
+      `electron-builder --win --dir` e asserção de que o `.node` entrou no
+      pacote; `empacotar` roda em `windows-2022` porque o `-latest` passou a
+      trazer um VS que o node-gyp 11 não reconhece). O `release.yml` **não**
+      foi criado: a decisão de publicar pela CI, em vez do processo manual de
+      hoje, continua aberta — e com ela o `release:check` amarrado à tag.
+- [x] **release.yml** — dispara na tag, confere tag × `package.json`, roda
+      lint e testes antes de empacotar, sobe os artefatos num release em
+      **rascunho** (publicar continua sendo clique manual) e confere que
+      `latest.yml` e o instalador subiram; um job `conferir` chama o
+      `release:check` quando o release é publicado.
+- [x] **P2** corrigir `STATUS.md:109`,`:770-773`,`:792` e `README.md:351-357`
       (que ainda diz que a sala morre com o host — falso desde a 0.14.0). *(30 min)*
-- [ ] **P2** apagar as 17 branches mescladas e os 2 releases-rascunho órfãos. *(15 min)*
+- [ ] **P2** apagar as branches mescladas (hoje **25**, não 17) e os 2 releases-rascunho órfãos. *(15 min)*
 
 **Por que esta frente existe.** Sete versões saíram sem portão. A oitava não
 precisa. E o item do `README` custa cinco minutos: é o parágrafo mais
@@ -293,27 +326,27 @@ instala.
 
 Tema: **o que o app começa, o app termina.**
 
-- [ ] **P0-4** reconstruir o link relay→folha: ramo novo em `onPeerState` para
+- [x] **P0-4** reconstruir o link relay→folha: ramo novo em `onPeerState` para
       `failed && sourceId`, contador de tentativas por filho, `reportFailure`
       zerando `inConns`, e `checkStalledTiles` tratando "quero assistir e não
       há conexão de entrada" como gatilho de `reoffer`. *(3-4 h)*
-- [ ] **A** carga de relay no `view-state`, e `computeTree` ordenando por ela
+- [x] **A** carga de relay no `view-state`, e `computeTree` ordenando por ela
       antes de tudo. Teste puro: dois `computeTree` sobre o mesmo pool não
       podem devolver o mesmo relay havendo alternativa com carga 0. *(2-3 h)*
-- [ ] **E** latch de reentrância em `room:host`, no molde do `sharing`. *(1 h)*
-- [ ] **F** época de compartilhamento em `startShare`, no molde do `mediaEpoch`
+- [x] **E** latch de reentrância em `room:host`, no molde do `sharing`. *(1 h)*
+- [x] **F** época de compartilhamento em `startShare`, no molde do `mediaEpoch`
       que `startCamera` já usa. *(1-2 h)*
-- [ ] **R4** derivar `REELECTION_HYSTERESIS_MS` de `DISCONNECT_GRACE_MS`. *(15 min)*
-- [ ] **R16** a volta de qualidade também espera: 10 s de topologia estável
+- [x] **R4** derivar `REELECTION_HYSTERESIS_MS` de `DISCONNECT_GRACE_MS`. *(15 min)*
+- [x] **R16** a volta de qualidade também espera: 10 s de topologia estável
       antes de devolver o degrau ao sair do modo degradado. *(1 h)*
-- [ ] **G** contador de PIN por IP (5 erros em 60 s) e PIN de 6 dígitos com
+- [x] **G** contador de PIN por IP (5 erros em 60 s) e PIN de 6 dígitos com
       `crypto.randomInt`. *(2 h)*
-- [ ] **R5/R6** validar `kind` composto contra o `paiId` anunciado, e exigir
+- [x] **R5/R6** validar `kind` composto contra o `paiId` anunciado, e exigir
       `live === true` de quem manda `tree`. *(1 h)*
-- [ ] **R7/R8/R13** limitador próprio no `annotate-sync`, teto de conexões,
+- [x] **R7/R8/R13** limitador próprio no `annotate-sync`, teto de conexões,
       avatar de 256 KB → 64 KB, beacon chaveado pelo IP de origem com teto e
       coalescência. *(2 h)*
-- [ ] **B/C** migração que não depende de broadcast: conexão direta ao sucessor
+- [x] **B/C** migração que não depende de broadcast: conexão direta ao sucessor
       (que já vem no `room-migrating`), prazo absoluto desde a queda em vez de
       desde a desistência individual, e `migrationSecret` rotacionado no
       `welcome`. *(1-2 dias)*
@@ -327,29 +360,29 @@ pelo A, não por capacidade.
 
 Tema: **tudo que o app mede e não diz.**
 
-- [ ] **P** nome de sala escolhido por quem cria, viajando no `welcome` e no
+- [x] **P** nome de sala escolhido por quem cria, viajando no `welcome` e no
       `room-migrating`. Menor diff da lista, conserta a coisa mais visível que
       está errada. *(meio dia)*
-- [ ] **Saúde por pessoa visível dos dois lados** (anexo 5 · P4): `rxstats.js`
+- [x] **Saúde por pessoa visível dos dois lados** (anexo 5 · P4): `rxstats.js`
       já mede, `view-state` já transporta, `peer.receiveHealth` já guarda — e
       nada vira pixel fora da tabela de Configurações. Um chip no tile com o
       culpado nomeado, e um módulo puro `health.js` com a histerese. Exige um
       campo novo só: `limit` no `broadcast-state`. *(1 dia)*
-- [ ] **Medidor de som** (anexo 5 · P7): três caminhos de áudio, dois modos de
+- [x] **Medidor de som** (anexo 5 · P7): três caminhos de áudio, dois modos de
       falha documentados no README, nenhuma verificação de que sai amostra. Um
       `AnalyserNode` no `AudioContext` que já existe. *(1 dia)*
-- [ ] **`powerSaveBlocker`** (anexo 5 · P5): zero ocorrências em `main.js`. O
+- [x] **`powerSaveBlocker`** (anexo 5 · P5): zero ocorrências em `main.js`. O
       `powerMonitor` está lá desde a 0.13.0 — registrando no log a máquina
       dormir e derrubar a sessão. *(3-4 h)*
-- [ ] **Amigos salvos e sonda dirigida** (anexo 5 · P2): mensagem `probe` na
+- [x] **Amigos salvos e sonda dirigida** (anexo 5 · P2): mensagem `probe` na
       sinalização (não pacote UDP novo — a porta do servidor embutido já tem
       regra de firewall), `knownhosts.js` puro, e o aviso que falta em
       `renderNetworkStatus`: *"No Tailscale as salas não aparecem sozinhas."*
       **Metade do público provável do app não tem descoberta nenhuma hoje** — o
       Tailscale é o plano B oficial do README e é L3, não repassa broadcast. O
       próprio `discovery.js:44-47` já sabe disso, em comentário. *(2 dias)*
-- [ ] **K, L, M, N, O** os cinco defeitos de interface P1. *(1 dia somados)*
-- [ ] **Glossário** (`docs/glossario.md`, 8 linhas) e o teste de 20 linhas que
+- [x] **K, L, M, N, O** os cinco defeitos de interface P1. *(1 dia somados)*
+- [x] **Glossário** (`docs/glossario.md`, 8 linhas) e o teste de 20 linhas que
       reprova termo proibido em string visível. Fecha os quatro nomes do dono da
       sala. *(2 h)*
 
