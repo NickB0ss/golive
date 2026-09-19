@@ -1,0 +1,81 @@
+name: release
+
+# Dispara na tag. O electron-builder sobe os artefatos num release em
+# RASCUNHO (padrao do provider github em package.json), entao publicar
+# continua sendo um clique manual, como sempre foi aqui. O job 'conferir'
+# roda depois desse clique.
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+
+jobs:
+  publicar:
+    if: github.event_name == 'push'
+    # windows-2022 e nao -latest: o -latest passou a trazer o VS 2026, que o
+    # node-gyp 11 nao reconhece ("unknown version") e o configure falha.
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # A tag e o package.json tem que contar a mesma historia: ja houve dois
+      # commits 'sync package-lock' so pra consertar versao fora de sincronia.
+      - name: a tag bate com o package.json?
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "${{ github.ref_name }}" -replace '^v',''
+          if ($v -ne $tag) { throw "tag $tag != package.json $v" }
+
+      # Sem scripts: com eles o npm dispara um node-gyp rebuild implicito sem
+      # o patch de toolset do build:native. O electron-builder baixa o proprio
+      # Electron, nao usa o binario de node_modules/electron.
+      - run: npm ci --ignore-scripts
+
+      # Portao: nada de publicar tag de commit reprovado -- as sete releases
+      # anteriores a 0.17.0 sairam todas com o CI vermelho.
+      - run: npm run lint
+      - run: npm test
+
+      - run: npm run build:native
+
+      # O beforeBuild (scripts/check-native-build.js) reprova aqui se o .node
+      # nao existir, entao o instalador nunca sai sem a captura de audio.
+      - run: npm run dist -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: o instalador e o latest.yml subiram?
+        shell: pwsh
+        run: |
+          if (!(Test-Path dist/latest.yml)) { throw "latest.yml ausente -- foi o que quebrou a atualizacao na v0.10.0" }
+          if (!(Get-ChildItem dist -Filter '*.exe')) { throw "instalador ausente" }
+
+  # release:check existe desde o incidente da v0.10.0 (release sem latest.yml
+  # derrubou a atualizacao de todas as versoes anteriores) e nunca era
+  # chamado por ninguem. Aqui ele roda contra o release ja publicado, que e
+  # quando o electron-updater de fato le os assets.
+  conferir:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run release:check ${{ github.event.release.tag_name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

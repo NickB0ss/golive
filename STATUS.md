@@ -165,10 +165,15 @@ app antes de mesclar mudança no renderer.
 
 ## Próximos passos
 
-- noite de teste com PCs reais;
-- decisão sobre `release.yml`;
-- apagar as 25 branches mescladas e os 2 releases-rascunho;
+- **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
+  e o teste que mais importa e derrubar o PC do lider de verdade, de
+  preferencia no Tailscale (e o que a Frente A2 mudou);
+- subir a versao e lancar (a tag dispara o `release.yml`, que sobe os
+  artefatos num rascunho; publicar continua sendo clique manual);
 - Frente C: D1, Electron 44 e fanout 2.
+
+Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
+remoto e os 2 releases-rascunho orfaos removidos.
 
 ## Lançado na 0.17.0 (2026-09-17)
 

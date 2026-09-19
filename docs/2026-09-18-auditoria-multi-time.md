@@ -308,7 +308,11 @@ coisa ser mexida.
       trazer um VS que o node-gyp 11 não reconhece). O `release.yml` **não**
       foi criado: a decisão de publicar pela CI, em vez do processo manual de
       hoje, continua aberta — e com ela o `release:check` amarrado à tag.
-- [ ] **release.yml** e `release:check` na tag (decisão pendente). *(2 h)*
+- [x] **release.yml** — dispara na tag, confere tag × `package.json`, roda
+      lint e testes antes de empacotar, sobe os artefatos num release em
+      **rascunho** (publicar continua sendo clique manual) e confere que
+      `latest.yml` e o instalador subiram; um job `conferir` chama o
+      `release:check` quando o release é publicado.
 - [x] **P2** corrigir `STATUS.md:109`,`:770-773`,`:792` e `README.md:351-357`
       (que ainda diz que a sala morre com o host — falso desde a 0.14.0). *(30 min)*
 - [ ] **P2** apagar as branches mescladas (hoje **25**, não 17) e os 2 releases-rascunho órfãos. *(15 min)*
