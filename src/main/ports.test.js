@@ -57,3 +57,19 @@ test('propaga imediatamente um erro que nao seja EADDRINUSE', async () => {
   await assert.rejects(() => findFreeServer(createServer), /falha inesperada/);
   assert.deepEqual(calls, [9000]);
 });
+
+// B/C da auditoria 2026-09-18: o sucessor de uma migracao tenta primeiro a
+// porta da sala que caiu, que e onde os sobreviventes o procuram direto.
+test('preferredPort e tentada antes da faixa e nao repete na varredura', async () => {
+  const { createServer, calls } = fakeCreateServer(new Set());
+  const server = await findFreeServer(createServer, { preferredPort: 9004 });
+  assert.equal(server.port, 9004);
+  assert.deepEqual(calls, [9004]);
+});
+
+test('preferredPort ocupada cai na faixa normal sem tentar a mesma porta duas vezes', async () => {
+  const { createServer, calls } = fakeCreateServer(new Set([9004, 9000]));
+  const server = await findFreeServer(createServer, { preferredPort: 9004 });
+  assert.equal(server.port, 9001);
+  assert.deepEqual(calls, [9004, 9000, 9001]);
+});

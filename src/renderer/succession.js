@@ -30,6 +30,7 @@
 
   const api = {
     SUCCESSOR_TIMEOUT_MS,
+    survivorsInOrder,
     chooseSuccessor,
     chooseNewOwner,
     successorRank,

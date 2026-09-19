@@ -1065,7 +1065,7 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 });
 
 ipcMain.handle('room:host', async (_event, {
-  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory,
+  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory, preferredPort,
 } = {}) => {
   if (embeddedServerHosting) return embeddedServerHosting;
   embeddedServerHosting = (async () => {
@@ -1090,7 +1090,11 @@ ipcMain.handle('room:host', async (_event, {
       initialChatHistory,
       appVersion: app.getVersion(),
       log: (...a) => logger.log('[servidor]', ...a),
-    }));
+    }), {
+      // Sucessor de migracao: a mesma porta da sala que caiu, que e onde os
+      // sobreviventes o procuram direto (item B da auditoria 2026-09-18).
+      preferredPort: Number.isInteger(preferredPort) ? preferredPort : null,
+    });
     hostedRoomPin = pin;
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
@@ -1135,6 +1139,15 @@ ipcMain.handle('room:unhost', async () => {
   return true;
 });
 
+// Uma tentativa de sucessao lenta encontrou a sala que assumiu antes dela.
+// Fecha o servidor local sem `room-migrating`: ele nunca chegou a ser a sala
+// autoritativa e anunciar agora so criaria uma segunda migracao falsa.
+ipcMain.handle('room:abort-host', async () => {
+  discovery.stopAdvertising();
+  await closeEmbeddedServer();
+  return true;
+});
+
 // Nova tentativa de liberar a porta no firewall, disparada pelo botao
 // "Permitir acesso à rede" no aviso do palco quando a primeira tentativa
 // (durante room:host) foi cancelada ou falhou no UAC. Re-dispara o pedido
@@ -1144,8 +1157,13 @@ ipcMain.handle('firewall:retry', async () => {
   return ensureFirewallRule(embeddedServer.port);
 });
 
-ipcMain.handle('room:migrate-beacon:start', async (_event, { roomId, address, port, protect } = {}) => {
-  discovery.startAdvertisingMigration({ roomId, address, port, protected: Boolean(protect) });
+ipcMain.handle('room:migrate-beacon:start', async (_event, { roomId, address, port, protect, secret } = {}) => {
+  // `secret` assina o beacon (item C); fica so na memoria do discovery e
+  // nunca e logado. Sem ele o beacon sai sem prova e ninguem o segue.
+  discovery.startAdvertisingMigration({
+    roomId, address, port, protected: Boolean(protect),
+    secret: typeof secret === 'string' && secret.length <= 200 ? secret : null,
+  });
   return true;
 });
 

@@ -47,3 +47,11 @@ test('successorTimeoutMs escala por rank e age logo para rank negativo ou zero',
   assert.equal(successorTimeoutMs(1), 15000);
   assert.equal(successorTimeoutMs(2), 30000);
 });
+
+// Itens B/C da auditoria 2026-09-18: migration.js monta a ordem inteira de
+// sucessao (nao so o primeiro) a partir desta mesma funcao.
+test('survivorsInOrder devolve a lista inteira em ordem numerica, sem o host', () => {
+  const { survivorsInOrder } = require('./succession');
+  assert.deepEqual(survivorsInOrder(['9', '10', '2', '1'], '9'), ['1', '2', '10']);
+  assert.deepEqual(survivorsInOrder(null, '1'), []);
+});

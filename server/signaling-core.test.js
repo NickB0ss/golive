@@ -222,6 +222,17 @@ test('createRateLimiter zera a contagem quando a janela vira', () => {
   assert.equal(rl.hit(1020), false);
 });
 
+test('limitador de probe agrupa conexoes pelo IP normalizado e isola IPs diferentes', () => {
+  const { createProbeLimiter } = require('./signaling-core');
+  const limiter = createProbeLimiter({ limit: 2, windowMs: 1000, maxEntries: 2 });
+  assert.equal(limiter.hit('::ffff:10.0.0.1', 0), true);
+  assert.equal(limiter.hit('10.0.0.1', 1), true, 'segunda conexao do mesmo IP ainda cabe');
+  assert.equal(limiter.hit('10.0.0.1', 2), false, 'terceira conexao do mesmo IP e cortada');
+  assert.equal(limiter.hit('10.0.0.2', 2), true, 'outro IP tem cota independente');
+  assert.equal(limiter.hit('10.0.0.3', 3), true);
+  assert.equal(limiter.hit('10.0.0.1', 4), true, 'o IP LRU foi esquecido no teto');
+});
+
 test('createRateLimiter padrao cobre a rajada de re-oferta do welcome', () => {
   // O teto default (MAX_MSGS_PER_SECOND = 300) tem de aguentar a rajada de
   // reingresso: ~115 frames numa sala de 6 com tela + camera (ver a conta em

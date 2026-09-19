@@ -8,7 +8,7 @@
  */
 
 const { WebSocketServer } = require('ws');
-const { randomUUID, timingSafeEqual } = require('node:crypto');
+const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
 const { chooseSuccessor, chooseNewOwner } = require('../src/renderer/succession.js');
 
 // O servidor de sinalizacao roda no MESMO processo do app de quem criou a
@@ -81,6 +81,7 @@ const MAX_PIN_FAILURE_ENTRIES = 1024;
 // servidor fecha o socket logo depois de responder); a cota so segura o
 // caso de alguem mandar varias antes do close ter efeito.
 const MAX_PROBE_PER_SECOND = 3;
+const MAX_PROBE_LIMITER_ENTRIES = 1024;
 
 // Ids de conexao nascem em `String(nextId++)`: decimal positivo, sem zeros
 // a esquerda. Number conserva inteiros exatos ate 16 algarismos; o teto
@@ -118,6 +119,30 @@ function createRateLimiter({ limit = MAX_MSGS_PER_SECOND, windowMs = RATE_WINDOW
       }
       count += 1;
       return count <= limit;
+    },
+  };
+}
+
+function normalizeRemoteIp(ip) {
+  return typeof ip === 'string' ? ip.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1') : null;
+}
+
+/** Cota de probe por IP, nao por socket. O Map tem ordem LRU e teto: cada
+ * sonda abre e fecha uma conexao, portanto uma chave por conexao nao limita
+ * nada e um Map sem teto vira alvo de exaustao de memoria. */
+function createProbeLimiter({ limit = MAX_PROBE_PER_SECOND, windowMs = 1000, maxEntries = MAX_PROBE_LIMITER_ENTRIES } = {}) {
+  const entries = new Map();
+  return {
+    hit(ip, now) {
+      const key = normalizeRemoteIp(ip);
+      if (!key) return false;
+      let limiter = entries.get(key);
+      if (!limiter) limiter = createRateLimiter({ limit, windowMs });
+      // Apagar e reinserir move a entrada usada para o fim (LRU).
+      entries.delete(key);
+      while (entries.size >= maxEntries) entries.delete(entries.keys().next().value);
+      entries.set(key, limiter);
+      return limiter.hit(now);
     },
   };
 }
@@ -531,9 +556,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
     // mudanca de topologia (tela + camera + cada origem repassada).
     const MAX_WATCHERS_PER_SECOND = 20;
     const watchersLimiters = new Map(); // peerId -> limiter, 20 msg/s
-    // 'probe' e o unico tipo aceito de socket que nunca chegou a entrar --
-    // chaveado pelo id de CONEXAO (nao ha peerId de sala pra quem so sonda).
-    const probeLimiters = new Map();
+    // 'probe' e o unico tipo aceito de socket que nunca chegou a entrar.
+    // Como ele fecha o socket apos responder, a chave precisa ser o IP.
+    const probeLimiter = createProbeLimiter();
 
     function pushChatEntry(entry) {
       chatHistory.push(entry);
@@ -569,6 +594,38 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
       const entry = { type: 'chat', system: true, event, actor, ...(target ? { target } : {}), ts: Date.now() };
       pushChatEntry(entry);
       broadcastToRoom(room, exceptId, entry);
+    }
+
+    // Segredo de migracao por sala (item C da auditoria 2026-09-18). E o que
+    // autentica o beacon UDP de migracao: o sucessor assina com ele e cada
+    // sobrevivente confere antes de seguir o endereco. Rotaciona a cada
+    // entrada/retomada (welcome) e a cada saida definitiva, e so vai pra
+    // quem esta dentro -- quem saiu, foi expulso ou banido fica com um
+    // segredo velho que nao prova mais nada. NUNCA vai pro log.
+    const migrationSecrets = new Map(); // room -> segredo atual
+    function rotateMigrationSecret(room) {
+      const secret = randomBytes(32).toString('base64url');
+      migrationSecrets.set(room, secret);
+      return secret;
+    }
+
+    // IP de cada membro como ESTE servidor o ve (item B): e por ele que os
+    // pares ja se alcancam na LAN virtual, e e nele que os sobreviventes
+    // procuram o sucessor direto quando o lider cai -- sem broadcast.
+    function peerAddressesOf(room) {
+      const out = {};
+      for (const [id, peer] of peers) {
+        if (peer.room !== room) continue;
+        const addr = normalizeAddress(peer.address);
+        if (addr) out[id] = addr;
+      }
+      return out;
+    }
+
+    /** Segredo novo + enderecos pra todo mundo da sala menos `exceptId` (o
+     * recem-chegado recebe os dois no proprio welcome). */
+    function announceMigrationInfo(room, secret, exceptId = null) {
+      broadcastToRoom(room, exceptId, { type: 'migration-info', migrationSecret: secret, peerAddresses: peerAddressesOf(room) });
     }
 
     function roomPeers(room, exceptId) {
@@ -756,6 +813,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
       // ficaria sem ninguem podendo moderar, com a sala aberta pra
       // rede. A lideranca volta pra quem criou a sala.
       if (me.owner && transferredTo && !keepOwnership) reclaimOwnership(me.room);
+      // Quem saiu (ou foi expulso/banido) conhecia o segredo atual: rotaciona
+      // pra ele nao conseguir assinar um beacon de migracao desta sala.
+      if (!closingRoom && roomPeers(me.room).length) announceMigrationInfo(me.room, rotateMigrationSecret(me.room));
       return me;
     }
 
@@ -856,9 +916,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
             // conta no teto do R8 (MAX_CONNECTIONS) nem em getPeerCount.
             case 'probe': {
               if (joined) return; // quem ja entrou nao sonda a propria sala
-              const limiter = probeLimiters.get(id) || createRateLimiter({ limit: MAX_PROBE_PER_SECOND, windowMs: 1000 });
-              probeLimiters.set(id, limiter);
-              if (!limiter.hit(Date.now())) {
+              if (!probeLimiter.hit(ws._socket?.remoteAddress, Date.now())) {
                 ws.close(1008, 'flood');
                 return;
               }
@@ -868,6 +926,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 peers: peers.size,
                 protected: Boolean(roomPin),
                 version: hostVersion,
+                // Item B: o sobrevivente de uma migracao sonda o IP do
+                // sucessor e precisa saber se achou A MESMA sala. Responde
+                // so sim/nao ao roomId que ELE mandou -- o id em si nao sai
+                // pra quem so sonda.
+                ...(typeof msg.roomId === 'string' && msg.roomId ? { sameRoom: msg.roomId === stableRoomId } : {}),
               });
               // A sonda nunca fica: pergunta e sai. Fechar aqui (em vez de
               // esperar o cliente) e o que garante que ela nunca ocupa uma
@@ -975,12 +1038,15 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
                 ws.peerId = resumedId;
                 const elapsed = suspendedAt == null ? 0 : Math.max(0, Date.now() - suspendedAt);
                 log(`retomado #${resumedId} apos ${elapsed} ms`);
+                const resumedSecret = rotateMigrationSecret(room);
                 send(ws, {
                   type: 'welcome', id: resumedId, owner: resumedPeer.owner, peers: roomPeers(room, resumedId),
                   chat: chatHistory.slice(), banned: resumedPeer.owner ? listBans() : [],
                   resumeToken: resumedPeer.resumeToken, resumed: true,
                   roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
+                  migrationSecret: resumedSecret, peerAddresses: peerAddressesOf(room),
                 });
+                announceMigrationInfo(room, resumedSecret, resumedId);
                 // Quem ficou nao recebe peer-joined na retomada, mas precisa
                 // saber que o socket voltou para refazer uma oferta perdida.
                 broadcastToRoom(room, resumedId, { type: 'peer-resumed', id: resumedId });
@@ -995,12 +1061,15 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
               joined = true;
               ws.joined = true;
               log(`+ ${logName(name)} (#${id}) entrou na sala ${logName(room)}${owner ? ' (dono)' : ''}`);
+              const joinSecret = rotateMigrationSecret(room);
               send(ws, {
                 type: 'welcome', id, owner, peers: roomPeers(room, id),
                 chat: chatHistory.slice(), banned: owner ? listBans() : [],
                 resumeToken: newResumeToken,
                 roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
+                migrationSecret: joinSecret, peerAddresses: peerAddressesOf(room),
               });
+              announceMigrationInfo(room, joinSecret, id);
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
               pushSystemLine(room, 'join', name, undefined, id);
               break;
@@ -1352,9 +1421,8 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
         });
 
         ws.on('close', (code, reason) => {
-          // Socket que so sondou (nunca entrou) nao tem `me` nenhum -- so a
-          // cota da sonda, presa ao id de conexao, pra nao vazar entrada.
-          probeLimiters.delete(peerId);
+          // Socket que so sondou (nunca entrou) nao tem `me` nenhum. A cota
+          // dele fica no LRU por IP de proposito, para sobreviver ao close.
           const me = peers.get(peerId);
           // O socket de antes da retomada fecha depois do novo welcome. Ele
           // nao representa mais este peer e deve sair em silencio.
@@ -1443,6 +1511,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
 module.exports = {
   createSignalingServer,
   createRateLimiter,
+  createProbeLimiter,
   createPinFailureLimiter,
   sanitizeAnnotateOp,
   sanitizeAnnotateSnapshotItem,
