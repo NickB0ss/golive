@@ -3971,6 +3971,7 @@
   let pcmWorkletModule = null; // promise, carregado uma unica vez
   const PCM_DROP_LOG_MS = 10000;
   const pcmNodesByCapture = new Map(); // captureId -> AudioWorkletNode
+  const pcmPoolsByCapture = new Map(); // captureId -> planos reutilizados no renderer
 
   function getPcmAudioContext() {
     if (!pcmAudioContext) pcmAudioContext = new AudioContext({ sampleRate: 48000 });
@@ -3985,7 +3986,16 @@
   }
 
   window.golive.onAudioChunk((captureId, samples, channels) => {
-    pcmNodesByCapture.get(captureId)?.port.postMessage({ samples, channels });
+    const node = pcmNodesByCapture.get(captureId);
+    const pool = pcmPoolsByCapture.get(captureId);
+    if (!node || !pool || !channels) return;
+    const frames = samples.length / channels;
+    const planes = pool.acquire(frames);
+    pool.deinterleave(samples, planes, frames);
+    // O pool preserva estes buffers. Transferir exigiria outra mensagem para
+    // devolve-los e mediu mais caro que este unico clone no bloco de 10 ms.
+    node.port.postMessage({ planes, channels, frames });
+    pool.release(planes);
   });
 
   // Sobe uma captura nativa por processo e devolve o AudioWorkletNode ainda
@@ -3997,6 +4007,7 @@
     const result = await window.golive.startProcessAudioCapture(pid, exclude);
     if (!result.ok) return null;
     const node = new AudioWorkletNode(ctx, 'pcm-injector', { outputChannelCount: [2] });
+    const pool = new window.GoLive.pcmPlanar.PcmPlanarPool();
     // Atraso de playout e quadros cortados: os dois numeros que faltavam pra
     // "o som saia atrasado" ser diagnosticavel pelo log em vez de hipotese.
     // Um aviso a cada PCM_DROP_LOG_MS no maximo -- corte em rajada nao pode
@@ -4011,10 +4022,12 @@
       console.warn(`[diag] audio nativo: atraso ${Math.round((backlogFrames / 48000) * 1000)}ms, ${droppedFrames} quadros cortados no total (captura ${result.captureId})`);
     };
     pcmNodesByCapture.set(result.captureId, node);
+    pcmPoolsByCapture.set(result.captureId, pool);
     return {
       node,
       stop: () => {
         pcmNodesByCapture.delete(result.captureId);
+        pcmPoolsByCapture.delete(result.captureId);
         try {
           node.disconnect();
         } catch {
