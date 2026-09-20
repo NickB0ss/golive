@@ -181,6 +181,16 @@ const correctness = {
   'no-empty': ['error', { allowEmptyCatch: true }],
   'no-prototype-builtins': 'error',
   'no-irregular-whitespace': 'error',
+
+  // Regras do recommended que a lista manual deixou passar e que estavam
+  // limpas na base: entram sem custo para fechar classes de bug reais.
+  'no-case-declarations': 'error',
+  'for-direction': 'error',
+  'no-useless-escape': 'error',
+  'no-template-curly-in-string': 'error',
+  'array-callback-return': 'error',
+  'no-empty-pattern': 'error',
+  'no-regex-spaces': 'error',
 };
 
 const localPlugin = { rules: { 'no-floating-promise': noFloatingPromise } };

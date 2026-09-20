@@ -6281,6 +6281,9 @@
   // senders -- eles disputam o mesmo encoder. Por isso o resumo soma
   // ms/frame em vez de tirar media.
   function renderStats(rows, rxRows = []) {
+    // O relay disputa a mesma thread do renderer com a atualizacao desta
+    // tabela. Fechada, ela nao tem valor visual: nem formatamos HTML.
+    if (!ui.settings.isStatsVisible()) return;
     const esc = ui.escapeHtml;
 
     // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador

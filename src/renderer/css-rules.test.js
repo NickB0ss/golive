@@ -31,6 +31,8 @@ function declarations(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const found = [];
   const stack = [];
+  const blocks = [];
+  let nextBlock = 0;
   let segment = '';
   let line = 1;
 
@@ -38,7 +40,7 @@ function declarations(css) {
   // fechar o bloco tambem conta como fim de declaracao, senao ela escapava.
   const flush = () => {
     const match = segment.match(/^\s*([\w-]+)\s*:\s*([^;{}]+)$/);
-    if (match) found.push({ property: match[1], value: match[2].trim(), stack: [...stack], line });
+    if (match) found.push({ property: match[1], value: match[2].trim(), stack: [...stack], block: blocks.at(-1), line });
     segment = '';
   };
 
@@ -47,10 +49,12 @@ function declarations(css) {
     if (char === '\n') line += 1;
     if (char === '{') {
       stack.push(segment.trim());
+      blocks.push(nextBlock++);
       segment = '';
     } else if (char === '}') {
       flush();
       stack.pop();
+      blocks.pop();
     } else if (char === ';') {
       flush();
     } else {
@@ -118,6 +122,18 @@ test('estrutura moderna mantem dock no fluxo e camadas por tokens', () => {
   assert.match(css, /--z-titlebar:\s*\d+;/, 'falta token da camada da faixa de titulo');
   assert.match(css, /\.control-bar\s*\{[^}]*position:\s*static;/s, 'o dock deve permanecer no fluxo');
   assert.match(css, /\.room-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill, minmax\(260px, 1fr\)\)/s, 'a lista de salas deve ser uma grade de cards');
+});
+
+test('cada bloco CSS declara z-index uma unica vez', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const seen = new Set();
+  const duplicates = [];
+  for (const rule of declarations(css).filter(({ property }) => property === 'z-index')) {
+    const key = `${rule.block}:${rule.property}`;
+    if (seen.has(key)) duplicates.push(rule);
+    seen.add(key);
+  }
+  assert.deepEqual(duplicates, [], `z-index duplicado no mesmo bloco: ${duplicates.map((rule) => `${rule.line}: ${rule.stack.at(-1)}`).join(', ')}`);
 });
 
 test('a casca da sala fica escondida com um tile em tela cheia', () => {
