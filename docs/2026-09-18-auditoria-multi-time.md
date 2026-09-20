@@ -27,6 +27,7 @@ Anexos, na íntegra, em `docs/auditoria-2026-09-18/`:
   na carga do renderer.
 - **PR #64 (B2):** saúde da recepção por pessoa e medidor de som.
 - **PR #65 (B3):** amigos salvos, sonda dirigida e aviso de Tailscale.
+  Nota (2026-09-20): Amigos salvos foi removida a pedido; `probe` permanece apenas para migracao de sala.
 - **PR #66 (A2):** migração sem depender de broadcast, beacon autenticado e
   sucessão com sondagem enquanto aguarda a elevação do firewall.
 

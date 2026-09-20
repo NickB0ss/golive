@@ -113,7 +113,7 @@
   --z-modal-popover: 1001; /* menu aberto a partir de dentro de um modal */
   --z-dialog: 1002; /* confirmacoes e campos acima do menu do modal */
   --z-toast: 10000; /* aviso transitório acima de todas as camadas */
-  --z-titlebar: 9999;
+  --z-titlebar: 50; /* a modal precisa cobrir tambem o painel de avisos */
 
   --s-1: 4px;  --s-2: 8px;   --s-3: 12px;
   --s-4: 16px; --s-5: 24px;  --s-6: 32px;  --s-7: 48px;
@@ -595,35 +595,6 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* P2 (auditoria 2026-09-18): aviso de que o Tailscale nao repassa broadcast
-   -- ver o comentario em discovery.js:44-47. Tom de atencao (nao de erro):
-   a lista vazia e normal ali, so precisa parar de parecer bug. */
-.lobby-net-warn {
-  margin: var(--s-2) 0 0; padding: var(--s-2) var(--s-3);
-  background: var(--warn-dim); border: 1px solid var(--warn-border);
-  border-radius: var(--r-sm); color: var(--tx2); font-size: 12px; line-height: 1.5;
-}
-.lobby-net-warn.hidden { display: none; }
-.lobby-net-warn .link-button {
-  display: inline; margin-left: var(--s-1); background: none; border: none; padding: 0;
-  cursor: pointer; color: var(--act-hover); font-size: 12px; text-decoration: underline;
-}
-.lobby-net-warn .link-button:hover { color: var(--act); }
-
-/* Amigos salvos (P2): lista curta na coluna lateral, nao um segundo painel
-   de salas -- cada linha e so o endereco + remover. */
-.lobby-known-hosts { margin: var(--s-2) 0 0; }
-.lobby-known-hosts.hidden { display: none; }
-.known-hosts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.known-host-row { display: flex; align-items: center; gap: var(--s-1); border-radius: var(--r-sm); }
-.known-host-row:hover { background: var(--s2); }
-.known-host-address {
-  flex: 1; min-width: 0; text-align: left; background: none; border: none; cursor: pointer;
-  padding: var(--s-1) var(--s-2); color: var(--tx2); font-size: 12px; font-variant-numeric: tabular-nums;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.known-host-address:hover { color: var(--tx); }
-
 /* ---------- Coluna de salas ---------- */
 
 .lobby-rooms {
@@ -800,8 +771,8 @@ button.busy { cursor: default; }
 
 /* P7 (auditoria 2026-09-18): nivel do audio compartilhado, colado no botao
    de pausa. Puramente decorativo (por isso aria-hidden no HTML) -- o aviso
-   de verdade (silencio absoluto) sai por #stage-warning, que ja tem
-   aria-live e um "x" pra dispensar. Sem cor saturada: o acento e reservado
+   de verdade (silencio absoluto) vai para a central, que ja tem aria-live e
+   um "x" pra dispensar. Sem cor saturada: o acento e reservado
    a "alguem esta ao vivo" (ver a nota no topo do arquivo) -- aceso aqui e
    so ELEVACAO/CONTRASTE (--text-1 sobre --line2), nao uma segunda cor viva
    competindo com o selo AO VIVO. */
@@ -2301,78 +2272,6 @@ button.busy { cursor: default; }
   color: var(--warn);
 }
 
-.warn-box {
-  margin-top: var(--s-2);
-  padding: var(--s-3);
-  border-radius: var(--r-sm);
-  background: var(--warn-dim);
-  border: 1px solid var(--warn-border-strong);
-  color: var(--text-1);
-  font-size: 0.85em;
-  line-height: 1.45;
-}
-.warn-box code {
-  display: block;
-  margin: 6px 0;
-  word-break: break-all;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-
-/* Correcao do firewall dentro do aviso do palco: mensagem + botao que
-   re-dispara a elevacao, e um detalhe (comando manual) que so aparece
-   depois de uma tentativa falhar. */
-.firewall-fix { margin-top: var(--s-2); display: grid; gap: 6px; justify-items: start; }
-.firewall-fix p { margin: 0; }
-.btn-firewall {
-  padding: 6px 12px;
-  font-size: 0.85em;
-  background: var(--surface-4);
-  border-color: var(--line-strong);
-  color: var(--text-1);
-}
-.btn-firewall:hover:not(:disabled) { background: var(--surface-3); }
-.firewall-detail {
-  font-size: 0.92em;
-  color: var(--text-2);
-  word-break: break-all;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-
-/* Abre a altura sem animar `height`: grid-template-rows de 0fr pra 1fr e
-   interpolavel e nao dispara layout em cada frame como height faria.
-   O filho precisa de min-height: 0 + overflow: hidden pra ser cortado. */
-#stage-warning {
-  margin: var(--s-2) var(--s-5) 0;
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows var(--t-move) var(--ease-move),
-              opacity var(--t-move) var(--ease-move),
-              display var(--t-move) allow-discrete;
-  opacity: 1;
-}
-#stage-warning > * { min-height: 0; overflow: hidden; }
-/* Abre espaco a direita pro X sem posicionar nada em cima do texto: o botao
-   e `float: right` no proprio fluxo, entao um aviso de tres linhas nao passa
-   por baixo dele. */
-.warn-inner { padding-right: 4px; }
-.warn-dismiss {
-  float: right;
-  margin: -2px 0 0 var(--s-2);
-  width: 22px; height: 22px;
-  display: grid; place-items: center;
-  padding: 0;
-  border: none;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 17px;
-  line-height: 1;
-}
-.warn-dismiss:hover { background: var(--surface-4); color: var(--text-1); }
-@starting-style {
-  #stage-warning { grid-template-rows: 0fr; opacity: 0; }
-}
-
 /* ---------- O pulso de "ao vivo" (motion #10) ---------- */
 
 /* Unica animacao em laco do app inteiro, e de proposito: delight escala
@@ -2829,6 +2728,139 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   user-select: none;
 }
 .titlebar-drag { flex: 1; }
+/* `display` de autor vence o `display:none` que o atributo [hidden] traz da
+   folha do navegador -- sem estas duas linhas o botao continua na barra
+   (fantasma clicavel) e abre um painel vazio quando nao ha aviso nenhum. */
+.warn-center[hidden],
+.warn-center-count[hidden] {
+  display: none;
+}
+
+.warn-center-wrap {
+  position: relative;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+.warn-center {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 0 var(--s-2);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--tx2);
+}
+.warn-center-icon-main { width: 24px; height: 24px; flex: none; }
+.warn-center-icon-main svg { width: 24px; height: 24px; }
+.warn-center:hover, .warn-center[aria-expanded="true"] { background: var(--s3); color: var(--tx); }
+.warn-center.warn-center-grave { color: var(--danger); }
+.warn-center.warn-center-atencao { color: var(--warn); }
+.warn-center.warn-center-info { color: var(--tx2); }
+.warn-center:focus-visible,
+.warn-center-action:focus-visible,
+.warn-center-dismiss:focus-visible { outline: none; box-shadow: var(--ring); }
+.warn-center-count {
+  /* Na linha, depois do icone/rotulo -- absoluto no canto do botao, o numero
+     caia em cima do rotulo curto do aviso grave ("Sem imagem"). */
+  position: static;
+  flex: none;
+  min-width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-full);
+  background: var(--s4);
+  color: var(--tx);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.warn-center-label {
+  /* Cabe "Sem imagem" e "Firewall" sem reticencias, no peso 700 de 11px. */
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tx);
+  font-size: 11px;
+  font-weight: 700;
+}
+.warn-center-panel {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  right: 0;
+  z-index: var(--z-popover);
+  width: min(360px, calc(100vw - var(--s-4)));
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: var(--s-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: var(--shadow-2);
+}
+.warn-center-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: start;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+}
+.warn-center-item + .warn-center-item { margin-top: var(--s-1); }
+.warn-center-item-grave { background: var(--danger-dim); }
+.warn-center-item-atencao { background: var(--warn-dim); }
+.warn-center-icon { width: 24px; height: 24px; }
+.warn-center-icon svg { width: 24px; height: 24px; }
+.warn-center-icon-grave { color: var(--danger); }
+.warn-center-icon-atencao { color: var(--warn); }
+.warn-center-icon-info { color: var(--tx2); }
+.warn-center-item-body { min-width: 0; }
+.warn-center-item-body strong { display: block; color: var(--tx); font-size: 12px; }
+.warn-center-item-body p { margin: 2px 0 0; color: var(--tx2); font-size: 12px; line-height: 1.4; }
+.warn-center-action {
+  min-height: 28px;
+  margin-top: var(--s-2);
+  padding: 4px var(--s-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-xs);
+  background: var(--s3);
+  color: var(--tx);
+  font-size: 11px;
+  font-weight: 600;
+}
+.warn-center-action:hover { background: var(--s4); }
+.warn-center-dismiss {
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--tx2);
+  font-size: 17px;
+  line-height: 1;
+}
+.warn-center-dismiss:hover { background: var(--s4); color: var(--tx); }
+@keyframes warn-center-enter {
+  0% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(1.12); opacity: .72; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.warn-center-pulse { animation: warn-center-enter 420ms var(--ease-out) 1; }
+@media (prefers-reduced-motion: reduce) {
+  .warn-center-pulse { animation: none; }
+}
 .titlebar-controls {
   display: flex;
   -webkit-app-region: no-drag;

@@ -2,11 +2,22 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, knownhosts, viewhold } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, viewhold, warnings: warningsModule } = window.GoLive;
+  const warningRegistry = warningsModule.create();
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
   window.GoLive.titlebar.init(window.golive.win, document);
+  ui.warnings.onDismiss((id) => {
+    warningRegistry.dismiss(id);
+    renderWarningCenter();
+  });
+  ui.warnings.onAction((id, actionId) => {
+    if (id === 'firewall' && actionId === 'firewall:retry') void retryFirewallWarning();
+    if (id === 'tailscale' && actionId === 'tailscale:join-address') {
+      ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
+    }
+  });
 
   let cfg = config.load(localStorage.getItem('golive'));
   localStorage.setItem('golive', config.serialize(cfg)); // grava de imediato -- garante que um clientId novo sobrevive ao proximo reinicio
@@ -268,7 +279,7 @@
   // comeca a sofrer.
   const statsPrev = new Map();
   // Aviso derivado das estatisticas (encoder em software). Fica separado do
-  // aviso de host porque os dois dividem o mesmo #stage-warning.
+  // aviso de host porque cada fonte ocupa seu proprio item na central.
   let encoderWarning = '';
   // A captura e mais acionavel que encoder em software: quando os dois
   // ocorrem, este aviso ganha o unico slot do palco.
@@ -930,18 +941,12 @@
 
   // ---------- Lista de salas ----------
 
-  // P2 (auditoria 2026-09-18): salas achadas pela sonda dirigida aos amigos
-  // salvos -- endereco (chave IP:porta) -> resumo no MESMO formato que o
-  // beacon UDP ja produz. Fundida com discoveredRooms na hora de renderizar
-  // (mergeRoomSources), sem duplicar quando as duas fontes acham a mesma
-  // maquina. Nunca persistido -- e so o resultado da ULTIMA rodada.
-  let probedRooms = new Map();
-
   function renderRoomList() {
-    const liveRooms = knownhosts.mergeRoomSources(discoveredRooms, Array.from(probedRooms.values()));
     ui.rooms.render({
       activeAddress: activeRoomAddress,
-      liveRooms,
+      // A lista do lobby e somente o que o beacon UDP viu agora. A sonda
+      // abaixo existe exclusivamente para a migracao e nao descobre salas.
+      liveRooms: discoveredRooms,
       isOnCooldown: (address) => cooldownRemaining(address) > 0,
       appVersion,
       onSelect: (room) => {
@@ -971,51 +976,13 @@
   renderRoomList();
   renderMembersPanel();
 
-  // ---------- Amigos salvos + sonda dirigida (P2) ----------
+  // A migracao nao pode depender do broadcast: quando o lider cai, cada
+  // sobrevivente consulta candidatos diretamente para achar a mesma sala.
+  const ROOM_PROBE_TIMEOUT_MS = 1500;
 
-  function renderKnownHostsList() {
-    ui.rooms.renderKnownHosts?.(cfg.knownHosts, {
-      onSelect: (host) => joinRoom(host.address, cfg.name),
-      onRemove: (host) => {
-        cfg = { ...cfg, knownHosts: knownhosts.removeHost(cfg.knownHosts, host.address) };
-        persist();
-        renderKnownHostsList();
-      },
-    });
-  }
-  renderKnownHostsList();
-
-  // Entra na lista sozinho quando um 'welcome' confirma que um endereco
-  // funcionou de verdade (chamado do case 'welcome' de handleSignal, mais
-  // abaixo) -- nunca quando SOU o host (hostInfo truthy: seria salvar o
-  // proprio endereco) e nunca endereco invalido (addHost devolve a MESMA
-  // referencia e o `if` abaixo pula persist/render a toa).
-  function rememberKnownHost(address) {
-    if (hostInfo || !address) return;
-    const updated = knownhosts.addHost(cfg.knownHosts, address, Date.now());
-    if (updated === cfg.knownHosts) return;
-    cfg = { ...cfg, knownHosts: updated };
-    persist();
-    renderKnownHostsList();
-  }
-
-  // Timeout curto e poucas em paralelo: uma sala fora do ar nao pode travar
-  // o refresh do lobby, e uma rodada nunca pode ter mais de
-  // KNOWN_HOST_PROBE_CONCURRENCY sondas abertas ao mesmo tempo.
-  const KNOWN_HOST_PROBE_TIMEOUT_MS = 1500;
-  const KNOWN_HOST_PROBE_CONCURRENCY = 4;
-  // Nunca mais que a cada ~15s (item 2 da tarefa) -- o setInterval roda
-  // sempre, mas o corpo desiste na hora se o lobby nao estiver visivel.
-  const KNOWN_HOST_PROBE_INTERVAL_MS = 15000;
-  let probingKnownHosts = false;
-
-  /** Uma sonda: WebSocket curto pro endereco salvo, manda 'probe' e espera
-   * 'probe-ok' OU o timeout -- nunca entra na sala (mesma mensagem que
-   * server/signaling-core.js aceita de quem nao deu 'join'). Devolve o
-   * resumo no formato de room-list, ou `null` se a maquina nao respondeu.
-   * `opts.roomId` (migracao, item B): pergunta se e A MESMA sala -- a
-   * resposta vem em `sameRoom`, sem o servidor revelar o id dele. */
-  function probeKnownHost(host, opts = {}) {
+  /** Sonda pontual da migracao. `roomId` pede so a confirmacao sameRoom,
+   * sem o servidor revelar o id da sala encontrada. */
+  function probeRoomAt(address, roomId) {
     return new Promise((resolve) => {
       let settled = false;
       let conn = null;
@@ -1031,59 +998,25 @@
       // aceita o TCP mas nunca fala o protocolo (porta ocupada por outra
       // coisa, servidor travado) prenderia esta sonda pra sempre, e com ela
       // a rodada inteira (Promise.all do batch).
-      const deadline = setTimeout(() => finish(null), KNOWN_HOST_PROBE_TIMEOUT_MS);
+      const deadline = setTimeout(() => finish(null), ROOM_PROBE_TIMEOUT_MS);
       try {
-        conn = signaling.connect(normalizeRoomUrl(host.address), {
-          onOpen: () => conn.send(opts.roomId ? { type: 'probe', roomId: opts.roomId } : { type: 'probe' }),
+        conn = signaling.connect(normalizeRoomUrl(address), {
+          onOpen: () => conn.send({ type: 'probe', roomId }),
           onMessage: (msg) => {
             if (!msg || msg.type !== 'probe-ok') return;
             finish({
-              name: typeof msg.roomName === 'string' && msg.roomName ? msg.roomName : 'sala',
-              address: host.address,
-              peers: typeof msg.peers === 'number' ? msg.peers : undefined,
-              protected: msg.protected === true,
-              version: typeof msg.version === 'string' ? msg.version : undefined,
-              ...(opts.roomId ? { sameRoom: msg.sameRoom === true } : {}),
+              address,
+              sameRoom: msg.sameRoom === true,
             });
           },
           onError: () => finish(null),
           onClose: () => finish(null),
-        }, { connectTimeoutMs: KNOWN_HOST_PROBE_TIMEOUT_MS });
+        }, { connectTimeoutMs: ROOM_PROBE_TIMEOUT_MS });
       } catch {
         finish(null);
       }
     });
   }
-
-  async function runKnownHostProbes() {
-    if (probingKnownHosts || !ui.rooms.isLobbyVisible?.()) return;
-    const hosts = cfg.knownHosts;
-    if (!hosts.length) return;
-    probingKnownHosts = true;
-    try {
-      for (let i = 0; i < hosts.length; i += KNOWN_HOST_PROBE_CONCURRENCY) {
-        if (!ui.rooms.isLobbyVisible?.()) break; // entrou numa sala no meio da rodada
-        const batch = hosts.slice(i, i + KNOWN_HOST_PROBE_CONCURRENCY);
-        const results = await Promise.all(batch.map(probeKnownHost));
-        let changed = false;
-        batch.forEach((host, idx) => {
-          const result = results[idx];
-          if (result) {
-            probedRooms.set(host.address, result);
-            changed = true;
-          } else if (probedRooms.delete(host.address)) {
-            changed = true; // parou de responder -- sai da lista
-          }
-        });
-        if (changed) renderRoomList();
-      }
-    } finally {
-      probingKnownHosts = false;
-    }
-  }
-  const knownHostProbeTimer = setInterval(() => { void runKnownHostProbes(); }, KNOWN_HOST_PROBE_INTERVAL_MS);
-  if (typeof knownHostProbeTimer.unref === 'function') knownHostProbeTimer.unref();
-  void runKnownHostProbes(); // primeira rodada logo na abertura do lobby
 
   // Endereco desta maquina na rede virtual, mostrado no rodape da coluna de
   // acoes do lobby. Relido no botao de atualizar porque o Radmin/Tailscale
@@ -1091,8 +1024,14 @@
   // ligar a VPN).
   function refreshNetworkStatus() {
     Promise.resolve(window.golive.getNetworkAddress?.())
-      .then((info) => ui.rooms.setNetworkStatus(info || null))
-      .catch(() => ui.rooms.setNetworkStatus(null));
+      .then((info) => {
+        ui.rooms.setNetworkStatus(info || null);
+        renderTailscaleWarning(info || null);
+      })
+      .catch(() => {
+        ui.rooms.setNetworkStatus(null);
+        renderTailscaleWarning(null);
+      });
   }
   refreshNetworkStatus();
 
@@ -1266,7 +1205,6 @@
     btn.classList.add('spin');
     window.golive.refreshDiscovery();
     refreshNetworkStatus();
-    void runKnownHostProbes(); // P2: o refresh manual tambem sonda de novo
   });
 
   // Corpo compartilhado do "Conectar" do dialogo de entrar numa sala -- usado
@@ -1291,11 +1229,6 @@
   }
 
   $('btn-join-address').addEventListener('click', () => {
-    ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
-  });
-  // P2: mesmo caminho do botao acima -- o aviso de Tailscale so oferece uma
-  // acao a mais pra chegar la, nao um fluxo novo.
-  $('btn-tailscale-join')?.addEventListener('click', () => {
     ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
   });
 
@@ -1455,7 +1388,7 @@
     migration.dialPromise = (async () => {
       const addresses = migrationPlan.dialAddresses({ targets, addresses: migration.addresses, port: migration.port, round });
       if (!addresses.length) return null;
-      const results = await Promise.all(addresses.map((address) => probeKnownHost({ address }, { roomId: migration.roomId })));
+      const results = await Promise.all(addresses.map((address) => probeRoomAt(address, migration.roomId)));
       return results.find((r) => r && r.sameRoom === true) || null;
     })();
     try {
@@ -1634,137 +1567,101 @@
     });
   });
 
-  // ---------- Aviso de firewall/endereco do host ----------
+  // ---------- Central de avisos ----------
 
-  // Um unico #stage-warning atende duas fontes independentes: os avisos de
-  // host (endereco/firewall, definidos ao criar a sala) e o aviso derivado
-  // das estatisticas (encoder caiu pra software). Elas nao se anulam --
-  // podem estar ativas ao mesmo tempo -- entao o texto e a juncao das duas.
-  // O aviso do palco pode ser DISPENSADO. O de firewall e o pior caso: ele
-  // fica na frente da sala a sessao inteira quando a elevacao falhou, e para
-  // quem entra por endereco direto (ou ja liberou a porta na mao, pelo
-  // PowerShell) ele nao tem mais nada a dizer -- so ocupa o topo do palco.
-  //
-  // A dispensa vale pra ESTE texto, nao pro elemento: guardar a assinatura
-  // do que foi dispensado e o que faz um aviso NOVO (o encoder caindo pra
-  // software no meio da sessao, por exemplo) voltar a aparecer, em vez de
-  // herdar o "ja vi" de um aviso que era sobre outra coisa.
-  let dismissedWarning = null;
+  // As seis fontes mantem seu proprio id. Assim captura, rede, encoder e
+  // som podem coexistir sem uma mensagem apagar a outra na apresentacao.
+  let firewallRetryDetail = '';
 
-  function warningSignature(parts, firewallBroken) {
-    return `${firewallBroken ? 'fw' : ''}|${parts.join(' ')}`;
+  function renderWarningCenter() {
+    ui.warnings.render(warningRegistry.list(), warningRegistry.summary());
+  }
+
+  function setWarning(id, aviso) {
+    warningRegistry.set(id, aviso);
+    renderWarningCenter();
+  }
+
+  function renderTailscaleWarning(info) {
+    setWarning('tailscale', info?.kind === 'tailscale'
+      ? {
+        severidade: 'info',
+        titulo: 'Salas no Tailscale',
+        detalhe: 'No Tailscale as salas não aparecem sozinhas — entre pelo endereço de quem criou.',
+        acao: { id: 'tailscale:join-address', texto: 'Entrar por endereço' },
+        dispensavel: true,
+      }
+      : null);
   }
 
   function renderHostWarning() {
-    const el = $('stage-warning');
-    if (!el) return;
-    const parts = captureWarning ? [captureWarning] : [];
-    if (!captureWarning && hostInfo?.addressWarning) {
-      parts.push(`${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`);
-    }
-    if (!captureWarning && encoderWarning) parts.push(encoderWarning);
-    // P7: mesmo slot somavel, mesma prioridade que o encoder -- a captura
-    // falhando (tela preta) e mais acionavel que qualquer aviso de audio.
-    if (!captureWarning && soundWarning) parts.push(soundWarning);
-
     const firewallBroken = !!(hostInfo?.firewall && !hostInfo.firewall.ok);
-
-    if ((!parts.length && !firewallBroken) || warningSignature(parts, firewallBroken) === dismissedWarning) {
-      el.classList.add('hidden');
-      el.textContent = '';
-      return;
-    }
-    // Tudo vai dentro de um unico filho do container, nao direto nele: a
-    // abertura anima `grid-template-rows: 0fr -> 1fr` (nunca `height`), e o
-    // `min-height: 0; overflow: hidden` que faz o corte funcionar so vale
-    // pro filho direto. Multiplos filhos quebrariam a animacao.
-    el.textContent = '';
-    const inner = document.createElement('div');
-
-    if (parts.length) {
-      const span = document.createElement('span');
-      span.textContent = parts.join(' ');
-      inner.appendChild(span);
-    }
-    if (firewallBroken) inner.appendChild(buildFirewallFix());
-
-    // O X vai DENTRO do mesmo filho unico do container: a abertura anima
-    // `grid-template-rows: 0fr -> 1fr` e so o filho direto tem o
-    // `min-height: 0; overflow: hidden` que faz o corte funcionar. Um
-    // segundo filho direto quebraria a animacao (ver o comentario acima).
-    // Falha de captura fica ate a track estabilizar ou parar.
-    if (!captureWarning) {
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'warn-dismiss';
-    close.title = 'Dispensar este aviso';
-    close.setAttribute('aria-label', 'Dispensar este aviso');
-    close.textContent = '×';
-    close.addEventListener('click', () => {
-      dismissedWarning = warningSignature(parts, firewallBroken);
-      renderHostWarning();
-    });
-    // PRIMEIRO filho: sendo `float: right`, ele so sobe pro alto da caixa se
-    // vier antes do texto no fluxo. Depois dele, o float desce pra linha em
-    // que o botao aparece -- e o X terminava pendurado embaixo do aviso, em
-    // vez de no canto.
-    inner.insertBefore(close, inner.firstChild);
-    }
-    inner.classList.add('warn-inner');
-
-    el.appendChild(inner);
-    el.classList.remove('hidden');
+    if (!firewallBroken) firewallRetryDetail = '';
+    setWarning('captura', captureWarning
+      ? {
+        severidade: 'grave',
+        titulo: 'Falha na captura',
+        detalhe: captureWarning,
+        rotuloCurto: 'Sem imagem',
+        dispensavel: false,
+      }
+      : null);
+    setWarning('endereco', hostInfo?.addressWarning
+      ? {
+        severidade: 'atencao',
+        titulo: 'Endereço limitado à rede local',
+        detalhe: `${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`,
+        dispensavel: true,
+      }
+      : null);
+    setWarning('encoder', encoderWarning
+      ? {
+        severidade: 'atencao',
+        titulo: 'Encoder em software',
+        detalhe: encoderWarning.replace('Encoder em software — ', ''),
+        dispensavel: true,
+      }
+      : null);
+    setWarning('som', soundWarning
+      ? {
+        severidade: 'atencao',
+        titulo: 'Silêncio no áudio compartilhado',
+        detalhe: soundWarning,
+        dispensavel: true,
+      }
+      : null);
+    setWarning('firewall', firewallBroken
+      ? {
+        severidade: 'grave',
+        titulo: 'Porta bloqueada no firewall',
+        detalhe: `A porta da sala não está liberada no firewall do Windows — quem tentar entrar pela rede pode não conseguir.${firewallRetryDetail}`,
+        rotuloCurto: 'Firewall',
+        acao: { id: 'firewall:retry', texto: 'Permitir acesso à rede' },
+        dispensavel: false,
+      }
+      : null);
   }
 
-  // Bloco de correcao do firewall: em vez de so despejar o comando netsh
-  // como texto (o usuario nao vai copiar e colar no meio de uma call), um
-  // botao que re-dispara o pedido de elevacao do Windows pra mesma porta
-  // da sala. O comando manual so aparece como ultimo recurso, depois que
-  // uma tentativa pelo botao tambem falha.
-  function buildFirewallFix() {
-    const box = document.createElement('div');
-    box.className = 'firewall-fix';
-
-    const msg = document.createElement('p');
-    msg.textContent =
-      'A porta da sala não está liberada no firewall do Windows — quem tentar entrar pela rede pode não conseguir.';
-    box.appendChild(msg);
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-firewall';
-    btn.textContent = 'Permitir acesso à rede';
-    box.appendChild(btn);
-
-    const detail = document.createElement('p');
-    detail.className = 'firewall-detail hidden';
-    box.appendChild(detail);
-
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      btn.textContent = 'Aguardando permissão do Windows…';
-      detail.classList.add('hidden');
-      let res;
-      try {
-        res = await window.golive.retryFirewall();
-      } catch (err) {
-        res = { ok: false, error: err?.message };
-      }
-      if (res?.ok) {
-        if (hostInfo) hostInfo.firewall = { ok: true };
-        renderHostWarning();
-        return;
-      }
-      btn.disabled = false;
-      btn.textContent = 'Tentar de novo';
-      const cmd = res?.manualCommand || hostInfo?.firewall?.manualCommand;
-      detail.textContent = cmd
-        ? `Se continuar sem funcionar, abra o PowerShell como administrador e rode: ${cmd}`
-        : 'Não consegui liberar a porta. Confirme que aceitou o pedido do Windows e tente de novo.';
-      detail.classList.remove('hidden');
-    });
-
-    return box;
+  // Mantem a tentativa de elevacao no app porque ela depende do IPC. O painel
+  // so encaminha a acao, sem conhecer portas ou comandos administrativos.
+  async function retryFirewallWarning() {
+    firewallRetryDetail = '';
+    let res;
+    try {
+      res = await window.golive.retryFirewall();
+    } catch (err) {
+      res = { ok: false, error: err?.message };
+    }
+    if (res?.ok) {
+      if (hostInfo) hostInfo.firewall = { ok: true };
+      renderHostWarning();
+      return;
+    }
+    const cmd = res?.manualCommand || hostInfo?.firewall?.manualCommand;
+    firewallRetryDetail = cmd
+      ? ` Se continuar sem funcionar, abra o PowerShell como administrador e rode: ${cmd}`
+      : ' Não consegui liberar a porta. Confirme que aceitou o pedido do Windows e tente de novo.';
+    renderHostWarning();
   }
   renderHostWarning();
 
@@ -3330,12 +3227,6 @@
         applyMigrationInfo(msg);
         roomPort = portOfRoomUrl(session.url);
         roomDropAt = null;
-        // P2: a prova de que um endereco digitado/sondado funciona de
-        // verdade e ELE TER ENTRADO -- entao qualquer 'welcome' recebido
-        // como visitante (nunca como quem hospeda, ver rememberKnownHost)
-        // salva o endereco sozinho. Reconexao automatica so reafirma o
-        // mesmo endereco (ordem por ultimo sucesso), nao machuca nada.
-        rememberKnownHost(activeRoomAddress);
         myId = msg.id;
         joinedAtMs = Date.now();
         session.bootstrapExistingShare = migratedRoom && Boolean(localStream);
@@ -4789,7 +4680,6 @@
   function handleCaptureTransition(transition) {
     if (transition.state === 'instavel') {
       console.warn(`[captura] instavel: ${transition.mutes} quedas em 20 s (surface=${captureSurface})`);
-      dismissedWarning = null;
       captureWarning = 'A captura da tela está falhando — o jogo pode estar em tela cheia exclusiva ou bloqueando captura. Tente o modo janela sem borda, ou compartilhe só a janela do jogo.';
     } else {
       console.info('[captura] estavel de novo');

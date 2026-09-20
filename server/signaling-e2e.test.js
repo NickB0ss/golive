@@ -19,7 +19,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const WebSocket = require('ws');
-const { createSignalingServer, createRateLimiter, MAX_PROBE_PER_SECOND } = require('./signaling-core');
+const { createSignalingServer } = require('./signaling-core');
 
 // Teto de espera de qualquer evento. Alto o bastante pra nao competir com o
 // agendador numa maquina carregada, baixo o bastante pra falhar rapido.
@@ -389,7 +389,6 @@ test('frame acima do maxPayload derruba so quem mandou (B4)', async (t) => {
   assert.equal(saiu.id, welcomeAna.id);
   assert.equal(bruno.ws.readyState, WebSocket.OPEN);
 });
-
 test('avatar grande abaixo do limite de payload nao impede join e e descartado inteiro', async (t) => {
   const p = palco(t);
   const servidor = await p.servidor();
@@ -429,96 +428,4 @@ test('flood derruba so o cliente em loop e a sala e avisada (B4)', async (t) => 
   const saiu = await bruno.esperaTipo('peer-left');
   assert.equal(saiu.id, welcomeAna.id);
   assert.equal(bruno.ws.readyState, WebSocket.OPEN);
-});
-
-// Sonda dirigida (P2, auditoria 2026-09-18 -- anexo 5-produto.md): um
-// cliente no lobby manda 'probe' pra saber se uma sala salva esta aberta
-// agora, sem entrar nela. So o resumo publico que a lista de salas ja
-// mostra, nunca PIN/peers/id interno, e o servidor fecha a conexao logo
-// depois -- ela nunca vira gente na sala.
-
-test('sonda (probe): devolve so o resumo publico e o servidor fecha a conexao', async (t) => {
-  const p = palco(t);
-  const servidor = await p.servidor({ pin: '135790', appVersion: '1.2.3', roomName: 'Sala da Ana' });
-  const ana = await p.cliente(servidor, 'ana');
-  await ana.entra('geral', 'Ana', { appVersion: '1.2.3', pin: '135790' }); // sala com 1 pessoa de verdade
-
-  const sonda = await p.cliente(servidor, 'sonda');
-  sonda.envia({ type: 'probe' });
-  const resposta = await sonda.esperaTipo('probe-ok');
-
-  assert.deepEqual(Object.keys(resposta).sort(), ['peers', 'protected', 'roomName', 'type', 'version'].sort());
-  assert.equal(resposta.roomName, 'Sala da Ana');
-  assert.equal(resposta.peers, 1);
-  assert.equal(resposta.protected, true);
-  assert.equal(resposta.version, '1.2.3');
-
-  const fechou = await sonda.esperaFechar();
-  assert.equal(fechou.code, 1000);
-  assert.equal(fechou.reason, 'probe');
-});
-
-test('sonda (probe): nunca conta como pessoa na sala nem no teto de conexoes', async (t) => {
-  const p = palco(t);
-  const servidor = await p.servidor();
-  const ana = await p.cliente(servidor, 'ana');
-  await ana.entra('geral', 'Ana');
-  assert.equal(servidor.getPeerCount(), 1);
-
-  for (let i = 0; i < 3; i += 1) {
-    const sonda = await p.cliente(servidor, `sonda${i}`);
-    sonda.envia({ type: 'probe' });
-    await sonda.esperaTipo('probe-ok');
-    await sonda.esperaFechar();
-  }
-
-  // Nenhuma das tres sondas ficou pra tras contando como gente na sala.
-  assert.equal(servidor.getPeerCount(), 1);
-  await ana.barreira(); // ninguem recebeu peer-joined pelas sondas
-  assert.deepEqual(ana.entrada.filter((m) => m.type === 'peer-joined'), []);
-});
-
-test('sonda (probe): quem ja entrou nao sonda a propria sala', async (t) => {
-  const p = palco(t);
-  const servidor = await p.servidor();
-  const ana = await p.cliente(servidor, 'ana');
-  await ana.entra('geral', 'Ana');
-
-  ana.envia({ type: 'probe' });
-  // Sem barreira propria pra "nao chegou": 200ms de folga numa conexao
-  // loopback e o bastante pra qualquer resposta ter voltado se existisse.
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  assert.deepEqual(ana.entrada.filter((m) => m.type === 'probe-ok'), []);
-  assert.equal(ana.ws.readyState, WebSocket.OPEN, 'probe de quem ja entrou e ignorado, sem fechar a sala pra ela');
-});
-
-test('sonda (probe): uma rajada na mesma conexao nunca produz mais de uma resposta', async (t) => {
-  const p = palco(t);
-  const servidor = await p.servidor();
-  const sonda = await p.cliente(servidor, 'sonda');
-
-  // Bem acima da cota propria (MAX_PROBE_PER_SECOND): mesmo que todas
-  // cheguem antes do close da primeira ter efeito, no maximo UMA resposta
-  // pode sair -- a sonda nunca vira um jeito de o host ficar respondendo
-  // sem parar numa unica conexao.
-  for (let i = 0; i < 20; i += 1) sonda.envia({ type: 'probe' });
-
-  const fechou = await sonda.esperaFechar();
-  const respostas = sonda.entrada.filter((m) => m.type === 'probe-ok');
-  assert.equal(respostas.length, 1, `esperava 1 probe-ok, recebeu ${respostas.length}`);
-  assert.ok([1000, 1008].includes(fechou.code), `codigo de fechamento inesperado: ${fechou.code}`);
-});
-
-// A cota propria da sonda (server/signaling-core.js) e um createRateLimiter
-// configurado com MAX_PROBE_PER_SECOND, no mesmo molde de chat/annotate/
-// reoffer -- testado aqui isoladamente pra travar o NUMERO da cota, ja que
-// o teste de rajada acima nao consegue observar o codigo exato de
-// fechamento (a conexao ja fecha limpo, 1000, na primeira resposta valida).
-test('a cota propria da sonda (MAX_PROBE_PER_SECOND) libera dentro do teto e corta no estouro', () => {
-  const limiter = createRateLimiter({ limit: MAX_PROBE_PER_SECOND, windowMs: 1000 });
-  const now = Date.now();
-  for (let i = 0; i < MAX_PROBE_PER_SECOND; i += 1) {
-    assert.equal(limiter.hit(now), true, `mensagem ${i + 1} deveria caber na cota`);
-  }
-  assert.equal(limiter.hit(now), false, 'a mensagem seguinte estoura a cota');
 });

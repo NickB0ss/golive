@@ -13,6 +13,15 @@
      padrao; titlebar.js remove o hidden so no win32. Ver spec 2026-09-07. -->
 <div id="titlebar" class="titlebar" hidden>
   <div class="titlebar-drag"></div>
+  <div id="warn-center-wrap" class="warn-center-wrap">
+    <button id="warn-center" class="warn-center" type="button" hidden aria-label="0 avisos" aria-expanded="false" aria-controls="warn-center-panel">
+      <span id="warn-center-icon" class="warn-center-icon-main" aria-hidden="true"></span>
+      <span id="warn-center-count" class="warn-center-count" hidden></span>
+      <span id="warn-center-label" class="warn-center-label" hidden></span>
+    </button>
+    <div id="warn-center-panel" class="warn-center-panel" role="dialog" aria-label="Avisos" hidden></div>
+    <span id="warn-center-live" class="visually-hidden" aria-live="polite"></span>
+  </div>
   <div class="titlebar-controls">
     <button id="tb-min" class="titlebar-btn" type="button" aria-label="Minimizar">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8 H13" stroke="currentColor" stroke-width="1.2" /></svg>
@@ -68,20 +77,6 @@
           <span id="lobby-net-addr" class="lobby-net-addr"></span>
         </span>
       </div>
-      <!-- P2 (auditoria 2026-09-18): Tailscale e L3, nao repassa broadcast --
-           "Salas na sua rede" nunca acha nada sozinha ali. So aparece quando
-           renderNetworkStatus detecta essa rede (ver src/renderer/ui.js). -->
-      <p id="lobby-net-tailscale-warn" class="lobby-net-warn hidden">
-        No Tailscale as salas não aparecem sozinhas.
-        <button id="btn-tailscale-join" class="link-button" type="button">Entrar por endereço</button>
-      </p>
-    </section>
-    <!-- P2: enderecos de amigos salvos (nao "salas" -- o estado exibido vem
-         sempre da sonda, nunca de um bookmark morto). So aparece com pelo
-         menos um endereco salvo. -->
-    <section id="known-hosts-section" class="lobby-known-hosts hidden">
-      <p class="sidebar-label">Amigos salvos</p>
-      <ul id="known-hosts-list" class="known-hosts-list"></ul>
     </section>
     <div class="user-panel">
       <button id="user-panel-avatar" class="user-avatar" type="button" title="Abrir perfil nas configurações">
@@ -218,7 +213,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     </header>
-    <div id="stage-warning" class="warn-box hidden"></div>
     <div id="grid" class="grid">
       <div class="empty">Entre ou crie uma sala pra começar.</div>
     </div>
@@ -240,8 +234,8 @@
         <span class="btn-label">Pausar</span>
       </button>
       <!-- P7 (auditoria 2026-09-18): nivel do audio compartilhado, colado no
-           botao de pausa. Decorativo -- o aviso de verdade (silencio
-           absoluto) sai por #stage-warning, que ja tem aria-live. -->
+           botao de pausa. Decorativo -- o aviso de silencio absoluto fica na
+           central da barra de titulo, que tambem anuncia entradas novas. -->
       <div id="sound-meter" class="sound-meter hidden" title="Nível do áudio compartilhado" aria-hidden="true">
         <span class="sound-meter-bar"></span>
         <span class="sound-meter-bar"></span>
@@ -454,7 +448,6 @@
   </div>
 </div>
 
-<script src="knownhosts.js"></script>
 <script src="config.js"></script>
 <script src="emoji.js"></script>
 <script src="chatmedia.js"></script>
@@ -477,6 +470,8 @@
 <script src="gridlayout.js"></script>
 <script src="themecode.js"></script>
 <script src="chatlimit.js"></script>
+<script src="warnings.js"></script>
+<script src="warningcenter.js"></script>
 <script src="ui.js"></script>
 <script src="soundevents.js"></script>
 <script src="sound.js"></script>

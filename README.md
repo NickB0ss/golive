@@ -56,9 +56,8 @@ lugar do Radmin e rode o teste de novo. É WireGuard, faz P2P direto em muito
 mais situações, e é gratuito até 100 dispositivos. Quase nada no app muda — só
 o IP que vocês digitam (Tailscale usa a faixa `100.x.x.x`). A diferença é que
 o Tailscale não repassa broadcast, então **as salas não aparecem sozinhas na
-lista**: o app avisa isso na tela inicial, e o endereço de quem você já entrou
-uma vez fica salvo em **Amigos salvos** — o GoLive pergunta direto pra eles se
-há sala aberta, sem depender do anúncio na rede.
+lista**: o app avisa isso na tela inicial; entre pelo endereço de quem criou a
+sala.
 
 ---
 
