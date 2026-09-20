@@ -13,6 +13,8 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { clampBounds, parseStoredBounds } = require('./main/spywin');
+const { normalizarConsoleMessage } = require('./main/consolelog');
+const { aplicarFlagsChromium } = require('./main/chromiumflags');
 
 // So pode existir UM GoLive rodando por maquina: dois processos tentando abrir
 // o mesmo servidor de sinalizacao/porta, escutar a mesma descoberta UDP e
@@ -48,19 +50,8 @@ app.setAppUserModelId('com.golive.lan');
 //   2. teste decisivo: compartilhar uma janela de jogo em fullscreen
 //      exclusivo -- GDI devolve tela preta, WGC devolve imagem.
 // Ver a spec de 2026-08-23, F1.2.
-const ENABLED_FEATURES = [
-  // Encoder de hardware. Sem isso o Chromium as vezes cai no encoder de
-  // software e 1080p60 come CPU sem necessidade.
-  'WebRtcAllowH264Send',
-  // Windows.Graphics.Capture: captura pelo lado da GPU. O caminho antigo
-  // (GDI/BitBlt) codifica janela na CPU e devolve preto em fullscreen
-  // exclusivo. NAO VERIFICADO nesta versao -- ver acima.
-  'AllowWgcScreenCapturer',
-  'AllowWgcWindowCapturer',
-  'AllowWgcDesktopCapturer',
-];
-app.commandLine.appendSwitch('enable-features', ENABLED_FEATURES.join(','));
-app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+// As features sobem logo depois do logger: se o Electron alterar os nomes
+// sensiveis a maiusculas, a checagem deixa evidencia no arquivo de log.
 app.commandLine.appendSwitch('force_high_performance_gpu');
 // Log de 2026-08-29: duas maquinas NVIDIA (RTX 3060, GTX 1650) com driver
 // recente, e getGPUFeatureStatus devolve video_encode/video_decode/
@@ -235,6 +226,7 @@ const { shouldKeepAwake } = require('./main/awake');
 // aqui -- so depende do appId, fixado no topo deste arquivo via app info
 // implicita do Electron.
 const logger = setupLogger();
+aplicarFlagsChromium(app.commandLine, logger);
 // O crashpad precisa nascer antes do ready e antes de qualquer renderer; sem
 // upload, ele so deixa os .dmp locais para a proxima investigacao.
 try {
@@ -556,9 +548,9 @@ function createWindow() {
   // Todo console.log/warn/error do renderer (inclusive o [signaling] conexao
   // fechada... de app.js) cai aqui tambem -- sem isto so aparecia no DevTools,
   // que ninguem deixa aberto compartilhando tela.
-  win.webContents.on('console-message', (_event, level, message) => {
-    const LEVELS = ['log', 'info', 'warn', 'error'];
-    logger[level >= 2 ? 'error' : 'log'](`[renderer:${LEVELS[level] || level}] ${message}`);
+  win.webContents.on('console-message', (...args) => {
+    const { nivel, mensagem, origem } = normalizarConsoleMessage(...args);
+    logger[nivel](`[${origem}] ${mensagem}`);
   });
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));

@@ -21,7 +21,7 @@
     "release:check": "node scripts/check-release.js"
   },
   "devDependencies": {
-    "electron": "^32.0.0",
+    "electron": "^44.4.1",
     "electron-builder": "^26.15.3",
     "eslint": "^10.9.1",
     "globals": "^17.12.0",
