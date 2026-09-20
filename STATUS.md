@@ -170,10 +170,55 @@ app antes de mesclar mudança no renderer.
   preferencia no Tailscale (e o que a Frente A2 mudou);
 - subir a versao e lancar (a tag dispara o `release.yml`, que sobe os
   artefatos num rascunho; publicar continua sendo clique manual);
-- Frente C: D1, Electron 44 e fanout 2.
+- Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
+- acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
+  Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
+  sala achada por sonda, aviso de amigo fora do ar).
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
+
+## Lançado na 0.19.0 (2026-09-20)
+
+Duas coisas nesta versão: o que o log de uma sessão real ainda deixava
+quebrado depois da 0.18.1, e a subida do Electron, parada havia dezoito meses.
+
+**A tela que ficava preta e não voltava.** A 0.18.1 acertou a causa (alternar
+com o jogo por cima suspendia o encoder), mas deixava o pior caso de pé: um
+tile que já tinha mostrado imagem e congelava nunca pedia reconexão -- só o
+que nunca mostrou nada pedia. Agora o vigia cura o tile congelado, e só quando
+nada chega de verdade: se a imagem está parada mas os bytes continuam subindo
+(alguém compartilhando algo estático), ele não mexe. Alternar a cada 3 s também
+parou de derrubar a transmissão: a carência vira 12 s depois de três piscadas
+em 12 s, e o relógio do vigia pausa em vez de zerar. Um pedido de reconexão por
+vez, por pessoa, para a origem pausando não virar enxurrada.
+
+**O som que saía atrasado.** A fila do lado C++, antes do teto de 120 ms que a
+0.18.1 colocou, era ilimitada. Agora tem teto de 200 ms, descarta o mais antigo
+e conta no log. E a etapa final saiu da thread de tempo real: a conversão que
+rodava amostra por amostra (1.984 iterações por bloco, até cinco capturas ao
+mesmo tempo) virou cópia em bloco, medida de 8,55 µs para 3,50 µs por bloco.
+
+**Electron 32 → 44.** As três armadilhas do plano, fechadas: o log do renderer
+continua legível (a assinatura mudou na 35 e viraria lixo em silêncio), as
+flags de WGC e H264 chegam intactas -- conferido rodando, com `appendSwitch`;
+`appendArgument`, que era a hipótese do plano, apagaria as features sem avisar
+-- e o addon compila em C++20. O app valida as flags em tempo de execução e
+grava erro se alguma não chegar. `npm audit` completo: 2 altas -> **0**.
+
+**Segurança e desempenho.** Nenhuma janela bloqueava navegação; agora todas
+bloqueiam, e a captura de tela só é aceita da janela principal. O painel de
+estatísticas era remontado no DOM a cada segundo, aberto ou não, disputando o
+main thread com os 60 quadros por segundo do repasse -- fechado, agora não
+toca no DOM. O chat ganhou teto de 200 mensagens na tela, com as imagens
+dentro. Sete regras do lint entraram com zero ocorrência.
+
+**O que não foi testado.** A subida do Electron e as correções de rede e áudio
+entraram na mesma versão. Nada disto rodou com 2+ PCs reais -- e é justamente
+captura de tela, reconexão e áudio. O roteiro do passo 7 do plano do Electron
+(WGC vivo num jogo em tela cheia, encode em hardware, ICE com o IP da VPN,
+áudio por processo, sala de 3+ por 15 min com queda de VPN provocada) vale
+antes de publicar.
 
 ## Lançado na 0.18.1 (2026-09-19)
 
