@@ -246,10 +246,16 @@ module.exports = [
     },
   },
 
-  // O worklet roda no AudioWorkletGlobalScope: sem window, sem DOM.
+  // O worklet roda no AudioWorkletGlobalScope: sem window, sem DOM. O
+  // `module` entra porque o arquivo tambem e carregado pelo `node --test`:
+  // o AudioWorklet nao tem require, entao o buffer circular mora nele mesmo
+  // e so da pra cobrir exportando sob `typeof module !== 'undefined'`.
   {
     files: ['src/renderer/pcm-injector-worklet.js'],
-    languageOptions: { sourceType: 'script', globals: globals.audioWorklet },
+    languageOptions: {
+      sourceType: 'script',
+      globals: { ...globals.audioWorklet, module: 'readonly' },
+    },
   },
 
   // Os *.test.js rodam no `node --test`: CommonJS + os globais de teste do Node.

@@ -95,26 +95,174 @@ function meshWithPeer(senders) {
   return mesh;
 }
 
-test('suspender libera o encoder de video e nao toca no audio', () => {
+test('suspender libera o encoder de video e nao toca no audio', async () => {
   const video = fakeSender({ kind: 'video' });
   const audio = fakeSender({ kind: 'audio' });
   const mesh = meshWithPeer([video, audio]);
 
   assert.equal(mesh.setPeerDemand('7', 'screen', false), true);
+  await settled(mesh);
   assert.equal(video.track, null, 'video suspenso');
   assert.notEqual(audio.track, null, 'quem minimizou ainda quer ouvir');
   assert.equal(mesh.isPeerSuspended('7', 'screen'), true);
 });
 
-test('religar devolve a track ao mesmo sender', () => {
+test('religar devolve a track ao mesmo sender', async () => {
   const video = fakeSender({ kind: 'video' });
   const mesh = meshWithPeer([video]);
   const track = { kind: 'video' };
 
   mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
   assert.equal(mesh.setPeerDemand('7', 'screen', true, track), true);
+  await settled(mesh);
   assert.equal(video.track, track);
   assert.equal(mesh.isPeerSuspended('7', 'screen'), false);
+});
+
+// --- O latch silencioso (log de 2026-09-19) ---
+//
+// `replaceTrack` e assincrono e ate aqui a rejeicao dele morria num
+// `.catch(() => {})`, com o estado ja gravado como se tivesse dado certo.
+// Um religar que falha deixava o sender sem track PARA SEMPRE: a suspensao
+// seguinte nao achava sender de video (a track e null), salvava uma lista
+// vazia, e o religar seguinte nao tinha mais em quem devolver a track. Tela
+// preta permanente, sem uma linha de log.
+/** Espera a fila de demanda daquele peer/kind drenar. */
+function settled(mesh, peerId = '7', kind = 'screen') {
+  return Promise.resolve(mesh.peers.get(peerId)?.demandChain?.[kind]);
+}
+
+function rejectingSender(track, quando) {
+  return {
+    track,
+    tentativas: 0,
+    falhando: true,
+    replaceTrack(next) {
+      this.tentativas += 1;
+      const deveFalhar = this.falhando && (quando === 'sempre' || (quando === 'religar' ? next !== null : next === null));
+      if (deveFalhar) return Promise.reject(Object.assign(new Error('pc fechou'), { name: 'InvalidStateError' }));
+      this.track = next;
+      return Promise.resolve();
+    },
+  };
+}
+
+async function comAvisos(fn) {
+  const originalWarn = console.warn;
+  const avisos = [];
+  console.warn = (...args) => avisos.push(args.join(' '));
+  try {
+    await fn();
+  } finally {
+    console.warn = originalWarn;
+  }
+  return avisos;
+}
+
+test('religar que falha avisa e guarda o sender pra tentar de novo', async () => {
+  const video = rejectingSender({ kind: 'video' }, 'religar');
+  const mesh = meshWithPeer([video]);
+  const track = { kind: 'video' };
+
+  const avisos = await comAvisos(async () => {
+    mesh.setPeerDemand('7', 'screen', false);
+    await settled(mesh);
+    mesh.setPeerDemand('7', 'screen', true, track);
+    await settled(mesh);
+  });
+
+  assert.equal(video.track, null, 'a falha nao inventou track');
+  assert.ok(avisos.some((a) => a.includes('religar') && a.includes('InvalidStateError')), `avisou: ${JSON.stringify(avisos)}`);
+
+  // O sender continua guardado: a proxima tentativa tem em quem devolver.
+  video.falhando = false;
+  mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
+  assert.equal(mesh.setPeerDemand('7', 'screen', true, track), true);
+  await settled(mesh);
+  assert.equal(video.track, track, 'recuperou na tentativa seguinte');
+});
+
+test('religar sem track nao descarta os senders suspensos', async () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+
+  const avisos = await comAvisos(async () => {
+    mesh.setPeerDemand('7', 'screen', false);
+    await settled(mesh);
+    // A captura sumiu entre suspender e religar: trackForKind devolve null.
+    mesh.setPeerDemand('7', 'screen', true, null);
+    await settled(mesh);
+  });
+
+  assert.equal(video.track, null);
+  assert.ok(avisos.some((a) => a.includes('sem track')), `avisou: ${JSON.stringify(avisos)}`);
+
+  // A captura voltou: nada de latch permanente.
+  const track = { kind: 'video' };
+  mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
+  mesh.setPeerDemand('7', 'screen', true, track);
+  await settled(mesh);
+  assert.equal(video.track, track);
+});
+
+test('suspender sem sender de video nao apaga a lista guardada', async () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+  const track = { kind: 'video' };
+
+  // Estado em que um religar falho deixa tudo: sender sem track, mas a
+  // demanda dizendo "assistindo". O filtro de suspensao (`track.kind ===
+  // 'video'`) nao acha nada aqui -- apagar a lista neste ponto era o passo
+  // que tornava a tela preta irreversivel.
+  mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
+  const peer = mesh.peers.get('7');
+  peer.suspended.screen = false; // como se o religar tivesse falhado
+  assert.equal(video.track, null);
+
+  mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
+  assert.deepEqual(peer.suspendedSenders.screen, [video], 'a lista sobreviveu');
+
+  mesh.setPeerDemand('7', 'screen', true, track);
+  await settled(mesh);
+  assert.equal(video.track, track, 'ainda da pra devolver a track');
+});
+
+test('false -> true -> false -> true concorrente termina no estado pedido', async () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+  const track = { kind: 'video' };
+
+  // Sem await entre as chamadas: e o cenario real de varias mensagens
+  // view-state chegando na mesma volta do laco de eventos. O ciclo inteiro
+  // se anula -- o sender nunca chega a ficar sem track, que e justamente o
+  // que evita o keyframe perdido.
+  mesh.setPeerDemand('7', 'screen', false);
+  mesh.setPeerDemand('7', 'screen', true, track);
+  mesh.setPeerDemand('7', 'screen', false);
+  mesh.setPeerDemand('7', 'screen', true, track);
+  await settled(mesh);
+
+  assert.equal(mesh.isPeerSuspended('7', 'screen'), false);
+  assert.equal(video.track?.kind, 'video', 'terminou mandando video');
+});
+
+test('suspender concorrente termina suspenso e libera o encoder', async () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+  const track = { kind: 'video' };
+
+  mesh.setPeerDemand('7', 'screen', false);
+  mesh.setPeerDemand('7', 'screen', true, track);
+  mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
+
+  assert.equal(mesh.isPeerSuspended('7', 'screen'), true);
+  assert.equal(video.track, null);
 });
 
 // --- Renegociacao reaproveita transceivers (hotfix 2026-09-12) ---
@@ -237,7 +385,10 @@ test('replaceLocalTrack troca video normal, preserva pausa e sempre troca audio'
   assert.equal(video.track, novoVideo);
 
   mesh.setPeerDemand('7', 'screen', false);
+  // `suspended` e gravado na hora, entao a guarda de P1 vale mesmo antes de
+  // o replaceTrack da suspensao ter sido aplicado.
   assert.equal(mesh.replaceLocalTrack('screen', 'video', { kind: 'video' }), 0);
+  await settled(mesh);
   assert.equal(video.track, null, 'P1: troca nao reativa peer pausado');
   assert.equal(mesh.replaceLocalTrack('screen', 'audio', novoAudio), 1);
   await new Promise((resolve) => setImmediate(resolve));

@@ -104,9 +104,9 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.17.0` (no `package.json`; o release ainda não foi feito). Electron `^32`
+`0.18.1` (no `package.json`). Electron `^32`
 (fora de suporte — ver backlog), `electron-builder` na `^26`.
-Testes: `node --test` → **902 testes, 902 passando, 0 falhando**. `npm run lint` → 0
+Testes: `node --test` → **923 testes, 923 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`).
@@ -174,6 +174,54 @@ app antes de mesclar mudança no renderer.
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
+
+## Lançado na 0.18.1 (2026-09-19)
+
+Correção dos três defeitos que um log de sessão real de 90 minutos expôs:
+a transmissão que parava sozinha, a tela do outro que ficava preta para
+sempre depois de gente entrar e sair, e o som que saía atrasado.
+
+**Os dois primeiros tinham a mesma causa: a visibilidade da janela mandava
+no encode sem nenhuma histerese.** Este app roda com o jogo por cima --
+alternar é o uso normal, não a exceção. O log registrou 70 mudanças de
+visibilidade em 90 minutos, 27 delas a menos de 2 s uma da outra, com
+janelas de `watching=true` de 0,40 a 1,30 s. Um keyframe de tela 1080p
+depois do `replaceTrack` demora mais que isso: cada olhada religava a track
+e a arrancava antes do primeiro quadro pintar, e o tile nunca pintava.
+A autocura que existe exatamente para esse caso (`stallwatch.js`) também
+não disparava nenhuma vez -- a mesma piscada zerava o cronômetro de 6 s a
+cada meio segundo. O log inteiro não tem um único `reoffer`.
+
+Agora a visibilidade passa por uma carência assimétrica (`viewhold.js`):
+ficar visível vale na hora, ficar oculto só vale depois de 2,5 s. A pintura
+continua no sinal cru -- parar de desenhar com a janela coberta é economia
+de GPU deliberada (F1.4) e segue valendo.
+
+**O latch silencioso do `setPeerDemand`.** `replaceTrack` é assíncrono e a
+rejeição dele morria num `.catch(() => {})`, com o estado já gravado como
+sucesso. Um religar que falhava deixava o sender sem track para sempre: a
+suspensão seguinte não achava sender de vídeo, salvava uma lista vazia, e o
+religar seguinte não tinha mais em quem devolver a track. Tela preta
+permanente, sem uma linha de log. Agora as trocas são serializadas por
+`{peer, kind}`, a falha avisa e preserva os senders para a próxima
+tentativa, e `closeOut` larga os senders de uma pc fechada.
+
+**O som atrasado.** O buffer do `pcm-injector-worklet` tratava 2 s de
+capacidade como folga generosa; numa fila produtor/consumidor com relógios
+independentes (WASAPI e o `AudioContext` nunca batem), folga é latência. O
+consumo é rígido -- 128 amostras por quantum -- e nada pulava para frente,
+então o atraso de qualquer soluço nunca voltava. Agora o backlog tem teto
+de 120 ms: passou disso, descarta o mais velho e segue do mais novo.
+
+**O que o próximo log vai ter e este não tinha:** `[visibilidade]` com a
+fonte da mudança e a contagem de piscadas, `[diag] audio nativo` com atraso
+e quadros cortados, e a linha `[assistir] demanda` contando o estado real --
+ela chamava `describeOut` no mesmo tique da troca e imprimia sempre o estado
+anterior, invertido em 100% das 60 transições.
+
+Fica de fora: a fila ilimitada do `loopback_capture.cc` (`maxQueueSize = 0`)
+e o áudio remoto roteado por Web Audio em `ui.js`, que quebra o lip-sync do
+WebRTC -- esse é troca de arquitetura, não ajuste.
 
 ## Lançado na 0.18.0 (2026-09-19)
 
