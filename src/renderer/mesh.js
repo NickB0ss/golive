@@ -829,6 +829,12 @@
       if (!pc) return;
       pc.close();
       peer.outConns[kind] = null;
+      // Senders de uma pc fechada nao servem mais pra nada, e guarda-los
+      // faria um religar futuro tentar devolver a track num sender morto --
+      // o mesmo fim de linha silencioso que setPeerDemand passou a evitar.
+      // negotiateOffer ja faz esta limpeza ao reabrir; aqui e o outro lado.
+      if (peer.suspended) peer.suspended[kind] = false;
+      if (peer.suspendedSenders) peer.suspendedSenders[kind] = [];
     }
 
     // Repassa uma track JA RECEBIDA (peers.get(sourcePeerId).inStreams[kind])
@@ -871,6 +877,25 @@
     // So a track de VIDEO suspende: quem minimizou provavelmente ainda quer
     // ouvir, e encode de audio e irrelevante perto do de video.
     //
+    // `replaceTrack` e ASSINCRONO, e por isso a demanda tem duas metades:
+    //
+    //   - `peer.suspended[kind]` e o DESEJADO, gravado na hora. E ele que
+    //     dedupa mensagem repetida e que todo mundo le (isPeerSuspended,
+    //     watchersOf, replaceLocalTrack). Precisa ser sincrono: duas
+    //     mensagens view-state na mesma volta do laco de eventos veriam o
+    //     estado velho e a segunda viraria no-op.
+    //   - `peer.demandChain[kind]` aplica isso nos senders, UMA operacao por
+    //     vez. Sem a fila, um `false` e um `true` em voo ao mesmo tempo
+    //     podiam terminar na ordem errada.
+    //
+    // A rejeicao nao pode mais morrer em silencio (log de 2026-09-19): ate
+    // aqui era `.catch(() => {})` com o estado ja gravado como sucesso. Um
+    // religar que falhava deixava o sender sem track, a suspensao seguinte
+    // nao achava sender de video (a track e null) e salvava uma lista vazia,
+    // e o religar seguinte nao tinha mais em quem devolver a track -- tela
+    // preta permanente, sem uma linha de log. Agora a falha avisa e PRESERVA
+    // `suspendedSenders`, entao a proxima mudanca de demanda tenta de novo.
+    //
     // Devolve true quando houve mudanca de estado (pra quem chama saber se
     // precisa redesenhar), false quando ja estava no estado pedido ou nao ha
     // conexao daquele kind.
@@ -881,28 +906,62 @@
 
       peer.suspended ||= {};
       peer.suspendedSenders ||= {};
+      peer.demandChain ||= {};
       if (Boolean(peer.suspended[kind]) === !wanted) return false;
 
-      if (wanted) {
-        // Religa nos MESMOS senders que foram suspensos -- depois do
-        // replaceTrack(null) o sender fica sem track, entao nao da pra
-        // reencontra-lo por sender.track.kind.
-        for (const sender of peer.suspendedSenders[kind] || []) {
-          sender.replaceTrack(track || null).catch(() => {});
-        }
-        peer.suspendedSenders[kind] = [];
-        peer.suspended[kind] = false;
-      } else {
-        const senders = pc.getSenders().filter((s) => s.track?.kind === 'video');
-        peer.suspendedSenders[kind] = senders;
-        for (const sender of senders) sender.replaceTrack(null).catch(() => {});
-        peer.suspended[kind] = true;
-      }
+      peer.suspended[kind] = !wanted;
+      // `.catch` no fim da cadeia, e nao em cada elo: um erro nao pode deixar
+      // a fila rejeitada pra sempre e engolir as demandas seguintes.
+      peer.demandChain[kind] = Promise.resolve(peer.demandChain[kind])
+        .then(() => applyDemand(peer, pc, kind, track))
+        .catch((err) => console.warn('[mesh] demanda falhou', peerId, kind, err?.name || err));
       return true;
+    }
+
+    /** Reconcilia os senders com o desejado do momento. Le
+     * `peer.suspended[kind]` na hora de aplicar (e nao o valor de quando foi
+     * enfileirado) pra que uma rajada de mudancas convirja pro ultimo pedido. */
+    async function applyDemand(peer, pc, kind, track) {
+      if (peer.suspended[kind]) {
+        const senders = pc.getSenders().filter((s) => s.track?.kind === 'video');
+        // Nenhum sender com track de video: ou nunca houve, ou um religar
+        // anterior falhou e deixou todos sem track. Nos dois casos sobrescrever
+        // a lista guardada e o que tornaria a tela preta irreversivel.
+        if (!senders.length) return;
+        peer.suspendedSenders[kind] = senders;
+        await Promise.all(senders.map((s) => s.replaceTrack(null).catch((err) => {
+          console.warn('[mesh] suspender falhou', peer.id, kind, err?.name || err);
+        })));
+        return;
+      }
+
+      const senders = peer.suspendedSenders[kind] || [];
+      if (!senders.length) return; // nada suspenso: religar nao tem o que fazer
+      if (!track) {
+        // A captura sumiu entre suspender e religar. `replaceTrack(null)`
+        // aqui seria indistinguivel de sucesso e perderia os senders.
+        console.warn('[mesh] religar sem track -- senders preservados', peer.id, kind);
+        return;
+      }
+      let falhou = false;
+      await Promise.all(senders.map((s) => s.replaceTrack(track).catch((err) => {
+        falhou = true;
+        console.warn('[mesh] religar falhou', peer.id, kind, err?.name || err);
+      })));
+      if (!falhou) peer.suspendedSenders[kind] = [];
     }
 
     function isPeerSuspended(peerId, kind) {
       return Boolean(peers.get(peerId)?.suspended?.[kind]);
+    }
+
+    /** Resolve quando a ultima demanda enfileirada pra esse peer/kind ja
+     * chegou nos senders. E o que deixa o log [assistir] contar o que de fato
+     * aconteceu: ate 2026-09-19 ele chamava describeOut no mesmo tique da
+     * troca e imprimia sempre o estado ANTERIOR -- 'religado ... [sem-track]'
+     * e 'suspenso ... [live]', invertido, em 100% das 60 transicoes. */
+    function demandApplied(peerId, kind) {
+      return Promise.resolve(peers.get(peerId)?.demandChain?.[kind]);
     }
 
     function replaceLocalTrack(kind, matchKind, track) {
@@ -990,6 +1049,7 @@
       inStatsFor,
       setPeerDemand,
       isPeerSuspended,
+      demandApplied,
       replaceLocalTrack,
       receivingFrom,
       watchersOf,

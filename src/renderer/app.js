@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, knownhosts } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, knownhosts, viewhold } = window.GoLive;
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
   // haver salto de layout quando o padding-top entra.
@@ -2967,6 +2967,24 @@
   // ou o relay da arvore) pra refazer SO aquela conexao. Tudo com log
   // [assistir], pra proxima reclamacao chegar com o caminho inteiro.
   const stallWatch = stallwatch.createStallWatch();
+  // A visibilidade CRUA manda na pintura; a visibilidade com carencia manda
+  // em tudo que custa encode do outro lado -- o view-state e o `watched` do
+  // stallwatch logo abaixo. Ver viewhold.js pro porque de serem duas; em
+  // resumo, este app roda com o jogo por cima, alternar e o uso NORMAL, e
+  // reagir na hora deixava a tela do outro preta pra sempre.
+  //
+  // Declarado aqui, e nao junto de onVisibilityChanged la embaixo, porque o
+  // setInterval de checkStalledTiles e registrado poucas linhas adiante e
+  // passaria a ler um `const` ainda na zona morta.
+  const visibilityHold = viewhold.createVisibilityHold();
+  let visibilityHoldTimer = null;
+
+  /** A janela esta visivel o bastante pra valer a pena receber video. E o
+   * que o view-state e o stallwatch perguntam -- nunca `isAppVisible()`. */
+  function isAppWatching() {
+    return visibilityHold.current();
+  }
+
   const relayRetry = stallwatch.createRelayRetry();
   const pendingTrees = broadcastguards.createPendingTrees();
   const lastViewStateSent = new Map(); // `${peer}|${kind}` -> ultimo valor logado
@@ -3023,7 +3041,10 @@
     const tileId = baseKind === 'camera' ? `cam-${origem}` : String(origem);
     const originPeer = session.mesh.peers.get(origem);
     const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
-    const watched = isAppVisible() && querendo && !originPeer?.paused;
+    // Com a visibilidade crua aqui, cada piscada de janela apagava o
+    // estado do stallwatch e zerava o cronometro de 6 s -- a autocura
+    // nunca chegava a disparar. Ver viewhold.js.
+    const watched = isAppWatching() && querendo && !originPeer?.paused;
     const frames = watched && hasInbound ? ui.grid.framesShown(tileId) : null;
     const r = stallWatch.observe(`${peerId}|${kind}`, { watched, frames, hasInbound, now });
     if (!r) return;
@@ -3486,7 +3507,7 @@
         // "assistindo" por padrao, entao precisa ser corrigido na hora --
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
-        if (!isAppVisible()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${msg.from}:${msg.kind}`) || null, relayLoad: relayLoad() });
+        if (!isAppWatching()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${msg.from}:${msg.kind}`) || null, relayLoad: relayLoad() });
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -3780,6 +3801,10 @@
           }
         }
         if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
+          // O describeOut so conta a verdade DEPOIS que a troca chegou nos
+          // senders -- ver demandApplied em mesh.js.
+          await mesh.demandApplied(msg.from, msg.kind);
+          if (currentSession !== session) return; // sessao caiu enquanto aplicava
           console.info(`[assistir] demanda de #${msg.from} kind=${msg.kind}: ${wanted ? 'religado' : 'suspenso'} (${mesh.describeOut(msg.from, msg.kind)})`);
           renderMembersPanel();
           if (KINDS.includes(vsBase)) broadcastWatchers(vsBase, vsOrigemId);
@@ -3944,6 +3969,7 @@
 
   let pcmAudioContext = null;
   let pcmWorkletModule = null; // promise, carregado uma unica vez
+  const PCM_DROP_LOG_MS = 10000;
   const pcmNodesByCapture = new Map(); // captureId -> AudioWorkletNode
 
   function getPcmAudioContext() {
@@ -3971,6 +3997,19 @@
     const result = await window.golive.startProcessAudioCapture(pid, exclude);
     if (!result.ok) return null;
     const node = new AudioWorkletNode(ctx, 'pcm-injector', { outputChannelCount: [2] });
+    // Atraso de playout e quadros cortados: os dois numeros que faltavam pra
+    // "o som saia atrasado" ser diagnosticavel pelo log em vez de hipotese.
+    // Um aviso a cada PCM_DROP_LOG_MS no maximo -- corte em rajada nao pode
+    // virar enxurrada de log.
+    let ultimoAvisoPcm = 0;
+    node.port.onmessage = (event) => {
+      const { backlogFrames, droppedFrames } = event.data || {};
+      if (typeof droppedFrames !== 'number') return;
+      const agora = Date.now();
+      if (agora - ultimoAvisoPcm < PCM_DROP_LOG_MS) return;
+      ultimoAvisoPcm = agora;
+      console.warn(`[diag] audio nativo: atraso ${Math.round((backlogFrames / 48000) * 1000)}ms, ${droppedFrames} quadros cortados no total (captura ${result.captureId})`);
+    };
     pcmNodesByCapture.set(result.captureId, node);
     return {
       node,
@@ -5028,14 +5067,53 @@
     return windowVisible && document.visibilityState !== 'hidden';
   }
 
+  // Instrumentacao da causa do flapping (log de 2026-09-19). Aquele log
+  // provou o EFEITO -- 70 mudancas de visibilidade em 90 min, 27 delas a
+  // menos de 2 s -- e nao dizia nada sobre a CAUSA: nao da pra saber se quem
+  // virou foi o minimize/restore do main ou o document.visibilityState, que
+  // no Windows tambem segue a deteccao de oclusao nativa do Chromium (o jogo
+  // por cima conta como oculto).
+  //
+  // NAO desliguei CalculateNativeWinOcclusion, que era a primeira ideia: a
+  // oclusao e justamente o que faz o app parar de pintar quando o jogo cobre
+  // a janela, e essa economia de GPU e deliberada (F1.4). Oclusao SUSTENTADA
+  // e sinal legitimo de "ninguem esta olhando" -- o defeito era so reagir a
+  // piscada, e disso cuida o viewhold.
+  const VIS_LOG_MIN_GAP_MS = 15000;
+  let visFlips = 0;
+  let visLastLogAt = 0;
+
+  function logVisibilityFlip() {
+    visFlips += 1;
+    const agora = Date.now();
+    if (agora - visLastLogAt < VIS_LOG_MIN_GAP_MS) return; // acumula; o proximo log conta
+    const desde = visLastLogAt ? Math.round((agora - visLastLogAt) / 1000) : 0;
+    visLastLogAt = agora;
+    const resumo = visFlips > 1 ? ` (${visFlips} mudancas em ${desde}s)` : '';
+    console.info(`[visibilidade] janela=${windowVisible} documento=${document.visibilityState} efetivo=${isAppVisible()} assistindo=${isAppWatching()}${resumo}`);
+    visFlips = 0;
+  }
+
   function onVisibilityChanged() {
     const visible = isAppVisible();
+    logVisibilityFlip();
     ui.grid.setPainting(visible);
     // Pausa o pulso de "ao vivo" (motion #10): animacao em laco queima GPU
     // mesmo invisivel, e e a Parte I desta mesma spec que diz isso.
     document.body.classList.toggle('no-paint', !visible);
     if (statsTimer) scheduleStatsLoop();
-    broadcastViewState();
+    settleVisibilityHold();
+  }
+
+  /** Empurra a visibilidade atual pra carencia e reage so quando ela de fato
+   * muda. Quando ha pendencia, reagenda a si mesma: o evento de visibilidade
+   * ja passou, entao sem este timer o `false` nunca sairia. */
+  function settleVisibilityHold() {
+    clearTimeout(visibilityHoldTimer);
+    visibilityHoldTimer = null;
+    const r = visibilityHold.observe({ visible: isAppVisible(), now: Date.now() });
+    if (r.changed) broadcastViewState();
+    if (r.recheckInMs != null) visibilityHoldTimer = setTimeout(settleVisibilityHold, r.recheckInMs);
   }
 
   /** A track de video local daquele kind, ou null. E o que volta pro sender
@@ -5245,7 +5323,7 @@
       // Um relay que nao esta assistindo continua RECEBENDO: cortar aqui
       // cortaria junto os filhos que estao. E o mesmo motivo de a janela
       // minimizada nao poder cortar -- so que agora vale pra duas causas.
-      const watching = (isAppVisible() && querendo) || Boolean(anyFolhaWatching);
+      const watching = (isAppWatching() && querendo) || Boolean(anyFolhaWatching);
       // `watching` e sobre o ENCODER (mantenha mandando, alguem atras de mim
       // precisa). `looking` e sobre MEUS OLHOS. Eram a mesma coisa enquanto o
       // unico motivo de parar era minimizar a janela; deixaram de ser quando
@@ -5256,12 +5334,18 @@
       // pra eleger relay por saude de encode, nao so por RTT. null quando
       // nao estamos codificando nada.
       const vsChave = `${peerId}|${kind}`;
-      const vsValor = `${watching}/${isAppVisible() && querendo}`;
+      // `looking` segue a MESMA carencia do `watching`: deixa-lo no sinal
+      // cru faria a chave abaixo mudar a cada piscada de janela e devolveria
+      // pelo broadcastWatchers todo o flapping que a carencia tirou do
+      // encode. A lista de "quem esta assistindo" fica ate 2,5 s velha, e
+      // isso e barato perto de uma tela preta.
+      const looking = isAppWatching() && querendo;
+      const vsValor = `${watching}/${looking}`;
       if (lastViewStateSent.get(vsChave) !== vsValor) {
         lastViewStateSent.set(vsChave, vsValor);
-        console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${isAppVisible() && querendo}`);
+        console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${looking}`);
       }
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking: isAppVisible() && querendo, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
     }
   }
 
