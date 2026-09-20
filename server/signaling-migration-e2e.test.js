@@ -239,7 +239,7 @@ function infoMigracao(cliente) {
   return { secret, peerAddresses };
 }
 
-/** Sonda igual a do app (probeKnownHost): 'probe' com o roomId, espera
+/** Sonda igual a do app (probeRoomAt): 'probe' com o roomId, espera
  * 'probe-ok' ou desiste em 1,5 s / erro de conexao. */
 function sonda(address, roomId) {
   return new Promise((resolve) => {

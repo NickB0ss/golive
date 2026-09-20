@@ -145,6 +145,8 @@ medidor de som sobre o `AudioContext` existente. Nada disso foi testado com 2+ P
 
 ### Frente B3 (auditoria 2026-09-18)
 
+Nota (2026-09-20): Amigos salvos foi removida a pedido; `probe` permanece apenas para migracao de sala.
+
 Entraram amigos salvos, sonda dirigida pela sinalização e o aviso de que no
 Tailscale as salas não aparecem sozinhas. Nada disso foi testado com 2+ PCs reais.
 
@@ -297,6 +299,8 @@ mudo. A sala tem nome escolhido por quem cria, e a tela não apaga mais durante
 a sessão.
 
 **Achar a sala no Tailscale.** O endereço de quem você já visitou fica salvo
+
+Nota (2026-09-20): Amigos salvos foi removida a pedido; no Tailscale, entre pelo endereco de quem criou a sala.
 em Amigos salvos, e o app pergunta direto a cada um se há sala aberta, pela
 mesma porta da sinalização. A tela inicial avisa que ali as salas não aparecem
 sozinhas.
