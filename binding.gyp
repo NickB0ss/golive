@@ -14,14 +14,14 @@
       "dependencies": [
         "<!(node -p \"require('node-addon-api').gyp\")"
       ],
-      "cflags_cc": [ "-std=c++17" ],
+      "cflags_cc": [ "-std=c++20" ],
       "conditions": [
         ["OS=='win'", {
           "libraries": [ "mmdevapi.lib", "ole32.lib", "avrt.lib" ],
           "msvs_settings": {
             "VCCLCompilerTool": {
               "ExceptionHandling": 1,
-              "AdditionalOptions": [ "/std:c++17" ]
+              "AdditionalOptions": [ "/std:c++20" ]
             }
           }
         }]
