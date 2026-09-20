@@ -239,11 +239,11 @@ Prioridades unificadas entre os cinco times. P0 acima; aqui o resto.
 
 Vinte e três itens, detalhados nos anexos. Os que mais se pagam:
 
-- **`REELECTION_HYSTERESIS_MS` quebrou a própria invariante.** O comentário diz
+- ~~**`REELECTION_HYSTERESIS_MS` quebrou a própria invariante.**~~ *(feito na A1: `networktiming.js` deriva uma da outra.)* O comentário diz
   "precisa ser maior que `DISCONNECT_GRACE_MS = 5000`"; a constante virou 15000
   na 0.13.0 e a histerese continuou em 8000. Conserto de 15 minutos: derivar
   uma da outra. (`app.js:4595`, anexo 3 · R4)
-- **Qualquer peer pode pintar vídeo arbitrário no tile de outra pessoa** —
+- ~~**Qualquer peer pode pintar vídeo arbitrário no tile de outra pessoa**~~ *(feito na A1: o repasse só é aceito do pai atual.)* —
   `isKnownKind` só olha o `baseKind`, então `screen@<terceiro>` passa. O dado
   que consertaria já existe (`paiId`). (`app.js:354`, anexo 3 · R5)
 - **Nenhuma janela tem `will-navigate`** (zero ocorrências no projeto) e o
@@ -263,7 +263,7 @@ Vinte e três itens, detalhados nos anexos. Os que mais se pagam:
   bloco e a segunda (100) ganha, deixando toast e banner acima de qualquer
   diálogo. O teste que deveria pegar isso só verifica que os tokens *existem*.
   (`style.css:1742`/`:1746`, anexo 2 · A9)
-- **Quatro nomes para o mesmo papel** — "dono", "líder", "host", "anfitrião" —
+- ~~**Quatro nomes para o mesmo papel**~~ *(feito na B1: `docs/glossario.md` fixou "líder da sala", com teste que reprova os outros.)* — "dono", "líder", "host", "anfitrião" —
   e três deles aparecem em mensagem de erro. Duas telas mandam a pessoa "usar
   Desconectar", botão que não existe (chama-se "Sair da sala"). (anexo 2)
 - **Áudio nativo: 6 cópias do mesmo bloco** entre o WASAPI e o worklet, e a
@@ -315,7 +315,7 @@ coisa ser mexida.
       `release:check` quando o release é publicado.
 - [x] **P2** corrigir `STATUS.md:109`,`:770-773`,`:792` e `README.md:351-357`
       (que ainda diz que a sala morre com o host — falso desde a 0.14.0). *(30 min)*
-- [ ] **P2** apagar as branches mescladas (hoje **25**, não 17) e os 2 releases-rascunho órfãos. *(15 min)*
+- [x] **P2** apagar as branches mescladas (hoje **25**, não 17) e os 2 releases-rascunho órfãos. *(15 min)*
 
 **Por que esta frente existe.** Sete versões saíram sem portão. A oitava não
 precisa. E o item do `README` custa cinco minutos: é o parágrafo mais

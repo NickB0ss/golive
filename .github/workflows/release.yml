@@ -54,11 +54,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
-      - name: o instalador e o latest.yml subiram?
+      - name: o instalador, o latest.yml e o addon nativo estao la?
         shell: pwsh
         run: |
           if (!(Test-Path dist/latest.yml)) { throw "latest.yml ausente -- foi o que quebrou a atualizacao na v0.10.0" }
           if (!(Get-ChildItem dist -Filter '*.exe')) { throw "instalador ausente" }
+          # Mesma assercao do job 'empacotar' do ci.yml: o `files` do
+          # electron-builder e lista de globs, e glob que nao casa nada nao e
+          # erro -- sem isto o instalador sai calado sem a captura de audio
+          # por processo (P0-5 da auditoria de 2026-09-18).
+          $addon = 'dist/win-unpacked/resources/app.asar.unpacked/build/Release/golive_audio.node'
+          if (!(Test-Path $addon)) { throw "addon nativo ausente do pacote -- o instalador sairia sem captura de audio por processo" }
 
   # release:check existe desde o incidente da v0.10.0 (release sem latest.yml
   # derrubou a atualizacao de todas as versoes anteriores) e nunca era
