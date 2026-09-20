@@ -6,7 +6,7 @@ const { readReceiverReport, lossPercent, jitterBufferMs } = require('./rxstats')
 // RTCStatsReport e um Map-like com forEach -- um Array serve de duble.
 const REPORT = [
   { type: 'inbound-rtp', kind: 'video', framesPerSecond: 58, frameWidth: 1920, frameHeight: 1080,
-    packetsReceived: 10000, packetsLost: 25, freezeCount: 2, framesDecoded: 3400,
+    packetsReceived: 10000, packetsLost: 25, freezeCount: 2, framesDecoded: 3400, bytesReceived: 8000, framesReceived: 3450,
     jitterBufferDelay: 6.4, jitterBufferEmittedCount: 3400, decoderImplementation: 'ExternalDecoder' },
   { type: 'inbound-rtp', kind: 'audio', packetsReceived: 5000, packetsLost: 1 },
   { type: 'codec', mimeType: 'video/H264' },
@@ -18,6 +18,8 @@ test('le so o inbound-rtp de video', () => {
   assert.equal(s.fps, 58);
   assert.equal(s.width, 1920);
   assert.equal(s.framesDecoded, 3400);
+  assert.equal(s.bytesReceived, 8000);
+  assert.equal(s.framesReceived, 3450);
   assert.equal(s.decoder, 'ExternalDecoder');
   assert.equal(s.codec, 'H264');
 });

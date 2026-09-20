@@ -6,11 +6,13 @@
 #include <audioclientactivationparams.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
-
-namespace {
 
 // Pacote de amostras entregue pra JS a cada GetBuffer/ReleaseBuffer da
 // thread de captura. Alocado com `new` na thread nativa, desalocado no
@@ -21,16 +23,82 @@ struct AudioChunk {
   UINT32 sampleRate;
 };
 
-void DeliverAudioChunk(Napi::Env env, Napi::Function jsCallback, AudioChunk* chunk) {
-  if (env != nullptr && jsCallback != nullptr) {
-    Napi::Float32Array arr = Napi::Float32Array::New(env, chunk->samples.size());
-    if (!chunk->samples.empty()) {
-      memcpy(arr.Data(), chunk->samples.data(), chunk->samples.size() * sizeof(float));
+// A fila do ThreadSafeFunction conta callbacks, nao duracao de audio. Esta
+// fila mede frames e deixa no maximo os mesmos 200 ms do buffer WASAPI: se a
+// thread JS atrasar, cair o mais velho mantem o som proximo do presente em vez
+// de transformar atraso em memoria sem teto.
+struct AudioDispatchState {
+  static constexpr size_t kMaxQueuedFrames = 48000 * 200 / 1000;
+
+  bool Push(std::unique_ptr<AudioChunk> chunk) {
+    const size_t frames = chunk->channels ? chunk->samples.size() / chunk->channels : 0;
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (frames > kMaxQueuedFrames && chunk->channels) {
+      const size_t removeFrames = frames - kMaxQueuedFrames;
+      chunk->samples.erase(chunk->samples.begin(), chunk->samples.begin() + removeFrames * chunk->channels);
+      droppedFrames += removeFrames;
     }
-    jsCallback.Call({arr, Napi::Number::New(env, chunk->channels), Napi::Number::New(env, chunk->sampleRate)});
+    const size_t keptFrames = chunk->channels ? chunk->samples.size() / chunk->channels : 0;
+    while (!chunks.empty() && queuedFrames + keptFrames > kMaxQueuedFrames) {
+      droppedFrames += chunks.front()->channels ? chunks.front()->samples.size() / chunks.front()->channels : 0;
+      queuedFrames -= chunks.front()->channels ? chunks.front()->samples.size() / chunks.front()->channels : 0;
+      chunks.pop_front();
+    }
+    queuedFrames += keptFrames;
+    chunks.push_back(std::move(chunk));
+    if (deliveryPending) return false;
+    deliveryPending = true;
+    return true;
   }
-  delete chunk;
-}
+
+  void Deliver(Napi::Env env, Napi::Function jsCallback) {
+    // No teardown do Node a TSFN pode entregar env/callback vazios. Nao ha
+    // consumidor nessa fase, e criar um TypedArray ou chamar JS pisaria num
+    // ambiente ja destruido (mesma guarda usada por DeliverReady abaixo).
+    if (env == nullptr || jsCallback == nullptr) {
+      CancelDelivery();
+      return;
+    }
+    std::deque<std::unique_ptr<AudioChunk>> pending;
+    size_t dropped = 0;
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      pending.swap(chunks);
+      queuedFrames = 0;
+      dropped = droppedFrames;
+      droppedFrames = 0;
+      deliveryPending = false;
+    }
+    for (const auto& chunk : pending) {
+      Napi::Float32Array arr = Napi::Float32Array::New(env, chunk->samples.size());
+      if (!chunk->samples.empty()) {
+        memcpy(arr.Data(), chunk->samples.data(), chunk->samples.size() * sizeof(float));
+      }
+      jsCallback.Call({arr, Napi::Number::New(env, chunk->channels), Napi::Number::New(env, chunk->sampleRate),
+                       Napi::Number::New(env, static_cast<double>(dropped))});
+      // O contador pertence ao lote, nao a cada chunk dele; repetir inflaria
+      // o log e esconderia a quantidade que de fato caiu.
+      dropped = 0;
+    }
+  }
+
+  void CancelDelivery() {
+    std::lock_guard<std::mutex> lock(mutex);
+    chunks.clear();
+    queuedFrames = 0;
+    deliveryPending = false;
+  }
+
+ private:
+  std::mutex mutex;
+  std::deque<std::unique_ptr<AudioChunk>> chunks;
+  size_t queuedFrames = 0;
+  size_t droppedFrames = 0;
+  bool deliveryPending = false;
+};
+
+namespace {
 
 // Resultado da tentativa de ativar+iniciar a captura, entregue de volta pra
 // JS uma unica vez (sucesso ou erro) via tsfnReady_.
@@ -132,7 +200,10 @@ LoopbackCapture::LoopbackCapture(const Napi::CallbackInfo& info) : Napi::ObjectW
   targetPid_ = static_cast<DWORD>(info[0].As<Napi::Number>().Uint32Value());
   exclude_ = info[1].As<Napi::Boolean>().Value();
 
-  tsfnData_ = Napi::ThreadSafeFunction::New(env, info[2].As<Napi::Function>(), "LoopbackCaptureData", 0, 1);
+  audioDispatch_ = std::make_shared<AudioDispatchState>();
+  // So ha um aviso pendente para a fila propria acima; limitar tambem o
+  // TSFN impede que uma rajada de acordes acumule callbacks fora desse teto.
+  tsfnData_ = Napi::ThreadSafeFunction::New(env, info[2].As<Napi::Function>(), "LoopbackCaptureData", 1, 1);
   tsfnReady_ = Napi::ThreadSafeFunction::New(env, info[3].As<Napi::Function>(), "LoopbackCaptureReady", 0, 1);
 
   running_.store(true);
@@ -271,7 +342,7 @@ void LoopbackCapture::CaptureThreadMain() {
         break;
       }
 
-      auto* chunk = new AudioChunk();
+      auto chunk = std::make_unique<AudioChunk>();
       chunk->channels = channels;
       chunk->sampleRate = sampleRate;
       size_t sampleCount = static_cast<size_t>(numFrames) * channels;
@@ -283,7 +354,15 @@ void LoopbackCapture::CaptureThreadMain() {
       }
       captureClient->ReleaseBuffer(numFrames);
 
-      tsfnData_.NonBlockingCall(chunk, DeliverAudioChunk);
+      if (audioDispatch_->Push(std::move(chunk))) {
+        const auto dispatch = audioDispatch_;
+        const napi_status status = tsfnData_.NonBlockingCall([dispatch](Napi::Env env, Napi::Function jsCallback) {
+          dispatch->Deliver(env, jsCallback);
+        });
+        // Ao encerrar o ambiente nao existe consumidor para esses frames;
+        // solta-los aqui evita manter audio pendurado ate o destrutor.
+        if (status != napi_ok) dispatch->CancelDelivery();
+      }
 
       if (FAILED(captureClient->GetNextPacketSize(&packetLength))) {
         packetLength = 0;

@@ -72,3 +72,19 @@ test('carencia configuravel', () => {
   assert.equal(h.observe({ visible: false, now: 99 }).changed, false);
   assert.equal(h.observe({ visible: false, now: 100 }).changed, true);
 });
+
+test('ocultacoes de tres segundos entram na carencia longa depois do flap recente', () => {
+  const h = createVisibilityHold();
+  h.observe({ visible: false, now: 0 });
+  assert.equal(h.observe({ visible: false, now: GRACE }).changed, true, 'primeira ocultacao ainda usa a carencia normal');
+  h.observe({ visible: true, now: 3000 });
+
+  h.observe({ visible: false, now: 6000 });
+  assert.equal(h.observe({ visible: false, now: 6000 + GRACE }).changed, true, 'segundo flap ainda confirma o padrao');
+  h.observe({ visible: true, now: 9000 });
+
+  const third = h.observe({ visible: false, now: 12000 });
+  assert.equal(third.visible, true, 'o terceiro flap mantem a demanda ativa');
+  assert.equal(third.recheckInMs, DEFAULTS.flapGraceMs);
+  assert.equal(h.observe({ visible: false, now: 15000 }).visible, true, '3 s nao vencem a carencia adaptativa');
+});
