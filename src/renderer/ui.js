@@ -14,6 +14,7 @@
   const themecode = root.GoLive.themecode;
   const gridLayout = root.GoLive.gridLayout;
   const roomname = root.GoLive.roomname;
+  const chatlimit = root.GoLiveChatLimit;
   let tileReactionGlobalListenersWired = false;
 
   function wireTileReactionGlobalListeners() {
@@ -2613,11 +2614,17 @@
     // Decide ANTES de inserir: depois da insercao a lista ja cresceu e
     // "estava no fim" viraria sempre falso.
     const seguir = estaNoFim();
+    const scrollTop = chatMessagesEl.scrollTop;
+    const scrollHeight = chatMessagesEl.scrollHeight;
     if (entry.ts) appendDaySeparatorIfNeeded(entry.ts);
     if (entry.system) appendSystemLine(entry);
     else appendMessage(entry);
+    const removed = chatlimit.pruneChatMessages(chatMessagesEl);
     if (seguir) descerParaOFim();
-    else $('chat-jump-new').classList.remove('hidden');
+    else {
+      if (removed) chatMessagesEl.scrollTop = scrollTop + chatMessagesEl.scrollHeight - scrollHeight;
+      $('chat-jump-new').classList.remove('hidden');
+    }
   }
 
   function append(entry, { received = false } = {}) {
@@ -2635,6 +2642,7 @@
       if (entry.system) appendSystemLine(entry);
       else appendMessage(entry);
     }
+    chatlimit.pruneChatMessages(chatMessagesEl);
     descerParaOFim();
   }
 
@@ -3500,7 +3508,7 @@
         <button id="btn-open-logs" type="button" class="ghost small">Abrir pasta de logs</button>
         <small>Pra mandar pra quem for investigar um problema.</small>
       </div>`;
-    setStatsHtml(lastStatsHtml);
+    setStatsHtml(lastStatsHtml, { force: true });
 
     renderProfilePreview(config);
     $('settings-sounds').checked = config.soundsEnabled;
@@ -3726,13 +3734,75 @@
   // novo no proximo tique da sala -- ou nunca, fora dela. Sem guardar, fora
   // da sala o estado vazio nao aparecia, e dentro dela a aba abria em branco.
   let lastStatsHtml = '';
+  // Contadores leves para confirmar que a atualizacao normal nao derruba a
+  // arvore inteira; ficam acessiveis so pela API interna de configuracoes.
+  const statsDomOps = { rebuilds: 0, text: 0, attributes: 0, structure: 0 };
 
-  function setStatsHtml(html) {
+  function isStatsVisible() {
+    return !settingsModalEl.classList.contains('hidden')
+      && !settingsPanes.stats.classList.contains('hidden');
+  }
+
+  function syncStatsNode(current, next) {
+    if (current.nodeType !== next.nodeType || current.nodeName !== next.nodeName) {
+      current.replaceWith(next.cloneNode(true));
+      statsDomOps.structure += 1;
+      return;
+    }
+    if (current.nodeType === Node.TEXT_NODE) {
+      if (current.data !== next.data) {
+        current.data = next.data;
+        statsDomOps.text += 1;
+      }
+      return;
+    }
+    if (current.nodeType !== Node.ELEMENT_NODE) return;
+    for (const name of current.getAttributeNames()) {
+      if (!next.hasAttribute(name)) {
+        current.removeAttribute(name);
+        statsDomOps.attributes += 1;
+      }
+    }
+    for (const name of next.getAttributeNames()) {
+      if (current.getAttribute(name) !== next.getAttribute(name)) {
+        current.setAttribute(name, next.getAttribute(name));
+        statsDomOps.attributes += 1;
+      }
+    }
+    const limit = Math.min(current.childNodes.length, next.childNodes.length);
+    for (let i = 0; i < limit; i += 1) syncStatsNode(current.childNodes[i], next.childNodes[i]);
+    while (current.childNodes.length > next.childNodes.length) {
+      current.lastChild.remove();
+      statsDomOps.structure += 1;
+    }
+    for (let i = limit; i < next.childNodes.length; i += 1) {
+      current.appendChild(next.childNodes[i].cloneNode(true));
+      statsDomOps.structure += 1;
+    }
+  }
+
+  function setStatsHtml(html, { force = false } = {}) {
     lastStatsHtml = html || '';
     const body = $('settings-stats-body');
-    if (!body) return;
+    if (!body || (!force && !isStatsVisible())) return;
+    if (body.childNodes.length) {
+      const template = document.createElement('template');
+      template.innerHTML = html || '<p class="stats-empty"></p>';
+      const limit = Math.min(body.childNodes.length, template.content.childNodes.length);
+      for (let i = 0; i < limit; i += 1) syncStatsNode(body.childNodes[i], template.content.childNodes[i]);
+      while (body.childNodes.length > template.content.childNodes.length) {
+        body.lastChild.remove();
+        statsDomOps.structure += 1;
+      }
+      for (let i = limit; i < template.content.childNodes.length; i += 1) {
+        body.appendChild(template.content.childNodes[i].cloneNode(true));
+        statsDomOps.structure += 1;
+      }
+      return;
+    }
     if (html) {
       body.innerHTML = html;
+      statsDomOps.rebuilds += 1;
       return;
     }
     const empty = document.createElement('p');
@@ -4286,7 +4356,10 @@
       openBan, openTransferOwner, openConfirm, closeConfirm,
     },
     stageHeader: { set: setStageHeader, clear: clearStageHeader, setStatus: setStageStatus, setName: setStageHeaderName },
-    settings: { open: openSettings, close: closeSettings, setStatsHtml },
+    settings: {
+      open: openSettings, close: closeSettings, setStatsHtml, isStatsVisible,
+      statsDomOps: () => ({ ...statsDomOps }),
+    },
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },
     chat: { render, append, setHistory, setEnabled, setAttachment, clearAttachment },

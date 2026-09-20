@@ -229,6 +229,14 @@ const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
 const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
 const { shouldKeepAwake } = require('./main/awake');
+const { canNavigateTo } = require('./main/navigation');
+
+/** Trava cada renderer na sua pagina local e nao deixa popups herdarem IPC. */
+function lockNavigation(webContents, allowedUrl) {
+  webContents.on('will-navigate', (event, url) => {
+    if (!canNavigateTo(url, allowedUrl)) event.preventDefault();
+  });
+}
 
 // Criado cedo (antes de whenReady) pra pegar exceptions que acontecam
 // durante a inicializacao tambem. app.getPath('userData') ja funciona
@@ -414,6 +422,8 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  const mainUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
+  lockNavigation(win.webContents, mainUrl);
 
   // Controles de janela proprios (Windows, janela sem moldura). fire-and-forget:
   // nada a devolver. Ver spec 2026-09-07.
@@ -474,6 +484,8 @@ function createWindow() {
   // uncaughtException a cada Espiar aberta (log de 2026-09-15, 21:49:13).
   win.webContents.on('did-create-window', (child, details) => {
     if (details.frameName !== 'golive-espiar') return;
+    lockNavigation(child.webContents, spyUrl);
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     destroySpyWindow();
     spyWin = child;
     // Mesmo nivel do rabisco: janela comum fica atras de jogo sem borda.
@@ -593,6 +605,9 @@ function createSplashWindow() {
     },
   });
   splashWin.setMenuBarVisibility(false);
+  const splashUrl = pathToFileURL(path.join(__dirname, 'splash', 'splash.html')).href;
+  lockNavigation(splashWin.webContents, splashUrl);
+  splashWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   splashWin.on('closed', () => { splashWin = null; });
   // show so depois de pronta pra pintar -- sem isso haveria um frame em branco.
   splashWin.once('ready-to-show', () => splashWin?.show());
@@ -779,6 +794,8 @@ function logGpuProblems() {
   let w;
   try {
     w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+    lockNavigation(w.webContents, 'chrome://gpu/');
+    w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   } catch (err) {
     logger.error('diag GPU: nao abriu janela:', err?.message || err);
     return;
@@ -882,6 +899,9 @@ app.whenReady().then(() => {
   // devolvemos a fonte que o usuario ja escolheu na nossa UI.
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => {
+      // A fonte escolhida pertence a janela principal. Qualquer outro
+      // renderer (inclusive popup ou pagina que tentou navegar) e recusado.
+      if (request.frame?.top !== win?.webContents.mainFrame) return callback({});
       desktopCapturer
         .getSources({ types: ['screen', 'window'] })
         .then((sources) => {
@@ -1281,6 +1301,9 @@ function createOverlayWindow(bounds) {
   });
 
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  const overlayUrl = pathToFileURL(path.join(__dirname, 'renderer', 'overlay.html')).href;
+  lockNavigation(overlayWin.webContents, overlayUrl);
+  overlayWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
   overlayWin.setContentProtection(true);
   overlayWin.setMenuBarVisibility(false);
