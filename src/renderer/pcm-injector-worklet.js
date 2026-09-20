@@ -48,25 +48,25 @@ class PcmRing {
     return this.available[0] || 0;
   }
 
-  /** Escreve PCM entrelacado. Devolve quantos quadros entraram (0 quando o
-   * numero de canais nao bate -- reamostragem de canal nao e feita aqui; na
-   * pratica a captura nativa sempre entrega estereo, ver loopback_capture.cc). */
-  write(samples, channels) {
-    if (channels !== this.channels) return 0;
-    const frames = samples.length / channels;
+  /** Escreve PCM planar. O renderer desintercala antes de transferir: aqui
+   * set copia blocos contiguos, sem laco por amostra na thread de audio. */
+  write(planes, channels, frames = planes?.[0]?.length ?? 0) {
+    if (channels !== this.channels || !Array.isArray(planes) || planes.length !== channels) return 0;
     for (let ch = 0; ch < channels; ch++) {
       const buf = this.buffers[ch];
-      for (let i = 0; i < frames; i++) {
-        buf[this.writeIdx[ch]] = samples[i * channels + ch];
-        this.writeIdx[ch] = (this.writeIdx[ch] + 1) % this.capacity;
-        if (this.available[ch] < this.capacity) {
-          this.available[ch]++;
-        } else {
-          // Capacidade estourada: descarta a amostra mais antiga em vez de
-          // travar tudo. Com o alvo abaixo isto virou caminho de excecao.
-          this.readIdx[ch] = (this.readIdx[ch] + 1) % this.capacity;
-        }
-      }
+      const source = planes[ch];
+      if (!(source instanceof Float32Array) || source.length < frames) return 0;
+      const keptFrames = Math.min(frames, this.capacity);
+      const sourceStart = frames - keptFrames;
+      const writeStart = (this.writeIdx[ch] + frames - keptFrames) % this.capacity;
+      const first = Math.min(keptFrames, this.capacity - writeStart);
+      buf.set(source.subarray(sourceStart, sourceStart + first), writeStart);
+      if (first < keptFrames) buf.set(source.subarray(sourceStart + first, sourceStart + keptFrames), 0);
+
+      const overflow = Math.max(0, this.available[ch] + frames - this.capacity);
+      this.readIdx[ch] = (this.readIdx[ch] + overflow) % this.capacity;
+      this.writeIdx[ch] = (this.writeIdx[ch] + frames) % this.capacity;
+      this.available[ch] = Math.min(this.capacity, this.available[ch] + frames);
     }
     this.#trim();
     return frames;
@@ -90,15 +90,13 @@ class PcmRing {
       const outCh = outputs[ch];
       const srcCh = ch < this.channels ? ch : this.channels - 1;
       const buf = this.buffers[srcCh];
-      for (let i = 0; i < outCh.length; i++) {
-        if (this.available[srcCh] > 0) {
-          outCh[i] = buf[this.readIdx[srcCh]];
-          this.readIdx[srcCh] = (this.readIdx[srcCh] + 1) % this.capacity;
-          this.available[srcCh]--;
-        } else {
-          outCh[i] = 0;
-        }
-      }
+      const frames = Math.min(outCh.length, this.available[srcCh]);
+      const first = Math.min(frames, this.capacity - this.readIdx[srcCh]);
+      outCh.set(buf.subarray(this.readIdx[srcCh], this.readIdx[srcCh] + first));
+      if (first < frames) outCh.set(buf.subarray(0, frames - first), first);
+      if (frames < outCh.length) outCh.fill(0, frames);
+      this.readIdx[srcCh] = (this.readIdx[srcCh] + frames) % this.capacity;
+      this.available[srcCh] -= frames;
     }
   }
 }
@@ -114,8 +112,8 @@ class PcmInjectorProcessor extends Base {
     this.ring = new PcmRing();
     this.lastReport = 0;
     this.port.onmessage = (event) => {
-      const { samples, channels } = event.data;
-      this.ring.write(samples, channels);
+      const { planes, channels, frames } = event.data;
+      this.ring.write(planes, channels, frames);
     };
   }
 
