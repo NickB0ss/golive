@@ -5,10 +5,13 @@
 #include <audioclient.h>
 
 #include <atomic>
+#include <memory>
 #include <string>
 #include <thread>
 
 #include <wrl/client.h>
+
+struct AudioDispatchState;
 
 // Captura, via WASAPI Process Loopback (Windows 10 2004+ / build 19041+), o
 // audio renderizado por um processo especifico (e sua arvore de filhos), ou
@@ -41,4 +44,5 @@ class LoopbackCapture : public Napi::ObjectWrap<LoopbackCapture> {
 
   Napi::ThreadSafeFunction tsfnData_;
   Napi::ThreadSafeFunction tsfnReady_;
+  std::shared_ptr<AudioDispatchState> audioDispatch_;
 };

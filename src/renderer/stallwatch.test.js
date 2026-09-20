@@ -1,15 +1,16 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createStallWatch, createRelayRetry } = require('./stallwatch');
+const { createStallWatch, createRelayRetry, stallDemand } = require('./stallwatch');
+const { createVisibilityHold } = require('./viewhold');
 
 const OPTS = { stallMs: 6000, cooldownMs: 20000, maxAttempts: 3 };
 
 test('tela recem-assistida sem nenhum quadro pede cura so depois do limite', () => {
   const w = createStallWatch(OPTS);
-  assert.equal(w.observe('7|screen', { watched: true, frames: 105, now: 0 }), null);
-  assert.equal(w.observe('7|screen', { watched: true, frames: 105, now: 5000 }), null);
-  assert.deepEqual(w.observe('7|screen', { watched: true, frames: 105, now: 6000 }), { action: 'heal', stalledFor: 6000, attempts: 1 });
+  assert.equal(w.observe('7|screen', { watched: true, frames: 105, transport: 0, now: 0 }), null);
+  assert.equal(w.observe('7|screen', { watched: true, frames: 105, transport: 0, now: 5000 }), null);
+  assert.deepEqual(w.observe('7|screen', { watched: true, frames: 105, transport: 0, now: 6000 }), { action: 'heal', stalledFor: 6000, attempts: 1 });
 });
 
 test('respeita o intervalo entre tentativas e desiste uma vez so', () => {
@@ -23,11 +24,88 @@ test('respeita o intervalo entre tentativas e desiste uma vez so', () => {
   assert.equal(w.observe('k', { watched: true, frames: 0, now: 90000 }), null, 'nao repete o aviso');
 });
 
-test('tela que ja mostrou quadro e parou (conteudo parado) nao dispara', () => {
+test('tile saudavel que para de receber quadros com demanda ativa pede cura', () => {
   const w = createStallWatch(OPTS);
-  w.observe('k', { watched: true, frames: 10, now: 0 });
-  w.observe('k', { watched: true, frames: 40, now: 1000 });
-  assert.equal(w.observe('k', { watched: true, frames: 40, now: 60000 }), null);
+  w.observe('k', { watched: true, frames: 10, transport: 100, now: 0 });
+  w.observe('k', { watched: true, frames: 40, transport: 200, now: 1000 });
+  assert.deepEqual(w.observe('k', { watched: true, frames: 40, transport: 200, now: 7000 }), {
+    action: 'heal', reason: 'frozen', stalledFor: 6000, attempts: 1,
+  });
+});
+
+test('tela estatica com bytes de video subindo nao pede reoffer', () => {
+  const w = createStallWatch(OPTS);
+  w.observe('k', { watched: true, frames: 10, transport: 100, now: 0 });
+  w.observe('k', { watched: true, frames: 40, transport: 200, now: 1000 });
+  assert.equal(w.observe('k', { watched: true, frames: 40, transport: 500, now: 7000 }), null);
+});
+
+test('pausa, transmissao encerrada, tile oculto e carencia nao curam tile congelado', () => {
+  const cases = [
+    { watched: false, eligible: false, label: 'pausada' },
+    { watched: false, eligible: false, label: 'live:false' },
+    { watched: false, eligible: false, label: 'sem demanda' },
+    { watched: false, keepWaiting: true, eligible: true, label: 'carencia' },
+  ];
+  for (const c of cases) {
+    const w = createStallWatch(OPTS);
+    w.observe(c.label, { watched: true, frames: 10, now: 0 });
+    w.observe(c.label, { watched: true, frames: 40, now: 1000 });
+    assert.equal(w.observe(c.label, { ...c, frames: 40, now: 7000 }), null, c.label);
+  }
+});
+
+test('decisao pura so mede tile quando ha demanda, origem ao vivo e fora da carencia', () => {
+  assert.deepEqual(stallDemand({ wanted: true, watching: true, paused: true, live: true, inViewHold: false }), {
+    watched: false, keepWaiting: false,
+  });
+  assert.deepEqual(stallDemand({ wanted: true, watching: true, paused: false, live: false, inViewHold: false }), {
+    watched: false, keepWaiting: false,
+  });
+  assert.deepEqual(stallDemand({ wanted: false, watching: true, paused: false, live: true, inViewHold: false }), {
+    watched: false, keepWaiting: false,
+  });
+  assert.deepEqual(stallDemand({ wanted: true, watching: true, paused: false, live: true, inViewHold: true }), {
+    watched: false, keepWaiting: true,
+  });
+});
+
+test('ocultacao curta pausa, mas nao zera, o relogio de espera por imagem', () => {
+  const w = createStallWatch(OPTS);
+  w.observe('k', { watched: true, frames: 8, now: 0 });
+  w.observe('k', { watched: true, frames: 8, now: 3000 });
+  assert.equal(w.observe('k', { watched: false, keepWaiting: true, frames: 8, now: 3000 }), null);
+  assert.equal(w.observe('k', { watched: true, frames: 8, now: 6000 }), null);
+  assert.deepEqual(w.observe('k', { watched: true, frames: 8, now: 9000 }), {
+    action: 'heal', stalledFor: 6000, attempts: 1,
+  });
+});
+
+test('alternancia de tres segundos ainda acumula espera e cura o tile', () => {
+  const w = createStallWatch(OPTS);
+  const h = createVisibilityHold();
+  const sample = (visible, now) => {
+    h.observe({ visible, now });
+    return w.observe('k', {
+      watched: h.current() && !h.pending(),
+      keepWaiting: h.current() && h.pending(),
+      frames: 20,
+      now,
+    });
+  };
+
+  sample(false, 0);
+  sample(false, 2500); // primeira ocultacao efetiva a suspensao
+  sample(true, 3000);
+  sample(false, 6000);
+  sample(false, 8500); // segunda ocultacao efetiva a suspensao
+  sample(true, 9000);
+  sample(false, 12000); // terceiro flap abre a carencia adaptativa
+  sample(true, 15000);
+  sample(false, 18000);
+  assert.deepEqual(sample(true, 21000), {
+    action: 'heal', stalledFor: 6000, attempts: 1,
+  });
 });
 
 test('avisa quando volta a mostrar quadro depois de uma cura', () => {

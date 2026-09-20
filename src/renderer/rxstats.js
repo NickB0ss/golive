@@ -15,6 +15,10 @@
       height: 0,
       packetsReceived: 0,
       packetsLost: 0,
+      // Estes acumulados distinguem imagem estatica de conexao morta no
+      // stallwatch: quadro exibido pode nao mudar por varios segundos.
+      bytesReceived: 0,
+      framesReceived: 0,
       freezeCount: 0,
       framesDecoded: 0,
       // Acumulados desde o inicio da conexao: a RAZAO entre os dois e que
@@ -32,6 +36,8 @@
         sample.height = stat.frameHeight || sample.height;
         sample.packetsReceived += stat.packetsReceived || 0;
         sample.packetsLost += stat.packetsLost || 0;
+        sample.bytesReceived += stat.bytesReceived || 0;
+        sample.framesReceived += stat.framesReceived || 0;
         sample.freezeCount += stat.freezeCount || 0;
         sample.framesDecoded += stat.framesDecoded || 0;
         sample.jitterBufferDelay += stat.jitterBufferDelay || 0;

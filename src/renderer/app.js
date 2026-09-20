@@ -1838,7 +1838,10 @@
     teardownMedia();
     teardownPeers(session);
     stallWatch.reset();
+    stallTransportByInput.clear();
+    stallTransportPending.clear();
     lastReofferAt.clear();
+    reofferByLeaf.clear();
     lastViewStateSent.clear();
     renderMembersPanel();
   }
@@ -3023,6 +3026,16 @@
   const lastReofferAt = new Map(); // `${pedinte}|${kind}` -> ms do ultimo refazer
   const REOFFER_MIN_GAP_MS = 15000;
   const MAX_REOFFER_HISTORY = 128;
+  // Uma folha pode alternar camera/tela na mesma pausa da origem. So uma
+  // renegociacao por vez evita fechar duas PCs e a fila de uma posicao guarda
+  // apenas a intencao mais recente, que e a unica que ainda importa.
+  const MAX_REOFFER_IN_FLIGHT_PER_LEAF = 1;
+  const MAX_REOFFER_QUEUED_PER_LEAF = 1;
+  const reofferByLeaf = new Map();
+  // A leitura de getStats e assincrona; guardar a ultima amostra separa a
+  // tela realmente muda de uma imagem estatica sem atrasar o loop do vigia.
+  const stallTransportByInput = new Map();
+  const stallTransportPending = new Set();
   // Timer proprio, e nao o loop de estatisticas: aquele so roda pra quem
   // transmite ou repassa (syncStatsLoop), e quem so ASSISTE -- justamente
   // quem ve a tela preta -- nunca passaria por ele. Custa uma leitura de
@@ -3034,6 +3047,19 @@
     return `${peerId}|${kind}`;
   }
 
+  function refreshStallTransport(session, peerId, kind) {
+    const key = `${peerId}|${kind}`;
+    if (stallTransportPending.has(key)) return;
+    stallTransportPending.add(key);
+    session.mesh.inStatsFor(peerId, kind).then((report) => {
+      if (currentSession !== session || !report) return;
+      const sample = rxstats.readReceiverReport(report);
+      // Os dois sao acumulados por PC; se qualquer um avanca, ainda ha RTP
+      // chegando mesmo que a pessoa esteja mostrando uma imagem sem mudanca.
+      stallTransportByInput.set(key, sample.bytesReceived + sample.framesReceived);
+    }).catch(() => {}).finally(() => stallTransportPending.delete(key));
+  }
+
   function checkStalledInput(session, { peerId, kind, hasInbound, now }) {
     const { baseKind, sourceId } = parseKind(kind);
     if (!KINDS.includes(baseKind)) return;
@@ -3041,17 +3067,35 @@
     const tileId = baseKind === 'camera' ? `cam-${origem}` : String(origem);
     const originPeer = session.mesh.peers.get(origem);
     const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
-    // Com a visibilidade crua aqui, cada piscada de janela apagava o
-    // estado do stallwatch e zerava o cronometro de 6 s -- a autocura
-    // nunca chegava a disparar. Ver viewhold.js.
-    const watched = isAppWatching() && querendo && !originPeer?.paused;
-    const frames = watched && hasInbound ? ui.grid.framesShown(tileId) : null;
-    const r = stallWatch.observe(`${peerId}|${kind}`, { watched, frames, hasInbound, now });
+    // A decisao pura do vigia separa ausencia legitima de demanda da
+    // carencia: nesta ultima o sender ainda esta reservado, mas o relogio
+    // pausa para uma piscada nao apagar o progresso acumulado.
+    const inViewHold = visibilityHold.pending();
+    const demand = stallwatch.stallDemand({
+      wanted: querendo,
+      watching: isAppWatching(),
+      paused: originPeer?.paused,
+      live: originPeer?.live,
+      inViewHold,
+    });
+    const inputKey = `${peerId}|${kind}`;
+    const frames = demand.watched && hasInbound ? ui.grid.framesShown(tileId) : null;
+    const r = stallWatch.observe(inputKey, {
+      ...demand,
+      frames,
+      transport: stallTransportByInput.get(inputKey),
+      hasInbound,
+      now,
+    });
+    if (hasInbound) refreshStallTransport(session, peerId, kind);
     if (!r) return;
     const nome = originPeer?.name || `#${origem}`;
     const via = sourceId ? ` via relay #${peerId}` : '';
     if (r.action === 'heal') {
-      console.warn(`[assistir] tela de ${nome}${via} sem imagem ha ${Math.round(r.stalledFor / 1000)}s desde que passou a ser assistida -- pedindo pra refazer a conexao (${kind}), tentativa ${r.attempts}`);
+      const motivo = r.reason === 'frozen'
+        ? 'congelou depois de mostrar imagem'
+        : 'segue sem imagem desde que passou a ser assistida';
+      console.warn(`[assistir] tela de ${nome}${via} ${motivo} ha ${Math.round(r.stalledFor / 1000)}s com demanda ativa -- pedindo pra refazer a conexao (${kind}), tentativa ${r.attempts}`);
       session.sig.send({ type: 'reoffer', to: peerId, kind });
     } else if (r.action === 'give-up') {
       console.error(`[assistir] tela de ${nome}${via} continua sem imagem depois de ${r.attempts} tentativas`);
@@ -3140,6 +3184,40 @@
     return ok;
   }
 
+  function runLeafReoffer(session, peerId, kind, state) {
+    Promise.resolve().then(async () => {
+      if (currentSession !== session) return;
+      const refeito = await reofferOne(session, peerId, kind);
+      console.info(`[assistir] #${peerId} pediu para refazer ${kind}: ${refeito ? 'refeito' : 'nada a refazer'}`);
+    }).catch((err) => {
+      console.warn('[assistir] reoffer falhou', peerId, kind, err?.name || err);
+    }).finally(() => {
+      const next = state.queued;
+      state.queued = null;
+      if (next && currentSession === next.session) {
+        runLeafReoffer(next.session, next.peerId, next.kind, state);
+      } else if (reofferByLeaf.get(peerId) === state) {
+        reofferByLeaf.delete(peerId);
+      }
+    });
+  }
+
+  function queueLeafReoffer(session, peerId, kind) {
+    const state = reofferByLeaf.get(peerId);
+    if (state) {
+      if (MAX_REOFFER_QUEUED_PER_LEAF < 1) return false;
+      // A fila tem uma vaga e sobrescreve a anterior: renegociar uma tela
+      // antiga depois da intencao mais nova so recriaria trabalho perdido.
+      state.queued = { session, peerId, kind };
+      return true;
+    }
+    if (MAX_REOFFER_IN_FLIGHT_PER_LEAF < 1) return false;
+    const next = { queued: null };
+    reofferByLeaf.set(peerId, next);
+    runLeafReoffer(session, peerId, kind, next);
+    return true;
+  }
+
   async function reofferForResumedPeer(session, peerId) {
     const mesh = session.mesh;
     const id = String(peerId);
@@ -3223,7 +3301,10 @@
           // teardownSession -- senao um id reaproveitado herdaria tentativas
           // e o teto de reoferta da sessao morta.
           stallWatch.reset();
+          stallTransportByInput.clear();
+          stallTransportPending.clear();
           lastReofferAt.clear();
+          reofferByLeaf.clear();
           lastViewStateSent.clear();
           orphanSession = null;
           console.info(migratedRoom
@@ -3413,6 +3494,13 @@
         for (const chave of [...lastReofferAt.keys()]) {
           if (chave.startsWith(`${msg.id}|`)) lastReofferAt.delete(chave);
         }
+        for (const chave of [...stallTransportByInput.keys()]) {
+          if (chave.startsWith(`${msg.id}|`)) stallTransportByInput.delete(chave);
+        }
+        for (const chave of [...stallTransportPending]) {
+          if (chave.startsWith(`${msg.id}|`)) stallTransportPending.delete(chave);
+        }
+        reofferByLeaf.delete(String(msg.id));
         // A retomada pode receber a tree antes de reaprender que nossa tela
         // continua ao vivo, entao reanuncia antes de qualquer reoferta.
         if (localStream && sig.isOpen()) sig.send({
@@ -3824,8 +3912,7 @@
           lastReofferAt.delete(lastReofferAt.keys().next().value);
         }
         lastReofferAt.set(chave, agora);
-        const refeito = await reofferOne(session, String(msg.from), msg.kind);
-        console.info(`[assistir] #${msg.from} pediu para refazer ${msg.kind}: ${refeito ? 'refeito' : 'nada a refazer'}`);
+        queueLeafReoffer(session, String(msg.from), msg.kind);
         break;
       }
       // Recebido de QUALQUER peer da sala que esteja servindo video (nao so
@@ -4675,6 +4762,8 @@
     lastAnnouncedLimit = null;
     rxHealthByPeer.clear();
     rxPrevSample.clear();
+    stallTransportByInput.clear();
+    stallTransportPending.clear();
     rxPrevAtMs = 0;
     peerQuality.clear();
     senderHealth.clear();

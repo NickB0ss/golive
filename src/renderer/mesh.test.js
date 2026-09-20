@@ -88,8 +88,8 @@ function fakeSender(track) {
   };
 }
 
-function meshWithPeer(senders) {
-  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+function meshWithPeer(senders, opts = {}) {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {}, ...opts });
   mesh.addPeer('7', 'Bruno');
   mesh.peers.get('7').outConns.screen = { getSenders: () => senders };
   return mesh;
@@ -249,6 +249,57 @@ test('false -> true -> false -> true concorrente termina no estado pedido', asyn
 
   assert.equal(mesh.isPeerSuspended('7', 'screen'), false);
   assert.equal(video.track?.kind, 'video', 'terminou mandando video');
+});
+
+test('rajada true(trackA), false, true(trackB) devolve somente a track mais nova', async () => {
+  const video = fakeSender({ kind: 'video' });
+  const mesh = meshWithPeer([video]);
+  const trackA = { kind: 'video', id: 'A' };
+  const trackB = { kind: 'video', id: 'B' };
+
+  mesh.setPeerDemand('7', 'screen', false);
+  await settled(mesh);
+  mesh.setPeerDemand('7', 'screen', true, trackA);
+  mesh.setPeerDemand('7', 'screen', false);
+  mesh.setPeerDemand('7', 'screen', true, trackB);
+  await settled(mesh);
+
+  assert.equal(video.track, trackB);
+});
+
+test('replaceTrack pendurado expira e deixa a ultima demanda seguir', async () => {
+  let release;
+  const video = {
+    track: { kind: 'video' },
+    replaceTrack(next) {
+      if (next === null) {
+        return new Promise((resolve) => {
+          release = () => {
+            // O Chromium ainda efetiva a suspensao depois do timeout local.
+            // O teste precisa reproduzir esta escrita tardia no sender real.
+            this.track = null;
+            resolve();
+          };
+        });
+      }
+      this.track = next;
+      return Promise.resolve();
+    },
+  };
+  const mesh = meshWithPeer([video], { demandTimeoutMs: 10 });
+  const track = { kind: 'video', id: 'nova' };
+
+  mesh.setPeerDemand('7', 'screen', false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(release, 'a suspensao pendurada iniciou antes do religamento');
+  mesh.setPeerDemand('7', 'screen', true, track);
+  await settled(mesh);
+
+  assert.equal(video.track, track);
+  release?.();
+  await new Promise((resolve) => setImmediate(resolve));
+  await settled(mesh);
+  assert.equal(video.track, track, 'a conclusao tardia da suspensao nao vence a demanda nova');
 });
 
 test('suspender concorrente termina suspenso e libera o encoder', async () => {

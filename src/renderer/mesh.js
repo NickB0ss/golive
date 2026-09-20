@@ -45,6 +45,11 @@
   // ALVO, nao um teto: se a rede exigir, o Chromium sobe sozinho.
   const JITTER_BUFFER_TARGET_MS = 50;
 
+  // Uma Promise de replaceTrack pode nunca resolver quando a PC entra num
+  // estado ruim. Cinco segundos deixam uma maquina carregada terminar, mas
+  // impedem que um sender morto retenha toda a demanda seguinte para sempre.
+  const DEMAND_REPLACE_TIMEOUT_MS = 5000;
+
   // ---------- Chave de conexao de retransmissao (F2) ----------
   //
   // Toda RTCPeerConnection e indexada por (peerId, kind). Quando um RELAY
@@ -212,7 +217,7 @@
     return out.join(eol);
   }
 
-  function createMesh({ send, onTrack, onPeerState }) {
+  function createMesh({ send, onTrack, onPeerState, demandTimeoutMs = DEMAND_REPLACE_TIMEOUT_MS }) {
     const peers = new Map();
     // A sessao P2P pode sobreviver a troca do WebSocket de sinalizacao.
     // A retomada aponta este mesmo mesh para o socket novo, sem recriar PCs.
@@ -514,6 +519,7 @@
       const peerRef = peers.get(peerId);
       if (peerRef?.suspended) peerRef.suspended[kind] = false;
       if (peerRef?.suspendedSenders) peerRef.suspendedSenders[kind] = [];
+      if (peerRef?.demandSenders) peerRef.demandSenders[kind] = [];
 
       // Renegociar numa pc que ja existe REAPROVEITA o transceiver de cada
       // tipo de midia em vez de empilhar outro. Empilhar deixava o receptor
@@ -835,6 +841,7 @@
       // negotiateOffer ja faz esta limpeza ao reabrir; aqui e o outro lado.
       if (peer.suspended) peer.suspended[kind] = false;
       if (peer.suspendedSenders) peer.suspendedSenders[kind] = [];
+      if (peer.demandSenders) peer.demandSenders[kind] = [];
     }
 
     // Repassa uma track JA RECEBIDA (peers.get(sourcePeerId).inStreams[kind])
@@ -885,8 +892,9 @@
     //     mensagens view-state na mesma volta do laco de eventos veriam o
     //     estado velho e a segunda viraria no-op.
     //   - `peer.demandChain[kind]` aplica isso nos senders, UMA operacao por
-    //     vez. Sem a fila, um `false` e um `true` em voo ao mesmo tempo
-    //     podiam terminar na ordem errada.
+    //     vez. A fila guarda somente a ULTIMA intencao completa (booleano e
+    //     track): estados intermediarios nao importam e assim a memoria nao
+    //     cresce numa rajada de view-state.
     //
     // A rejeicao nao pode mais morrer em silencio (log de 2026-09-19): ate
     // aqui era `.catch(() => {})` com o estado ja gravado como sucesso. Um
@@ -906,49 +914,138 @@
 
       peer.suspended ||= {};
       peer.suspendedSenders ||= {};
+      peer.demandSenders ||= {};
       peer.demandChain ||= {};
-      if (Boolean(peer.suspended[kind]) === !wanted) return false;
+      peer.demandDesired ||= {};
+      peer.demandVersion ||= {};
+      peer.demandRunning ||= {};
+      peer.demandDirty ||= {};
+      const previous = peer.demandDesired[kind];
+      if (Boolean(peer.suspended[kind]) === !wanted
+        && (!wanted || !previous || previous.track === track)) return false;
 
       peer.suspended[kind] = !wanted;
-      // `.catch` no fim da cadeia, e nao em cada elo: um erro nao pode deixar
-      // a fila rejeitada pra sempre e engolir as demandas seguintes.
-      peer.demandChain[kind] = Promise.resolve(peer.demandChain[kind])
-        .then(() => applyDemand(peer, pc, kind, track))
-        .catch((err) => console.warn('[mesh] demanda falhou', peerId, kind, err?.name || err));
+      peer.demandVersion[kind] = (peer.demandVersion[kind] || 0) + 1;
+      peer.demandDesired[kind] = { wanted, track, version: peer.demandVersion[kind] };
+      peer.demandDirty[kind] = true;
+      runDemand(peer, pc, kind);
       return true;
     }
 
-    /** Reconcilia os senders com o desejado do momento. Le
-     * `peer.suspended[kind]` na hora de aplicar (e nao o valor de quando foi
-     * enfileirado) pra que uma rajada de mudancas convirja pro ultimo pedido. */
-    async function applyDemand(peer, pc, kind, track) {
-      if (peer.suspended[kind]) {
-        const senders = pc.getSenders().filter((s) => s.track?.kind === 'video');
+    // So um reconciliador pode estar em voo por peer/kind. Cada volta le a
+    // intencao completa mais nova; a proxima volta so existe se ela mudou
+    // durante o await, portanto nao ha uma fila de Promises para crescer.
+    function runDemand(peer, pc, kind) {
+      if (peer.demandRunning[kind]) return;
+      peer.demandRunning[kind] = true;
+      peer.demandChain[kind] = (async () => {
+        do {
+          peer.demandDirty[kind] = false;
+          const intent = peer.demandDesired[kind];
+          await applyDemand(peer, pc, kind, intent);
+        } while (peer.demandDirty[kind]);
+        peer.demandRunning[kind] = false;
+      })().catch((err) => {
+        peer.demandRunning[kind] = false;
+        console.warn('[mesh] demanda falhou', peer.id, kind, err?.name || err);
+      });
+    }
+
+    // O Chromium nao permite cancelar replaceTrack. Se uma chamada expirou e
+    // terminar depois, reaplicamos a ultima intencao para ela nao desfazer a
+    // demanda nova fora de ordem.
+    function replaceDemandTrack(peer, pc, kind, sender, track, phase, version) {
+      let expired = false;
+      let settled = false;
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          if (settled) return;
+          expired = true;
+          console.warn('[mesh] demanda expirou', peer.id, kind, phase, `${demandTimeoutMs}ms`);
+          resolve(false);
+        }, demandTimeoutMs);
+        // A chamada tambem pode lancar antes de devolver Promise; começa-la
+        // numa cadeia captura esse caminho e deixa a proxima demanda seguir.
+        Promise.resolve().then(() => sender.replaceTrack(track)).then(() => {
+          // replaceTrack nao e cancelavel: quando a chamada velha termina,
+          // ela pode ter escrito null DEPOIS do religamento. A versao torna
+          // essa conclusao inofensiva e manda reaplicar a intencao atual.
+          if (expired || peer.demandDesired[kind]?.version !== version) {
+            rememberDemandSenders(peer, kind, [sender]);
+            peer.demandDirty[kind] = true;
+            runDemand(peer, pc, kind);
+            // A chamada obsoleta que ainda nao tinha expirado tambem precisa
+            // soltar a volta antiga; senao ela prende o reconciliador ate o
+            // timeout apesar de ja haver uma intencao mais nova para aplicar.
+            if (!expired) {
+              settled = true;
+              clearTimeout(timer);
+              resolve(false);
+            }
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          resolve(true);
+        }, (err) => {
+          if (expired) return;
+          settled = true;
+          clearTimeout(timer);
+          console.warn(`[mesh] ${phase} falhou`, peer.id, kind, err?.name || err);
+          resolve(false);
+        });
+      });
+    }
+
+    // A PC e consultada em toda tentativa porque uma renegociacao pode ter
+    // trocado os senders. Os conhecidos ficam so para o intervalo em que um
+    // replaceTrack tardio deixou a track null e getSenders nao revela o kind.
+    function rememberDemandSenders(peer, kind, senders) {
+      peer.demandSenders ||= {};
+      const known = peer.demandSenders[kind] || [];
+      peer.demandSenders[kind] = [...new Set([...known, ...senders])];
+      return peer.demandSenders[kind];
+    }
+
+    function currentDemandSenders(peer, pc, kind) {
+      const current = (pc.getSenders?.() || []).filter((s) => s.track?.kind === 'video');
+      // Depois de replaceTrack(null), o receiver do transceiver ainda marca
+      // qual sender era video. Isso prefere o estado atual da PC a uma lista
+      // capturada por uma chamada antiga.
+      const transceiverSenders = (pc.getTransceivers?.() || [])
+        .filter((t) => t.receiver?.track?.kind === 'video' && t.sender)
+        .map((t) => t.sender);
+      return rememberDemandSenders(peer, kind, [...current, ...transceiverSenders]);
+    }
+
+    /** Reconcilia os senders com a intencao completa que a fila leu. */
+    async function applyDemand(peer, pc, kind, intent) {
+      if (!intent) return;
+      if (!intent.wanted) {
+        const senders = currentDemandSenders(peer, pc, kind);
         // Nenhum sender com track de video: ou nunca houve, ou um religar
         // anterior falhou e deixou todos sem track. Nos dois casos sobrescrever
         // a lista guardada e o que tornaria a tela preta irreversivel.
         if (!senders.length) return;
         peer.suspendedSenders[kind] = senders;
-        await Promise.all(senders.map((s) => s.replaceTrack(null).catch((err) => {
-          console.warn('[mesh] suspender falhou', peer.id, kind, err?.name || err);
-        })));
+        await Promise.all(senders.map((s) => replaceDemandTrack(peer, pc, kind, s, null, 'suspender', intent.version)));
         return;
       }
 
-      const senders = peer.suspendedSenders[kind] || [];
+      const senders = currentDemandSenders(peer, pc, kind);
       if (!senders.length) return; // nada suspenso: religar nao tem o que fazer
+      const { track } = intent;
       if (!track) {
         // A captura sumiu entre suspender e religar. `replaceTrack(null)`
         // aqui seria indistinguivel de sucesso e perderia os senders.
         console.warn('[mesh] religar sem track -- senders preservados', peer.id, kind);
         return;
       }
-      let falhou = false;
-      await Promise.all(senders.map((s) => s.replaceTrack(track).catch((err) => {
-        falhou = true;
-        console.warn('[mesh] religar falhou', peer.id, kind, err?.name || err);
-      })));
-      if (!falhou) peer.suspendedSenders[kind] = [];
+      const outcomes = await Promise.all(senders.map((s) => replaceDemandTrack(peer, pc, kind, s, track, 'religar', intent.version)));
+      // Se chegou outra intencao enquanto o await rodava, ela ainda precisa
+      // dos mesmos senders para aplicar a track mais nova; limpa so quando
+      // esta e de fato a ultima versao desejada.
+      if (outcomes.every(Boolean) && peer.demandDesired[kind] === intent) peer.suspendedSenders[kind] = [];
     }
 
     function isPeerSuspended(peerId, kind) {
@@ -1057,7 +1154,10 @@
     };
   }
 
-  const api = { createMesh, withStartBitrate, withOpusParams, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG };
+  const api = {
+    createMesh, withStartBitrate, withOpusParams, startBitrateKbps, relayKindFor, parseKind, RTC_CONFIG,
+    DEMAND_REPLACE_TIMEOUT_MS,
+  };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.mesh = api;

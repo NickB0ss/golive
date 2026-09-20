@@ -5,15 +5,24 @@
 // Decide so com numeros (quadros exibidos pelo <video>, relogio), pra regra
 // ficar testavel sem DOM nem WebRTC. Quem chama (app.js) mede e age.
 //
-// A regra so dispara quando a tela NUNCA exibiu um quadro desde que passou a
-// ser assistida (ou desde que o tile foi recriado): e o retrato do defeito
-// relatado ("cliquei pra assistir e ficou preta ate a pessoa sair e entrar").
-// Uma tela que ja mostrou quadro e parou e, quase sempre, conteudo parado --
-// um desktop ocioso nao gera quadro novo --, e refazer a conexao ali so
-// trocaria uma imagem parada por uma tela preta de alguns segundos.
+// A regra tambem cobre o tile que JA pintou e depois parou de decodificar:
+// numa troca de arvore ele pode ficar preto embora a demanda continue ativa.
+// A origem pode estar mostrando conteudo parado, mas o custo de um reoffer
+// limitado e menor que deixar esse caso sem caminho de recuperacao.
 (function (root) {
   const DEFAULTS = { stallMs: 6000, cooldownMs: 20000, maxAttempts: 3 };
   const RELAY_RETRY_DEFAULTS = { baseDelayMs: 1000, maxAttempts: 3 };
+
+  // Separa a elegibilidade da medicao para que pausa, fim de transmissao,
+  // escolha explicita e carencia tenham uma regra unica e testavel. `live`
+  // ausente vale como ao vivo para continuar compativel com peer antigo.
+  function stallDemand({ wanted, watching, paused, live, inViewHold }) {
+    const eligible = Boolean(wanted) && !paused && live !== false;
+    return {
+      watched: Boolean(watching) && eligible && !inViewHold,
+      keepWaiting: Boolean(watching) && eligible && Boolean(inViewHold),
+    };
+  }
 
   function createStallWatch(opts = {}) {
     const stallMs = opts.stallMs ?? DEFAULTS.stallMs;
@@ -21,11 +30,13 @@
     const maxAttempts = opts.maxAttempts ?? DEFAULTS.maxAttempts;
     const byKey = new Map();
 
-    function fresh(now, frames, prev) {
+    function fresh(now, frames, transport, prev) {
       return {
-        since: now,
         base: frames,
+        transport,
         shown: false,
+        stalledFor: 0,
+        lastWatchedAt: now,
         // Tile recriado (contador de quadros reiniciou) nao zera as
         // tentativas: senao cada autocura que recria o tile abriria um laco.
         attempts: prev?.attempts || 0,
@@ -38,25 +49,50 @@
      * escolhida, origem nao pausada). `frames`: quadros exibidos pelo tile,
      * ou null quando nao da pra medir. Devolve null ou
      * `{ action: 'heal' | 'give-up' | 'recovered', stalledFor?, attempts }`. */
-    function observe(key, { watched, frames, now, hasInbound = true }) {
+    function observe(key, { watched, keepWaiting = false, frames, transport, now, hasInbound = true }) {
       // Quando a arvore ainda nos manda assistir, mas a inConn e o tile ja
       // sumiram, isso e o mesmo sintoma de uma tela que nunca pintou. Nao
       // esquece o estado: usa a mesma histerese e o mesmo teto de curas.
       const missingInbound = hasInbound === false;
-      if (!watched || (!missingInbound && (typeof frames !== 'number' || !Number.isFinite(frames)))) {
+      if (!watched) {
+        const waiting = byKey.get(key);
+        // Durante a carencia a demanda ainda esta reservada, mas o tile nao
+        // esta visivel para medir. Pausa o relogio sem apagar a espera que ja
+        // acumulou; uma piscada nao pode recomecar os 6 s do zero.
+        if (keepWaiting && waiting) {
+          if (waiting.lastWatchedAt != null) {
+            waiting.stalledFor += Math.max(0, now - waiting.lastWatchedAt);
+            waiting.lastWatchedAt = null;
+          }
+          return null;
+        }
+        byKey.delete(key);
+        return null;
+      }
+      if (!missingInbound && (typeof frames !== 'number' || !Number.isFinite(frames))) {
         byKey.delete(key);
         return null;
       }
       const observedFrames = missingInbound ? 0 : frames;
       const s = byKey.get(key);
-      if (!s || observedFrames < s.base || (missingInbound && s.shown)) {
-        byKey.set(key, fresh(now, observedFrames, s));
+      const hasTransport = typeof transport === 'number' && Number.isFinite(transport);
+      // Para um tile que ja mostrou imagem, falta de estatistica ainda nao e
+      // prova de pane. Esperar a proxima amostra evita reofertar uma tela
+      // estatica so porque framesShown nao muda com pixels iguais.
+      if (!missingInbound && s?.shown && !hasTransport) return null;
+      if (!s || observedFrames < s.base
+        || (hasTransport && s.transport != null && transport < s.transport)
+        || (missingInbound && s.shown)) {
+        byKey.set(key, fresh(now, observedFrames, hasTransport ? transport : null, s));
         return null;
       }
       if (observedFrames > s.base) {
         const attempts = s.attempts;
         s.base = frames;
+        if (hasTransport) s.transport = transport;
         s.shown = true;
+        s.stalledFor = 0;
+        s.lastWatchedAt = now;
         if (attempts) {
           s.attempts = 0;
           s.lastHealAt = 0;
@@ -65,8 +101,21 @@
         }
         return null;
       }
-      if (s.shown) return null;
-      const stalledFor = now - s.since;
+      const transportAdvanced = hasTransport && s.transport != null && transport > s.transport;
+      if (hasTransport) s.transport = transport;
+      if (transportAdvanced) {
+        // Bytes/frames do RTP ainda chegam: a imagem pode ser estatica, mas
+        // nao e a conexao morta que reoffer consegue consertar.
+        s.stalledFor = 0;
+        s.lastWatchedAt = now;
+        s.attempts = 0;
+        s.lastHealAt = 0;
+        s.gaveUp = false;
+        return null;
+      }
+      if (s.lastWatchedAt != null) s.stalledFor += Math.max(0, now - s.lastWatchedAt);
+      s.lastWatchedAt = now;
+      const stalledFor = s.stalledFor;
       if (stalledFor < stallMs) return null;
       if (s.attempts >= maxAttempts) {
         if (s.gaveUp) return null;
@@ -76,7 +125,12 @@
       if (s.lastHealAt && now - s.lastHealAt < cooldownMs) return null;
       s.attempts += 1;
       s.lastHealAt = now;
-      return { action: 'heal', stalledFor, attempts: s.attempts };
+      return {
+        action: 'heal',
+        ...(s.shown ? { reason: 'frozen' } : {}),
+        stalledFor,
+        attempts: s.attempts,
+      };
     }
 
     function forget(key) {
@@ -187,7 +241,7 @@
     };
   }
 
-  const api = { createStallWatch, createRelayRetry, DEFAULTS, RELAY_RETRY_DEFAULTS };
+  const api = { createStallWatch, createRelayRetry, stallDemand, DEFAULTS, RELAY_RETRY_DEFAULTS };
   root.GoLive = root.GoLive || {};
   root.GoLive.stallwatch = api;
   if (typeof module !== 'undefined') module.exports = api;

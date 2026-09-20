@@ -41,7 +41,15 @@
  * continua valendo no sinal cru.
  */
 (function (root) {
-  const DEFAULTS = { graceMs: 2500 };
+  // Tres ocultacoes num intervalo curto identificam o jogo por cima. Depois
+  // disso, 12 s seguram a demanda atraves de varios ciclos de 3 s sem fazer
+  // uma janela realmente minimizada pagar encode para sempre.
+  const DEFAULTS = {
+    graceMs: 2500,
+    flapCount: 3,
+    flapWindowMs: 12000,
+    flapGraceMs: 12000,
+  };
 
   /** Decide so com numeros e o relogio que quem chama passa, pra regra ficar
    * coberta sem DOM, sem timer e sem janela de verdade.
@@ -55,24 +63,41 @@
    *     sai, porque a origem do sinal (o evento de visibilidade) ja passou. */
   function createVisibilityHold(opts = {}) {
     const graceMs = opts.graceMs ?? DEFAULTS.graceMs;
+    const flapCount = opts.flapCount ?? DEFAULTS.flapCount;
+    const flapWindowMs = opts.flapWindowMs ?? DEFAULTS.flapWindowMs;
+    const flapGraceMs = opts.flapGraceMs ?? DEFAULTS.flapGraceMs;
     // "Assistindo" e o padrao seguro em toda a cadeia de view-state: na
     // duvida, paga-se encode em vez de entregar tela preta.
     let held = true;
     let pendingSince = null;
+    let pendingGraceMs = graceMs;
+    let rawHidden = false;
+    const hiddenStarts = [];
+
+    function recordHidden(now) {
+      while (hiddenStarts.length && now - hiddenStarts[0] > flapWindowMs) hiddenStarts.shift();
+      hiddenStarts.push(now);
+      return hiddenStarts.length >= flapCount ? flapGraceMs : graceMs;
+    }
 
     function observe({ visible, now }) {
       if (visible) {
+        rawHidden = false;
         pendingSince = null;
         const changed = !held;
         held = true;
         return { visible: true, changed, recheckInMs: null };
+      }
+      if (!rawHidden) {
+        rawHidden = true;
+        pendingGraceMs = recordHidden(now);
       }
       if (!held) return { visible: false, changed: false, recheckInMs: null };
       // Só a PRIMEIRA observacao de oculto abre a pendencia: reabrir a cada
       // chamada faria um observe periodico adiar a carencia pra sempre.
       if (pendingSince === null) pendingSince = now;
       const waited = now - pendingSince;
-      if (waited < graceMs) return { visible: true, changed: false, recheckInMs: graceMs - waited };
+      if (waited < pendingGraceMs) return { visible: true, changed: false, recheckInMs: pendingGraceMs - waited };
       pendingSince = null;
       held = false;
       return { visible: false, changed: true, recheckInMs: null };
@@ -82,11 +107,15 @@
       return held;
     }
 
+    function pending() {
+      return pendingSince !== null;
+    }
+
     // Sem reset de proposito: a carencia acompanha a JANELA, que sobrevive a
     // sessao. Zera-la no teardown faria uma janela minimizada voltar a se
     // declarar "assistindo" ate o proximo evento de visibilidade -- que pode
     // nao vir, porque nada mudou.
-    return { observe, current };
+    return { observe, current, pending };
   }
 
   const api = { createVisibilityHold, DEFAULTS };

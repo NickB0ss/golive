@@ -1434,8 +1434,11 @@ ipcMain.handle('audio:startCapture', (event, { pid, exclude } = {}) => {
     const sender = event.sender;
     let settled = false;
 
-    const onData = (samples, channels, sampleRate) => {
+    const onData = (samples, channels, sampleRate, droppedFrames = 0) => {
       if (sender.isDestroyed()) return;
+      // Descartar o passado e preferivel a deixar a conversa inteira atrasar.
+      // Vem da fila nativa limitada ao mesmo horizonte do buffer WASAPI.
+      if (droppedFrames) console.warn(`[som] captura nativa atrasou; descartou ${droppedFrames} frame(s) antigos`);
       sender.send('audio:chunk', captureId, samples, channels, sampleRate);
     };
     const onReady = (ok, message) => {
