@@ -49,9 +49,16 @@ jobs:
 
       # O beforeBuild (scripts/check-native-build.js) reprova aqui se o .node
       # nao existir, entao o instalador nunca sai sem a captura de audio.
-      - run: npm run dist -- --publish always
+      #
+      # --publish never, e nao always: o electron-builder 26 roda o publisher
+      # do GitHub duas vezes e deixa DOIS rascunhos na mesma tag -- um com o
+      # .exe e o latest.yml, outro so com o .blockmap. Juntar os dois na mao
+      # custou, nas duas ultimas releases, mais tempo que o build inteiro, e
+      # numa delas o download do .blockmap falhou depois de eu ja ter apagado
+      # o rascunho duplicado, obrigando a refazer tudo. Aqui os tres arquivos
+      # saem de um build so e sobem juntos, pelo gh, num rascunho unico.
+      - run: npm run dist -- --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: o instalador, o latest.yml e o addon nativo estao la?
@@ -65,6 +72,30 @@ jobs:
           # por processo (P0-5 da auditoria de 2026-09-18).
           $addon = 'dist/win-unpacked/resources/app.asar.unpacked/build/Release/golive_audio.node'
           if (!(Test-Path $addon)) { throw "addon nativo ausente do pacote -- o instalador sairia sem captura de audio por processo" }
+
+      # Um rascunho so, com os tres arquivos do MESMO build. Publicar continua
+      # sendo clique manual (`gh release edit <tag> --draft=false --latest`).
+      # Se a tag ja tiver um rascunho (re-execucao do workflow), reaproveita.
+      - name: subir os artefatos num rascunho unico
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $arquivos = @(
+            (Get-ChildItem dist -Filter '*.exe' | Select-Object -First 1).FullName,
+            (Get-ChildItem dist -Filter '*.exe.blockmap' | Select-Object -First 1).FullName,
+            (Resolve-Path dist/latest.yml).Path
+          )
+          $existe = $true
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) { $existe = $false }
+          if ($existe) {
+            gh release upload $tag $arquivos --clobber
+          } else {
+            gh release create $tag --draft --target "${{ github.sha }}" --title $tag.TrimStart('v') --notes "Rascunho gerado pelo workflow de release. Edite as notas antes de publicar." $arquivos
+          }
+          if ($LASTEXITCODE -ne 0) { throw "falha ao subir os artefatos" }
 
   # release:check existe desde o incidente da v0.10.0 (release sem latest.yml
   # derrubou a atualizacao de todas as versoes anteriores) e nunca era
