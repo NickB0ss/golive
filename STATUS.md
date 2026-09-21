@@ -215,6 +215,22 @@ main thread com os 60 quadros por segundo do repasse -- fechado, agora não
 toca no DOM. O chat ganhou teto de 200 mensagens na tela, com as imagens
 dentro. Sete regras do lint entraram com zero ocorrência.
 
+**Os avisos num lugar só.** Antes eles ficavam espalhados: uma faixa no topo
+do palco que somava vários textos numa frase só, um aviso solto na barra
+lateral do lobby e erros de formulário. Agora há um ícone na barra de título,
+à esquerda dos botões de janela, que só existe quando há aviso. Aviso grave
+mostra um rótulo curto ao lado ("Sem imagem", "Firewall") e pulsa uma vez --
+esconder tela preta atrás do hover seria pior. O painel abre no hover, no foco
+por teclado e no clique, cada aviso tem título, detalhe, ação quando cabe e
+"×" para dispensar, e o ícone muda por severidade, para a informação não
+depender só da cor. As seis fontes migraram (captura, firewall, endereço,
+encoder, som e Tailscale) e a faixa do palco saiu.
+
+**Amigos salvos saiu.** A lista, o armazenamento dos endereços e a varredura
+do lobby foram removidos a pedido; a lista de salas volta a mostrar só o que o
+anúncio na rede encontra. A sonda em si ficou: é ela que a migração usa para
+achar o sucessor quando o líder cai.
+
 **O que não foi testado.** A subida do Electron e as correções de rede e áudio
 entraram na mesma versão. Nada disto rodou com 2+ PCs reais -- e é justamente
 captura de tela, reconexão e áudio. O roteiro do passo 7 do plano do Electron
