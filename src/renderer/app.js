@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, viewhold, warnings: warningsModule } = window.GoLive;
+  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, conndiag, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, viewhold, warnings: warningsModule } = window.GoLive;
   const warningRegistry = warningsModule.create();
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
@@ -461,7 +461,7 @@
 
   function dropTile(tileId) {
     tileSource.delete(tileId);
-    ui.grid.removeTile(tileId, emptyMessage());
+    ui.grid.removeTile(tileId);
   }
 
   /** Aceita tanto o kind cru quanto o composto de repasse. Tudo que chega
@@ -742,7 +742,7 @@
     renderRoomStatus();
   }
 
-  // Sessao "efetiva" pra UI (painel de membros, mensagem de grade vazia): a
+  // Sessao "efetiva" pra UI (painel de membros): a
   // que tem tiles na tela agora. Numa reconexao automatica `currentSession`
   // ja existe (e criada antes de o socket abrir) mas ainda esta com zero
   // peers, enquanto a orfa da queda anterior segue com video na tela.
@@ -752,15 +752,6 @@
   function displaySession() {
     if (currentSession?.opened) return currentSession;
     return orphanSession || currentSession;
-  }
-
-  function emptyMessage() {
-    // Sessao efetiva: com a orfa viva (sinalizacao caida, video P2P
-    // rodando) os tiles dos peers continuam na tela -- a mensagem de grade
-    // vazia tem de dizer "ainda estou vendo gente", nao "entre numa sala".
-    return displaySession()
-      ? 'Ninguém transmitindo ainda.'
-      : 'Entre ou crie uma sala pra começar.';
   }
 
   // ---------- Painel do usuario (so exibicao -- edicao mora em Configuracoes > Perfil) ----------
@@ -1690,12 +1681,12 @@
       ui.annotations.setSurface('me', { allowed: false });
       ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
       stopAnnotOverlay();
-      ui.grid.removeTile('me', emptyMessage());
+      ui.grid.removeTile('me');
     }
     if (cameraStream) {
       cameraStream.getTracks().forEach((t) => t.stop());
       cameraStream = null;
-      ui.grid.removeTile('cam-me', emptyMessage());
+      ui.grid.removeTile('cam-me');
     }
     // Fora do `if`: um startCamera EM ANDAMENTO deixou o botao em
     // 'loading' (que e `disabled`) sem que `cameraStream` exista ainda --
@@ -1737,6 +1728,9 @@
     stallWatch.reset();
     stallTransportByInput.clear();
     stallTransportPending.clear();
+    stallDiagByInput.clear();
+    stallNotes.clear();
+    routeLogged.clear();
     lastReofferAt.clear();
     reofferByLeaf.clear();
     lastViewStateSent.clear();
@@ -2933,6 +2927,39 @@
   // tela realmente muda de uma imagem estatica sem atrasar o loop do vigia.
   const stallTransportByInput = new Map();
   const stallTransportPending = new Set();
+  // H10 (analise de 2026-09-23): as ultimas amostras de diagnostico por
+  // entrada. Quando o vigia age, a mais antiga da janela contra a atual diz
+  // se foi rede, origem, decoder ou pintura -- em vez de so "congelou".
+  // 5 amostras de 2 s cobrem os 6 s do vigia com folga.
+  const stallDiagByInput = new Map(); // `${peerId}|${kind}` -> [{ at, sample }]
+  const STALL_DIAG_HISTORY = 5;
+  // Aviso de congelamento mostrado no tile (D5), com o ponto de partida
+  // pra saber quando a imagem voltou: tileId -> { text, frames, transport }.
+  const stallNotes = new Map();
+  // H7: ultima rota logada por conexao, pra so escrever quando MUDA.
+  // `${in|out}|${peerId}|${kind}` -> routeKey
+  const routeLogged = new Map();
+  const MAX_ROUTE_LOGGED = 256;
+
+  /** Loga a rota (par ICE selecionado) de uma conexao quando ela aparece ou
+   * muda. Sem IP: so tipo de candidato e rede (radmin, tailscale, lan,
+   * internet). E o que responde "o video esta indo pela VPN ou pela
+   * internet, e o Radmin esta relayando?" sem ninguem abrir o
+   * webrtc-internals. */
+  function logRouteChange(dir, peerId, kind, pair) {
+    if (!pair) return;
+    const key = `${dir}|${peerId}|${kind}`;
+    const rk = conndiag.routeKey(pair);
+    if (routeLogged.get(key) === rk) return;
+    if (!routeLogged.has(key) && routeLogged.size >= MAX_ROUTE_LOGGED) routeLogged.clear();
+    routeLogged.set(key, rk);
+    const nome = currentSession?.mesh?.peers.get(peerId)?.name || `#${peerId}`;
+    const sentido = dir === 'in' ? `${kind} de ${nome}` : `${kind} para ${nome}`;
+    // Na entrada a "banda estimada" seria a de SUBIDA de quem assiste (so
+    // RTCP passa por ela): so confundiria quem le o log.
+    const shown = dir === 'in' ? { ...pair, availableOutgoingBps: null } : pair;
+    console.info(`[rota] ${sentido}: ${conndiag.describeRoute(shown)}`);
+  }
   // Timer proprio, e nao o loop de estatisticas: aquele so roda pra quem
   // transmite ou repassa (syncStatsLoop), e quem so ASSISTE -- justamente
   // quem ve a tela preta -- nunca passaria por ele. Custa uma leitura de
@@ -2947,14 +2974,71 @@
   function refreshStallTransport(session, peerId, kind) {
     const key = `${peerId}|${kind}`;
     if (stallTransportPending.has(key)) return;
+    // Direto na PC, e nao via inStatsFor: aquele so le com a conexao em
+    // `connected`, e o diagnostico precisa justamente do caso em que ela
+    // saiu disso (rede caindo).
+    const pc = session.mesh.peers.get(peerId)?.inConns[kind];
+    if (!pc || pc.connectionState === 'closed') return;
     stallTransportPending.add(key);
-    session.mesh.inStatsFor(peerId, kind).then((report) => {
+    pc.getStats().then((report) => {
       if (currentSession !== session || !report) return;
-      const sample = rxstats.readReceiverReport(report);
-      // Os dois sao acumulados por PC; se qualquer um avanca, ainda ha RTP
-      // chegando mesmo que a pessoa esteja mostrando uma imagem sem mudanca.
-      stallTransportByInput.set(key, sample.bytesReceived + sample.framesReceived);
+      if (pc.connectionState === 'connected') {
+        const sample = rxstats.readReceiverReport(report);
+        // Os dois sao acumulados por PC; se qualquer um avanca, ainda ha RTP
+        // chegando mesmo que a pessoa esteja mostrando uma imagem sem mudanca.
+        stallTransportByInput.set(key, sample.bytesReceived + sample.framesReceived);
+      }
+      const diag = conndiag.readStallSample(report, pc.connectionState);
+      const history = stallDiagByInput.get(key) || [];
+      history.push({ at: performance.now(), sample: diag });
+      if (history.length > STALL_DIAG_HISTORY) history.shift();
+      stallDiagByInput.set(key, history);
+      logRouteChange('in', peerId, kind, diag.pair);
     }).catch(() => {}).finally(() => stallTransportPending.delete(key));
+  }
+
+  /** Veredicto do congelamento de uma entrada, com a linha de log pronta.
+   * Compara a amostra atual com a mais antiga que ainda cai DENTRO do
+   * congelamento (`stalledForMs`): o que chegou antes dele nao diz nada
+   * sobre ele. */
+  function diagnoseStall(inputKey, stalledForMs) {
+    const history = stallDiagByInput.get(inputKey) || [];
+    const cur = history.at(-1) || null;
+    const inicio = cur ? cur.at - stalledForMs : 0;
+    const prev = history.slice(0, -1).find((h) => h.at >= inicio) || null;
+    const verdict = conndiag.classifyStall(prev?.sample || null, cur?.sample || null);
+    const windowMs = prev && cur ? cur.at - prev.at : 0;
+    return { cause: verdict.cause, line: conndiag.describeStall(verdict, cur?.sample || null, windowMs) };
+  }
+
+  function showStallNote(tileId, text, frames, transport) {
+    stallNotes.set(tileId, { text, frames, transport });
+    ui.grid.setStallNote(tileId, text);
+  }
+
+  function clearStallNote(tileId) {
+    if (!stallNotes.delete(tileId)) return;
+    ui.grid.setStallNote(tileId, null);
+  }
+
+  /** O aviso sai quando a imagem voltou (quadro novo exibido, ou RTP voltou
+   * a chegar -- imagem estatica nao e pane) ou quando ninguem mais olha. Do
+   * contrario e reaplicado: o tile pode ter sido recriado sem ele. */
+  function syncStallNote(tileId, { watched, frames, transport }) {
+    const note = stallNotes.get(tileId);
+    if (!note) return;
+    // Tile ou PC recriados (a propria reoferta faz isso) zeram os
+    // contadores: o ponto de partida passa a ser o da conexao nova, como no
+    // stallwatch.
+    if (typeof frames === 'number' && (typeof note.frames !== 'number' || frames < note.frames)) note.frames = frames;
+    if (typeof transport === 'number' && (typeof note.transport !== 'number' || transport < note.transport)) note.transport = transport;
+    const framesBack = typeof frames === 'number' && typeof note.frames === 'number' && frames > note.frames;
+    const transportBack = typeof transport === 'number' && typeof note.transport === 'number' && transport > note.transport;
+    if (!watched || framesBack || transportBack) {
+      clearStallNote(tileId);
+      return;
+    }
+    ui.grid.setStallNote(tileId, note.text);
   }
 
   function checkStalledInput(session, { peerId, kind, hasInbound, now }) {
@@ -2984,10 +3068,21 @@
       hasInbound,
       now,
     });
+    const transport = stallTransportByInput.get(inputKey);
+    syncStallNote(tileId, { watched: demand.watched || demand.keepWaiting, frames, transport });
     if (hasInbound) refreshStallTransport(session, peerId, kind);
     if (!r) return;
     const nome = originPeer?.name || `#${origem}`;
     const via = sourceId ? ` via relay #${peerId}` : '';
+    if (r.action === 'heal' || r.action === 'give-up') {
+      // Diagnostico ANTES do reoffer: a reoferta fecha esta PC e leva junto
+      // os contadores que dizem o que aconteceu.
+      const diag = hasInbound
+        ? diagnoseStall(inputKey, r.stalledFor)
+        : { cause: 'desconhecido', line: 'sem conexao de entrada (a arvore diz que devia haver uma)' };
+      console.warn(`[assistir] diagnostico da tela de ${nome}${via}: ${diag.line}`);
+      showStallNote(tileId, conndiag.stallNotice(diag.cause, nome, { gaveUp: r.action === 'give-up' }), frames, transport);
+    }
     if (r.action === 'heal') {
       const motivo = r.reason === 'frozen'
         ? 'congelou depois de mostrar imagem'
@@ -2997,6 +3092,7 @@
     } else if (r.action === 'give-up') {
       console.error(`[assistir] tela de ${nome}${via} continua sem imagem depois de ${r.attempts} tentativas`);
     } else if (r.action === 'recovered') {
+      clearStallNote(tileId);
       console.info(`[assistir] tela de ${nome}${via} voltou a mostrar imagem depois de ${r.attempts} tentativa(s)`);
     }
   }
@@ -3200,6 +3296,9 @@
           stallWatch.reset();
           stallTransportByInput.clear();
           stallTransportPending.clear();
+          stallDiagByInput.clear();
+          stallNotes.clear();
+          routeLogged.clear();
           lastReofferAt.clear();
           reofferByLeaf.clear();
           lastViewStateSent.clear();
@@ -3390,6 +3489,11 @@
         }
         for (const chave of [...stallTransportPending]) {
           if (chave.startsWith(`${msg.id}|`)) stallTransportPending.delete(chave);
+        }
+        // Amostras de uma PC que a retomada fechou comparariam contadores
+        // de duas conexoes diferentes.
+        for (const chave of [...stallDiagByInput.keys()]) {
+          if (chave.startsWith(`${msg.id}|`)) stallDiagByInput.delete(chave);
         }
         reofferByLeaf.delete(String(msg.id));
         // A retomada pode receber a tree antes de reaprender que nossa tela
@@ -3700,7 +3804,7 @@
           // mesh.peers, entao nao ha risco de dobrar com o playStoppedSound.
           playSoundEvent('broadcast-state', { live: false, wasLive, bootstrap });
           // Tile some por inteiro -- nao ha o que pausar num tile ausente.
-          ui.grid.removeTile(msg.id, emptyMessage());
+          ui.grid.removeTile(msg.id);
           dropWatchers(msg.id);
           unwatchScreen(msg.id);
         } else {
@@ -4637,7 +4741,7 @@
     ui.annotations.setSurface('me', { allowed: false });
     ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
     stopAnnotOverlay();
-    ui.grid.removeTile('me', emptyMessage());
+    ui.grid.removeTile('me');
     if (currentSession?.sig?.isOpen()) currentSession.sig.send({ type: 'broadcast-state', live: false });
     ui.setToggleState('share', 'off');
     renderMembersPanel();
@@ -5020,7 +5124,7 @@
     cameraStream.getTracks().forEach((t) => t.stop());
     cameraStream = null;
     forgetOriginTree('camera');
-    ui.grid.removeTile('cam-me', emptyMessage());
+    ui.grid.removeTile('cam-me');
     ui.setToggleState('camera', 'off');
     ui.annotations.setSurface('cam-me', { allowed: false });
     ui.laser.drop(annotate.surfaceKey(myId, 'camera'));
@@ -6010,6 +6114,7 @@
         const report = await activeMesh.statsFor(peerId, kind);
         if (!report) continue;
         const sample = readSenderReport(report);
+        logRouteChange('out', peerId, kind, conndiag.readSelectedPair(report));
         // `??`, nao `||`: um RTT de 0 ms e uma medida valida (loopback /
         // mesma maquina) e nao pode ser confundido com "sem amostra".
         (peer.rtt ||= {})[kind] = sample.rtt ?? peer.rtt?.[kind] ?? null;
@@ -6033,6 +6138,7 @@
           const report = await activeMesh.statsFor(childId, childKind);
           if (!report) continue;
           const sample = readSenderReport(report);
+          logRouteChange('out', childId, childKind, conndiag.readSelectedPair(report));
           if (!sample.framesEncoded && !sample.bytesSent) continue;
           const rates = deriveRates(`${childId}:${childKind}`, sample, now);
           const childName = activeMesh.peers.get(childId)?.name || `#${childId}`;

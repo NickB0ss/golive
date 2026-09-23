@@ -482,9 +482,16 @@ function normalizeRoomName(raw) {
  * `log`: funcao variadica `(...args) => void` que recebe as linhas de
  * diagnostico (nunca IP, PIN, token ou clientId). Padrao: o console.
  *
+ * `livenessMs`: intervalo do `{type:'hb'}` que o servidor manda a cada
+ * membro. O ping acima e invisivel pro cliente (o navegador responde o pong
+ * sozinho e nao expoe o frame), entao sozinho ele nao deixa o cliente saber
+ * que a sinalizacao morreu: no log de 21/09 levou ~25 s. Com o hb, o vigia
+ * de silencio do cliente (src/renderer/signaling.js) fecha e reconecta
+ * depois de SILENCE_TIMEOUT_MS sem nenhuma mensagem.
+ *
  * `resumeGraceMs`: quanto um peer com close anormal continua membro antes
  * de sair de verdade. `getPeerCount()` inclui esses peers suspensos. */
-function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory }) {
+function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory }) {
   if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
     return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
   }
@@ -857,6 +864,17 @@ function createSignalingServer({ port, heartbeatMs = 25000, resumeGraceMs = 2000
       }, heartbeatMs);
       if (typeof heartbeat.unref === 'function') heartbeat.unref();
       wss.on('close', () => clearInterval(heartbeat));
+
+      // Sinal de vida pro cliente (ver `livenessMs`). So pra quem ja entrou:
+      // antes do welcome o cliente ainda nao sabe se esta numa sala desta
+      // versao, e nao ha o que vigiar.
+      const liveness = setInterval(() => {
+        for (const ws of wss.clients) {
+          if (ws.joined) send(ws, { type: 'hb' });
+        }
+      }, livenessMs);
+      if (typeof liveness.unref === 'function') liveness.unref();
+      wss.on('close', () => clearInterval(liveness));
 
       wss.on('connection', (ws) => {
         const id = String(nextId++);

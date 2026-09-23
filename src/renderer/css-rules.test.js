@@ -185,7 +185,10 @@ test('todo overlay do tile some com o mouse parado', () => {
     // (a tela esta travando pra voce, e de quem e a culpa) -- sumir com o
     // mouse parado esconderia o aviso bem na hora em que ninguem esta
     // mexendo pra notar sozinho, mesmo racional de .tile-paused abaixo.
+    // .tile-stall-note (H10/D5, analise de 2026-09-23): o porque do quadro
+    // parado -- mesmo racional do chip.
     '.tile-paused', '.tile-paused-shot', '.tile-gate', '.tile-health-chip',    // estado
+    '.tile-stall-note',                                                        // estado
     '.tile-watchers-panel',                                                    // herdado
   ]);
 
@@ -217,4 +220,30 @@ test('todo overlay do tile some com o mouse parado', () => {
   });
 
   assert.deepEqual(semSumico, [], `overlay do tile sem regra de ociosidade: ${semSumico.join(', ')}`);
+});
+
+test('elemento que nasce com o atributo hidden nao reaparece por causa do display da classe', () => {
+  // O `display` de autor vence o `display:none` que o atributo [hidden] traz
+  // da folha do navegador. Ja aconteceu com a `.warn-center` (botao fantasma)
+  // e com a `.titlebar` (faixa aparecendo no macOS/Linux e antes do
+  // titlebar.js rodar no Windows).
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const rules = declarations(css);
+  const hides = (selector) => rules.some(({ property, value, stack }) => (
+    property === 'display' && /^none\b/.test(value) && selectorParts(stack.at(-1) || '').includes(selector)
+  ));
+  const missing = [];
+  for (const [tag] of html.matchAll(/<[a-z][^>]*>/g)) {
+    if (!/\shidden(?=[\s>/])/.test(tag)) continue;
+    const id = tag.match(/\sid="([^"]+)"/)?.[1];
+    const classes = (tag.match(/\sclass="([^"]+)"/)?.[1] || '').split(/\s+/).filter(Boolean);
+    for (const cls of classes) {
+      const shows = rules.some(({ property, value, stack }) => (
+        property === 'display' && !/^none\b/.test(value) && selectorParts(stack.at(-1) || '').includes(`.${cls}`)
+      ));
+      if (shows && !hides(`.${cls}[hidden]`) && !(id && hides(`#${id}[hidden]`))) missing.push(`.${cls}`);
+    }
+  }
+  assert.deepEqual(missing, [], `faltam regras [hidden] { display: none } para: ${missing.join(', ')}`);
 });

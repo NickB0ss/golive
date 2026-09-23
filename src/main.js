@@ -219,6 +219,7 @@ const updatePolicy = createUpdatePolicy();
 const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
 const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
+const { friendlySourceNames } = require('./main/sourcename');
 const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
 
@@ -1047,13 +1048,14 @@ ipcMain.handle('sources:list', async (_event, types) => {
   // apagava as telas que a outra tinha acabado de achar.
   sourceDisplays = mergeSourceDisplays(sourceDisplays, sources, displays);
 
-  return sources.map((s) => {
+  const names = friendlySourceNames(sources, screen.getPrimaryDisplay()?.id);
+  return sources.map((s, i) => {
     // Casa a fonte de tela com o display pra mostrar a resolucao real.
     const display = displays.find((d) => String(d.id) === String(s.display_id));
     const height = display ? Math.round(display.size.height * display.scaleFactor) : null;
     return {
       id: s.id,
-      name: s.name,
+      name: names[i],
       isScreen: s.id.startsWith('screen:'),
       thumbnail: thumbnailDataUrl(s.thumbnail),
       resolution: display

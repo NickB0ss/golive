@@ -165,6 +165,40 @@ a declaração antes do primeiro uso. `node --test` não carrega `app.js`: a su�
 ficou verde, e o erro só apareceu abrindo o app real. A regra nova é rodar o
 app antes de mesclar mudança no renderer.
 
+### Consertos da análise de 23/09 (ainda não lançados)
+
+Da seção 5 de `docs/2026-09-23-analise-transmissao-hipoteses.md`, os que não
+dependem de medição:
+
+- **C1** a tela cheia da janela só é pedida depois da transição do tile, e a
+  rejeição de `transition.ready` é tratada: some o `Uncaught (in promise)
+  InvalidStateError: Transition was aborted` do log de 21/09 (reproduzido no
+  app original no Xvfb, ausente com o conserto).
+- **C2** vigia de vida da sinalização: o servidor manda `{type:'hb'}` a cada
+  5 s pra quem está na sala, e o cliente dá a conexão como morta com 15 s de
+  silêncio (antes: ~25 s ou mais), entregando a queda na hora como `1006`,
+  sem esperar o close do navegador.
+- **C3** diagnóstico do congelamento: quando o vigia de tela assistida age, o
+  log diz se foi **rede** (nada chega), **origem** (caminho vivo sem RTP),
+  **decoder** (RTP sem quadro) ou **pintura**, com os números (RTP, par ICE,
+  quadros, PLI, NACK); e a rota de cada conexão (`[rota] screen de X:
+  host/radmin udp -> host/radmin, rtt 12 ms`) vai pro log quando aparece ou
+  muda, sem IP. Módulo puro em `src/renderer/conndiag.js`.
+- **D5** o tile congelado explica: "Sem contato com o PC de X", "X parou de
+  enviar imagem" ou "Recuperando a imagem…", até a imagem voltar.
+- **C6** `.titlebar[hidden]` com `display: none`, e um teste que pega a
+  mesma armadilha em qualquer elemento que nasce `hidden`.
+- **C7/D1** a sala vazia diz "Ninguém transmitindo ainda", explica que a tela
+  de quem ficar ao vivo aparece sozinha e tem o botão "Compartilhar tela".
+- **D2** engrenagem no dock (era um sol); **D3** com um monitor só ele já vem
+  escolhido, e o "Ir ao vivo" apagado diz "Escolha uma tela ou janela";
+  **D6** "Monitor 1 (principal)" no lugar de "Entire screen".
+
+Rodado no app (Xvfb, duas instâncias, captura falsa de canvas porque a
+captura X11 do contêiner falha de forma intermitente também no código
+original). **Não testado com 2+ PCs reais.** Ficam para depois das medições
+C4 (canvas no repasse, depende do M2) e C5 (`restartIce`, 1-2 dias).
+
 ## Próximos passos
 
 - **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
