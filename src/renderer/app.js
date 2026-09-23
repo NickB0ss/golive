@@ -2332,8 +2332,12 @@
     session.sig = connHandle;
 
     session.mesh = meshModule.createMesh({
+      // Devolve se a mensagem saiu: o reinicio de ICE (mesh.js) nao manda
+      // oferta por uma sinalizacao morta.
       send: (payload) => {
-        if (currentSession === session) session.sig.send(payload);
+        if (currentSession !== session || !session.sig.isOpen()) return false;
+        session.sig.send(payload);
+        return true;
       },
       // O tile pertence a quem PRODUZIU o video, nao a quem o entregou. Numa
       // conexao de repasse (kind composto 'screen@<origem>') quem entrega e
@@ -3278,7 +3282,9 @@
           session.mesh = waitingOrphan.mesh;
           mesh = session.mesh;
           mesh.setSend((payload) => {
-            if (currentSession === session) session.sig.send(payload);
+            if (currentSession !== session || !session.sig.isOpen()) return false;
+            session.sig.send(payload);
+            return true;
           });
           orphanSession = null;
           for (const peerId of plan.dropPeers) await handleSignal(session, { type: 'peer-left', id: peerId });

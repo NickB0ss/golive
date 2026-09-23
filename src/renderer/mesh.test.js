@@ -1438,3 +1438,151 @@ test('offerTo que nao aplica derruba a conexao e pede recuperacao', async () => 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
 });
+
+// ---------- C5: reinicio de ICE antes de derrubar a conexao ----------
+
+/** Fake de installFakeWebRTC com o que o reinicio de ICE usa: estado de
+ * conexao mutavel, restartIce, createOffer que registra as opcoes, e
+ * rollback voltando pra 'stable', como o navegador. */
+function installFakeWebRTCComReinicio() {
+  installFakeWebRTC();
+  const pcs = [];
+  const Base = global.RTCPeerConnection;
+  global.RTCPeerConnection = class extends Base {
+    constructor() {
+      super();
+      this.connectionState = 'new';
+      this.restarts = 0;
+      this.offerOptions = [];
+      pcs.push(this);
+    }
+    restartIce() { this.restarts += 1; }
+    createOffer(options) {
+      this.offerOptions.push(options || null);
+      return super.createOffer();
+    }
+    setLocalDescription(desc) {
+      if (desc.type === 'rollback') {
+        this.signalingState = 'stable';
+        this.rolledBack = (this.rolledBack || 0) + 1;
+        return Promise.resolve();
+      }
+      return super.setLocalDescription(desc);
+    }
+    mudarEstado(state) {
+      this.connectionState = state;
+      this.emit('connectionstatechange');
+    }
+  };
+  return pcs;
+}
+
+async function saidaConectada({ send }) {
+  const pcs = installFakeWebRTCComReinicio();
+  const events = [];
+  const mesh = createMesh({ send, onTrack() {}, onPeerState: (peerId, p) => events.push({ peerId, ...p }) });
+  mesh.addPeer('7', 'Bruno');
+  await mesh.offerTo('7', streamFalsa(), { bitrate: 1_000_000, fps: 30, codec: 'video/H264' }, 'screen');
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'screen');
+  const pc = pcs.at(-1);
+  pc.mudarEstado('connected');
+  return { mesh, pc, events };
+}
+
+const esvaziar = () => new Promise((resolve) => setImmediate(resolve));
+
+test('saida em disconnected por 1 s reinicia o ICE na mesma conexao e renegocia (C5)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const enviadas = [];
+  const { mesh, pc, events } = await saidaConectada({ send: (m) => { enviadas.push(m); return true; } });
+  enviadas.length = 0;
+
+  pc.mudarEstado('disconnected');
+  t.mock.timers.tick(999);
+  assert.equal(pc.restarts, 0, 'nem todo disconnected precisa de reinicio');
+  t.mock.timers.tick(1);
+  await esvaziar();
+
+  assert.equal(pc.restarts, 1);
+  assert.deepEqual(pc.offerOptions.at(-1), { iceRestart: true });
+  assert.equal(enviadas.length, 1);
+  assert.equal(enviadas[0].type, 'offer');
+  assert.equal(enviadas[0].renegotiate, true, 'o receptor reaproveita a pc');
+  assert.equal(mesh.peers.get('7').outConns.screen, pc, 'a conexao nao foi trocada');
+
+  // A resposta chega e o ICE volta: nenhuma falha, nada refeito.
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'screen');
+  pc.mudarEstado('connected');
+  t.mock.timers.tick(20000);
+  assert.equal(events.filter((e) => e.failed).length, 0);
+  assert.equal(pc.signalingState, 'stable');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('sem sinalizacao o reinicio desfaz a oferta e a carencia continua valendo (C5)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(console, 'warn', () => {});
+  let aberta = true;
+  const { pc, events } = await saidaConectada({ send: () => aberta });
+  aberta = false;
+
+  pc.mudarEstado('disconnected');
+  t.mock.timers.tick(3000);
+  await esvaziar();
+  assert.equal(pc.rolledBack, 1, 'a oferta que nao saiu foi desfeita');
+  assert.equal(pc.signalingState, 'stable');
+
+  t.mock.timers.tick(12000);
+  const falhas = events.filter((e) => e.failed);
+  assert.equal(falhas.length, 1, 'passada a carencia, cai e e refeita como antes');
+  assert.equal(falhas[0].dir, 'out');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('resposta do reinicio perdida numa conexao que voltou sozinha e desfeita (C5)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(console, 'warn', () => {});
+  const { pc } = await saidaConectada({ send: () => true });
+
+  pc.mudarEstado('disconnected');
+  t.mock.timers.tick(3000);
+  await esvaziar();
+  assert.equal(pc.signalingState, 'have-local-offer');
+
+  pc.mudarEstado('connected'); // voltou sem a resposta
+  t.mock.timers.tick(10000);
+  assert.equal(pc.rolledBack, 1, 'sem isto a pc ficava presa e toda renegociacao seguinte desistia');
+  assert.equal(pc.signalingState, 'stable');
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+test('so quem oferta reinicia o ICE, e voltar antes de 1 s nao reinicia nada (C5)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pcs = installFakeWebRTCComReinicio();
+  const mesh = createMesh({ send: () => true, onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+  await mesh.handleOffer('7', { type: 'offer', sdp: 'v=0' }, 'screen');
+  const entrada = pcs.at(-1);
+  entrada.mudarEstado('connected');
+  entrada.mudarEstado('disconnected');
+  t.mock.timers.tick(5000);
+  await esvaziar();
+  assert.equal(entrada.restarts, 0, 'a entrada nao oferta');
+
+  const saida = await saidaConectada({ send: () => true });
+  saida.pc.mudarEstado('disconnected');
+  t.mock.timers.tick(500);
+  saida.pc.mudarEstado('connected');
+  t.mock.timers.tick(5000);
+  await esvaziar();
+  assert.equal(saida.pc.restarts, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});

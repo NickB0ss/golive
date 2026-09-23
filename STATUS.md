@@ -194,6 +194,14 @@ dependem de medição:
   escolhido, e o "Ir ao vivo" apagado diz "Escolha uma tela ou janela";
   **D6** "Monitor 1 (principal)" no lugar de "Entire screen".
 
+- **C5** a conexão de saída em `disconnected` por 1 s reinicia o ICE na
+  mesma conexão (`restartIce` + oferta de renegociação) em vez de esperar os
+  15 s e refazer tudo. Sem sinalização, ou se a resposta se perder numa
+  conexão que voltou sozinha, a oferta é desfeita (rollback). Medido no app
+  cortando o UDP no Xvfb: o Chromium 152 só declara `disconnected` 6,5 s
+  depois do último pacote; com 8 s de corte a conexão voltou na mesma PC em
+  1,4 s, sem refazer nada. O `[mesh]` agora loga entrada e saída de
+  `disconnected`.
 - A recusa do `getDisplayMedia` no main (fonte que sumiu da lista) chamava o
   callback duas vezes: no Electron 44 o `callback({})` recusa **e** lança, e
   o `.catch` chamava de novo (`One-time callback was called more than once`
@@ -203,8 +211,8 @@ dependem de medição:
 
 Rodado no app (Xvfb, duas instâncias, captura falsa de canvas porque a
 captura X11 do contêiner falha de forma intermitente também no código
-original). **Não testado com 2+ PCs reais.** Ficam para depois das medições
-C4 (canvas no repasse, depende do M2) e C5 (`restartIce`, 1-2 dias).
+original, e `iptables` pra cortar o UDP). **Não testado com 2+ PCs reais.**
+Fica para depois das medições o C4 (canvas no repasse, depende do M2).
 
 ## Próximos passos
 

@@ -20,6 +20,22 @@
   // a maquina inteira de recuperacao -- fechar repasses, vetar o relay,
   // recalcular a arvore -- por algo que ia se curar sozinho. Ver a
   // auditoria de 2026-08-27, item A2.
+  // C5 (analise de 2026-09-23): quanto tempo em 'disconnected' antes de o
+  // lado que OFERTA reiniciar o ICE na mesma conexao. Curto porque o proprio
+  // 'disconnected' ja chega atrasado: medido no app (Chromium 152, UDP
+  // cortado no Xvfb), a conexao so saiu de 'connected' 6,5 s depois do
+  // ultimo pacote -- e o vigia de tela assistida refaz a conexao inteira
+  // ~9 s depois. Esperar os 15 s da carencia e entao derrubar tudo (ICE,
+  // DTLS, SDP e quadro-chave de novo) e o caminho lento. `restartIce` troca so as credenciais ICE e recoleta candidatos --
+  // e o caminho padrao quando a interface da VPN troca de rota (Radmin
+  // reconectando). A carencia continua valendo por cima: se o reinicio nao
+  // resolver, a conexao cai e e refeita como antes.
+  const ICE_RESTART_AFTER_MS = 1000;
+  // Resposta do reinicio que nunca chegou (sinalizacao caiu no meio) numa
+  // conexao que voltou sozinha: desfaz a oferta, senao a pc fica presa em
+  // 'have-local-offer' e toda renegociacao seguinte desiste.
+  const ICE_RESTART_ANSWER_TIMEOUT_MS = 10000;
+
   // Estados de sinalizacao em que uma pc de ENTRADA ainda pode receber uma
   // oferta remota: 'stable' (a negociacao anterior fechou) e
   // 'have-remote-offer' (reenvio da mesma oferta, antes de respondermos).
@@ -340,11 +356,18 @@
       // quando o timer da carencia checasse o estado depois.
       let settled = false;
       let disconnectTimer = null;
+      let iceRestartTimer = null;
+      // Pro log: desde quando esta em 'disconnected' (0 = nao esta).
+      let disconnectedAt = 0;
 
       function clearDisconnectTimer() {
         if (disconnectTimer) {
           clearTimeout(disconnectTimer);
           disconnectTimer = null;
+        }
+        if (iceRestartTimer) {
+          clearTimeout(iceRestartTimer);
+          iceRestartTimer = null;
         }
       }
 
@@ -394,6 +417,19 @@
 
         if (state === 'disconnected') {
           clearDisconnectTimer();
+          if (!disconnectedAt) {
+            disconnectedAt = Date.now();
+            console.info(`[mesh] conexao de ${dir === 'out' ? 'saida para' : 'entrada de'} #${peerId} (kind=${kind}) em 'disconnected'`);
+          }
+          // So quem oferta pode reiniciar o ICE; do lado que recebe, a
+          // oferta nova chega como renegociacao e ensureInConn reaproveita
+          // a pc.
+          if (dir === 'out') {
+            iceRestartTimer = setTimeout(() => {
+              iceRestartTimer = null;
+              if (pc.connectionState === 'disconnected') void restartIceOn(pc, peerId, kind);
+            }, ICE_RESTART_AFTER_MS);
+          }
           disconnectTimer = setTimeout(() => {
             disconnectTimer = null;
             // So vira falha de verdade se, passada a carencia, AINDA nao
@@ -404,11 +440,58 @@
           return;
         }
 
-        if (state === 'connected') clearDisconnectTimer();
+        if (state === 'connected') {
+          clearDisconnectTimer();
+          if (disconnectedAt) {
+            console.info(`[mesh] conexao de ${dir === 'out' ? 'saida para' : 'entrada de'} #${peerId} (kind=${kind}) voltou depois de ${((Date.now() - disconnectedAt) / 1000).toFixed(1)}s`);
+            disconnectedAt = 0;
+          }
+        }
         onPeerState(peerId, { kind, dir, failed: false });
       });
 
       return pc;
+    }
+
+    /** Reinicia o ICE de uma conexao de SAIDA sem derrubar a conexao (C5).
+     * Nao mexe em nada se ja houver negociacao em voo, se a pc nao estiver
+     * em 'stable' ou se a sinalizacao estiver fora do ar (`send` devolve
+     * false): nesses casos a carencia de 'disconnected' segue valendo. */
+    async function restartIceOn(pc, peerId, kind) {
+      if (peers.get(peerId)?.outConns[kind] !== pc) return false;
+      if (typeof pc.restartIce !== 'function' || pc.signalingState !== 'stable') return false;
+      const emVoo = negotiationKey(peerId, kind);
+      if (negotiating.has(emVoo)) return false;
+      negotiating.add(emVoo);
+      try {
+        pc.restartIce();
+        const offer = await pc.createOffer({ iceRestart: true });
+        if (peers.get(peerId)?.outConns[kind] !== pc || pc.signalingState !== 'stable') return false;
+        await pc.setLocalDescription({ type: offer.type, sdp: withOpusParams(offer.sdp) });
+        const sent = sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
+        if (sent === false) {
+          // Sinalizacao fora do ar: a oferta nao saiu e a resposta nunca
+          // vira. Volta pra 'stable' e deixa a carencia decidir.
+          await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+          console.warn(`[mesh] ICE com #${peerId} (kind=${kind}) caiu, mas a sinalizacao esta fora do ar -- sem reinicio`);
+          return false;
+        }
+        console.info(`[mesh] ICE com #${peerId} (kind=${kind}) em 'disconnected' ha ${ICE_RESTART_AFTER_MS / 1000}s -- reiniciando o ICE na mesma conexao`);
+        const offered = pc.localDescription;
+        setTimeout(() => {
+          if (pc.signalingState !== 'have-local-offer' || pc.localDescription !== offered) return;
+          if (pc.connectionState !== 'connected') return; // a carencia cuida
+          console.warn(`[mesh] resposta do reinicio de ICE de #${peerId} (kind=${kind}) nao chegou; a conexao voltou sozinha, desfazendo a oferta`);
+          pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+        }, ICE_RESTART_ANSWER_TIMEOUT_MS);
+        return true;
+      } catch (err) {
+        console.warn(`[mesh] reinicio de ICE com #${peerId} (kind=${kind}) falhou: ${err?.name || 'Erro'}: ${err?.message || err}`);
+        if (pc.signalingState === 'have-local-offer') await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+        return false;
+      } finally {
+        negotiating.delete(emVoo);
+      }
     }
 
     function ensureOutConn(peerId, kind) {

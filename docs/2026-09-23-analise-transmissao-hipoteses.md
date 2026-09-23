@@ -376,9 +376,10 @@ Estatísticas > "Abrir pasta de logs". Cada item diz o que procurar.
 | C6 | `.titlebar[hidden] { display: none }`: o `display: flex` da `.titlebar` vence o atributo `hidden`, então a faixa aparece em macOS/Linux e antes do `titlebar.js` rodar no Windows (a mesma armadilha já documentada para `.warn-center` em `style.css:2731`) | `style.css:2718` | 5 min |
 | C7 | Mensagem da grade vazia dentro da sala (ver design, D1) | `index.html:217`, `app.js:757` | 1 h |
 
-**Andamento (2026-09-23):** C1, C2, C3, C6 e C7 implementados, junto com
-D1, D2, D3, D5 e D6 da seção 6 (ver `STATUS.md`, "Consertos da análise de
-23/09"). C4 espera o M2; C5 fica para depois da noite de medição.
+**Andamento (2026-09-23):** C1, C2, C3, C5, C6 e C7 implementados, junto
+com D1, D2, D3, D5 e D6 da seção 6 (ver `STATUS.md`, "Consertos da análise
+de 23/09"). C4 espera o M2. No C5 o reinício saiu com 1 s, não 3 s: medido,
+o Chromium 152 só declara `disconnected` 6,5 s depois do último pacote.
 
 ---
 
