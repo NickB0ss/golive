@@ -220,6 +220,7 @@ const { setupLogger } = require('./main/logger');
 const { thumbnailDataUrl } = require('./main/thumbs');
 const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
 const { friendlySourceNames } = require('./main/sourcename');
+const { pickDisplayMediaStreams, replyOnce } = require('./main/displaymedia');
 const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
 
@@ -892,27 +893,24 @@ app.whenReady().then(() => {
   // devolvemos a fonte que o usuario ja escolheu na nossa UI.
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => {
+      // Uma resposta so, e erro do callback vira log (ver main/displaymedia.js).
+      const reply = replyOnce(callback, (line) => logger.log(line));
       // A fonte escolhida pertence a janela principal. Qualquer outro
       // renderer (inclusive popup ou pagina que tentou navegar) e recusado.
-      if (request.frame?.top !== win?.webContents.mainFrame) return callback({});
+      if (request.frame?.top !== win?.webContents.mainFrame) return reply(null);
       desktopCapturer
         .getSources({ types: ['screen', 'window'] })
         .then((sources) => {
-          const chosen = sources.find((s) => s.id === selectedSourceId);
-          // Antes caia pra `sources[0]` quando o id escolhido nao batia mais
-          // (janela fechada entre o clique no card e a confirmacao do SO) --
-          // sources[0] costuma ser o monitor principal inteiro, entao quem
-          // achava que estava mostrando uma janela acabava compartilhando a
-          // area de trabalho inteira, sem aviso nenhum. Recusar aqui faz o
-          // getDisplayMedia do renderer rejeitar, e o catch de startShare
-          // mostra o motivo em vez de compartilhar a fonte errada calado.
-          if (!chosen) return callback({});
-          // 'loopback' so no modo 'system'; nos modos 'none' e 'device' o
-          // getDisplayMedia nao carrega audio (o modo 'device' e adicionado
-          // pelo renderer via getUserMedia, fora deste handler).
-          callback({ video: chosen, audio: audioMode === 'system' ? 'loopback' : undefined });
-        })
-        .catch(() => callback({}));
+          // Fonte que sumiu (janela fechada entre o clique no card e a
+          // confirmacao, ou captura da tela que nao iniciou) e recusa: o
+          // getDisplayMedia do renderer rejeita e o startShare explica.
+          const streams = pickDisplayMediaStreams({ sources, selectedId: selectedSourceId, audioMode });
+          if (!streams) logger.log(`captura: a fonte escolhida nao esta mais na lista (${sources.length} fontes)`);
+          reply(streams);
+        }, (err) => {
+          logger.log(`captura: desktopCapturer.getSources falhou: ${err?.message || err}`);
+          reply(null);
+        });
     },
     { useSystemPicker: false }
   );

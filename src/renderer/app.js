@@ -4339,7 +4339,12 @@
           audio: useElectronLoopback,
         });
       } catch (err) {
-        showToast(`Não consegui capturar a tela: ${err.message}`);
+        // AbortError e a recusa do main: a fonte escolhida sumiu da lista
+        // (janela fechada, captura que nao iniciou). "Invalid capture
+        // constraints", o texto do Chromium, nao diz o que fazer.
+        showToast(err?.name === 'AbortError'
+          ? 'Não consegui capturar essa tela ou janela. Atualize a lista e escolha de novo.'
+          : `Não consegui capturar a tela: ${err.message}`);
         return;
       }
 

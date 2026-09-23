@@ -194,6 +194,13 @@ dependem de medição:
   escolhido, e o "Ir ao vivo" apagado diz "Escolha uma tela ou janela";
   **D6** "Monitor 1 (principal)" no lugar de "Entire screen".
 
+- A recusa do `getDisplayMedia` no main (fonte que sumiu da lista) chamava o
+  callback duas vezes: no Electron 44 o `callback({})` recusa **e** lança, e
+  o `.catch` chamava de novo (`One-time callback was called more than once`
+  solto no log). Agora é uma resposta só (`src/main/displaymedia.js`), o log
+  diz o motivo, e o aviso pra pessoa manda atualizar a lista e escolher de
+  novo, em vez de "Invalid capture constraints".
+
 Rodado no app (Xvfb, duas instâncias, captura falsa de canvas porque a
 captura X11 do contêiner falha de forma intermitente também no código
 original). **Não testado com 2+ PCs reais.** Ficam para depois das medições
