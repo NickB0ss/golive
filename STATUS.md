@@ -169,7 +169,12 @@ app antes de mesclar mudança no renderer.
 
 - **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
   e o teste que mais importa e derrubar o PC do lider de verdade, de
-  preferencia no Tailscale (e o que a Frente A2 mudou);
+  preferencia no Tailscale (e o que a Frente A2 mudou). Aproveitar a mesma
+  noite para o roteiro M1-M6 de
+  `docs/2026-09-23-analise-transmissao-hipoteses.md`: o Electron 44 mudou
+  premissas medidas no Chromium 128 (H.264 de hardware agora vai a 1080p60,
+  HEVC apareceu), e o M3 diz se o teto de 4 pessoas era o bug do
+  `contentHint` e nao o NVENC;
 - subir a versao e lancar (a tag dispara o `release.yml`, que sobe os
   artefatos num rascunho; publicar continua sendo clique manual);
 - Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
