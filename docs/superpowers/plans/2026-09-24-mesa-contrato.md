@@ -188,3 +188,43 @@ do último `mesa-grab`/`mesa-drag`), `shouldEmit(last, now, hz = 20)`,
 `normCursor`, `normDragRect`, `createPointerStore` (último ponto por pessoa,
 some em 1 s). `applyMessage` também aceita `mesa-sync` e devolve sempre
 `{ state, needSync }` (`stale: true` para `seq` já visto).
+
+## 6. Conteúdo das janelas (fronteira entre os times Vista e Janelas)
+
+A **Vista** (`src/renderer/mesa-view.js`) cuida da mesa: área, grade, andar,
+zoom, mapa, a caixa de cada janela (mover, redimensionar, tela cheia, tirar,
+contorno, alça), menu do botão direito, ponteiros e rede. O **conteúdo** de
+cada tipo com estado mora em `src/renderer/mesa-janelas/<tipo>.js` e se
+registra em `GoLive.mesaJanelas[<tipo>]`:
+
+```js
+{
+  type: 'placar',
+  mount(el, api) -> { update(state, meta), destroy(), focus?() },
+}
+```
+
+- `el`: um `<div>` vazio que a Vista criou dentro da caixa da janela, já no
+  tamanho certo (a Vista mantém o tamanho; o conteúdo se ajusta com CSS,
+  `container queries` se quiser). O conteúdo nunca sai de `el`.
+- `api`:
+  - `act(action)`: manda `{ type: 'mesa', op: 'act', id, action }`.
+  - `validate(action)`: o `validate` do módulo no estado atual, para
+    desligar botões (`true` ou motivo).
+  - `me()`: id da pessoa; `isLeader()`; `peers()`: `[{ id, name }]` da sala.
+  - `nameOf(peerId)`, `colorFor(peerId)` (a cor da pessoa, a mesma do
+    rabisco).
+  - `serverNow()`: hora do servidor estimada pela mensagem `time`.
+  - `onDenied(fn)`: recusas de `act` desta janela (`reason`, `detail`), para
+    mostrar o motivo perto de onde se clicou.
+- `update(state, meta)`: chamado ao montar e a cada `act` aplicado;
+  `meta = { by, isLeader }` da última ação (ou `null` ao montar). Nada de
+  refazer o DOM inteiro a cada `update` quando der para mexer só no que mudou.
+- `destroy()`: solta timers, ouvintes e `requestAnimationFrame`.
+- Interação: tudo que é clicável responde a teclado (`button` de verdade,
+  foco visível). Arrastar dentro do conteúdo (ex.: peça de damas) não pode
+  mover a janela: a Vista só arrasta pela alça nas janelas com conteúdo.
+- Visual: só tokens de `style.css` (cores, `--fs-*`, `--s-*`, `--r-*`);
+  a cor de uma pessoa só em detalhes (bolinha, contorno), nunca como fundo de
+  texto. `--live` nunca. CSS do conteúdo em `src/renderer/mesa-janelas.css`.
+- Tipo sem conteúdo registrado: a Vista mostra o `summary(state)` do módulo.
