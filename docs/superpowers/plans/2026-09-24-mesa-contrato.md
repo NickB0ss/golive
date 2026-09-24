@@ -228,3 +228,21 @@ registra em `GoLive.mesaJanelas[<tipo>]`:
   a cor de uma pessoa só em detalhes (bolinha, contorno), nunca como fundo de
   texto. `--live` nunca. CSS do conteúdo em `src/renderer/mesa-janelas.css`.
 - Tipo sem conteúdo registrado: a Vista mostra o `summary(state)` do módulo.
+
+## 7. Jogos (time Jogos, 2026-09-24)
+
+`velha`, `lig4`, `damas`, `xadrez`, todos com cadeiras. A lógica comum das
+cadeiras está em `mesa-modules/cadeiras.js` (`GoLive.mesaCadeiras`), que
+**não é tipo de janela** (`HELPER_NAMES` no registro). No renderer a ordem
+dos `<script>` é: `vendor/chess.js`, `mesa-modules/cadeiras.js`, os módulos,
+`mesa-modules/index.js`. No Node os jogos carregam o que precisam sozinhos.
+
+| Jogo | Tamanho (aspect) | Ações |
+|---|---|---|
+| velha | 360×360 (1) | `sit {seat}`, `stand`, `reset`, `move {cell: 0..8}` |
+| lig4 | 420×360 (7/6) | `sit`, `stand`, `reset`, `move {col: 0..6}` |
+| damas | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {path: [[l,c],...]}`; `legalMoves(state)` |
+| xadrez | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {from, to, promotion?}` |
+
+Todos exportam `dropPeer(state, peerId)` e `summary(state, peers?)`; o estado
+guarda `names` junto de `seats`.
