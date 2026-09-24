@@ -578,6 +578,17 @@
     return total;
   }
 
+  // O lado de quem LE o relayLoad: quantos filhos esta sessao, como origem,
+  // pendurou em `peerId` (somando kinds, como relayLoad() soma do lado dele).
+  function filhosQueDemosA(peerId) {
+    let total = 0;
+    for (const kind of KINDS) {
+      const a = originTree[kind].assignments.get(peerId);
+      if (a?.role === 'relay') total += a.filhosIds.length;
+    }
+    return total;
+  }
+
   function screenSourceSize(kind, floor) {
     const { sourceId } = parseKind(kind);
     const sourceTrack = sourceId
@@ -3847,10 +3858,18 @@
           vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
           // Campo novo e opcional: cliente antigo e dado invalido valem carga
           // zero, o caso neutro da eleicao de relay.
+          //
+          // Guardamos so a carga ALHEIA: o que o peer repassa pra OUTRAS
+          // origens. O numero anunciado inclui os filhos que NOS demos a ele;
+          // contado inteiro, o nosso proprio relay ia pro fim da fila no
+          // recalculo seguinte, a arvore trocava de relay, o novo anunciava
+          // carga, e ela trocava de novo a cada janela de histerese. Com dois
+          // relays por origem isso batia nos dois ao mesmo tempo.
           const relayLoadAntes = vsPeer.relayLoad;
-          vsPeer.relayLoad = Number.isInteger(msg.relayLoad) && msg.relayLoad >= 0 && msg.relayLoad <= 16
+          const anunciada = Number.isInteger(msg.relayLoad) && msg.relayLoad >= 0 && msg.relayLoad <= 16
             ? msg.relayLoad
             : 0;
+          vsPeer.relayLoad = Math.max(0, anunciada - filhosQueDemosA(msg.from));
           // R2: a carga deste peer mudou -- se somos origem de algo, o
           // recalculo pode escolher outro relay. recomputeTree ja tem sua
           // propria historese (REELECTION_HYSTERESIS_MS); so disparamos o
@@ -5773,8 +5792,11 @@
     }
     if (!candidates.length) return;
 
+    // `anterior`: com dois relays, e isto que impede um recalculo (alguem
+    // entrou, um dos relays caiu) de trocar de pai as folhas do relay que
+    // continua de pe. Ver tree.js computeTree.
     const assignments = cfg.network.tree
-      ? tree.computeTree(myId, candidates)
+      ? tree.computeTree(myId, candidates, { anterior: originTree[kind].assignments })
       : tree.allDirect(myId, candidates);
 
     // H3: a malha degenerada e o modo de FALHA, nao um estado neutro. So
