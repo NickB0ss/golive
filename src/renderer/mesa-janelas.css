@@ -395,6 +395,76 @@
   .mj-enquete .mj-enq-pergunta { font-size: var(--fs-ui); }
 }
 
+/* ---------- Dados e moeda ---------- */
+
+.mj-dados-corpo { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-3); }
+.mj-dados-meio {
+  min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-2);
+}
+.mj-dados-palco {
+  --mj-lado: clamp(var(--s-6), min(26cqh, calc(80cqw / var(--mj-n, 1) - var(--s-2))), calc(var(--s-7) * 2));
+  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2);
+}
+.mj-dado, .mj-moeda {
+  width: var(--mj-lado); height: var(--mj-lado);
+  display: grid; place-items: center;
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--line2), inset 0 -3px 0 var(--line);
+  font: 700 calc(var(--mj-lado) * 0.45) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.mj-dado { border-radius: var(--r-md); }
+.mj-dado.is-vazio { color: var(--tx3); background: var(--s2); }
+.mj-moeda {
+  width: calc(var(--mj-lado) * 1.5); height: calc(var(--mj-lado) * 1.5);
+  border-radius: var(--r-full);
+  font-size: calc(var(--mj-lado) * 0.34);
+}
+.mj-dado.is-rola {
+  animation: mj-rola 450ms var(--ease-out) both;
+  animation-delay: calc(var(--mj-i, 0) * 30ms);
+}
+.mj-moeda.is-rola { animation: mj-gira-moeda 450ms var(--ease-out) both; }
+@keyframes mj-rola {
+  0% { transform: translateY(-10%) rotate(-160deg) scale(0.7); opacity: 0.4; }
+  60% { transform: translateY(3%) rotate(12deg) scale(1.04); opacity: 1; }
+  100% { transform: none; }
+}
+@keyframes mj-gira-moeda {
+  0% { transform: scaleX(1); }
+  25% { transform: scaleX(0.1); }
+  50% { transform: scaleX(1); }
+  75% { transform: scaleX(0.1); }
+  100% { transform: scaleX(1); }
+}
+.mj-dados-res {
+  margin: 0;
+  font: 600 var(--fs-ui) 'Work Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  transition: opacity var(--dur-fast);
+}
+.mj-dados-res.is-espera { opacity: 0; }
+.mj-dados-quem { display: inline-flex; align-items: center; gap: var(--s-15); min-height: 18px; color: var(--tx2); font-size: var(--fs-small); }
+.mj-dados-col { display: none; min-height: 0; flex-direction: column; gap: var(--s-1); }
+.mj-dados-col .mj-btn { min-height: 28px; font-size: var(--fs-small); }
+.mj-dados-hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-dados-hist li { display: flex; align-items: center; gap: var(--s-2); color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-dados-ctrl { justify-content: center; }
+.mj-dados-ctrl .mj-pri { min-width: calc(var(--s-7) * 2); }
+.mj-dados .mj-aviso { justify-content: center; }
+
+@container mj (min-width: 520px) and (min-height: 360px) {
+  .mj-dados-corpo { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .mj-dados-col { display: flex; }
+}
+@container mj (max-height: 230px) {
+  .mj-dados .mj-sec { display: none; }
+}
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {
