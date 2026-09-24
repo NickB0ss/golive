@@ -197,7 +197,10 @@ const localPlugin = { rules: { 'no-floating-promise': noFloatingPromise } };
 
 module.exports = [
   {
-    ignores: ['build/**', 'dist/**', 'native/**'],
+    // src/renderer/vendor/ e codigo de terceiros copiado como veio (ver o
+    // cabecalho de cada arquivo): nao e nosso para corrigir, e as diretivas
+    // `eslint-disable` que ele traz de casa virariam erro de diretiva inutil.
+    ignores: ['build/**', 'dist/**', 'native/**', 'src/renderer/vendor/**'],
   },
 
   {
@@ -244,8 +247,8 @@ module.exports = [
   // como somente-leitura: qualquer outro nome de Node aqui e engano, e o
   // no-undef deve acusar.
   {
-    files: ['src/renderer/*.js'],
-    ignores: ['src/renderer/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
+    files: ['src/renderer/*.js', 'src/renderer/mesa-modules/*.js'],
+    ignores: ['src/renderer/*.test.js', 'src/renderer/mesa-modules/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
     languageOptions: {
       sourceType: 'script',
       globals: {
