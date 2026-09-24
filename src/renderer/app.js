@@ -3084,10 +3084,28 @@
     if (r.action === 'heal' || r.action === 'give-up') {
       // Diagnostico ANTES do reoffer: a reoferta fecha esta PC e leva junto
       // os contadores que dizem o que aconteceu.
+      const pcState = session.mesh.peers.get(peerId)?.inConns[kind]?.connectionState;
       const diag = hasInbound
-        ? diagnoseStall(inputKey, r.stalledFor, session.mesh.peers.get(peerId)?.inConns[kind]?.connectionState)
+        ? diagnoseStall(inputKey, r.stalledFor, pcState)
         : { cause: 'desconhecido', line: 'sem conexao de entrada (a arvore diz que devia haver uma)' };
+      // Com "rede", a conexao nova precisaria da mesma rede: segura a
+      // reoferta e deixa o reinicio de ICE de quem transmite (C5) agir. O
+      // vigia devolve a tentativa e refaz a pergunta na proxima olhada.
+      const decision = r.action === 'heal'
+        ? conndiag.reofferDecision({ cause: diag.cause, frozen: r.reason === 'frozen', pcState, stalledForMs: r.stalledFor })
+        : null;
+      if (decision?.hold) {
+        if (stallWatch.defer(inputKey)) {
+          console.warn(`[assistir] diagnostico da tela de ${nome}${via}: ${diag.line}`);
+          console.warn(`[assistir] segurando reoferta: rede -- tela de ${nome}${via} parada ha ${Math.round(r.stalledFor / 1000)}s (pc ${pcState}); esperando o reinicio de ICE de quem transmite, refaz so depois de ${conndiag.NETWORK_HOLD_MAX_MS / 1000}s`);
+          showStallNote(tileId, conndiag.stallNotice(diag.cause, nome), frames, transport);
+        }
+        return;
+      }
       console.warn(`[assistir] diagnostico da tela de ${nome}${via}: ${diag.line}`);
+      if (decision?.reason === 'limite') {
+        console.warn(`[assistir] tela de ${nome}${via} sem contato ha ${Math.round(r.stalledFor / 1000)}s, passou do prazo do reinicio de ICE (${conndiag.NETWORK_HOLD_MAX_MS / 1000}s): soltando a reoferta`);
+      }
       showStallNote(tileId, conndiag.stallNotice(diag.cause, nome, { gaveUp: r.action === 'give-up' }), frames, transport);
     }
     if (r.action === 'heal') {
@@ -3100,7 +3118,9 @@
       console.error(`[assistir] tela de ${nome}${via} continua sem imagem depois de ${r.attempts} tentativas`);
     } else if (r.action === 'recovered') {
       clearStallNote(tileId);
-      console.info(`[assistir] tela de ${nome}${via} voltou a mostrar imagem depois de ${r.attempts} tentativa(s)`);
+      console.info(r.attempts
+        ? `[assistir] tela de ${nome}${via} voltou a mostrar imagem depois de ${r.attempts} tentativa(s)`
+        : `[assistir] tela de ${nome}${via} voltou a mostrar imagem sem refazer a conexao (reoferta segurada: rede)`);
     }
   }
 

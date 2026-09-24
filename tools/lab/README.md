@@ -43,8 +43,8 @@ mesmo com as verificações passando.
 | Cenário | O que prova |
 |---|---|
 | `sala-basica` | 4 PCs; a árvore monta um relay e todos seguem com a tela andando; C6, D1, D6 e as linhas `[rota]` |
-| `queda-curta` | 9 s sem UDP: quem transmite reinicia o ICE na mesma conexão (C5) e a imagem volta |
-| `queda-longa` | 15 s sem UDP: diagnóstico "rede", "Sem contato com o PC de Ana" no tile, e tudo volta sozinho |
+| `queda-curta` | 9 s sem UDP: quem transmite reinicia o ICE na mesma conexão (C5), a imagem volta e ninguém refaz a conexão |
+| `queda-longa` | 15 s sem UDP: diagnóstico "rede", "Sem contato com o PC de Ana" no tile, o vigia segura a reoferta e a mesma conexão volta pelo reinício de ICE |
 | `origem-parada` | a captura congela: diagnóstico "origem", "Ana parou de enviar imagem", e o aviso sai quando ela volta |
 | `perda-udp` | 3% de perda por 20 s: a imagem segue e ninguém refaz a conexão por engano |
 | `lider-cai` | o PC de quem criou a sala morre (SIGKILL): os outros migram e o vídeo entre eles continua |

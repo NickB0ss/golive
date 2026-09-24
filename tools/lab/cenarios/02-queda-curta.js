@@ -27,7 +27,12 @@ module.exports = {
 
     await beto.esperarImagemAndando(20000);
     lab.verificar(true, 'a imagem voltou no Beto');
-    const refeita = beto.achar(/pedindo pra refazer a conexao/, corte).length > 0;
-    lab.passo(`conexao ${refeita ? 'refeita pelo vigia de congelamento' : 'recuperada sem ser refeita'}`);
+    // O vigia do Beto ve a tela parada (~6 s) na mesma hora em que a Ana
+    // reinicia o ICE: com diagnostico "rede" ele segura a reoferta, porque a
+    // conexao nova precisaria da mesma rede. Quem resolve e o reinicio.
+    await ana.esperarLog(/conexao de saida para #\d+ \(kind=screen\) voltou depois de/, { desde: corte, timeoutMs: 5000, descricao: 'a mesma conexao voltou' });
+    lab.igual(beto.achar(/pedindo pra refazer a conexao/, corte).length, 0, 'ninguem refez a conexao: o reinicio de ICE resolveu');
+    const segurou = beto.achar(/segurando reoferta: rede/, corte).length > 0;
+    lab.passo(`vigia do Beto ${segurou ? 'segurou a reoferta (rede)' : 'nem chegou a agir'}`);
   },
 };

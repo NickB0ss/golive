@@ -381,6 +381,10 @@ com D1, D2, D3, D5 e D6 da seção 6 (ver `STATUS.md`, "Consertos da análise
 de 23/09"). C4 espera o M2. No C5 o reinício saiu com 1 s, não 3 s: medido,
 o Chromium 152 só declara `disconnected` 6,5 s depois do último pacote.
 O laboratório da H15 também está feito (`npm run lab`, `tools/lab/`).
+Depois dele (H10 + C5): com diagnóstico "rede" o vigia de tela assistida
+segura a reoferta até 25 s de tela parada e deixa o reinício de ICE agir
+(`conndiag.reofferDecision`); no `queda-longa` o vigia deixou de refazer a
+conexão (3/3 antes, 0/3 depois) e a mesma conexão volta, no mesmo tempo.
 
 ---
 
