@@ -131,8 +131,29 @@ usa botão direito). Um link do YouTube colado no chat ganha "Pôr na mesa".
 **Telas e câmeras**: quem vai ao vivo ou liga a câmera ganha uma janela no
 meio da **própria vista**. Quem para, perde a janela.
 
+**Assentadas na mesa, em posição livre.** As janelas não são janelas de
+aplicativo flutuando por cima: são peças planas em cima da grade. A grade é
+só o fundo (para a mesa não ser um preto chapado); as janelas **não precisam
+se alinhar a ela**.
+
+- **Posição e tamanho livres**, ao pixel da mesa. Nada de encaixe em grade.
+- **Uma janela nunca fica em cima de outra.** Durante o arraste a janela segue
+  o mouse; se estiver sobre outra, um contorno tracejado mostra onde ela vai
+  assentar (o lugar livre mais perto, com 16 unidades de vão). Ao soltar, ela
+  desliza até lá (260 ms). Redimensionar para ao encostar numa vizinha.
+- Janela nova (pelo menu, pelo `+`, por quem vai ao vivo) também nasce no
+  lugar livre mais perto de onde foi pedida.
+- Sem sobreposição, não existe "trazer pra frente" nem ordem de empilhamento
+  no estado da sala.
+- A regra vale **no servidor**: `mesa` que deixaria duas janelas sobrepostas
+  é recusada (o cliente já manda o lugar livre; a recusa só pega corrida entre
+  duas pessoas soltando no mesmo espaço, e quem perdeu recebe o lugar livre
+  mais perto de volta).
+
 **Anatomia** (limpa):
-- Sem moldura nem barra de título. A janela é o conteúdo com canto `--r-lg`.
+- Sem moldura grossa, sem barra de título e **sem sombra de janela
+  flutuante**: um contorno de 1 px em `--line2` e canto `--r-lg`. Só enquanto
+  você arrasta o contorno vira `--on-text`.
 - Com o mouse em cima (ou foco) aparecem, no canto de cima à direita: o avatar
   de quem pôs, **Tela cheia** e **Tirar da mesa**.
 - Janelas de vídeo (tela, câmera) se arrastam pegando em qualquer ponto.
@@ -140,13 +161,11 @@ meio da **própria vista**. Quem para, perde a janela.
   uma alça fina no topo (um traço de 36 × 4 px que aparece com o mouse).
 - **Tamanho**: pelas bordas esquerda, direita e de baixo e pelos cantos de
   baixo. Vídeo e tabuleiro mantêm a proporção; nota muda livre.
-- **Encaixe**: grade de 20 unidades e bordas das outras janelas (alinhar ou
-  deixar 20 de vão), com uma linha-guia fina. `Alt` solta livre.
 - **Tela cheia**: o botão da janela, `F` ou duplo clique em vídeo. No app é o
   fullscreen da janela do Electron com só aquele conteúdo; `Esc` volta. É só
   para você.
-- **Botão direito numa janela**: Tela cheia, Centralizar na tela, Trazer pra
-  frente, Tirar da mesa.
+- **Botão direito numa janela**: Tela cheia, Centralizar na tela, Tirar da
+  mesa.
 - **Nome sempre visível** em tela e câmera (canto de baixo, discreto), com
   "AO VIVO" na tela de quem transmite.
 
@@ -168,7 +187,7 @@ meio da **própria vista**. Quem para, perde a janela.
 
 | Da sala (todos veem igual) | Seu |
 |---|---|
-| Quais janelas existem, posição, tamanho, ordem | Para onde você olha (vista e zoom) |
+| Quais janelas existem, posição e tamanho | Para onde você olha (vista e zoom) |
 | Estado dos jogos, play/pausa e posição do vídeo | Tela cheia |
 | Quem pôs cada janela | Volume de cada tela e do vídeo |
 | O tipo da sala e a trava do líder | Mostrar ou não os ponteiros; chat aberto ou fechado |
@@ -185,7 +204,7 @@ mesmo que já guarda o histórico do chat.
 ```
 sala = {
   mode: 'transmissao' | 'mesa',
-  mesa: { seq, leaderOnly, windows: [ { id, type, owner, x, y, w, h, z, props } ] }
+  mesa: { seq, leaderOnly, windows: [ { id, type, owner, x, y, w, h, props } ] }
 }
 ```
 
@@ -197,7 +216,7 @@ sala = {
 
 | Mensagem | Quando | Guardada? | Frequência |
 |---|---|---|---|
-| `mesa` | pôr, tirar, soltar depois de mover, redimensionar, trazer pra frente, jogada, play/pausa | sim, com `seq` | por ação |
+| `mesa` | pôr, tirar, soltar depois de mover, redimensionar, jogada, play/pausa | sim, com `seq` | por ação |
 | `mesa-drag` | durante o arraste ou o redimensionamento | não | até 20 Hz |
 | `cursor` | ponteiro sobre a mesa | não | até 20 Hz; some em 1 s parado |
 
@@ -297,7 +316,7 @@ só para "ao vivo".
 - O seletor de tipo é um `radiogroup` com setas.
 - A Mesa é uma região focável com nome e instruções; setas andam, `+`/`-`
   aproximam, `0` mostra tudo.
-- Cada janela é focável (`role="group"`, nome com quem pôs). Setas movem 20
+- Cada janela é focável (`role="group"`, nome com quem pôs). Setas movem 10
   unidades (`Shift`, 100), `Alt`+setas redimensionam, `F` tela cheia, `Delete`
   tira da mesa.
 - O menu do botão direito abre também pela tecla de menu e por `Shift+F10`;
