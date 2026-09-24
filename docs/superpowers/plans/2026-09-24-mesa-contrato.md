@@ -189,6 +189,17 @@ do último `mesa-grab`/`mesa-drag`), `shouldEmit(last, now, hz = 20)`,
 some em 1 s). `applyMessage` também aceita `mesa-sync` e devolve sempre
 `{ state, needSync }` (`stale: true` para `seq` já visto).
 
+**Acréscimos do time Vista (2026-09-24)**, sem mudar nada acima:
+
+- `{ type: 'mesa-count', count }` vai para a **sala inteira** quando a
+  quantidade de janelas muda (add/remove; mover e agir não mandam). É o que
+  mantém o seletor de vista de quem está na Transmissão depois do `welcome`.
+- `mesa-sync` ganha `grabs: [{ id, by }]` (as vezes em andamento), **fora**
+  de `mesa`: não é estado da sala, não migra, não tem `seq`.
+- `{ type: 'mesa-ack', op, id, seq }` vai **só ao autor** de uma operação
+  aceita quando ele **não** está na vista Mesa (quem está já recebe o eco).
+  `id` é o da janela nova no `add`.
+
 ## 6. Conteúdo das janelas (fronteira entre os times Vista e Janelas)
 
 A **Vista** (`src/renderer/mesa-view.js`) cuida da mesa: área, grade, andar,
