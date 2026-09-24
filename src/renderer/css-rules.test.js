@@ -261,3 +261,16 @@ test('controle escondido com visually-hidden fica fora da ordem do Tab (A14)', (
   }
   assert.deepEqual(focaveis, [], `controle invisivel alcancavel pelo Tab: ${focaveis.join(', ')}`);
 });
+
+test('a tela da sala tem um h1 com o nome da sala, sem a margem do navegador (A16)', () => {
+  // O unico h1 era o do lobby, que fica display:none dentro da sala: quem
+  // navega por titulos caia num h2 e nao sabia em que sala estava.
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const sala = html.slice(html.indexOf('id="room-view"'));
+  const h1s = [...sala.matchAll(/<h1\b[^>]*>/g)].map(([tag]) => tag);
+  assert.equal(h1s.length, 1, 'a sala precisa de exatamente um h1');
+  assert.match(h1s[0], /id="stage-room-name"/, 'o h1 da sala e o nome dela');
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const margem = declarations(css).filter(({ property, stack }) => property === 'margin' && selectorParts(stack.at(-1) || '').includes('.stage-room-name'));
+  assert.ok(margem.some(({ value }) => value === '0'), 'o h1 da sala precisa zerar a margem padrao do navegador');
+});
