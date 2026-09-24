@@ -113,6 +113,14 @@ test('PeerConnection fora de connected ou par falho e rede, mesmo sem amostra an
   assert.equal(conndiag.classifyStall(null, null).cause, 'desconhecido');
 });
 
+test('ultimo pacote recente nao prova caminho vivo: sem trafego na janela e rede', () => {
+  // O vigia pode agir 4 s depois da queda: o ultimo pacote ainda e "recente",
+  // mas nada chegou na janela inteira (caso medido no laboratorio).
+  const prev = amostra({ rtp: 1000, frames: 10, pairBytes: 2000, responses: 3 });
+  const cur = amostra({ rtp: 1000, frames: 10, pairBytes: 2000, responses: 3, lastPacketAgo: 4000 });
+  assert.equal(conndiag.classifyStall(prev, cur).cause, 'rede');
+});
+
 test('caminho vivo sem RTP de video e a origem que parou', () => {
   const prev = amostra({ rtp: 1000, frames: 10, pairBytes: 2000, responses: 3 });
   const soRtcp = amostra({ rtp: 1000, frames: 10, pairBytes: 2600, responses: 3, lastPacketAgo: 7000 });

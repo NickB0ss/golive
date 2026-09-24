@@ -3005,14 +3005,17 @@
    * Compara a amostra atual com a mais antiga que ainda cai DENTRO do
    * congelamento (`stalledForMs`): o que chegou antes dele nao diz nada
    * sobre ele. */
-  function diagnoseStall(inputKey, stalledForMs) {
+  function diagnoseStall(inputKey, stalledForMs, livePcState) {
     const history = stallDiagByInput.get(inputKey) || [];
-    const cur = history.at(-1) || null;
-    const inicio = cur ? cur.at - stalledForMs : 0;
+    const last = history.at(-1) || null;
+    const inicio = last ? last.at - stalledForMs : 0;
     const prev = history.slice(0, -1).find((h) => h.at >= inicio) || null;
-    const verdict = conndiag.classifyStall(prev?.sample || null, cur?.sample || null);
-    const windowMs = prev && cur ? cur.at - prev.at : 0;
-    return { cause: verdict.cause, line: conndiag.describeStall(verdict, cur?.sample || null, windowMs) };
+    // A amostra mais nova pode ter ate 2 s; o estado da PC e o de AGORA (a
+    // queda de rede costuma virar 'disconnected' nesse intervalo).
+    const cur = last ? { ...last.sample, pcState: livePcState || last.sample.pcState } : null;
+    const verdict = conndiag.classifyStall(prev?.sample || null, cur);
+    const windowMs = prev && last ? last.at - prev.at : 0;
+    return { cause: verdict.cause, line: conndiag.describeStall(verdict, cur, windowMs) };
   }
 
   function showStallNote(tileId, text, frames, transport) {
@@ -3082,7 +3085,7 @@
       // Diagnostico ANTES do reoffer: a reoferta fecha esta PC e leva junto
       // os contadores que dizem o que aconteceu.
       const diag = hasInbound
-        ? diagnoseStall(inputKey, r.stalledFor)
+        ? diagnoseStall(inputKey, r.stalledFor, session.mesh.peers.get(peerId)?.inConns[kind]?.connectionState)
         : { cause: 'desconhecido', line: 'sem conexao de entrada (a arvore diz que devia haver uma)' };
       console.warn(`[assistir] diagnostico da tela de ${nome}${via}: ${diag.line}`);
       showStallNote(tileId, conndiag.stallNotice(diag.cause, nome, { gaveUp: r.action === 'give-up' }), frames, transport);

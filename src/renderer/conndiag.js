@@ -196,8 +196,11 @@
     if (deltas.rtpBytes > 0) {
       return { cause: deltas.framesDecoded > 0 ? 'pintura' : 'decoder', deltas };
     }
-    const pathAlive = deltas.pairBytes > 0 || deltas.pairResponses > 0
-      || (pair?.lastPacketAgeMs != null && pair.lastPacketAgeMs < NETWORK_SILENCE_MS);
+    // So o que chegou DENTRO da janela prova que o caminho esta vivo: com a
+    // origem parada o RTCP continua (medido no laboratorio: +540 B em 6 s).
+    // A idade do ultimo pacote nao serve aqui -- o vigia pode agir poucos
+    // segundos depois da queda, com o ultimo pacote ainda "recente".
+    const pathAlive = deltas.pairBytes > 0 || deltas.pairResponses > 0;
     return { cause: pathAlive ? 'origem' : 'rede', deltas };
   }
 
