@@ -237,9 +237,13 @@
     return state.mesa.windows.find((w) => w.id === id) || null;
   }
 
+  /** O registro conferido (mesa-modules/index.js) quando ele esta
+   * carregado; senao o mapa cru onde cada modulo se registra. */
   function defaultGetModule(type) {
-    const reg = root.GoLive && root.GoLive.mesaModules;
-    return reg && Object.prototype.hasOwnProperty.call(reg, type) ? reg[type] : null;
+    const g = root.GoLive || {};
+    if (g.mesaRegistry && typeof g.mesaRegistry.get === 'function') return g.mesaRegistry.get(type);
+    const raw = g.mesaModules;
+    return raw && Object.prototype.hasOwnProperty.call(raw, type) ? raw[type] : null;
   }
 
   /** Aplica uma mensagem ja aceita pelo servidor. Devolve sempre
