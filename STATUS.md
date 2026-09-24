@@ -292,6 +292,12 @@ mediu:
 
 ## Próximos passos
 
+- **redesign planejado: a sala em dois tipos** (Transmissão, o de hoje, e
+  Mesa, uma área com grade onde todos põem janelas: YouTube, rádio, jogos,
+  placar...). Só planejamento e protótipo, na branch
+  `claude/redesign-planning-structure-wpfpsg`. Começar por
+  `docs/superpowers/plans/2026-09-24-sala-em-dois-tipos-passagem.md`
+  (decisões, o que foi descartado, fase 0 e onde mexer no código);
 - **noite de teste com 2+ PCs reais, na 0.20.0** -- o teste que mais
   importa e derrubar o PC do lider de verdade, de preferencia no Tailscale
   (e o que a Frente A2 mudou; no laboratorio a migracao leva ~5 s com a
