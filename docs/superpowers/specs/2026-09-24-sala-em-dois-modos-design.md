@@ -120,9 +120,16 @@ num mapa.
 **Adicionar**: botão direito num espaço vazio → **Adicionar janela ›**, com
 três grupos:
 
-- Assistir: Vídeo do YouTube (toca junto)
+- Assistir e ouvir: Vídeo do YouTube (toca junto), Rádio da sala (fila de
+  músicas pelo YouTube), Spotify Jam (junta a turma num Jam do próprio
+  Spotify), Tocando agora (o que cada um ouve, pelo Windows)
 - Jogos: Xadrez, Damas, Jogo da velha, Lig 4
+- Noite de jogo: Sorteio de times, Placar, Cronômetro
 - Ferramentas: Quadro (rabiscar), Nota
+
+A lista completa de candidatas, o que cada serviço permite (Spotify, Twitch,
+SoundCloud) e a ordem sugerida estão em
+`docs/2026-09-24-pesquisa-janelas-da-mesa.md`.
 
 A janela nasce **com o canto no ponto do clique**. O `+` do dock abre o mesmo
 submenu e põe a janela no meio da vista (caminho pelo teclado e para quem não
