@@ -10,6 +10,13 @@
 const { WebSocketServer } = require('ws');
 const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
 const { chooseSuccessor, chooseNewOwner } = require('../src/renderer/succession.js');
+// Mesa (spec 2026-09-24, contrato em
+// docs/superpowers/plans/2026-09-24-mesa-contrato.md): o MESMO modelo puro e
+// os MESMOS modulos de janela que o renderer carrega. O servidor valida,
+// carimba `seq` e aplica com `applyMessage`; cada cliente aplica a mesma
+// mensagem com a mesma funcao.
+const mesaModel = require('../src/renderer/mesa.js');
+const mesaRegistry = require('../src/renderer/mesa-modules/index.js');
 
 // O servidor de sinalizacao roda no MESMO processo do app de quem criou a
 // sala. O `maxPayload` padrao do `ws` e 100 MB: um cliente hostil (ou com
@@ -390,6 +397,64 @@ function sanitizeReactionOp(msg) {
   return typeof msg.emoji === 'string' && REACTION_EMOJI.has(msg.emoji) ? { emoji: msg.emoji } : null;
 }
 
+// ---------------------------------------------------------------------------
+// Mesa
+// ---------------------------------------------------------------------------
+
+// Operacoes guardadas (mesa, mesa-grab). Humano mexendo nao passa de poucas
+// por segundo; 20/s segura um cliente em loop sem fechar o socket (a recusa
+// volta como mesa-denied 'rate').
+const MESA_OPS_PER_SECOND = 20;
+// mesa-drag e cursor, cada um com a sua cota: o cliente manda a 20 Hz
+// (mesa.shouldEmit); 30/s da a folga do jitter sem virar amplificador.
+const MESA_STREAM_PER_SECOND = 30;
+// Uma acao de janela (jogada, play, texto da nota). A nota, a maior de
+// hoje, cabe em ~6 KB no pior escape JSON; 8 KB e o teto do fio.
+const MAX_MESA_ACTION_BYTES = 8 * 1024;
+
+/** Janela da semente de migracao: so o que e da sala sobrevive.
+ *
+ * - Tipo desconhecido, tamanho fora do minimo do tipo ou estado acima do
+ *   teto do tipo saem.
+ * - Tela e camera saem: os ids das pessoas mudam no servidor novo, e o
+ *   proprio servidor novo as poe de volta quando cada um reanuncia o
+ *   broadcast-state/camera-state.
+ * - `owner` vira null pelo mesmo motivo (o id antigo pode ser de outra
+ *   pessoa agora). */
+function acceptSeedWindow(win) {
+  const mod = mesaRegistry.get(win.type);
+  if (!mod || mod.media) return null;
+  if (mesaModel.checkRect(win, mod.size) !== true) return null;
+  if (mesaModel.jsonBytes(win.state) > mod.maxStateBytes) return null;
+  return { ...win, owner: null };
+}
+
+/** Semente `initialMesa` (migracao) -> retrato limpo, igual o
+ * initialChatHistory: nada de fora entra sem ser refeito campo a campo. */
+function sanitizeInitialMesa(raw) {
+  return mesaModel.sanitizeMesa(raw, { accept: acceptSeedWindow });
+}
+
+/** Primeiro id que o servidor novo pode dar sem repetir um id da sala que
+ * caiu. Estado de jogo guarda ids de pessoas (cadeiras); se o servidor novo
+ * recomecasse do 1, a cadeira de quem saiu seria de quem entrou. O servidor
+ * antigo manda `mesa.idFloor` no room-migrating; sem ele (queda abrupta), o
+ * maior id visto no chat e nas janelas e o piso. */
+function seedIdFloor(initialMesa, initialChatHistory) {
+  let floor = 1;
+  const bump = (v) => {
+    if (typeof v === 'string' && CONNECTION_ID_RE.test(v) && v.length <= 12) floor = Math.max(floor, Number(v) + 1);
+  };
+  const hint = initialMesa && typeof initialMesa === 'object' ? initialMesa.idFloor : null;
+  if (Number.isSafeInteger(hint) && hint > 0 && hint < 1e12) floor = Math.max(floor, hint);
+  for (const e of Array.isArray(initialChatHistory) ? initialChatHistory.slice(0, 50) : []) {
+    bump(e?.from);
+    bump(e?.id);
+  }
+  for (const w of Array.isArray(initialMesa?.windows) ? initialMesa.windows.slice(0, mesaModel.MAX_WINDOWS * 2) : []) bump(w?.owner);
+  return floor;
+}
+
 function sanitizeInitialBan(entry) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
   const { key, name } = entry;
@@ -490,8 +555,12 @@ function normalizeRoomName(raw) {
  * depois de SILENCE_TIMEOUT_MS sem nenhuma mensagem.
  *
  * `resumeGraceMs`: quanto um peer com close anormal continua membro antes
- * de sair de verdade. `getPeerCount()` inclui esses peers suspensos. */
-function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory }) {
+ * de sair de verdade. `getPeerCount()` inclui esses peers suspensos.
+ *
+ * `initialMesa`: semente da mesa na migracao (ver sanitizeInitialMesa).
+ * `mesaGrabMs`: quanto dura a vez por janela sem mesa-drag (padrao
+ * GRAB_MS, 5 s; os testes encurtam). */
+function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS }) {
   if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
     return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
   }
@@ -590,6 +659,14 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       const safe = sanitizeInitialChatEntry(entry);
       if (safe) pushChatEntry(safe);
     }
+
+    // A mesa da sala. Guardada aqui como o historico do chat: sempre existe,
+    // quem esta na vista Transmissao so nao recebe nada dela. Semente de
+    // migracao em `initialMesa`, limpa como o initialChatHistory.
+    let mesaState = mesaModel.createState({ mesa: initialMesa }, { accept: acceptSeedWindow });
+    nextId = Math.max(nextId, seedIdFloor(initialMesa, initialChatHistory));
+    const mesaGrabs = mesaModel.createGrabs({ ms: mesaGrabMs }); // vez por janela
+    const mesaLimiters = new Map(); // peerId -> { ops, drag, cursor, sync, time }
 
     /** Linha de sistema (entrada/saida/moderacao). `target` e omitido pra
      * join/leave -- o `actor` JA e quem entrou ou saiu. Guardada no historico
@@ -720,6 +797,269 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       }
     }
 
+    // ---- Mesa ---------------------------------------------------------
+    //
+    // Quem recebe o que: so quem mandou `mesa-view {on:true}` (esta com a
+    // vista Mesa aberta) recebe mesa, mesa-grab/release, mesa-drag e cursor.
+    // Quem esta na Transmissao nao paga nada pela mesa; ao abrir a Mesa
+    // recebe o retrato (mesa-sync) e dai em diante as mudancas.
+    //
+    // Telas e cameras: quem POE e TIRA as janelas `tela`/`camera` e o
+    // servidor, pelo broadcast-state/camera-state que ele ja repassa. Quem
+    // vai ao vivo pode estar na vista Transmissao (sem mesa nenhuma na
+    // tela), e quem sai da sala nao manda mais nada -- o servidor e o unico
+    // que ve os dois casos. O cliente nao pode pedir `add` de tela/camera.
+
+    function mesaHit(pid, kind) {
+      let set = mesaLimiters.get(pid);
+      if (!set) {
+        set = {
+          ops: createRateLimiter({ limit: MESA_OPS_PER_SECOND, windowMs: 1000 }),
+          drag: createRateLimiter({ limit: MESA_STREAM_PER_SECOND, windowMs: 1000 }),
+          cursor: createRateLimiter({ limit: MESA_STREAM_PER_SECOND, windowMs: 1000 }),
+          // Cada mesa-view on / mesa-sync manda o retrato inteiro (ate
+          // ~512 KB): rajada curta, reposicao lenta.
+          sync: createBurstLimiter({ capacity: 4, refillMs: 1000 }),
+          time: createBurstLimiter({ capacity: 10, refillMs: 500 }),
+        };
+        mesaLimiters.set(pid, set);
+      }
+      return set[kind].hit(Date.now());
+    }
+
+    function mesaViewerIds(room) {
+      const out = [];
+      for (const [pid, peer] of peers) if (peer.room === room && peer.mesaView) out.push(pid);
+      return out.sort((a, b) => Number(a) - Number(b));
+    }
+
+    function broadcastToMesa(room, exceptId, payload) {
+      for (const [pid, peer] of peers) {
+        if (peer.room === room && peer.mesaView && pid !== exceptId) send(peer.ws, payload);
+      }
+    }
+
+    function announceMesaViewers(room) {
+      broadcastToRoom(room, null, { type: 'mesa-viewers', peers: mesaViewerIds(room) });
+    }
+
+    function releaseMesaGrabsOf(room, pid) {
+      for (const wid of mesaGrabs.dropPeer(pid)) broadcastToMesa(room, null, { type: 'mesa-release', id: wid });
+    }
+
+    /** A pessoa abriu (on) ou fechou a vista Mesa. Abrir sempre manda o
+     * retrato, mesmo para quem ja estava (serve de "me manda de novo"). */
+    function setMesaView(pid, on) {
+      const peer = peers.get(pid);
+      if (!peer) return;
+      const was = peer.mesaView === true;
+      peer.mesaView = on;
+      if (on) send(peer.ws, { type: 'mesa-sync', mesa: mesaModel.snapshot(mesaState) });
+      else releaseMesaGrabsOf(peer.room, pid);
+      if (was !== on) announceMesaViewers(peer.room);
+    }
+
+    function mesaPeersCtx(room) {
+      return roomPeers(room).map((p) => ({ id: p.id, name: p.name }));
+    }
+
+    function newWindowId() {
+      let wid;
+      do {
+        wid = randomBytes(6).toString('base64url');
+      } while (mesaState.mesa.windows.some((w) => w.id === wid));
+      return wid;
+    }
+
+    /** Monta a mensagem aceita (com o proximo seq) e o estado que ela daria,
+     * pelo mesmo applyMessage dos clientes. Nada muda ate o commitMesa. */
+    function mesaCandidate(msg) {
+      const full = { ...msg, type: 'mesa', seq: mesaState.mesa.seq + 1 };
+      const res = mesaModel.applyMessage(mesaState, full, { getModule: mesaRegistry.get });
+      if (res.needSync || res.stale || res.state === mesaState) return null;
+      return { full, state: res.state };
+    }
+
+    function commitMesa(room, cand) {
+      mesaState = cand.state;
+      broadcastToMesa(room, null, cand.full);
+      return cand.full;
+    }
+
+    function denyMesa(ws, op, wid, reason, extra = {}) {
+      send(ws, { type: 'mesa-denied', op, id: wid ?? null, reason, ...extra });
+    }
+
+    function findMediaWindow(pid, type) {
+      return mesaState.mesa.windows.find((w) => w.type === type && w.state?.peerId === pid) || null;
+    }
+
+    /** Poe a tela (ou camera) de quem acabou de ir ao vivo no lugar livre
+     * mais perto do meio da mesa. Mesa cheia: fica sem janela, e a pessoa
+     * continua na Transmissao de todo mundo como sempre. */
+    function addMediaWindow(room, pid, type) {
+      if (findMediaWindow(pid, type)) return;
+      const mod = mesaRegistry.get(type);
+      if (!mod || mesaState.mesa.windows.length >= mesaModel.MAX_WINDOWS) return;
+      const { w, h } = mod.size;
+      const want = { x: Math.round((mesaModel.WORLD.w - w) / 2), y: Math.round((mesaModel.WORLD.h - h) / 2), w, h };
+      const rect = mesaModel.nearestFree(mesaState.mesa.windows, want, { gap: mesaModel.GAP });
+      if (!rect) return;
+      const state = mod.init({ by: pid, from: pid, now: Date.now(), peers: mesaPeersCtx(room), isLeader: peers.get(pid)?.owner === true, random: Math.random });
+      const cand = mesaCandidate({ op: 'add', by: pid, win: { id: newWindowId(), type, owner: pid, ...rect, state } });
+      if (cand) commitMesa(room, cand);
+    }
+
+    function removeMediaWindows(room, pid, types) {
+      for (const win of mesaState.mesa.windows.filter((w) => types.includes(w.type) && w.state?.peerId === pid)) {
+        const cand = mesaCandidate({ op: 'remove', id: win.id, by: pid });
+        if (!cand) continue;
+        commitMesa(room, cand);
+        mesaGrabs.drop(win.id);
+      }
+    }
+
+    /** Uma operacao `mesa` vinda de `pid`. Aceita tambem de quem esta na
+     * vista Transmissao ("Por na mesa" de um link do chat); o eco so vai
+     * para quem esta na Mesa, e a recusa sempre volta para o autor. */
+    function handleMesaOp(pid, me, ws, msg) {
+      const op = typeof msg.op === 'string' ? msg.op.slice(0, 16) : null;
+      const wid = typeof msg.id === 'string' ? msg.id.slice(0, 32) : null;
+      const deny = (reason, extra) => denyMesa(ws, op, wid, reason, extra);
+      if (!mesaHit(pid, 'ops')) return deny('rate');
+      const isLeader = me.owner === true;
+      const mesa = mesaState.mesa;
+      const now = Date.now();
+      const ctx = () => ({ from: pid, by: pid, isLeader, now, peers: mesaPeersCtx(me.room), random: Math.random });
+      // Modulo de janela e codigo de outro time rodando no processo de quem
+      // hospeda: excecao dele vira recusa, nunca queda da sala.
+      const guard = (fase, type, fn) => {
+        try {
+          return { ok: true, value: fn() };
+        } catch {
+          log(`mesa: modulo ${JSON.stringify(type)} lancou em ${fase}`);
+          return { ok: false };
+        }
+      };
+      // Sobreposicao ou fora do mundo: recusa com o lugar livre mais perto.
+      const denyPlace = (verdict, rect, ignoreId) => {
+        const fix = mesaModel.nearestFree(mesa.windows, rect, { gap: mesaModel.GAP, ignoreId });
+        if (!fix) return deny('no-space');
+        return deny(verdict === 'out-of-world' ? 'out-of-world' : 'overlap', { fix });
+      };
+      const win = wid ? mesa.windows.find((w) => w.id === wid) || null : null;
+
+      switch (op) {
+        case 'add': {
+          const raw = msg.win;
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return deny('bad-request');
+          const mod = typeof raw.type === 'string' ? mesaRegistry.get(raw.type) : null;
+          if (!mod) return deny('unknown-type');
+          if (mod.media) return deny('auto'); // tela e camera: o servidor poe sozinho
+          if (mesa.leaderOnly && !isLeader) return deny('locked');
+          if (mesa.windows.length >= mesaModel.MAX_WINDOWS) return deny('full');
+          const rect = mesaModel.normRect(raw);
+          if (!rect) return deny('bad-rect');
+          const verdict = mesaModel.checkRect(rect, mod.size);
+          if (verdict !== true && verdict !== 'out-of-world') return deny(verdict);
+          if (verdict === 'out-of-world' || mesa.windows.some((o) => mesaModel.overlaps(rect, o, 0))) return denyPlace(verdict, rect, null);
+          const init = guard('init', mod.type, () => mesaModel.cloneJson(mod.init(ctx())));
+          if (!init.ok || init.value === undefined) return deny('error');
+          if (mesaModel.jsonBytes(init.value) > mod.maxStateBytes) return deny('state-too-big');
+          const cand = mesaCandidate({ op: 'add', by: pid, win: { id: newWindowId(), type: mod.type, owner: pid, ...rect, state: init.value } });
+          if (!cand) return deny('error');
+          commitMesa(me.room, cand);
+          return;
+        }
+        case 'remove': {
+          if (!win) return deny('not-found');
+          const mod = mesaRegistry.get(win.type);
+          if (mesa.leaderOnly && !isLeader) return deny('locked');
+          // A tela de alguem ao vivo so sai pela propria pessoa ou pelo
+          // lider: senao qualquer um sumiria com a transmissao dos outros.
+          if (mod?.media && win.state?.peerId !== pid && !isLeader) return deny('not-yours');
+          const holder = mesaGrabs.holder(win.id, now);
+          if (holder !== null && holder !== pid) return deny('held', { holder });
+          const cand = mesaCandidate({ op: 'remove', id: win.id, by: pid });
+          if (!cand) return deny('error');
+          commitMesa(me.room, cand);
+          mesaGrabs.drop(win.id);
+          return;
+        }
+        case 'place': {
+          if (!win) return deny('not-found');
+          const mod = mesaRegistry.get(win.type);
+          if (!mod) return deny('unknown-type');
+          if (mesa.leaderOnly && !isLeader) return deny('locked');
+          const holder = mesaGrabs.holder(win.id, now);
+          if (holder !== null && holder !== pid) return deny('held', { holder });
+          const rect = mesaModel.normRect(msg);
+          if (!rect) return deny('bad-rect');
+          // "Travar tamanho": mover sem mudar o tamanho continua livre.
+          if (mesa.lockSize && !isLeader && (rect.w !== win.w || rect.h !== win.h)) return deny('size-locked');
+          const verdict = mesaModel.checkRect(rect, mod.size);
+          if (verdict !== true && verdict !== 'out-of-world') return deny(verdict);
+          const others = mesa.windows.filter((o) => o.id !== win.id);
+          if (verdict === 'out-of-world' || others.some((o) => mesaModel.overlaps(rect, o, 0))) return denyPlace(verdict, rect, win.id);
+          const cand = mesaCandidate({ op: 'place', id: win.id, ...rect, by: pid });
+          if (!cand) return deny('error');
+          commitMesa(me.room, cand);
+          return;
+        }
+        case 'act': {
+          // Com qualquer trava, usar a janela (jogar, dar play) continua livre.
+          if (!win) return deny('not-found');
+          const mod = mesaRegistry.get(win.type);
+          if (!mod || typeof mod.reduce !== 'function') return deny('no-act');
+          const raw = msg.action;
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return deny('bad-request');
+          if (mesaModel.jsonBytes(raw) > MAX_MESA_ACTION_BYTES) return deny('too-big');
+          const action = mesaModel.cloneJson(raw);
+          const c = ctx();
+          // validate ve a acao como o cliente mandou (o cliente chama o
+          // mesmo validate para desligar botoes, sem prepare); prepare poe
+          // sorte e hora depois; reduce so le o que veio na acao.
+          const verdict = guard('validate', mod.type, () => mod.validate(win.state, action, c));
+          if (!verdict.ok) return deny('error');
+          if (verdict.value !== true) return deny('invalid', { detail: typeof verdict.value === 'string' ? verdict.value.slice(0, 120) : null });
+          let prepared = action;
+          if (typeof mod.prepare === 'function') {
+            const p = guard('prepare', mod.type, () => mesaModel.cloneJson(mod.prepare(win.state, action, c)));
+            if (!p.ok || !p.value || typeof p.value !== 'object' || Array.isArray(p.value)) return deny('error');
+            prepared = p.value;
+          }
+          const cand = mesaCandidate({ op: 'act', id: win.id, action: prepared, by: pid, isLeader });
+          if (!cand) {
+            log(`mesa: modulo ${JSON.stringify(mod.type)} falhou no reduce`);
+            return deny('error');
+          }
+          const after = cand.state.mesa.windows.find((w) => w.id === win.id);
+          if (!after || mesaModel.jsonBytes(after.state) > mod.maxStateBytes) return deny('state-too-big');
+          commitMesa(me.room, cand);
+          return;
+        }
+        case 'lock': {
+          if (!isLeader) return deny('leader-only');
+          const leaderOnly = typeof msg.leaderOnly === 'boolean' ? msg.leaderOnly : null;
+          const lockSize = typeof msg.lockSize === 'boolean' ? msg.lockSize : null;
+          if (leaderOnly === null && lockSize === null) return deny('bad-request');
+          // Vai sempre com as duas travas resolvidas: quem recebe nao precisa
+          // saber qual das duas mudou.
+          const cand = mesaCandidate({
+            op: 'lock',
+            leaderOnly: leaderOnly ?? mesa.leaderOnly,
+            lockSize: lockSize ?? mesa.lockSize,
+            by: pid,
+          });
+          if (!cand) return deny('error');
+          commitMesa(me.room, cand);
+          return;
+        }
+        default:
+          return deny('bad-request');
+      }
+    }
+
     /** Anuncia quem e o dono da sala AGORA. `owner`/`ownerId` nulos dizem
      * "a sala esta sem dono" -- estado real quando o lider sai e quem criou
      * a sala nao esta mais nela.
@@ -811,6 +1151,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       reactionLimiters.delete(peerId);
       reofferLimiters.delete(peerId);
       watchersLimiters.delete(peerId);
+      mesaLimiters.delete(peerId);
       log(`- ${logName(me.name)} (#${peerId}) saiu da sala ${logName(me.room)} (${why})`);
       broadcastToRoom(me.room, peerId, { type: 'peer-left', id: peerId });
       // Expulso/banido ja tem a linha 'kick'/'ban' -- nao duplica com 'leave'.
@@ -820,6 +1161,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       // ficaria sem ninguem podendo moderar, com a sala aberta pra
       // rede. A lideranca volta pra quem criou a sala.
       if (me.owner && transferredTo && !keepOwnership) reclaimOwnership(me.room);
+      // Mesa: solta as vezes de quem saiu e tira a tela e a camera dele. As
+      // outras janelas que ele pos ficam (sao da sala).
+      if (!closingRoom) {
+        releaseMesaGrabsOf(me.room, peerId);
+        removeMediaWindows(me.room, peerId, ['tela', 'camera']);
+        if (me.mesaView) announceMesaViewers(me.room);
+      }
       // Quem saiu (ou foi expulso/banido) conhecia o segredo atual: rotaciona
       // pra ele nao conseguir assinar um beacon de migracao desta sala.
       if (!closingRoom && roomPeers(me.room).length) announceMigrationInfo(me.room, rotateMigrationSecret(me.room));
@@ -1051,6 +1399,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 reactionLimiters.delete(resumedId);
                 reofferLimiters.delete(resumedId);
                 watchersLimiters.delete(resumedId);
+                mesaLimiters.delete(resumedId);
+                // O que foi para o socket morto se perdeu (seq com buraco).
+                // Volta fora da vista Mesa; o cliente que estava nela manda
+                // mesa-view on de novo e recebe o retrato.
+                const wasOnMesa = resumedPeer.mesaView === true;
+                resumedPeer.mesaView = false;
                 joined = true;
                 peerId = resumedId;
                 ws.peerId = resumedId;
@@ -1063,7 +1417,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                   resumeToken: resumedPeer.resumeToken, resumed: true,
                   roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
                   migrationSecret: resumedSecret, peerAddresses: peerAddressesOf(room),
+                  mesaCount: mesaState.mesa.windows.length, mesaViewers: mesaViewerIds(room),
                 });
+                if (wasOnMesa) {
+                  releaseMesaGrabsOf(room, resumedId);
+                  announceMesaViewers(room);
+                }
                 announceMigrationInfo(room, resumedSecret, resumedId);
                 // Quem ficou nao recebe peer-joined na retomada, mas precisa
                 // saber que o socket voltou para refazer uma oferta perdida.
@@ -1075,7 +1434,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               }
               const owner = transferredTo ? clientId != null && clientId === transferredTo : tokenHolder;
               const newResumeToken = randomUUID();
-              peers.set(id, { ws, name, room, avatar, owner, tokenHolder, clientId, resumeToken: newResumeToken, address: remoteAddress });
+              peers.set(id, {
+                ws, name, room, avatar, owner, tokenHolder, clientId, resumeToken: newResumeToken, address: remoteAddress,
+                // Mesa: vista aberta e o que o servidor sabe de tela/camera
+                // (e isso que poe e tira as janelas de midia).
+                mesaView: false, live: false, cameraOn: false,
+              });
               joined = true;
               ws.joined = true;
               log(`+ ${logName(name)} (#${id}) entrou na sala ${logName(room)}${owner ? ' (dono)' : ''}`);
@@ -1086,6 +1450,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 resumeToken: newResumeToken,
                 roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
                 migrationSecret: joinSecret, peerAddresses: peerAddressesOf(room),
+                // A mesa NAO vai no welcome: quem fica na Transmissao nao paga
+                // por ela. So quantas janelas ha (o seletor mostra que a mesa
+                // nao esta vazia) e quem esta la (avatares).
+                mesaCount: mesaState.mesa.windows.length, mesaViewers: mesaViewerIds(room),
               });
               announceMigrationInfo(room, joinSecret, id);
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
@@ -1361,6 +1729,15 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 // `annotate` sumiu calado na 0.10.2 e `color` na 0.12.0.
                 limit: sanitizeLimit(msg.limit),
               });
+              // Mesa: ir ao vivo poe a janela da tela; parar tira. So na
+              // TRANSICAO: o broadcast-state se repete (pausa, limite), e
+              // quem tirou a propria tela da mesa nao a ve voltar sozinha.
+              {
+                const wasLive = me.live === true;
+                me.live = Boolean(msg.live);
+                if (me.live && !wasLive) addMediaWindow(me.room, peerId, 'tela');
+                else if (!me.live) removeMediaWindows(me.room, peerId, ['tela']);
+              }
               break;
             }
 
@@ -1384,6 +1761,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 on: Boolean(msg.on),
                 annotate: msg.annotate === true,
               });
+              // Mesma regra da tela: camera ligada poe a janela, desligada tira.
+              {
+                const wasOn = me.cameraOn === true;
+                me.cameraOn = Boolean(msg.on);
+                if (me.cameraOn && !wasOn) addMediaWindow(me.room, peerId, 'camera');
+                else if (!me.cameraOn) removeMediaWindows(me.room, peerId, ['camera']);
+              }
               break;
             }
 
@@ -1430,6 +1814,84 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 origin: msg.origin == null ? peerId : String(msg.origin).slice(0, 64),
                 watchers,
               });
+              break;
+            }
+
+            // ---- Mesa (ver o bloco "Mesa" no topo deste servidor) ----
+
+            case 'mesa-view': {
+              const me = peers.get(peerId);
+              if (!me) return;
+              const on = msg.on === true;
+              // Abrir manda o retrato inteiro: tem cota. Fechar sempre passa.
+              if (on && !mesaHit(peerId, 'sync')) return;
+              setMesaView(peerId, on);
+              break;
+            }
+
+            case 'mesa-sync': {
+              const me = peers.get(peerId);
+              if (!me || !mesaHit(peerId, 'sync')) return;
+              send(ws, { type: 'mesa-sync', mesa: mesaModel.snapshot(mesaState) });
+              break;
+            }
+
+            case 'mesa': {
+              const me = peers.get(peerId);
+              if (!me) return;
+              handleMesaOp(peerId, me, ws, msg);
+              break;
+            }
+
+            case 'mesa-grab': {
+              const me = peers.get(peerId);
+              if (!me) return;
+              const wid = typeof msg.id === 'string' ? msg.id.slice(0, 32) : null;
+              if (!me.mesaView) return denyMesa(ws, 'grab', wid, 'not-viewing');
+              if (!mesaHit(peerId, 'ops')) return denyMesa(ws, 'grab', wid, 'rate');
+              if (!wid || !mesaState.mesa.windows.some((w) => w.id === wid)) return denyMesa(ws, 'grab', wid, 'not-found');
+              if (mesaState.mesa.leaderOnly && !me.owner) return denyMesa(ws, 'grab', wid, 'locked');
+              const res = mesaGrabs.take(wid, peerId, Date.now());
+              if (!res.ok) return denyMesa(ws, 'grab', wid, 'held', { holder: res.holder });
+              broadcastToMesa(me.room, null, { type: 'mesa-grab', id: wid, by: peerId });
+              break;
+            }
+
+            case 'mesa-release': {
+              const me = peers.get(peerId);
+              if (!me || typeof msg.id !== 'string') return;
+              const wid = msg.id.slice(0, 32);
+              if (mesaGrabs.release(wid, peerId)) broadcastToMesa(me.room, null, { type: 'mesa-release', id: wid });
+              break;
+            }
+
+            // Arraste ao vivo: nao guardado, so para quem esta na Mesa, e so
+            // de quem tem a vez (que ele renova).
+            case 'mesa-drag': {
+              const me = peers.get(peerId);
+              if (!me || !me.mesaView || !mesaHit(peerId, 'drag')) return;
+              const wid = typeof msg.id === 'string' ? msg.id.slice(0, 32) : null;
+              const rect = mesaModel.normDragRect(msg);
+              if (!wid || !rect || !mesaGrabs.renew(wid, peerId, Date.now())) return;
+              broadcastToMesa(me.room, peerId, { type: 'mesa-drag', id: wid, ...rect, by: peerId });
+              break;
+            }
+
+            case 'cursor': {
+              const me = peers.get(peerId);
+              if (!me || !me.mesaView || !mesaHit(peerId, 'cursor')) return;
+              const point = mesaModel.normCursor(msg);
+              if (!point) return;
+              broadcastToMesa(me.room, peerId, { type: 'cursor', ...point, from: peerId });
+              break;
+            }
+
+            // Relogio do servidor para o YouTube junto: eco de t0 com a hora
+            // daqui. So para quem perguntou.
+            case 'time': {
+              const me = peers.get(peerId);
+              if (!me || typeof msg.t0 !== 'number' || !Number.isFinite(msg.t0) || !mesaHit(peerId, 'time')) return;
+              send(ws, { type: 'time', t0: msg.t0, server: Date.now() });
               break;
             }
 
@@ -1506,6 +1968,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               roomName: effectiveRoomName(hostPeer.room),
               bans: listBans(),
               chat: chatHistory.slice(),
+              // A mesa vai inteira (o sucessor a semeia como initialMesa) com
+              // o piso de ids: ver seedIdFloor.
+              mesa: { ...mesaModel.snapshot(mesaState), idFloor: nextId },
             });
           }
           log(`sala encerrada: room-closed para ${wss.clients.size} conexao(oes)`);
@@ -1535,6 +2000,8 @@ module.exports = {
   sanitizeAnnotateSnapshotItem,
   sanitizeInitialBan,
   sanitizeInitialChatEntry,
+  sanitizeInitialMesa,
+  seedIdFloor,
   clampDim,
   normalizeRoomName,
   MAX_IMAGE_CHARS,
