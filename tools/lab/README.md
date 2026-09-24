@@ -48,6 +48,7 @@ mesmo com as verificações passando.
 | `origem-parada` | a captura congela: diagnóstico "origem", "Ana parou de enviar imagem", e o aviso sai quando ela volta |
 | `perda-udp` | 3% de perda por 20 s: a imagem segue e ninguém refaz a conexão por engano |
 | `lider-cai` | o PC de quem criou a sala morre (SIGKILL): os outros migram e o vídeo entre eles continua |
+| `sala-de-6` | 6 PCs: a origem manda pra 2 relays (2 encoders, não 3), cada um repassa, a topologia fica parada; um relay cai e as órfãs voltam sem mexer nas folhas do outro |
 
 ## Escrever um cenário
 

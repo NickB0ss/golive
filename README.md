@@ -339,20 +339,23 @@ em alguns players/DACs), o loopback vem mudo.
 Desde a v0.1.5 a transmissão **não é malha pura**. Existe uma árvore de
 retransmissão, **sempre ligada** — `cfg.network.tree` é forçado em `true` no
 carregamento do config e não há interruptor na UI. Ela tem exatamente um
-nível: **origem → relay → folha**. A origem manda pra **um** relay
-(`FANOUT_ORIGEM = 1`); cada relay atende no máximo **dois** filhos
-(`FANOUT_RELAY = 2`); a profundidade não passa de **2**
-(`PROFUNDIDADE_MAX = 2`, que é o freio de latência e a garantia contra ciclo).
+nível: **origem → relay → folha**. A origem manda pra até **dois** relays
+(`FANOUT_ORIGEM = 2`); cada relay atende no máximo **dois** filhos
+(`FANOUT_RELAY = 2`); a profundidade não passa de **2** — por construção: um
+relay sempre pendura na origem e uma folha nunca tem filho, o que é o freio de
+latência e a garantia contra ciclo. O segundo relay só abre quando o primeiro
+não cobre a sala (a partir de 4 espectadores).
 
 O relay é escolhido pela **saúde de encode** do candidato (encoder em software
 é penalizado, `msPerFrame` acima do orçamento de 60 fps é penalidade), com RTT
 só como desempate — o gargalo medido é o encoder do relay, não a rede.
 
-**O teto real é ~4 pessoas** (origem + 3 espectadores, que cabem exatamente
-como 1 relay + 2 folhas). Quem sobra vira `direct` e recebe oferta direta da
-origem — ou seja, volta a custar um encoder na origem por espectador, que é
-exatamente o problema que a árvore existe pra resolver. Com 6 espectadores:
-1 relay + 2 folhas + 3 diretos = 4 encoders na origem.
+**O teto real é ~7 pessoas** (origem + 6 espectadores, que cabem exatamente
+como 2 relays + 4 folhas, com 2 encoders na origem). Quem sobra vira `direct`
+e recebe oferta direta da origem — ou seja, volta a custar um encoder na
+origem por espectador, que é exatamente o problema que a árvore existe pra
+resolver. Com 8 espectadores: 2 relays + 4 folhas + 2 diretos = 4 encoders na
+origem.
 
 ### Se a turma crescer além disso
 

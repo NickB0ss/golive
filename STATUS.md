@@ -24,7 +24,10 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Áudio de sistema por loopback; áudio por processo (incluir só o Discord)
   quando o addon nativo está compilado.
 - Árvore de retransmissão **sempre ligada** (origem → relay → folha,
-  fanout 1/2, profundidade 2). Teto prático ~4 pessoas.
+  fanout 2/2, profundidade 2). Dois relays a partir da sala de 5: a sala de 6
+  custa 2 encoders na origem em vez de 3, e a de 7 cabe sem ninguém direto.
+  Teto prático ~6-7 pessoas (visto no laboratório com 6; não testado com PCs
+  reais).
 - Qualidade escolhida em **dois eixos** no diálogo de compartilhar
   (Resolução × Fluidez, um controle segmentado cada, em vez dos seis chips
   numa grade de três colunas): os presets são uma matriz 3×2 sem célula
@@ -217,9 +220,10 @@ Fica para depois das medições o C4 (canvas no repasse, depende do M2).
 `npm run lab` (ver `tools/lab/README.md`): várias instâncias do app no
 Linux, cada uma num Xvfb, com captura falsa de canvas e falhas de rede de
 verdade (`iptables` no loopback). Roda na CI (`.github/workflows/lab.yml`).
-Seis cenários: sala de 4 com relay da árvore, queda de UDP curta (C5) e
-longa (diagnóstico "rede" e aviso no tile), origem parada, 3% de perda, e o
-**PC do líder caindo** (SIGKILL) com migração. Não testa encoder de hardware,
+Sete cenários: sala de 4 com relay da árvore, queda de UDP curta (C5) e
+longa (diagnóstico "rede" e aviso no tile), origem parada, 3% de perda, o
+**PC do líder caindo** (SIGKILL) com migração, e a **sala de 6** com dois
+relays (um deles derrubado no meio). Não testa encoder de hardware,
 WGC nem VPN de verdade. O que ele já mediu:
 
 - a migração abrupta leva **~60 s** mesmo com o PC morto recusando na hora
@@ -248,7 +252,13 @@ WGC nem VPN de verdade. O que ele já mediu:
   mesh refaz a conexão aos ~22 s, e a nova, que nunca conectou, ainda é
   refeita uma vez durante a queda (comportamento antigo, fora deste
   conserto);
-- achou e corrigiu um erro do C3: queda de rede saía como "origem parou".
+- achou e corrigiu um erro do C3: queda de rede saía como "origem parou";
+- com a sala de 6, achou que a árvore **trocava de relay a cada janela de
+  histerese** (~8 s) sem ninguém entrar ou sair: o relay anunciava como carga
+  os filhos que a própria origem lhe tinha dado, e a origem o mandava pro fim
+  da fila. Pela mesma conta valia pro relay único da sala de 4 (o cenário
+  `sala-basica` acaba antes de ver). Corrigido junto do
+  fanout 2 (a origem desconta a própria parte do `relayLoad`).
 
 ## Próximos passos
 
@@ -266,7 +276,10 @@ WGC nem VPN de verdade. O que ele já mediu:
   antes de migrar quando o lider cai (a outra, nao refazer a conexao com
   diagnostico "rede", esta feita; revisar o limite de 25 s na noite de
   teste);
-- Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
+- Frente C, o que sobrou: D1 (quebrar o `app.js`). O fanout 2 na origem
+  entrou (laboratório `sala-de-6`); falta vê-lo numa sala real de 5-6 PCs,
+  olhando no log de quem transmite quantas linhas `[diag] tela->` saem (2) e
+  se o relay escolhido muda sem ninguém entrar ou sair (não deveria);
 - acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
   Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
   sala achada por sonda, aviso de amigo fora do ar).
