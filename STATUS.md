@@ -107,13 +107,13 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.20.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+`0.21.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
 Testes: `node --test` → **1010 testes, 1010 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
 `npm audit --omit=dev` → **0**. `npm audit` completo → **0**. Branches
-mescladas no remoto ainda não apagadas: **14**.
+mescladas no remoto ainda não apagadas: **15**.
 
 ### Frente 0 (auditoria 2026-09-18)
 
@@ -326,6 +326,38 @@ mediu:
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
+
+## Lançado na 0.21.0 (2026-09-24)
+
+Quatro frentes em paralelo sobre o que a análise de 23/09 e a auditoria de
+18/09 deixaram pendente: rede, migração, árvore e acabamento da interface.
+
+**Queda de rede não refaz mais a conexão à toa.** Com diagnóstico "rede" numa
+conexão que já mostrou imagem, o vigia de tela assistida segura a reoferta e
+deixa o reinício de ICE (da 0.20.0) agir, em vez de recomeçar do zero e
+gastar uma das 3 tentativas. No laboratório, queda-longa foi de 3/3 conexões
+refeitas para 0/3.
+
+**Migrar em segundos quando o líder morreu de verdade.** Quando o app do
+líder cai mas o PC continua na rede, a porta da sala recusa na hora (RST); o
+processo principal agora testa isso direto (`net:tcp-check`) e duas recusas
+seguidas pulam a escada de reconexão inteira. No laboratório: 61,7 s → 4,8 s.
+Uma rota caída (timeout, sem rota) não produz recusa, então continua pela
+escada normal — a proteção contra queda curta não muda.
+
+**Fanout 2 na origem.** A árvore agora pode abrir um segundo relay a partir
+da origem quando o primeiro não cobre a sala (sala de 6 custa 2 encoders na
+origem em vez de 3; sala de 7 fica sem ninguém direto). Testado no
+laboratório (`sala-de-6`, dois relays, um caindo).
+
+**Acabamento da interface (P3).** Espiar segue o tema e o acento escolhidos
+em vez de ficar preso à paleta padrão; Tab não cai mais no campo de arquivo
+invisível do chat; a sala ganhou `h1` com o nome pra quem navega por
+títulos; 132 `font-size` soltos viraram 8 degraus de escala (`--fs-*`) e os
+espaçamentos em px que já batiam com a escala passaram a usar `var(--s-*)`;
+33 seletores CSS repetidos em blocos diferentes viraram um bloco só.
+
+**Não testado com 2+ PCs reais.**
 
 ## Lançado na 0.20.0 (2026-09-24)
 
