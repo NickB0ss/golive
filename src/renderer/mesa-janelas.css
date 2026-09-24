@@ -196,6 +196,66 @@
   .mj-nota .mj-nota-rodape:not(:has(.is-passou)) { display: none; }
 }
 
+/* ---------- Segmentado (modo, duracoes) ---------- */
+
+.mj-segs {
+  display: flex; gap: var(--s-05); padding: var(--s-05);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj .mj-seg {
+  min-height: 32px; padding: 0 var(--s-2);
+  background: transparent; border-color: transparent;
+  color: var(--tx2); font-size: var(--fs-small);
+}
+.mj .mj-seg:hover:not([aria-disabled="true"]) { background: var(--s3); color: var(--tx); }
+.mj .mj-seg[aria-pressed="true"] { background: var(--s4); color: var(--tx); }
+
+/* ---------- Cronometro ---------- */
+
+.mj-cron-nome { flex: 1; }
+.mj-cron-relogio {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-2);
+}
+.mj-cron-tempo {
+  font: 700 clamp(var(--fs-hero), min(32cqh, 22cqw), calc(var(--fs-hero) * 5)) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.mj-cron-barra {
+  width: min(100%, calc(var(--s-7) * 6)); height: 4px;
+  border-radius: var(--r-full);
+  background: var(--s3);
+  overflow: hidden;
+}
+.mj-cron-barra i {
+  display: block; height: 100%;
+  background: var(--tx2);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+.mj-cronometro.is-up .mj-cron-barra { visibility: hidden; }
+.mj-cronometro.is-fim .mj-cron-tempo { color: var(--warn); }
+.mj-cron-pre { justify-content: center; flex-wrap: wrap; }
+.mj-cron-pre[hidden] { display: none; }
+.mj-cron-pre .mj-seg { background: var(--s2); border-color: var(--line); }
+.mj-cron-ctrl { justify-content: center; }
+.mj-cron-ctrl .mj-pri { min-width: calc(var(--s-7) * 2); }
+.mj-cronometro .mj-aviso { justify-content: center; }
+
+@container mj (max-height: 190px) {
+  .mj-cronometro .mj-sec { display: none; }
+}
+@container mj (max-width: 300px) {
+  .mj-cronometro .mj-cron-ctrl .mj-sec { display: none; }
+  .mj-cronometro .mj-cron-zerar span { display: none; }
+  .mj-cronometro .mj-cron-zerar { width: 36px; padding: 0; }
+}
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {
