@@ -18,8 +18,8 @@ contextBridge.exposeInMainWorld('golive', {
 
   /** Sobe o servidor de sinalizacao embutido e devolve o endereco pronto.
    * Aceita { name, advertise } e, numa migracao, os seeds opcionais { roomId,
-   * pin, initialTransferredTo, initialBans, initialChatHistory } para retomar
-   * uma sala existente em vez de criar uma sala nova do zero. */
+   * pin, initialTransferredTo, initialBans, initialChatHistory, initialMesa }
+   * para retomar uma sala existente em vez de criar uma sala nova do zero. */
   hostRoom: (payload) => ipcRenderer.invoke('room:host', payload),
 
   /** Informa ao main se a janela esta dentro de uma sala. */

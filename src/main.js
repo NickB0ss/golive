@@ -1078,7 +1078,7 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 });
 
 ipcMain.handle('room:host', async (_event, {
-  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory, preferredPort,
+  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory, initialMesa, preferredPort,
 } = {}) => {
   if (embeddedServerHosting) return embeddedServerHosting;
   embeddedServerHosting = (async () => {
@@ -1101,6 +1101,9 @@ ipcMain.handle('room:host', async (_event, {
       initialTransferredTo,
       initialBans,
       initialChatHistory,
+      // A mesa da sala que caiu (room-migrating.mesa), limpa pelo servidor
+      // como o historico do chat. Ver sanitizeInitialMesa.
+      initialMesa,
       appVersion: app.getVersion(),
       log: (...a) => logger.log('[servidor]', ...a),
     }), {

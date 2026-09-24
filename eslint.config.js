@@ -260,6 +260,23 @@ module.exports = [
   // `module` entra porque o arquivo tambem e carregado pelo `node --test`:
   // o AudioWorklet nao tem require, entao o buffer circular mora nele mesmo
   // e so da pra cobrir exportando sob `typeof module !== 'undefined'`.
+  // Tipos de janela da Mesa: o mesmo UMD do renderer, carregado tambem pelo
+  // servidor de sinalizacao. So o registro (index.js) usa `require`, e so
+  // quando esta em Node.
+  {
+    files: ['src/renderer/mesa-modules/*.js'],
+    ignores: ['src/renderer/mesa-modules/*.test.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        module: 'readonly',
+        global: 'readonly',
+        require: 'readonly',
+      },
+    },
+  },
+
   {
     files: ['src/renderer/pcm-injector-worklet.js'],
     languageOptions: {

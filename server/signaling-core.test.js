@@ -3145,3 +3145,135 @@ test('sanitizadores das seeds descartam ban e chat invalidos sem coercao', () =>
   assert.equal(sanitizeInitialChatEntry({ type: 'chat', system: true, event: 42 }), null);
   assert.equal(sanitizeInitialChatEntry({ type: 'chat', system: true, event: 'evento-inventado' }), null);
 });
+
+// ---------------------------------------------------------------------------
+// Mesa (o caminho inteiro esta em signaling-mesa-e2e.test.js)
+// ---------------------------------------------------------------------------
+
+test('sanitizeInitialMesa: so janelas da sala sobrevivem; tela e camera saem; owner vira null', () => {
+  const { sanitizeInitialMesa } = require('./signaling-core');
+  const got = sanitizeInitialMesa({
+    seq: 12,
+    leaderOnly: true,
+    lockSize: true,
+    idFloor: 40,
+    windows: [
+      { id: 'n1', type: 'nota', owner: '3', x: 0, y: 0, w: 320, h: 240, state: { text: 'fica', by: '3', rev: 1 } },
+      { id: 't1', type: 'tela', owner: '3', x: 1000, y: 0, w: 640, h: 360, state: { peerId: '3', kind: 'screen' } },
+      { id: 'c1', type: 'camera', owner: '4', x: 2000, y: 0, w: 320, h: 240, state: { peerId: '4', kind: 'camera' } },
+      { id: 'x1', type: 'foguete', owner: '3', x: 3000, y: 0, w: 320, h: 240, state: {} },
+      { id: 'n2', type: 'nota', owner: '3', x: 0, y: 1000, w: 100, h: 100, state: {} }, // menor que o minimo da nota
+      { id: 'n3', type: 'nota', owner: '3', x: 0, y: 2000, w: 320, h: 240, state: { text: 'x'.repeat(20000) } }, // passa do teto
+    ],
+  });
+  assert.deepEqual(got, {
+    seq: 12,
+    leaderOnly: true,
+    lockSize: true,
+    windows: [{ id: 'n1', type: 'nota', owner: null, x: 0, y: 0, w: 320, h: 240, state: { text: 'fica', by: '3', rev: 1 } }],
+  });
+  assert.deepEqual(sanitizeInitialMesa('lixo'), { seq: 0, leaderOnly: false, lockSize: false, windows: [] });
+});
+
+test('seedIdFloor: piso de ids do servidor novo pela dica, pelo chat e pelas janelas', () => {
+  const { seedIdFloor } = require('./signaling-core');
+  assert.equal(seedIdFloor(undefined, undefined), 1);
+  assert.equal(seedIdFloor({ idFloor: 40 }, []), 40);
+  assert.equal(seedIdFloor({ idFloor: 'x', windows: [{ owner: '9' }] }, [{ from: '12', id: '30' }]), 31);
+  assert.equal(seedIdFloor({ idFloor: 1e15 }, [{ from: '01' }, { from: '99999999999999' }]), 1, 'lixo e id enorme nao viram piso');
+});
+
+test('modulo de janela que lanca vira recusa, nao queda do servidor', async () => {
+  const registry = require('../src/renderer/mesa-modules/index');
+  registry.register({
+    type: 'testebomba',
+    title: 'Bomba',
+    group: 'ferramentas',
+    size: { w: 200, h: 200, minW: 100, minH: 100, aspect: null },
+    maxStateBytes: 256,
+    init: () => ({ n: 0 }),
+    validate: (s, a) => {
+      if (a.kind === 'validate') throw new Error('bum');
+      return true;
+    },
+    prepare: (s, a) => {
+      if (a.kind === 'prepare') throw new Error('bum');
+      return a;
+    },
+    reduce: (s, a) => {
+      if (a.kind === 'reduce') throw new Error('bum');
+      if (a.kind === 'grande') return { lixo: 'x'.repeat(1000) };
+      return { n: s.n + 1 };
+    },
+  });
+  const linhas = [];
+  const server = await createSignalingServer({ port: 0, log: (...a) => linhas.push(a.join(' ')) });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+    a.send(JSON.stringify({ type: 'mesa-view', on: true }));
+    await once(a, 'mesa-sync');
+    a.send(JSON.stringify({ type: 'mesa', op: 'add', win: { type: 'testebomba', x: 0, y: 0, w: 200, h: 200 } }));
+    const add = await once(a, 'mesa');
+    for (const [kind, reason] of [['validate', 'error'], ['prepare', 'error'], ['reduce', 'error'], ['grande', 'state-too-big']]) {
+      a.send(JSON.stringify({ type: 'mesa', op: 'act', id: add.win.id, action: { kind } }));
+      const denied = await once(a, 'mesa-denied');
+      assert.equal(denied.reason, reason, kind);
+    }
+    a.send(JSON.stringify({ type: 'mesa', op: 'act', id: add.win.id, action: { kind: 'ok' } }));
+    const ok = await once(a, 'mesa');
+    assert.equal(ok.seq, 2);
+    assert.ok(linhas.some((l) => l.includes('testebomba') && l.includes('validate')));
+    a.close();
+  } finally {
+    await server.close();
+  }
+});
+
+/** Proxima mensagem do tipo que casa com `pred`. */
+function onceWhere(ws, type, pred) {
+  return new Promise((resolve) => {
+    function onMessage(raw) {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === type && pred(msg)) {
+        ws.off('message', onMessage);
+        resolve(msg);
+      }
+    }
+    ws.on('message', onMessage);
+  });
+}
+
+test('retomada tira a pessoa da vista Mesa ate ela pedir de novo (o que foi para o socket morto se perdeu)', async () => {
+  const server = await createSignalingServer({ port: 0, resumeGraceMs: 5000 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await Promise.all([new Promise((r) => a.once('open', r)), new Promise((r) => b.once('open', r))]);
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', clientId: 'cli-a' }));
+    const wa = await once(a, 'welcome');
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bia' }));
+    await once(b, 'welcome');
+    const viuAna = onceWhere(b, 'mesa-viewers', (m) => m.peers.includes(wa.id));
+    a.send(JSON.stringify({ type: 'mesa-view', on: true }));
+    await viuAna;
+    const saiu = onceWhere(b, 'mesa-viewers', (m) => m.peers.length === 0);
+    a.terminate(); // 1006: suspende, continua na Mesa ate voltar
+    const a2 = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a2.once('open', r));
+    a2.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana', clientId: 'cli-a', resumeToken: wa.resumeToken }));
+    const w2 = await once(a2, 'welcome');
+    assert.equal(w2.resumed, true);
+    assert.deepEqual(w2.mesaViewers, []);
+    await saiu;
+    a2.send(JSON.stringify({ type: 'mesa-view', on: true }));
+    const volta = await once(a2, 'mesa-sync');
+    assert.deepEqual(volta.mesa.windows, []);
+    a2.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
