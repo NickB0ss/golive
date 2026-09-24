@@ -196,7 +196,7 @@
     <header id="stage-header" class="stage-header hidden">
       <span id="stage-status-dot" class="stage-status-dot"></span>
       <div class="stage-title-group">
-        <span id="stage-room-name" class="stage-room-name"></span>
+        <h1 id="stage-room-name" class="stage-room-name"></h1>
         <span id="stage-member-count" class="stage-member-count">0 pessoas</span>
       </div>
       <span id="stage-room-address" class="stage-room-address"></span>
@@ -298,7 +298,7 @@
         <button id="btn-chat-send" class="chat-compose-btn chat-send-btn" type="button" title="Enviar mensagem" aria-label="Enviar mensagem" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9z"/></svg>
         </button>
-        <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden" />
+        <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden" tabindex="-1" aria-hidden="true" />
       </form>
     </div>
   </aside>

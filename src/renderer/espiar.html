@@ -7,7 +7,9 @@
 <style>
   @font-face { font-family: 'Outfit'; font-style: normal; font-weight: 600 800; font-display: swap; src: url('assets/fonts/outfit-latin.woff2') format('woff2'); }
   @font-face { font-family: 'Work Sans'; font-style: normal; font-weight: 400 600; font-display: swap; src: url('assets/fonts/worksans-latin.woff2') format('woff2'); }
-  :root { --spy-bg: #0A0A0F; --spy-fg: #EDEDF2; --spy-muted: #A3A3B8; --spy-control: #16161F; --spy-hover: #292936; }
+  /* Padrao = tema GoLive. O tema escolhido chega da janela principal
+     (espiar.js, SPY_THEME_VARS) e sobrescreve estes valores inline. */
+  :root { --spy-bg: #0A0A0F; --spy-fg: #EDEDF2; --spy-muted: #A3A3B8; --spy-control: #16161F; --spy-hover: #292936; --spy-act: #5B4BE8; }
   * { box-sizing: border-box; }
   html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--spy-bg); color: var(--spy-fg); font: 13px 'Work Sans', system-ui, sans-serif; }
   #video { width: 100%; height: 100%; object-fit: contain; background: var(--spy-bg); }
@@ -16,7 +18,7 @@
   body:hover #controls, #controls:focus-within { opacity: 1; }
   button { width: 28px; height: 24px; border: 0; border-radius: 4px; background: var(--spy-control); color: var(--spy-fg); cursor: pointer; -webkit-app-region: no-drag; }
   button:hover { background: var(--spy-hover); }
-  button:focus-visible { outline: 2px solid var(--spy-fg); outline-offset: 2px; }
+  button:focus-visible { outline: 2px solid var(--spy-act); outline-offset: 2px; }
   #state { position: fixed; inset: auto 0 0; padding: 10px; text-align: center; background: var(--spy-bg); color: var(--spy-muted); display: none; }
   #state.visible { display: block; }
   @media (prefers-reduced-motion: reduce) { #controls { transition: none; } }
@@ -27,6 +29,7 @@
 <div id="drag"></div>
 <div id="controls"><button id="back" type="button" aria-label="Voltar ao GoLive" title="Voltar ao GoLive">↩</button><button id="close" type="button" aria-label="Fechar espiar" title="Fechar">×</button></div>
 <div id="state" role="status"></div>
+<script src="espiar.js"></script>
 <script src="espiar-page.js"></script>
 </body>
 </html>

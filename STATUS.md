@@ -108,7 +108,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 ## Versão atual
 
 `0.20.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **1001 testes, 1001 passando, 0 falhando**. `npm run lint` → 0
+Testes: `node --test` → **1010 testes, 1010 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
@@ -314,9 +314,15 @@ mediu:
   entrou (laboratório `sala-de-6`); falta vê-lo numa sala real de 5-6 PCs,
   olhando no log de quem transmite quantas linhas `[diag] tela->` saem (2) e
   se o relay escolhido muda sem ninguém entrar ou sair (não deveria);
-- acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
-  Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
-  sala achada por sonda, aviso de amigo fora do ar).
+- acabamento P3 da interface feito (Espiar segue o tema, Tab nao cai no
+  campo de arquivo do chat, h1 na sala, escalas `--fs-*` e `--s-05`/`--s-15`,
+  33 seletores repetidos consolidados, com testes que travam a regressao).
+  Sobrou o que muda o pixel e pede decisao de design: 15px/17px de fonte
+  (juntar com 16/18), 97 espacamentos fora da escala (5, 10, 3, 7px...) e
+  os pesos 550/650; o flash escuro do Espiar antes de carregar (o main
+  nao conhece o tema, igual a janela principal). O resto da P2 da Frente B
+  (selo de sala achada por sonda, aviso de amigo fora do ar) saiu junto com
+  os Amigos salvos: a sonda so serve a migracao.
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.

@@ -291,8 +291,8 @@ class Instancia {
     });
   }
 
-  js(codigo) {
-    return this.chamar('js', { codigo });
+  js(codigo, janela) {
+    return this.chamar('js', { codigo, janela });
   }
 
   esperar(expr, timeoutMs, descricao) {
@@ -307,8 +307,8 @@ class Instancia {
     return ate(() => this.achar(re, desde)[0], { timeoutMs, descricao: `${this.nome}: log ${descricao}` });
   }
 
-  async print(nome) {
-    return this.chamar('print', { caminho: path.join(this.dir, `${nome}.png`) }, 20000).catch(() => null);
+  async print(nome, janela) {
+    return this.chamar('print', { caminho: path.join(this.dir, `${nome}.png`), janela }, 20000).catch(() => null);
   }
 
   // ---------- Acoes do app ----------

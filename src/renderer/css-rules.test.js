@@ -102,6 +102,115 @@ test('style.css respeita piso de 11px e nao usa backdrop-filter', () => {
   assert.deepEqual(rules.filter(({ property }) => property === 'backdrop-filter'), [], 'backdrop-filter e proibido');
 });
 
+// Tamanhos de fonte fora da escala --fs-*, cada um com o porque. Qualquer
+// font-size literal novo reprova: ou usa um token, ou entra aqui explicado.
+const FONT_SIZE_FORA_DA_ESCALA = new Map([
+  // Relativos ao pai, nao um tamanho: seguem o texto em volta.
+  ['.small', '0.85em'],
+  ['.hint', '0.85em'],
+  // 15px e 17px: juntar com 16/18 (a proposta B2 da auditoria) muda o
+  // pixel, e o acabamento P3 nao podia mudar o visual. Decisao de design.
+  ['.app-brand-name', '15px'],
+  ['.room-badge', '15px'],
+  ['.peer-avatar-fallback', '15px'],
+  ['.tile-paused-title', '15px'],
+  ['.tile-gate-title', '15px'],
+  ['.dialog-box h2', '17px'],
+  ['.picker-box h2', '17px'],
+  ['.tile-gate-avatar', '17px'],
+  ['.room-card .room-badge', '17px'],
+  ['.warn-center-dismiss', '17px'],
+  ['.tile-react-btn', '17px'],
+  // Glifos, nao texto: o emoji da grade e o "+" do PiP.
+  ['.emoji-item', '19px'],
+  ['.pip-add-btn', '20px'],
+  // Titulos grandes de uso unico, entre os degraus 18 e 22 / 22 e 28.
+  ['.rooms-empty-title', '20px'],
+  ['.lobby-title', '26px'],
+  // Cresce com o tile (reacao) e some (feedback de copiado no botao).
+  ['.tile-react-pop', 'clamp(14px, 5vw, 48px)'],
+  ['.my-theme-menu-btn.copied-flash', '0'],
+]);
+
+test('font-size usa a escala de tokens (B2)', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const rules = declarations(css);
+  const tokens = new Map(rules
+    .filter(({ property, stack }) => property.startsWith('--fs-') && isRootBlock(stack))
+    .map(({ property, value }) => [property, value]));
+  assert.ok(tokens.size >= 6, 'a escala --fs-* precisa existir no :root');
+  for (const [name, value] of tokens) {
+    assert.match(value, /^\d+px$/, `${name} precisa ser px inteiro (sem meio-pixel)`);
+    assert.ok(Number.parseInt(value, 10) >= 11, `${name} abaixo do piso de 11px`);
+  }
+
+  const soltos = [];
+  for (const { property, value, stack, line } of rules) {
+    if (property !== 'font-size' || isRootBlock(stack)) continue;
+    const token = value.match(/^var\((--fs-[\w-]+)\)$/)?.[1];
+    if (token) {
+      assert.ok(tokens.has(token), `${line}: ${token} nao existe no :root`);
+      continue;
+    }
+    if (FONT_SIZE_FORA_DA_ESCALA.get(stack.at(-1)) === value) continue;
+    soltos.push(`${line}: ${stack.at(-1)} -> ${value}`);
+  }
+  assert.deepEqual(soltos, [], `font-size sem token (use var(--fs-*) ou explique em FONT_SIZE_FORA_DA_ESCALA): ${soltos.join('; ')}`);
+  assert.ok(!/font-size:\s*\d+\.\d+px/.test(css), 'meio-pixel em font-size voltou');
+});
+
+test('espacamento em px que bate com a escala usa o token (B3)', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const rules = declarations(css);
+  const escala = new Map(rules
+    .filter(({ property, stack }) => /^--s-\d+$/.test(property) && isRootBlock(stack))
+    .map(({ property, value }) => [Number.parseFloat(value), property]));
+  assert.ok(escala.has(2) && escala.has(6) && escala.has(8), 'a escala --s-* precisa existir no :root');
+
+  const espacamento = /^(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z-]+)?$/;
+  const literais = [];
+  const foraDaEscala = [];
+  for (const { property, value, stack, line } of rules) {
+    if (!espacamento.test(property) || isRootBlock(stack)) continue;
+    for (const [, px] of value.matchAll(/(?:^|[\s(,])(\d+(?:\.\d+)?)px\b/g)) {
+      const token = escala.get(Number(px));
+      if (token) literais.push(`${line}: ${stack.at(-1)} { ${property}: ${value} } -> ${px}px e var(${token})`);
+      else foraDaEscala.push(px);
+    }
+  }
+  assert.deepEqual(literais, [], `px na mao onde ja existe token: ${literais.join('; ')}`);
+  // Os que nao batem com degrau nenhum (1, 3, 5, 7, 9, 10px...) ficaram
+  // literais no acabamento P3: arredondar muda o pixel. O numero so pode
+  // descer -- espacamento novo nasce da escala.
+  assert.ok(foraDaEscala.length <= 97, `espacamento fora da escala subiu para ${foraDaEscala.length} (maximo 97)`);
+});
+
+// Seletores que ainda aparecem em dois blocos, cada um com o porque. O
+// resto do arquivo segue "um seletor, um bloco" (B1): uma segunda regra pro
+// mesmo seletor e o que deixava `.control-btn-end` com duas aparencias
+// conflitantes e so a ultima valendo.
+const SELETOR_REPETIDO_PERMITIDO = new Set([
+  // box-sizing no topo; a barra de rolagem fina fica junto das regras
+  // ::-webkit-scrollbar, que e onde quem procura a barra vai olhar.
+  '*',
+]);
+
+test('cada seletor e escrito num bloco so (B1)', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const vistos = new Map();
+  for (const { stack, block, line } of declarations(css)) {
+    const selector = stack.at(-1);
+    if (!selector || selector.startsWith('@') || /^(from|to|\d+%)$/.test(selector)) continue;
+    const key = `${stack.slice(0, -1).join(' > ')} || ${selector.replace(/\s+/g, ' ')}`;
+    if (!vistos.has(key)) vistos.set(key, new Map());
+    if (!vistos.get(key).has(block)) vistos.get(key).set(block, line);
+  }
+  const repetidos = [...vistos]
+    .filter(([key, blocks]) => blocks.size > 1 && !SELETOR_REPETIDO_PERMITIDO.has(key.split(' || ')[1]))
+    .map(([key, blocks]) => `${key.split(' || ')[1]} (linhas ${[...blocks.values()].join(', ')})`);
+  assert.deepEqual(repetidos, [], `seletor escrito em mais de um bloco -- junte no bloco do componente: ${repetidos.join('; ')}`);
+});
+
 test('cores literais ficam restritas aos tokens dos blocos de tema', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const literal = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl)\(/i;
@@ -246,4 +355,31 @@ test('elemento que nasce com o atributo hidden nao reaparece por causa do displa
     }
   }
   assert.deepEqual(missing, [], `faltam regras [hidden] { display: none } para: ${missing.join(', ')}`);
+});
+
+test('controle escondido com visually-hidden fica fora da ordem do Tab (A14)', () => {
+  // .visually-hidden esconde mas deixa focavel: o Tab pousava no
+  // #chat-file e o foco sumia da tela (anel dentro de 1x1px recortado). O
+  // botao visivel (#btn-chat-attach) e quem abre o seletor; clique
+  // programatico, Ctrl+V e arrastar nao dependem do foco do input.
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const focaveis = [];
+  for (const [tag] of html.matchAll(/<(?:input|button|select|textarea|a\s[^>]*href)[^>]*>/g)) {
+    if (!/\sclass="[^"]*\bvisually-hidden\b/.test(tag)) continue;
+    if (!/\stabindex="-1"/.test(tag)) focaveis.push(tag.match(/\sid="([^"]+)"/)?.[1] || tag);
+  }
+  assert.deepEqual(focaveis, [], `controle invisivel alcancavel pelo Tab: ${focaveis.join(', ')}`);
+});
+
+test('a tela da sala tem um h1 com o nome da sala, sem a margem do navegador (A16)', () => {
+  // O unico h1 era o do lobby, que fica display:none dentro da sala: quem
+  // navega por titulos caia num h2 e nao sabia em que sala estava.
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const sala = html.slice(html.indexOf('id="room-view"'));
+  const h1s = [...sala.matchAll(/<h1\b[^>]*>/g)].map(([tag]) => tag);
+  assert.equal(h1s.length, 1, 'a sala precisa de exatamente um h1');
+  assert.match(h1s[0], /id="stage-room-name"/, 'o h1 da sala e o nome dela');
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const margem = declarations(css).filter(({ property, stack }) => property === 'margin' && selectorParts(stack.at(-1) || '').includes('.stage-room-name'));
+  assert.ok(margem.some(({ value }) => value === '0'), 'o h1 da sala precisa zerar a margem padrao do navegador');
 });
