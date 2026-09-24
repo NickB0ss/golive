@@ -256,6 +256,76 @@
   .mj-cronometro .mj-cron-zerar { width: 36px; padding: 0; }
 }
 
+/* ---------- Nome de pessoa na cor dela ----------
+   Misturado ao --tx: no escuro puxa para a cor, no Papel escurece o
+   bastante para ler (o gelo e o ambar puros somem no fundo claro). */
+
+.mj .is-pessoa > .mj-chip-nome,
+.mj .is-pessoa > span:not(.mj-dot) {
+  color: color-mix(in srgb, var(--mj-cor) 62%, var(--tx));
+  font-weight: 600;
+}
+
+/* ---------- Sorteio ---------- */
+
+.mj-sort-corpo {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--s-3);
+  margin: 0 calc(-1 * var(--s-1));
+  padding: 0 var(--s-1);
+}
+.mj-sort-times, .mj-sort-nomes { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.mj-sort-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--s-7) * 3), 1fr));
+  gap: var(--s-2);
+}
+.mj-sort-time {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj-sort-time h4 { margin: 0 0 var(--s-1); font: 700 var(--fs-body) 'Outfit', system-ui, sans-serif; color: var(--tx2); }
+.mj-sort-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-05); }
+.mj-sort-lista li { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-body); }
+.mj-sort-lista li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-dot.is-vazio { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tx3); }
+.mj-sort-time.is-entra {
+  animation: mj-entra var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--mj-i, 0) * 60ms);
+}
+@keyframes mj-entra {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+.mj-sort-times .mj-dica[hidden] { display: none; }
+
+.mj-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.mj-chip {
+  display: inline-flex; align-items: center; gap: var(--s-15);
+  max-width: 100%;
+  padding: 0 var(--s-05) 0 var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--fs-small);
+}
+.mj-chip .mj-dot { width: 8px; height: 8px; }
+.mj-chip .mj-dot[hidden] { display: none; }
+.mj-chip-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-chip .mj-mini { border-radius: var(--r-full); }
+.mj-sort-acoes .mj-btn { min-height: 32px; font-size: var(--fs-small); }
+
+@container mj (min-width: 600px) {
+  .mj-sort-corpo { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+}
+@container mj (max-height: 300px) {
+  .mj-sorteio.tem-times .mj-sort-nomes .mj-sort-acoes { display: none; }
+}
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {
