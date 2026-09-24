@@ -212,7 +212,7 @@ module.exports = [
 
   // Processo principal, server/ e os scripts de build: CommonJS puro no Node.
   {
-    files: ['src/main.js', 'src/main/**/*.js', 'server/**/*.js', 'scripts/**/*.js', 'eslint.config.js'],
+    files: ['src/main.js', 'src/main/**/*.js', 'server/**/*.js', 'scripts/**/*.js', 'tools/**/*.js', 'eslint.config.js'],
     languageOptions: { sourceType: 'commonjs', globals: globals.node },
   },
 

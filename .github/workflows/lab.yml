@@ -1,0 +1,46 @@
+name: laboratorio
+
+# H15: o app inteiro rodando em varias instancias, com rede falhando de
+# verdade. Separado do ci.yml porque roda em Linux e leva alguns minutos;
+# ver tools/lab/README.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  laboratorio:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Sem scripts pelo mesmo motivo do ci.yml (o binding.gyp dispararia um
+      # node-gyp rebuild do addon de Windows). O binario do Electron, que o
+      # postinstall baixaria, vem no passo seguinte.
+      - run: npm ci --ignore-scripts
+
+      - name: binario do Electron
+        run: node node_modules/electron/install.js
+
+      - name: Xvfb e bibliotecas do Electron
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libnss3 libgbm1 libasound2t64 libgtk-3-0t64
+
+      # iptables com `sudo -n` (o runner permite) pros cenarios de rede.
+      - run: npm run lab
+
+      - name: logs do laboratorio
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-out
+          path: lab-out/
+          retention-days: 7

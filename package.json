@@ -18,7 +18,8 @@
     "test": "node --test",
     "lint": "eslint .",
     "build:native": "node-gyp configure && node scripts/patch-clangcl-toolset.js && node-gyp build",
-    "release:check": "node scripts/check-release.js"
+    "release:check": "node scripts/check-release.js",
+    "lab": "node tools/lab/run.js"
   },
   "devDependencies": {
     "electron": "^44.4.1",

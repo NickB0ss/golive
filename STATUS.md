@@ -214,6 +214,28 @@ captura X11 do contêiner falha de forma intermitente também no código
 original, e `iptables` pra cortar o UDP). **Não testado com 2+ PCs reais.**
 Fica para depois das medições o C4 (canvas no repasse, depende do M2).
 
+### Laboratório automatizado (H15, ainda não lançado)
+
+`npm run lab` (ver `tools/lab/README.md`): várias instâncias do app no
+Linux, cada uma num Xvfb, com captura falsa de canvas e falhas de rede de
+verdade (`iptables` no loopback). Roda na CI (`.github/workflows/lab.yml`).
+Seis cenários: sala de 4 com relay da árvore, queda de UDP curta (C5) e
+longa (diagnóstico "rede" e aviso no tile), origem parada, 3% de perda, e o
+**PC do líder caindo** (SIGKILL) com migração. Não testa encoder de hardware,
+WGC nem VPN de verdade. O que ele já mediu:
+
+- a migração abrupta leva **~60 s** mesmo com o PC morto recusando na hora
+  (todos esgotam a escada de reconexão antes de migrar, por desenho, pra uma
+  queda de rota da VPN não partir a sala); com SYN sem resposta o pior caso
+  calculado passa de 2 min. O vídeo P2P continua nesse meio tempo, mas a
+  sala fica sem sinalização;
+- numa queda de ~9 s, o vigia de congelamento (6 s parado) às vezes refaz a
+  conexão antes do reinício de ICE (o Chromium leva 6,5 s pra declarar
+  `disconnected`, e o reinício vem 1 s depois). Refazer não ajuda quando o
+  diagnóstico é "rede" (a conexão nova precisa da mesma rede): candidato a
+  segurar a reoferta nesse caso;
+- achou e corrigiu um erro do C3: queda de rede saía como "origem parou".
+
 ## Próximos passos
 
 - **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
