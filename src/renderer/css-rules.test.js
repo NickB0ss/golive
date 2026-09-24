@@ -247,3 +247,17 @@ test('elemento que nasce com o atributo hidden nao reaparece por causa do displa
   }
   assert.deepEqual(missing, [], `faltam regras [hidden] { display: none } para: ${missing.join(', ')}`);
 });
+
+test('controle escondido com visually-hidden fica fora da ordem do Tab (A14)', () => {
+  // .visually-hidden esconde mas deixa focavel: o Tab pousava no
+  // #chat-file e o foco sumia da tela (anel dentro de 1x1px recortado). O
+  // botao visivel (#btn-chat-attach) e quem abre o seletor; clique
+  // programatico, Ctrl+V e arrastar nao dependem do foco do input.
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const focaveis = [];
+  for (const [tag] of html.matchAll(/<(?:input|button|select|textarea|a\s[^>]*href)[^>]*>/g)) {
+    if (!/\sclass="[^"]*\bvisually-hidden\b/.test(tag)) continue;
+    if (!/\stabindex="-1"/.test(tag)) focaveis.push(tag.match(/\sid="([^"]+)"/)?.[1] || tag);
+  }
+  assert.deepEqual(focaveis, [], `controle invisivel alcancavel pelo Tab: ${focaveis.join(', ')}`);
+});
