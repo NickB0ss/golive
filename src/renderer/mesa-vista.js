@@ -16,7 +16,8 @@
  */
 
 (function (root) {
-  const mesa = root.GoLive?.mesa || (typeof require === 'function' ? require('./mesa.js') : null);
+  const mesa = root.GoLive?.mesa
+    || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./mesa.js') : null);
   const WORLD = mesa ? mesa.WORLD : { w: 4800, h: 3000 };
   const OVERSCROLL = mesa ? mesa.OVERSCROLL : 600;
   const GAP = mesa ? mesa.GAP : 16;
