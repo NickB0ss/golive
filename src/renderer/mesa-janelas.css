@@ -162,6 +162,40 @@
   .mj-placar .mj-barra .mj-btn { width: 36px; padding: 0; }
 }
 
+/* ---------- Nota ---------- */
+
+.mj-nota { gap: var(--s-15); padding: var(--s-15); }
+.mj .mj-nota-texto {
+  flex: 1; min-height: 0; width: 100%;
+  resize: none;
+  padding: var(--s-2) var(--s-3);
+  background: var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  font: var(--fs-ui)/1.5 'Work Sans', system-ui, sans-serif;
+  user-select: text;
+}
+.mj .mj-nota-texto::placeholder { color: var(--tx3); }
+.mj .mj-nota-texto:focus { border-color: var(--line2); }
+.mj-nota-rodape {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: 0 var(--s-1);
+  color: var(--tx3);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+.mj-nota-autor { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-nota-conta.is-passou { color: var(--danger-soft); font-weight: 600; }
+.mj-nota .mj-aviso { padding: 0 var(--s-1); }
+
+@container mj (max-height: 150px) {
+  .mj-nota .mj-nota-autor { display: none; }
+}
+@container mj (max-height: 110px) {
+  .mj-nota .mj-nota-rodape:not(:has(.is-passou)) { display: none; }
+}
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {
