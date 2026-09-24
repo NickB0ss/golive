@@ -1427,6 +1427,26 @@ button.busy { cursor: default; }
 }
 .tile-health-chip.is-ruim { background: var(--danger-dim); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 
+/* H10/D5 (analise de 2026-09-23): por que a tela congelou, no meio do
+   quadro parado -- e onde o olho esta. Tambem nao some com o mouse parado:
+   mesmo racional do chip acima. */
+.tile-stall-note {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  background: var(--scrim-tint-1);
+  border: 1px solid var(--warn-border);
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* Overlay de "transmissao pausada" -- ver a spec de 2026-09-03, secao 4.
    Duas camadas: um bitmap ESTATICO borrado (nenhuma animacao, nenhum
    transform alem do scale fixo abaixo) e o veu de texto por cima. Nao e
@@ -2217,6 +2237,9 @@ button.busy { cursor: default; }
   background: var(--surface-modal); border-top: 1px solid var(--line);
 }
 
+/* D3: por que o "Ir ao vivo" esta apagado. Empurra os botoes pra direita. */
+.picker-go-live-hint { margin-right: auto; align-self: center; color: var(--tx3); font-size: 12px; }
+
 /* ---------- Estatisticas ---------- */
 
 .stats { font-size: 12px; }
@@ -2728,6 +2751,10 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   user-select: none;
 }
 .titlebar-drag { flex: 1; }
+/* Mesma armadilha da .warn-center logo abaixo: o `display: flex` acima
+   vence o [hidden], e a faixa aparecia no macOS/Linux e antes do
+   titlebar.js rodar no Windows. */
+.titlebar[hidden] { display: none; }
 /* `display` de autor vence o `display:none` que o atributo [hidden] traz da
    folha do navegador -- sem estas duas linhas o botao continua na barra
    (fantasma clicavel) e abre um painel vazio quando nao ha aviso nenhum. */
@@ -2984,7 +3011,9 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 .grid-strip .tile:not(.fullscreen) { max-height: 104px; }
 .grid > .empty { min-height: 0; padding: var(--s-6); color: var(--tx2); text-align: center; font-family: 'Outfit', sans-serif; font-size: 16px; }
 .grid > .empty::before { content: ''; width: 42px; height: 30px; border: 2px solid var(--tx3); border-radius: var(--r-xs); margin-bottom: var(--s-3); }
-.grid > .empty::after { content: 'Compartilhar tela fica no dock abaixo.'; color: var(--tx3); font-family: 'Work Sans', system-ui, sans-serif; font-size: 13px; font-weight: 400; margin-top: var(--s-1); }
+.grid > .empty p { margin: 0; }
+.grid > .empty .empty-hint { color: var(--tx3); font-family: 'Work Sans', system-ui, sans-serif; font-size: 13px; font-weight: 400; margin-top: calc(var(--s-1) - var(--s-3)); }
+.grid > .empty .empty-share { margin-top: var(--s-2); font-family: 'Work Sans', system-ui, sans-serif; font-size: 14px; }
 
 .control-bar { gap: var(--s-1); padding: var(--s-1); flex-wrap: nowrap; }
 .control-bar .control-btn { position: relative; width: 48px; min-width: 48px; min-height: 48px; padding: 0; border-radius: var(--r-full); }

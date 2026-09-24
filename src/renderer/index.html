@@ -213,9 +213,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     </header>
-    <div id="grid" class="grid">
-      <div class="empty">Entre ou crie uma sala pra começar.</div>
-    </div>
+    <div id="grid" class="grid"></div>
     <div class="control-bar">
       <button id="btn-toggle-share" class="primary control-btn" type="button" aria-pressed="false">
         <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -248,7 +246,7 @@
       </button>
       <span class="control-separator" aria-hidden="true"></span>
       <button id="btn-room-settings" class="icon-btn-inline control-btn control-settings" title="Configurações" aria-label="Configurações" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9L7 7m10 10l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span class="btn-label">Configurações</span>
       </button>
       <button id="btn-disconnect" class="control-btn control-btn-end" type="button" aria-label="Sair da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg><span class="btn-label">Sair da sala</span></button>
@@ -442,8 +440,9 @@
     </div>
 
     <div class="picker-actions">
+      <span id="picker-go-live-hint" class="picker-go-live-hint">Escolha uma tela ou janela</span>
       <button id="picker-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-go-live" class="primary" type="button" disabled>Ir ao vivo</button>
+      <button id="btn-go-live" class="primary" type="button" disabled aria-describedby="picker-go-live-hint">Ir ao vivo</button>
     </div>
   </div>
 </div>
@@ -484,6 +483,7 @@
 <script src="encodediag.js"></script>
 <script src="autoquality.js"></script>
 <script src="rxstats.js"></script>
+<script src="conndiag.js"></script>
 <script src="peerquality.js"></script>
 <script src="screenres.js"></script>
 <script src="meshfallbackquality.js"></script>

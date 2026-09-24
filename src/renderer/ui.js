@@ -303,7 +303,6 @@
           tile.querySelector('.tile-fullscreen-btn')?.focus();
         }
       }
-      window.golive.setFullScreen(entering);
       if (entering) {
         fullscreenTileId = id;
         renderPipStrip(tile); // ja termina em syncPainting
@@ -314,12 +313,31 @@
       scheduleIdle();
     };
 
-    if (!document.startViewTransition) return apply(); // fallback: corte seco, como antes
+    // O fullscreen real da janela vem so DEPOIS da transicao, e segue o
+    // estado da grade naquele momento (nao o do clique): um segundo clique,
+    // o tile sumindo ou a troca de foco no meio do caminho ja mudaram
+    // `fullscreenTileId`. Chamar setFullScreen dentro do `apply`
+    // redimensionava a janela no meio da transicao, que abortava com
+    // "InvalidStateError: Transition was aborted" (log de 21/09) -- e o
+    // tile nem chegava a crescer.
+    const syncWindow = () => window.golive.setFullScreen(!!fullscreenTileId);
+
+    if (!document.startViewTransition) { // fallback: corte seco, como antes
+      apply();
+      syncWindow();
+      return;
+    }
 
     tile.style.viewTransitionName = 'tile';
     const transition = document.startViewTransition(apply);
+    // `ready` rejeita quando a transicao e pulada (outra comecou por cima,
+    // aba oculta): e esperado, nao erro -- sem isto vira "Uncaught (in
+    // promise)" no log. `finished` so rejeita se o `apply` lancar, e ai o
+    // erro tem mesmo que aparecer.
+    transition.ready.catch(() => {});
     transition.finished.finally(() => {
       tile.style.viewTransitionName = '';
+      syncWindow();
     });
   }
 
@@ -450,6 +468,19 @@
     chip.textContent = show ? state.text : '';
     chip.classList.toggle('hidden', !show);
     chip.classList.toggle('is-ruim', state?.level === 'ruim');
+  }
+
+  /** H10/D5 (analise de 2026-09-23): por que a tela assistida congelou --
+   * "sem contato com o PC de X", "X parou de enviar imagem". Um quadro
+   * parado sem explicacao e o que faz a pessoa sair e entrar da sala.
+   * Sem estado aqui, pelo mesmo motivo do chip acima: o app.js reaplica a
+   * cada volta do vigia (2 s), entao um tile recriado recupera o aviso. */
+  function setStallNote(tileId, text) {
+    const note = document.getElementById(`tile-${tileId}`)?.querySelector('.tile-stall-note');
+    if (!note) return;
+    const value = text || '';
+    if (note.textContent !== value) note.textContent = value;
+    note.classList.toggle('hidden', !value);
   }
 
   // ---------- Escolher qual tela assistir ----------
@@ -710,6 +741,7 @@
         <span class="tile-kind-badge"></span>
         <span class="tile-label"></span>
         <span class="tile-health-chip hidden"></span>
+        <span class="tile-stall-note hidden" role="status"></span>
         <div class="tile-watchers is-empty"></div>
         <button class="tile-fullscreen-btn" type="button" title="Tela cheia" aria-label="Tela cheia">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
@@ -797,7 +829,25 @@
     if (spyState.tileId() === id) updateSpyWindow();
   }
 
-  function removeTile(id, emptyMessage) {
+  // Estado vazio da grade. So existe dentro da sala (a grade mora no
+  // #room-view), entao o texto e sempre o da sala -- o "Entre ou crie uma
+  // sala" do HTML ficava na tela ao entrar, porque so a remocao de um tile
+  // redesenhava isto. E tem acao: o caso comum de sala vazia e ninguem ter
+  // comecado ainda, e o botao de compartilhar la embaixo passa batido.
+  function renderEmptyGrid() {
+    if (gridEl.querySelector('.tile')) return;
+    gridEl.innerHTML = `
+      <div class="empty">
+        <p class="empty-title">Ninguém transmitindo ainda.</p>
+        <p class="empty-hint">A tela de quem ficar ao vivo aparece aqui sozinha.</p>
+        <button type="button" class="primary empty-share">Compartilhar tela</button>
+      </div>`;
+    // Mesmo caminho do botao da barra: os guardas (sessao aberta, captura
+    // em andamento) moram no handler dele, nao aqui.
+    gridEl.querySelector('.empty-share').addEventListener('click', () => $('btn-toggle-share').click());
+  }
+
+  function removeTile(id) {
     closeSpyWindow(id);
     document.getElementById(`tile-${id}`)?.remove();
     // A lousa morre com a tela: parou de compartilhar, o desenho vai junto
@@ -826,9 +876,7 @@
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
       if (fsTile) renderPipStrip(fsTile); // ja termina em syncPainting
     }
-    if (!gridEl.querySelector('.tile')) {
-      gridEl.innerHTML = `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
-    }
+    renderEmptyGrid();
   }
 
   // ---------- Anotacao na tela (rabisco e escrita) ----------
@@ -2883,6 +2931,7 @@
     // entre as duas (ver a spec, secao 5). clearStageHeader faz o inverso.
     lobbyViewEl.classList.add('hidden');
     roomViewEl.classList.remove('hidden');
+    renderEmptyGrid();
   }
 
   /** So o nome, sem mexer em endereco/PIN/visibilidade -- usado quando o
@@ -3781,7 +3830,16 @@
   const shareDiscordRowEl = $('share-discord-row');
   const shareDiscordEl = $('share-discord');
   const btnGoLiveEl = $('btn-go-live');
+  const pickerGoLiveHintEl = $('picker-go-live-hint');
   let selectedSourceId = null;
+  let pickerMode = 'start';
+
+  /** D3 (analise de 2026-09-23): o botao desabilitado diz por que esta
+   * desabilitado -- sem isto, "Ir ao vivo" apagado nao explica nada. */
+  function setGoLiveEnabled(enabled) {
+    btnGoLiveEl.disabled = !enabled;
+    pickerGoLiveHintEl.classList.toggle('hidden', enabled);
+  }
   // Preenchido a cada abertura do dialogo (ver openPicker) -- guardado aqui
   // porque o listener de 'change' do select e registrado uma unica vez, fora
   // de openPicker (o elemento e estatico, so o callback de destino muda).
@@ -3964,7 +4022,7 @@
         </span>`;
       card.addEventListener('click', () => {
         selectedSourceId = source.id;
-        btnGoLiveEl.disabled = false;
+        setGoLiveEnabled(true);
         pickerGridEl.querySelectorAll('.source-card').forEach((c) => c.classList.remove('selected'));
         card.classList.add('selected');
       });
@@ -4005,6 +4063,14 @@
       if (run !== pickerRun) return; // dialogo ja foi fechado e reaberto
       pickerLoading[tab] = false;
       pickerSources = [...pickerSources, ...sources];
+      // D3: com um monitor so (o caso comum), a escolha ja esta feita.
+      // Nao na troca de fonte: la a unica tela e quase sempre a que ja
+      // esta no ar.
+      const telas = sources.filter((src) => src.isScreen);
+      if (tab === 'screen' && pickerMode !== 'swap' && !selectedSourceId && telas.length === 1) {
+        selectedSourceId = telas[0].id;
+        setGoLiveEnabled(true);
+      }
       renderPickerGrid();
     };
     const fail = (tab) => () => {
@@ -4025,7 +4091,7 @@
     void btn.offsetWidth; // reinicia a animacao mesmo se clicado de novo dentro dos 600ms
     btn.classList.add('spin');
     selectedSourceId = null;
-    btnGoLiveEl.disabled = true;
+    setGoLiveEnabled(false);
     loadPickerSources();
   });
 
@@ -4065,7 +4131,8 @@
 
   async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange, allowAnnotations = false, mode = 'start', currentShareSound = true, currentIncludeDiscord = false }) {
     selectedSourceId = null;
-    btnGoLiveEl.disabled = true;
+    pickerMode = mode;
+    setGoLiveEnabled(false);
     pickerTab = 'screen';
     pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
     syncWindowHint();
@@ -4273,7 +4340,7 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown, setHealthChip },
+    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown, setHealthChip, setStallNote },
     annotations: {
       setSelf: annotSetSelf,
       setSurface: setAnnotSurface,

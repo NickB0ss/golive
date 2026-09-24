@@ -567,6 +567,27 @@ test('heartbeat mantem de pe o cliente que responde o pong', async () => {
   }
 });
 
+test('servidor manda hb periodico so pra quem ja entrou na sala', async () => {
+  const server = await createSignalingServer({ port: 0, livenessMs: 30 });
+  try {
+    const dentro = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    const fora = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await Promise.all([dentro, fora].map((ws) => new Promise((r) => ws.once('open', r))));
+    const doFora = [];
+    fora.on('message', (raw) => doFora.push(JSON.parse(raw.toString()).type));
+    dentro.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(dentro, 'welcome');
+
+    await once(dentro, 'hb');
+    await once(dentro, 'hb');
+    assert.deepEqual(doFora, [], 'socket que nao entrou nao recebe hb');
+    dentro.close();
+    fora.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('watchers e broadcast pra sala inteira, com o from carimbado', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {

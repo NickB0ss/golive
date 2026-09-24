@@ -165,11 +165,87 @@ a declaração antes do primeiro uso. `node --test` não carrega `app.js`: a su�
 ficou verde, e o erro só apareceu abrindo o app real. A regra nova é rodar o
 app antes de mesclar mudança no renderer.
 
+### Consertos da análise de 23/09 (ainda não lançados)
+
+Da seção 5 de `docs/2026-09-23-analise-transmissao-hipoteses.md`, os que não
+dependem de medição:
+
+- **C1** a tela cheia da janela só é pedida depois da transição do tile, e a
+  rejeição de `transition.ready` é tratada: some o `Uncaught (in promise)
+  InvalidStateError: Transition was aborted` do log de 21/09 (reproduzido no
+  app original no Xvfb, ausente com o conserto).
+- **C2** vigia de vida da sinalização: o servidor manda `{type:'hb'}` a cada
+  5 s pra quem está na sala, e o cliente dá a conexão como morta com 15 s de
+  silêncio (antes: ~25 s ou mais), entregando a queda na hora como `1006`,
+  sem esperar o close do navegador.
+- **C3** diagnóstico do congelamento: quando o vigia de tela assistida age, o
+  log diz se foi **rede** (nada chega), **origem** (caminho vivo sem RTP),
+  **decoder** (RTP sem quadro) ou **pintura**, com os números (RTP, par ICE,
+  quadros, PLI, NACK); e a rota de cada conexão (`[rota] screen de X:
+  host/radmin udp -> host/radmin, rtt 12 ms`) vai pro log quando aparece ou
+  muda, sem IP. Módulo puro em `src/renderer/conndiag.js`.
+- **D5** o tile congelado explica: "Sem contato com o PC de X", "X parou de
+  enviar imagem" ou "Recuperando a imagem…", até a imagem voltar.
+- **C6** `.titlebar[hidden]` com `display: none`, e um teste que pega a
+  mesma armadilha em qualquer elemento que nasce `hidden`.
+- **C7/D1** a sala vazia diz "Ninguém transmitindo ainda", explica que a tela
+  de quem ficar ao vivo aparece sozinha e tem o botão "Compartilhar tela".
+- **D2** engrenagem no dock (era um sol); **D3** com um monitor só ele já vem
+  escolhido, e o "Ir ao vivo" apagado diz "Escolha uma tela ou janela";
+  **D6** "Monitor 1 (principal)" no lugar de "Entire screen".
+
+- **C5** a conexão de saída em `disconnected` por 1 s reinicia o ICE na
+  mesma conexão (`restartIce` + oferta de renegociação) em vez de esperar os
+  15 s e refazer tudo. Sem sinalização, ou se a resposta se perder numa
+  conexão que voltou sozinha, a oferta é desfeita (rollback). Medido no app
+  cortando o UDP no Xvfb: o Chromium 152 só declara `disconnected` 6,5 s
+  depois do último pacote; com 8 s de corte a conexão voltou na mesma PC em
+  1,4 s, sem refazer nada. O `[mesh]` agora loga entrada e saída de
+  `disconnected`.
+- A recusa do `getDisplayMedia` no main (fonte que sumiu da lista) chamava o
+  callback duas vezes: no Electron 44 o `callback({})` recusa **e** lança, e
+  o `.catch` chamava de novo (`One-time callback was called more than once`
+  solto no log). Agora é uma resposta só (`src/main/displaymedia.js`), o log
+  diz o motivo, e o aviso pra pessoa manda atualizar a lista e escolher de
+  novo, em vez de "Invalid capture constraints".
+
+Rodado no app (Xvfb, duas instâncias, captura falsa de canvas porque a
+captura X11 do contêiner falha de forma intermitente também no código
+original, e `iptables` pra cortar o UDP). **Não testado com 2+ PCs reais.**
+Fica para depois das medições o C4 (canvas no repasse, depende do M2).
+
+### Laboratório automatizado (H15, ainda não lançado)
+
+`npm run lab` (ver `tools/lab/README.md`): várias instâncias do app no
+Linux, cada uma num Xvfb, com captura falsa de canvas e falhas de rede de
+verdade (`iptables` no loopback). Roda na CI (`.github/workflows/lab.yml`).
+Seis cenários: sala de 4 com relay da árvore, queda de UDP curta (C5) e
+longa (diagnóstico "rede" e aviso no tile), origem parada, 3% de perda, e o
+**PC do líder caindo** (SIGKILL) com migração. Não testa encoder de hardware,
+WGC nem VPN de verdade. O que ele já mediu:
+
+- a migração abrupta leva **~60 s** mesmo com o PC morto recusando na hora
+  (todos esgotam a escada de reconexão antes de migrar, por desenho, pra uma
+  queda de rota da VPN não partir a sala); com SYN sem resposta o pior caso
+  calculado passa de 2 min. O vídeo P2P continua nesse meio tempo, mas a
+  sala fica sem sinalização;
+- numa queda de ~9 s, o vigia de congelamento (6 s parado) às vezes refaz a
+  conexão antes do reinício de ICE (o Chromium leva 6,5 s pra declarar
+  `disconnected`, e o reinício vem 1 s depois). Refazer não ajuda quando o
+  diagnóstico é "rede" (a conexão nova precisa da mesma rede): candidato a
+  segurar a reoferta nesse caso;
+- achou e corrigiu um erro do C3: queda de rede saía como "origem parou".
+
 ## Próximos passos
 
 - **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
   e o teste que mais importa e derrubar o PC do lider de verdade, de
-  preferencia no Tailscale (e o que a Frente A2 mudou);
+  preferencia no Tailscale (e o que a Frente A2 mudou). Aproveitar a mesma
+  noite para o roteiro M1-M6 de
+  `docs/2026-09-23-analise-transmissao-hipoteses.md`: o Electron 44 mudou
+  premissas medidas no Chromium 128 (H.264 de hardware agora vai a 1080p60,
+  HEVC apareceu), e o M3 diz se o teto de 4 pessoas era o bug do
+  `contentHint` e nao o NVENC;
 - subir a versao e lancar (a tag dispara o `release.yml`, que sobe os
   artefatos num rascunho; publicar continua sendo clique manual);
 - Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
