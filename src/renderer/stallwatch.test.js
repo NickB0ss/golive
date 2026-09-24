@@ -115,6 +115,40 @@ test('avisa quando volta a mostrar quadro depois de uma cura', () => {
   assert.deepEqual(w.observe('k', { watched: true, frames: 3, now: 9000 }), { action: 'recovered', attempts: 1 });
 });
 
+test('cura adiada (defer) devolve a tentativa e pergunta de novo na proxima olhada', () => {
+  const w = createStallWatch(OPTS);
+  w.observe('k', { watched: true, frames: 10, transport: 100, now: 0 });
+  w.observe('k', { watched: true, frames: 40, transport: 200, now: 1000 });
+  assert.equal(w.observe('k', { watched: true, frames: 40, transport: 200, now: 7000 }).attempts, 1);
+  assert.equal(w.defer('k'), true, 'primeira espera deste congelamento');
+  // Sem o intervalo de 20 s: a decisao e refeita 2 s depois, com a mesma tentativa.
+  assert.deepEqual(w.observe('k', { watched: true, frames: 40, transport: 200, now: 9000 }), {
+    action: 'heal', reason: 'frozen', stalledFor: 8000, attempts: 1,
+  });
+  assert.equal(w.defer('k'), false, 'ja estava esperando');
+  assert.equal(w.defer('k'), false, 'sem cura nova, nada a devolver');
+  // O ICE voltou: a imagem anda sem nenhuma reoferta gasta.
+  assert.deepEqual(w.observe('k', { watched: true, frames: 45, transport: 300, now: 11000 }), {
+    action: 'recovered', attempts: 0, deferred: true,
+  });
+  assert.equal(w.observe('k', { watched: true, frames: 50, transport: 400, now: 13000 }), null);
+});
+
+test('espera que vira cura de verdade segue o intervalo e o teto de sempre', () => {
+  const w = createStallWatch(OPTS);
+  w.observe('k', { watched: true, frames: 10, transport: 100, now: 0 });
+  w.observe('k', { watched: true, frames: 40, transport: 200, now: 1000 });
+  w.observe('k', { watched: true, frames: 40, transport: 200, now: 7000 });
+  w.defer('k');
+  // Passado o limite, quem chama nao adia: a tentativa 1 fica gasta.
+  assert.equal(w.observe('k', { watched: true, frames: 40, transport: 200, now: 27000 }).attempts, 1);
+  assert.equal(w.observe('k', { watched: true, frames: 40, transport: 200, now: 29000 }), null, 'dentro do intervalo');
+  assert.equal(w.observe('k', { watched: true, frames: 40, transport: 200, now: 47000 }).attempts, 2);
+  assert.deepEqual(w.observe('k', { watched: true, frames: 45, transport: 300, now: 49000 }), {
+    action: 'recovered', attempts: 2, deferred: true,
+  });
+});
+
 test('tile recriado (contador reiniciou) nao zera as tentativas', () => {
   const w = createStallWatch(OPTS);
   w.observe('k', { watched: true, frames: 105, now: 0 });

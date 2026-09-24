@@ -230,8 +230,24 @@ WGC nem VPN de verdade. O que ele já mediu:
 - numa queda de ~9 s, o vigia de congelamento (6 s parado) às vezes refaz a
   conexão antes do reinício de ICE (o Chromium leva 6,5 s pra declarar
   `disconnected`, e o reinício vem 1 s depois). Refazer não ajuda quando o
-  diagnóstico é "rede" (a conexão nova precisa da mesma rede): candidato a
-  segurar a reoferta nesse caso;
+  diagnóstico é "rede" (a conexão nova precisa da mesma rede). **Feito
+  (pós-0.20.0):** com "rede" numa conexão que já mostrou imagem e ainda
+  está `connected`/`disconnected`, o vigia segura a reoferta
+  (`[assistir] segurando reoferta: rede`, decisão pura em
+  `conndiag.reofferDecision`), devolve a tentativa (`stallwatch.defer`) e
+  refaz a pergunta a cada olhada; só refaz se o diagnóstico mudar ou se a
+  tela passar de **25 s** parada (6,5 s até `disconnected` + 1 s até o
+  reinício + 15 s de carência do mesh, com folga; depois disso o próprio
+  mesh já derrubou e refez). O aviso "Sem contato com o PC de X" continua.
+  Medido (3 rodadas antes e depois): `queda-longa` passou de 3/3 conexões
+  refeitas pelo vigia para 0/3, com a mesma conexão voltando pelo reinício
+  de ICE e a imagem de volta no mesmo tempo (~1,5 s depois do UDP);
+  `queda-curta` e `perda-udp` sem reoferta nos dois casos. Os dois cenários
+  de queda agora verificam que ninguém refez a conexão. Numa queda avulsa
+  de 30 s (fora da CI) o vigia caiu de 2 reofertas para 1: a carência do
+  mesh refaz a conexão aos ~22 s, e a nova, que nunca conectou, ainda é
+  refeita uma vez durante a queda (comportamento antigo, fora deste
+  conserto);
 - achou e corrigiu um erro do C3: queda de rede saía como "origem parou".
 
 ## Próximos passos
@@ -246,9 +262,10 @@ WGC nem VPN de verdade. O que ele já mediu:
   premissas medidas no Chromium 128 (H.264 de hardware agora vai a 1080p60,
   HEVC apareceu), e o M3 diz se o teto de 4 pessoas era o bug do
   `contentHint` e nao o NVENC;
-- decidir as duas propostas que o laboratorio levantou: nao refazer a
-  conexao quando o diagnostico e "rede" (deixar o reinicio de ICE agir) e
-  encurtar ou nao a espera antes de migrar quando o lider cai;
+- decidir a proposta que o laboratorio levantou: encurtar ou nao a espera
+  antes de migrar quando o lider cai (a outra, nao refazer a conexao com
+  diagnostico "rede", esta feita; revisar o limite de 25 s na noite de
+  teste);
 - Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
 - acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
   Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
