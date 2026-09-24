@@ -105,6 +105,7 @@
   const { relayKindFor, parseKind } = meshModule;
   const { isSoftwareEncoder, summarizeScreenEncodeHealth } = encodehealth;
   const { encodediag } = window.GoLive;
+  const { leaderloss } = window.GoLive;
 
   // Topologia da arvore de retransmissao (F2), por kind -- so significativa
   // quando ESTA sessao e a origem daquele kind (localStream/cameraStream
@@ -1905,6 +1906,27 @@
   const { MAX_RECONNECT } = reconnect;
   const STABLE_MS = 20000;
 
+  // Checagens TCP da porta da sala desde a queda atual (leaderloss.js): duas
+  // recusas seguidas (o PC do lider responde, o app dele nao) encurtam a
+  // escada; timeout nao muda nada. A chave (queda + URL) descarta sozinha o
+  // que sobrou de outra queda ou de outra sala.
+  let leaderPortChecks = { dropAt: null, url: null, results: [] };
+  function leaderPortResults(dropAt, url) {
+    const c = leaderPortChecks;
+    return dropAt != null && c.dropAt === dropAt && c.url === url ? c.results : [];
+  }
+  function checkLeaderPort(dropAt, url) {
+    const target = leaderloss.hostPortOf(url);
+    if (dropAt == null || !target || typeof window.golive.checkTcpPort !== 'function') return;
+    if (leaderPortChecks.dropAt !== dropAt || leaderPortChecks.url !== url) leaderPortChecks = { dropAt, url, results: [] };
+    const checks = leaderPortChecks;
+    Promise.resolve(window.golive.checkTcpPort(target.host, target.port)).then((result) => {
+      if (leaderPortChecks !== checks || !leaderloss.isResult(result)) return;
+      checks.results.push(result);
+      console.info(`[signaling] porta da sala: ${leaderloss.describe(result)}`);
+    }, () => {});
+  }
+
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null, preserveMigrationOrphan = false) {
     if (!reconnectAttempt) {
       // Nova intencao nao pode apresentar a credencial da sala anterior.
@@ -2201,7 +2223,11 @@
           console.error(`[signaling] conexao fechada: code=${detail?.code} reason="${detail?.reason}" wasClean=${detail?.wasClean}`);
 
           const abnormal = detail?.code === 1006 || detail?.wasClean === false;
-          const canRetry = abnormal && (session.opened || attempts > 0) && attempts < MAX_RECONNECT;
+          // Desistir da escada: ou ela acabou, ou a porta da sala recusou
+          // duas vezes seguidas (o app do lider morreu; ver leaderloss.js).
+          const inLadder = abnormal && (session.opened || attempts > 0);
+          const leaderLoss = leaderloss.decide({ attempts, maxAttempts: MAX_RECONNECT, results: leaderPortResults(roomDropAt, url) });
+          const canRetry = inLadder && !leaderLoss.giveUp;
 
           currentSession = null;
           activeRoomAddress = null;
@@ -2246,6 +2272,8 @@
             renderRoomStatus();
           }
 
+          if (canRetry) checkLeaderPort(roomDropAt, url);
+
           if (canRetry) {
             // Queda anormal, nao saida deliberada (leaveRoom zera
             // currentSession antes de fechar, entao nunca chega aqui):
@@ -2267,8 +2295,11 @@
             return;
           }
 
-          if (abnormal && attempts >= MAX_RECONNECT) {
+          if (inLadder && leaderLoss.giveUp) {
             resumeToken = null;
+            if (leaderLoss.reason === 'recusa') {
+              console.info(`[migracao] a porta da sala recusou ${leaderloss.REFUSED_STREAK} vezes seguidas (o app do lider fechou): migrando sem esperar a escada (tentativa ${attempts + 1} de ${MAX_RECONNECT})`);
+            }
             // Item B: `session` aqui e a ULTIMA tentativa de reconexao, cuja
             // malha nasceu vazia -- contar por ela fazia cada sobrevivente se
             // achar o unico candidato e subir a propria sala. A lista vem da

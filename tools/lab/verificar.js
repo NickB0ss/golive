@@ -41,6 +41,38 @@ function regraUdp(acao, { perda = null } = {}) {
   return args;
 }
 
+/** Argumentos do iptables pra descartar o TCP da `porta` (inclusive no
+ * loopback) num sentido: `dport` o que chega nela, `sport` o que sai dela.
+ * Os dois juntos fazem a sala de quem "some": SYN sem resposta e nenhum
+ * FIN/RST de volta, como PC desligado ou rota da VPN caida -- e nao a
+ * recusa (RST) de um app morto. */
+function regraTcp(acao, porta, sentido = 'dport') {
+  if (acao !== '-I' && acao !== '-D') throw new Error(`acao invalida: ${acao}`);
+  if (!(Number.isInteger(porta) && porta > 0 && porta <= 65535)) throw new Error(`porta invalida: ${porta}`);
+  if (sentido !== 'dport' && sentido !== 'sport') throw new Error(`sentido invalido: ${sentido}`);
+  return [acao, 'INPUT', '-p', 'tcp', `--${sentido}`, String(porta), '-j', 'DROP'];
+}
+
+/** Todos os descendentes de `raiz` (sem ela), dada a lista [pid, ppid] de
+ * cada processo: o Electron sobe GPU, rede e renderer como filhos. */
+function descendentes(pares, raiz) {
+  const filhos = new Map();
+  for (const [pid, ppid] of pares) {
+    if (!filhos.has(ppid)) filhos.set(ppid, []);
+    filhos.get(ppid).push(pid);
+  }
+  const out = [];
+  const fila = [raiz];
+  while (fila.length) {
+    for (const f of filhos.get(fila.shift()) || []) {
+      if (f === raiz || out.includes(f)) continue;
+      out.push(f);
+      fila.push(f);
+    }
+  }
+  return out;
+}
+
 /** Texto do resumo final: uma linha por cenario, e o motivo das falhas. */
 function resumo(resultados) {
   const linhas = resultados.map((r) => {
@@ -52,4 +84,4 @@ function resumo(resultados) {
   return linhas.join('\n');
 }
 
-module.exports = { errosNaoTratados, achar, regraUdp, resumo };
+module.exports = { errosNaoTratados, achar, regraUdp, regraTcp, descendentes, resumo };
