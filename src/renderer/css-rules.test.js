@@ -182,7 +182,33 @@ test('espacamento em px que bate com a escala usa o token (B3)', () => {
   // Os que nao batem com degrau nenhum (1, 3, 5, 7, 9, 10px...) ficaram
   // literais no acabamento P3: arredondar muda o pixel. O numero so pode
   // descer -- espacamento novo nasce da escala.
-  assert.ok(foraDaEscala.length <= 98, `espacamento fora da escala subiu para ${foraDaEscala.length} (maximo 98)`);
+  assert.ok(foraDaEscala.length <= 97, `espacamento fora da escala subiu para ${foraDaEscala.length} (maximo 97)`);
+});
+
+// Seletores que ainda aparecem em dois blocos, cada um com o porque. O
+// resto do arquivo segue "um seletor, um bloco" (B1): uma segunda regra pro
+// mesmo seletor e o que deixava `.control-btn-end` com duas aparencias
+// conflitantes e so a ultima valendo.
+const SELETOR_REPETIDO_PERMITIDO = new Set([
+  // box-sizing no topo; a barra de rolagem fina fica junto das regras
+  // ::-webkit-scrollbar, que e onde quem procura a barra vai olhar.
+  '*',
+]);
+
+test('cada seletor e escrito num bloco so (B1)', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const vistos = new Map();
+  for (const { stack, block, line } of declarations(css)) {
+    const selector = stack.at(-1);
+    if (!selector || selector.startsWith('@') || /^(from|to|\d+%)$/.test(selector)) continue;
+    const key = `${stack.slice(0, -1).join(' > ')} || ${selector.replace(/\s+/g, ' ')}`;
+    if (!vistos.has(key)) vistos.set(key, new Map());
+    if (!vistos.get(key).has(block)) vistos.get(key).set(block, line);
+  }
+  const repetidos = [...vistos]
+    .filter(([key, blocks]) => blocks.size > 1 && !SELETOR_REPETIDO_PERMITIDO.has(key.split(' || ')[1]))
+    .map(([key, blocks]) => `${key.split(' || ')[1]} (linhas ${[...blocks.values()].join(', ')})`);
+  assert.deepEqual(repetidos, [], `seletor escrito em mais de um bloco -- junte no bloco do componente: ${repetidos.join('; ')}`);
 });
 
 test('cores literais ficam restritas aos tokens dos blocos de tema', () => {

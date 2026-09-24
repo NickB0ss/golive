@@ -466,7 +466,7 @@ input[type="range"] { accent-color: var(--live); }
 
 .toast {
   position: fixed;
-  z-index: var(--z-modal);
+  z-index: var(--z-toast);
   right: 16px;
   bottom: 16px;
   background: var(--surface-2);
@@ -485,7 +485,6 @@ input[type="range"] { accent-color: var(--live); }
   opacity: 1;
   transform: translateY(0);
 }
-.toast { z-index: var(--z-toast); }
 /* Dentro da sala o canto inferior DIREITO e a caixa de escrever do chat --
    "Transmissao pausada" e "Transmissao retomada" caiam em cima dela. Na
    tela cheia a esquerda tambem e o canto mais vazio: o dock e central, o
@@ -511,9 +510,12 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 
 .lobby {
   height: 100vh;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+  display: grid;
+  /* A navegacao fica estavel e o conteudo vivo ganha toda a outra coluna. */
+  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--bg);
 }
 
 /* O CORPO e centrado num container de leitura; a barra do topo NAO usa este
@@ -596,8 +598,8 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 .lobby-title { margin: 0; font-family: 'Outfit', sans-serif; font-size: 26px; line-height: 1.22; font-weight: 700; letter-spacing: -0.01em; }
 .lobby-lede { margin: 0; font-size: var(--fs-body); line-height: 1.6; color: var(--tx2); }
 
-.lobby-actions { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
-.lobby-cta { width: 100%; height: 56px; font-size: var(--fs-ui); justify-content: flex-start; padding: 0 var(--s-4); gap: var(--s-3); }
+.lobby-actions { display: flex; flex-direction: column; gap: var(--s-2); margin: 0; }
+.lobby-cta { width: 100%; font-size: var(--fs-ui); padding: 0 var(--s-4); gap: var(--s-3); height: 44px; min-height: 44px; justify-content: flex-start; }
 .lobby-cta svg { width: 19px; height: 19px; }
 
 .lobby-start .error { margin-top: 0; }
@@ -605,10 +607,15 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 
 /* Empurrado pro rodape do painel: e contexto, nao acao. */
 .lobby-net {
-  margin-top: var(--s-2);
-  display: flex; align-items: center; gap: var(--s-2);
-  padding-top: var(--s-3); border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   min-width: 0;
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--s2);
 }
 .lobby-net .dot { background: var(--tx2); }
 .lobby-net .dot.warn { background: var(--warn); }
@@ -622,11 +629,15 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 /* ---------- Coluna de salas ---------- */
 
 .lobby-rooms {
-  display: flex; flex-direction: column; gap: var(--s-3);
-  height: 100%; min-height: 0; min-width: 0;
-  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
 }
-.rooms-head { display: flex; align-items: center; gap: var(--s-2); }
+.rooms-head { display: flex; gap: var(--s-2); align-items: center; padding-bottom: var(--s-3); border-bottom: 1px solid var(--line); }
 .rooms-title, .members-title, .settings-pane h3 {
   font-family: 'Outfit', sans-serif;
   margin: 0; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: .04em;
@@ -701,15 +712,23 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 /* Altura propria, nao `flex: 1`: esticado ate o rodape da coluna, o
    retangulo tracejado virava um buraco de 900px no meio da tela. */
 .rooms-empty {
-  flex: none; min-height: 232px;
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: var(--s-2); text-align: center;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  text-align: center;
   padding: var(--s-6) var(--s-4);
-  border: 1px dashed var(--line2); border-radius: var(--r-md);
+  border: 1px dashed var(--line2);
+  border-radius: var(--r-md);
+  grid-column: 1 / -1;
+  min-height: 320px;
+  border-style: solid;
+  background: var(--s1);
+  box-shadow: var(--shadow-1);
 }
-.rooms-empty svg { width: 26px; height: 26px; color: var(--tx3); }
-.rooms-empty-title { font-size: var(--fs-body); font-weight: 600; color: var(--tx2); }
-.rooms-empty-hint { font-size: var(--fs-small); line-height: 1.5; color: var(--tx3); max-width: 320px; }
+.rooms-empty-hint { line-height: 1.5; color: var(--tx3); max-width: 390px; font-size: var(--fs-body); }
 
 /* ---------- Perfil (dentro da barra do topo) ---------- */
 
@@ -744,7 +763,6 @@ body:has(#room-view:not(.hidden)) .toast { left: 16px; right: auto; }
 
 /* ============ DIALOGOS (criar sala / entrar / banir) ============ */
 
-.dialog-box { width: min(360px, 90vw); padding: var(--s-5); }
 .dialog-box h2 { margin: 0 0 var(--s-3); font-family: 'Outfit', sans-serif; font-size: 17px; }
 /* Botao ocupado: o rotulo troca e o spinner entra no lugar do que houver
    antes dele. Subir o servidor embutido inclui pedir liberacao de firewall
@@ -765,18 +783,22 @@ button.busy { cursor: default; }
 /* ============ SALA ============ */
 
 .room { display: flex; height: 100vh; }
-.stage { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.stage { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; gap: var(--s-2); }
 
 .stage-header {
-  display: flex; align-items: center; gap: var(--s-3);
-  padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line);
-  background: var(--s1);
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  min-height: 56px;
+  padding: 0 var(--s-3);
+  gap: var(--s-2);
 }
 .stage-status-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--tx3); flex: none; }
 .stage-status-dot[data-level="live"] { background: var(--live); }
 .stage-status-dot[data-level="degraded"] { background: var(--warn); }
 .stage-status-dot[data-level="paused"] { background: var(--tx3); }
-.stage-room-name { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 650; font-size: var(--fs-ui); }
+.stage-room-name { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 650; margin-right: auto; font-size: var(--fs-lead); line-height: 1.1; }
 .stage-room-address { font-size: var(--fs-small); color: var(--tx2); font-variant-numeric: tabular-nums; }
 .stage-room-pin { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-small); color: var(--warn); }
 .stage-room-pin svg { width: 14px; height: 14px; flex: none; }
@@ -787,11 +809,22 @@ button.busy { cursor: default; }
 #btn-room-settings { margin-left: auto; }
 
 .control-bar {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line); background: var(--s1);
+  display: flex;
+  align-items: center;
+  position: static;
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-full);
+  background: var(--s1);
+  box-shadow: var(--shadow-2);
+  gap: var(--s-1);
+  padding: var(--s-1);
+  flex-wrap: nowrap;
 }
 .control-btn { min-width: 0; }
-.control-btn-end { margin-left: auto; }
 
 /* P7 (auditoria 2026-09-18): nivel do audio compartilhado, colado no botao
    de pausa. Puramente decorativo (por isso aria-hidden no HTML) -- o aviso
@@ -881,15 +914,19 @@ button.busy { cursor: default; }
 .room-idle .stage { cursor: none; }
 
 .room-side {
-  width: 300px; flex: none; display: flex; flex-direction: column;
-  border-left: 1px solid var(--line); background: var(--s1); overflow: hidden;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   transition: width var(--dur-slow) var(--ease-in-out), opacity var(--dur-base) var(--ease-in-out);
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--s1);
+  width: 320px;
+  padding: var(--s-2);
+  gap: var(--s-2);
 }
-/* visibility: hidden tira os filhos (input do chat, botoes de membro) da
-   ordem de tabulacao enquanto a coluna esta recolhida e invisivel -- so
-   width:0/opacity:0 os deixava focaveis e digitaveis por tras do nada. */
-.room-side.collapsed { width: 0; opacity: 0; border-left: none; visibility: hidden; }
-
 /* O chevron do botao de recolher gira pra apontar pra onde a coluna vai. */
 #btn-toggle-side svg { transition: transform var(--dur-fast) var(--ease-in-out); }
 #btn-toggle-side.collapsed svg { transform: rotate(180deg); }
@@ -1053,10 +1090,17 @@ button.busy { cursor: default; }
 .chat-sys.danger { color: var(--danger-soft); }
 
 .chat-compose {
-  margin: var(--s-2); background: var(--s2); border: 1px solid var(--line2);
-  border-radius: var(--r-sm); padding: 9px 11px; display: flex; align-items: flex-end; gap: var(--s-15);
+  margin: var(--s-2);
+  border: 1px solid var(--line2);
+  padding: 9px 11px;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-15);
   position: relative;
   transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
+  margin-top: auto;
+  border-radius: var(--r-full);
+  background: var(--s2);
 }
 .chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px var(--act-focus-ring); }
 .chat-compose textarea {
@@ -1167,7 +1211,7 @@ button.busy { cursor: default; }
 .grid {
   flex: 1;
   min-width: 0;
-  padding: var(--s-4);
+  padding: 0;
   overflow-y: auto;
   overflow-x: clip;
   /* Reserva a calha da barra de rolagem SEMPRE, mesmo sem barra.
@@ -1209,7 +1253,7 @@ button.busy { cursor: default; }
    * porque, quando os tiles nao cabem, ele volta a alinhar no inicio em vez
    * de cortar a primeira fileira pra fora da area rolavel. */
   grid-auto-rows: min-content;
-  gap: 14px;
+  gap: var(--s-2);
   align-content: safe center;
   align-items: center;
   justify-content: center;
@@ -1217,10 +1261,9 @@ button.busy { cursor: default; }
 /* Excecao do tile unico: a trilha volta a ser 1fr (altura definida) porque
    e ela que faz o `max-height: 100%` de .tile valer -- sem isso, numa
    janela larga e baixa, um tile 16/9 com a largura toda ficaria mais alto
-   que o palco e a grade rolaria. */
-.grid[data-count="1"] { grid-auto-rows: minmax(0, 1fr); }
-/* Um tile so nao vira um painel de 1900px numa janela maximizada. */
-.grid[data-count="1"] { grid-template-columns: minmax(0, min(1280px, 100%)); }
+   que o palco e a grade rolaria. E um tile so nao vira um painel de
+   1900px numa janela maximizada. */
+.grid[data-count="1"] { grid-auto-rows: minmax(0, 1fr); grid-template-columns: minmax(0, min(1280px, 100%)); }
 .grid[data-count="2"],
 .grid[data-count="3"],
 .grid[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1248,12 +1291,14 @@ button.busy { cursor: default; }
   gap: 14px;
   align-items: center;
   justify-content: center;
+  /* A grade base centraliza os itens na trilha; o palco precisa ESTICAR
+     nela. Sem isto o .grid-main ficava com a altura do conteudo -- um tile
+     16:9 pela largura inteira (617px) numa trilha de ~544 -- e estourava
+     por cima do cabecalho, empurrando a tira. */
+  align-self: stretch;
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
-/* A grade base centraliza os itens na trilha; o palco precisa ESTICAR nela.
-   Sem isto o .grid-main ficava com a altura do conteudo -- um tile 16:9 pela
-   largura inteira (617px) numa trilha de ~544 -- e estourava por cima do
-   cabecalho, empurrando a tira. */
-.grid-main { align-self: stretch; }
 .grid-main[data-count="1"] { grid-template-columns: minmax(0, min(1280px, 100%)); }
 /* Uma tela so: a altura manda e a largura sai do 16:9. Pela largura, o tile
    passaria da trilha sempre que a tira existe. */
@@ -1279,13 +1324,16 @@ button.busy { cursor: default; }
   gap: 14px;
   overflow-x: auto;
   overflow-y: hidden;
+  min-height: 104px;
+  max-height: 112px;
+  padding: 0 var(--s-1);
 }
 /* :not(.fullscreen) -- camera da tira tambem vira tela cheia, e
    .tile.fullscreen nao zera max-height: sem isto ela ficava 1920x148. */
 .grid-strip .tile:not(.fullscreen) {
   flex: 0 0 auto;
   height: 100%;
-  max-height: 148px;
+  max-height: 104px;
 }
 /* Miniatura da tira tem 104-148px de altura: quatro overlays disputam a
    area de um selo so. Fica o rotulo do nome e o botao de tela cheia.
@@ -1328,8 +1376,12 @@ button.busy { cursor: default; }
   align-content: center;
   gap: var(--s-3);
   height: 100%;
-  color: var(--text-2);
+  min-height: 0;
+  padding: var(--s-6);
+  color: var(--tx2);
   text-align: center;
+  font-family: 'Outfit', sans-serif;
+  font-size: var(--fs-lead);
 }
 
 .tile {
@@ -1799,6 +1851,10 @@ button.busy { cursor: default; }
   background: var(--video-bg);
   border-radius: inherit;
   animation: tile-paused-in var(--t-tint) var(--ease-move);
+  /* Mesmo com o corte das regras abaixo ainda cabe uma janela absurdamente
+     baixa: o corte fica no texto, nunca nos botoes (por isso `flex: none`
+     neles). */
+  overflow: hidden;
 }
 .tile-gate-avatar {
   width: 44px; height: 44px;
@@ -1829,10 +1885,6 @@ button.busy { cursor: default; }
   .tile-gate-sub { display: none; }
   .tile-gate-avatar { width: 34px; height: 34px; font-size: var(--fs-ui); }
 }
-/* Depois de tudo isso ainda cabe uma janela absurdamente baixa: o corte fica
-   no texto, nunca nos botoes (por isso `flex: none` neles). */
-.tile-gate { overflow: hidden; }
-
 /* Sem video nao ha o que rabiscar nem o que por em tela cheia. */
 .tile.is-unwatched .tile-annot-bar,
 .tile.is-unwatched .tile-annot-canvas,
@@ -1983,6 +2035,9 @@ button.busy { cursor: default; }
   color: var(--text-2);
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
 }
 .settings-cat:hover { color: var(--text-1); }
 .settings-cat.active { color: var(--text-1); font-weight: 650; }
@@ -2199,10 +2254,11 @@ button.busy { cursor: default; }
   background: var(--s2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  /* Trilha do tamanho do proprio conteudo: 1440p nao precisa esticar ate a
+     borda do dialogo, e a de fps (duas opcoes) ficaria absurda se esticasse. */
+  justify-self: start;
+  min-width: 0;
 }
-/* Trilha do tamanho do proprio conteudo: 1440p nao precisa esticar ate a
-   borda do dialogo, e a de fps (duas opcoes) ficaria absurda se esticasse. */
-.quality-seg { justify-self: start; min-width: 0; }
 .quality-axis > .quality-seg { flex: none; }
 
 /* Polegar deslizante -- selecionado por elevacao + contraste, nunca por cor
@@ -2956,13 +3012,6 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 
 /* ============ Estrutura de app: casca, cards e dock ============ */
 
-/* A navegacao fica estavel e o conteudo vivo ganha toda a outra coluna. */
-.lobby {
-  display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  background: var(--bg);
-}
 .lobby-sidebar {
   min-width: 0;
   display: flex;
@@ -2974,15 +3023,10 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 }
 .lobby-brand { display: flex; align-items: center; gap: var(--s-2); min-height: 32px; }
 .lobby-brand .app-version { margin-right: 0; background: var(--s3); border-radius: var(--r-full); padding: var(--s-05) 7px; }
-.lobby-actions { margin: 0; }
-.lobby-cta { height: 44px; min-height: 44px; justify-content: flex-start; }
 .sidebar-label { margin: 0 0 var(--s-2); color: var(--tx3); font-size: var(--fs-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.lobby-net { margin: 0; padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--s2); }
 .user-panel { margin-top: auto; display: flex; align-items: center; gap: var(--s-1); padding: var(--s-2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--s2); min-width: 0; }
 .user-panel .user-panel-name { flex: 1; max-width: none; }
 .lobby-main { min-width: 0; min-height: 0; overflow-y: auto; padding: var(--s-6); }
-.lobby-rooms { max-width: none; height: 100%; }
-.rooms-head { align-items: center; padding-bottom: var(--s-3); border-bottom: 1px solid var(--line); }
 /* flex: 1 empurra o "Procurar salas de novo" pra borda direita do cabecalho --
    antes era o margin-right: auto do contador, que agora mora na linha do titulo. */
 .rooms-intro { min-width: 0; flex: 1; }
@@ -2995,51 +3039,30 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 .room-card .room-info { flex: none; align-items: flex-start; }
 .room-card .room-badge { width: 48px; height: 48px; font-size: 17px; }
 .room-card .room-connect { width: 100%; min-height: 44px; }
-.rooms-empty { grid-column: 1 / -1; min-height: 320px; border-style: solid; background: var(--s1); box-shadow: var(--shadow-1); }
 .rooms-empty svg { width: 42px; height: 42px; color: var(--act); }
-.rooms-empty-title { font-family: 'Outfit', sans-serif; font-size: 20px; color: var(--tx); }
-.rooms-empty-hint { max-width: 390px; font-size: var(--fs-body); }
+.rooms-empty-title { font-weight: 600; font-family: 'Outfit', sans-serif; font-size: 20px; color: var(--tx); }
 
 /* O dock e um filho normal do palco: a grade nunca fica encoberta. */
 #room-view { gap: var(--s-2); padding: var(--s-2); background: var(--bg); }
-.stage { min-width: 0; gap: var(--s-2); }
-.stage-header { min-height: 44px; padding: 0 var(--s-2); background: transparent; border: 0; }
 .stage-header #btn-room-settings { display: none; }
-.stage-room-name { margin-right: auto; }
 .stage-room-address, .stage-room-pin, .stage-status-badge { background: var(--s2); border: 1px solid var(--line); border-radius: var(--r-full); padding: var(--s-1) var(--s-2); }
-.stage-copy { flex: none; }
-.control-bar { position: static; align-self: center; width: fit-content; max-width: 100%; margin: 0; padding: var(--s-1); border: 1px solid var(--line2); border-radius: var(--r-full); background: var(--s1); box-shadow: var(--shadow-2); }
-.control-bar .control-btn { min-height: 44px; border-radius: var(--r-full); }
+.stage-copy { flex: none; position: relative; width: 44px; min-width: 44px; padding: 0; }
 .control-separator { width: 1px; height: 24px; background: var(--line2); flex: none; }
-.control-btn-end { margin-left: 0 !important; background: var(--danger-dim); border-color: var(--danger-dim); color: var(--danger-soft); }
-.control-btn-end:hover:not(:disabled) { background: var(--danger-dim); border-color: var(--danger-soft); color: var(--danger-soft); }
-.room-side { width: 300px; margin: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--s1); }
-.room-side.collapsed { margin: 0; }
-.chat-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-compose { margin-top: auto; border-radius: var(--r-full); background: var(--s2); }
+.control-btn-end:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); color: var(--on-act); }
 
 /* Segunda passada da sala: o video e o foco, controles viram uma chamada. */
-.stage-header { min-height: 56px; padding: 0 var(--s-3); gap: var(--s-2); }
 .stage-title-group { min-width: 0; display: grid; gap: 1px; margin-right: auto; }
-.stage-room-name { font-size: var(--fs-lead); line-height: 1.1; }
 .stage-member-count { color: var(--tx2); font-size: var(--fs-small); line-height: 1.1; }
 .stage-room-address, .stage-room-pin { flex: none; }
 .room-settings-header { display: none; }
-.stage-copy { position: relative; width: 44px; min-width: 44px; padding: 0; }
 .stage-copy.copied-flash svg { opacity: 0; }
 .stage-copy.copied-flash::after { content: '✓'; position: absolute; color: var(--act); font-size: var(--fs-title); }
 
-.grid { padding: 0; gap: var(--s-2); }
-.grid-main { border-radius: var(--r-lg); overflow: hidden; }
-.grid-strip { min-height: 104px; max-height: 112px; padding: 0 var(--s-1); }
-.grid-strip .tile:not(.fullscreen) { max-height: 104px; }
-.grid > .empty { min-height: 0; padding: var(--s-6); color: var(--tx2); text-align: center; font-family: 'Outfit', sans-serif; font-size: var(--fs-lead); }
 .grid > .empty::before { content: ''; width: 42px; height: 30px; border: 2px solid var(--tx3); border-radius: var(--r-xs); margin-bottom: var(--s-3); }
 .grid > .empty p { margin: 0; }
 .grid > .empty .empty-hint { color: var(--tx3); font-family: 'Work Sans', system-ui, sans-serif; font-size: var(--fs-body); font-weight: 400; margin-top: calc(var(--s-1) - var(--s-3)); }
 .grid > .empty .empty-share { margin-top: var(--s-2); font-family: 'Work Sans', system-ui, sans-serif; font-size: var(--fs-ui); }
 
-.control-bar { gap: var(--s-1); padding: var(--s-1); flex-wrap: nowrap; }
 .control-bar .control-btn { position: relative; width: 48px; min-width: 48px; min-height: 48px; padding: 0; border-radius: var(--r-full); }
 .control-bar #btn-toggle-share { width: auto; min-width: 164px; padding: 0 var(--s-4); }
 .control-bar .btn-label { position: absolute; bottom: calc(100% + var(--s-2)); left: 50%; z-index: var(--z-popover); transform: translateX(-50%); opacity: 0; pointer-events: none; white-space: nowrap; padding: 5px var(--s-2); border-radius: var(--r-xs); background: var(--s3); color: var(--tx); border: 1px solid var(--line2); font-size: var(--fs-small); line-height: 1.2; }
@@ -3048,11 +3071,12 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 .control-settings { margin-left: 0 !important; }
 .control-bar .control-settings { background: var(--s3); border-color: var(--line2); color: var(--tx); }
 .control-bar .control-settings:hover:not(:disabled) { background: var(--s4); }
-.control-btn-end { background: var(--danger); border-color: var(--danger); color: var(--on-act); }
-.control-btn-end:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); color: var(--on-act); }
+.control-btn-end { margin-left: 0 !important; background: var(--danger); border-color: var(--danger); color: var(--on-act); }
 
-.room-side { width: 320px; padding: var(--s-2); gap: var(--s-2); }
-.room-side.collapsed { padding: 0; }
+/* visibility: hidden tira os filhos (input do chat, botoes de membro) da
+   ordem de tabulacao enquanto a coluna esta recolhida e invisivel -- so
+   width:0/opacity:0 os deixava focaveis e digitaveis por tras do nada. */
+.room-side.collapsed { width: 0; opacity: 0; border-left: none; visibility: hidden; margin: 0; padding: 0; }
 .room-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-1); padding: var(--s-1); border: 1px solid var(--line); border-radius: var(--r-full); background: var(--s2); }
 .room-tab { min-height: 44px; padding: 0 var(--s-2); border-radius: var(--r-full); color: var(--tx2); background: transparent; font-size: var(--fs-small); }
 .room-tab[aria-selected="true"] { color: var(--tx); background: var(--s3); }
@@ -3073,12 +3097,11 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 }
 
 /* Dialogos usam a mesma leitura: titulo, corpo livre, acoes separadas. */
-.dialog-box { padding: 0; overflow: hidden; }
+.dialog-box { width: min(360px, 90vw); padding: 0; overflow: hidden; }
 .dialog-box > h2, .dialog-box > p, .dialog-box > .dialog-field, .dialog-box > .check-group { margin-left: var(--s-5); margin-right: var(--s-5); }
 .dialog-box > h2 { padding-top: var(--s-5); }
 .dialog-box .dialog-actions { margin: var(--s-5) 0 0; padding: var(--s-3) var(--s-5); border-top: 1px solid var(--line); }
 
-.settings-cat { display: flex; align-items: center; gap: var(--s-2); }
 .settings-cat svg { width: 17px; height: 17px; flex: none; }
 
 @media (max-width: 900px) {
