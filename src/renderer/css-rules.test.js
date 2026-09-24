@@ -159,6 +159,32 @@ test('font-size usa a escala de tokens (B2)', () => {
   assert.ok(!/font-size:\s*\d+\.\d+px/.test(css), 'meio-pixel em font-size voltou');
 });
 
+test('espacamento em px que bate com a escala usa o token (B3)', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const rules = declarations(css);
+  const escala = new Map(rules
+    .filter(({ property, stack }) => /^--s-\d+$/.test(property) && isRootBlock(stack))
+    .map(({ property, value }) => [Number.parseFloat(value), property]));
+  assert.ok(escala.has(2) && escala.has(6) && escala.has(8), 'a escala --s-* precisa existir no :root');
+
+  const espacamento = /^(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z-]+)?$/;
+  const literais = [];
+  const foraDaEscala = [];
+  for (const { property, value, stack, line } of rules) {
+    if (!espacamento.test(property) || isRootBlock(stack)) continue;
+    for (const [, px] of value.matchAll(/(?:^|[\s(,])(\d+(?:\.\d+)?)px\b/g)) {
+      const token = escala.get(Number(px));
+      if (token) literais.push(`${line}: ${stack.at(-1)} { ${property}: ${value} } -> ${px}px e var(${token})`);
+      else foraDaEscala.push(px);
+    }
+  }
+  assert.deepEqual(literais, [], `px na mao onde ja existe token: ${literais.join('; ')}`);
+  // Os que nao batem com degrau nenhum (1, 3, 5, 7, 9, 10px...) ficaram
+  // literais no acabamento P3: arredondar muda o pixel. O numero so pode
+  // descer -- espacamento novo nasce da escala.
+  assert.ok(foraDaEscala.length <= 98, `espacamento fora da escala subiu para ${foraDaEscala.length} (maximo 98)`);
+});
+
 test('cores literais ficam restritas aos tokens dos blocos de tema', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const literal = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl)\(/i;
