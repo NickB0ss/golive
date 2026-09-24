@@ -105,6 +105,7 @@
   const { relayKindFor, parseKind } = meshModule;
   const { isSoftwareEncoder, summarizeScreenEncodeHealth } = encodehealth;
   const { encodediag } = window.GoLive;
+  const { leaderloss } = window.GoLive;
 
   // Topologia da arvore de retransmissao (F2), por kind -- so significativa
   // quando ESTA sessao e a origem daquele kind (localStream/cameraStream
@@ -574,6 +575,17 @@
       for (const state of myRole[kind].values()) {
         if (state.role === 'relay') total += state.filhosIds.length;
       }
+    }
+    return total;
+  }
+
+  // O lado de quem LE o relayLoad: quantos filhos esta sessao, como origem,
+  // pendurou em `peerId` (somando kinds, como relayLoad() soma do lado dele).
+  function filhosQueDemosA(peerId) {
+    let total = 0;
+    for (const kind of KINDS) {
+      const a = originTree[kind].assignments.get(peerId);
+      if (a?.role === 'relay') total += a.filhosIds.length;
     }
     return total;
   }
@@ -1894,6 +1906,27 @@
   const { MAX_RECONNECT } = reconnect;
   const STABLE_MS = 20000;
 
+  // Checagens TCP da porta da sala desde a queda atual (leaderloss.js): duas
+  // recusas seguidas (o PC do lider responde, o app dele nao) encurtam a
+  // escada; timeout nao muda nada. A chave (queda + URL) descarta sozinha o
+  // que sobrou de outra queda ou de outra sala.
+  let leaderPortChecks = { dropAt: null, url: null, results: [] };
+  function leaderPortResults(dropAt, url) {
+    const c = leaderPortChecks;
+    return dropAt != null && c.dropAt === dropAt && c.url === url ? c.results : [];
+  }
+  function checkLeaderPort(dropAt, url) {
+    const target = leaderloss.hostPortOf(url);
+    if (dropAt == null || !target || typeof window.golive.checkTcpPort !== 'function') return;
+    if (leaderPortChecks.dropAt !== dropAt || leaderPortChecks.url !== url) leaderPortChecks = { dropAt, url, results: [] };
+    const checks = leaderPortChecks;
+    Promise.resolve(window.golive.checkTcpPort(target.host, target.port)).then((result) => {
+      if (leaderPortChecks !== checks || !leaderloss.isResult(result)) return;
+      checks.results.push(result);
+      console.info(`[signaling] porta da sala: ${leaderloss.describe(result)}`);
+    }, () => {});
+  }
+
   function joinRoom(rawUrl, name, publicAddress, onSettled, reconnectAttempt = 0, pin = null, preserveMigrationOrphan = false) {
     if (!reconnectAttempt) {
       // Nova intencao nao pode apresentar a credencial da sala anterior.
@@ -2190,7 +2223,11 @@
           console.error(`[signaling] conexao fechada: code=${detail?.code} reason="${detail?.reason}" wasClean=${detail?.wasClean}`);
 
           const abnormal = detail?.code === 1006 || detail?.wasClean === false;
-          const canRetry = abnormal && (session.opened || attempts > 0) && attempts < MAX_RECONNECT;
+          // Desistir da escada: ou ela acabou, ou a porta da sala recusou
+          // duas vezes seguidas (o app do lider morreu; ver leaderloss.js).
+          const inLadder = abnormal && (session.opened || attempts > 0);
+          const leaderLoss = leaderloss.decide({ attempts, maxAttempts: MAX_RECONNECT, results: leaderPortResults(roomDropAt, url) });
+          const canRetry = inLadder && !leaderLoss.giveUp;
 
           currentSession = null;
           activeRoomAddress = null;
@@ -2235,6 +2272,8 @@
             renderRoomStatus();
           }
 
+          if (canRetry) checkLeaderPort(roomDropAt, url);
+
           if (canRetry) {
             // Queda anormal, nao saida deliberada (leaveRoom zera
             // currentSession antes de fechar, entao nunca chega aqui):
@@ -2256,8 +2295,11 @@
             return;
           }
 
-          if (abnormal && attempts >= MAX_RECONNECT) {
+          if (inLadder && leaderLoss.giveUp) {
             resumeToken = null;
+            if (leaderLoss.reason === 'recusa') {
+              console.info(`[migracao] a porta da sala recusou ${leaderloss.REFUSED_STREAK} vezes seguidas (o app do lider fechou): migrando sem esperar a escada (tentativa ${attempts + 1} de ${MAX_RECONNECT})`);
+            }
             // Item B: `session` aqui e a ULTIMA tentativa de reconexao, cuja
             // malha nasceu vazia -- contar por ela fazia cada sobrevivente se
             // achar o unico candidato e subir a propria sala. A lista vem da
@@ -3084,10 +3126,28 @@
     if (r.action === 'heal' || r.action === 'give-up') {
       // Diagnostico ANTES do reoffer: a reoferta fecha esta PC e leva junto
       // os contadores que dizem o que aconteceu.
+      const pcState = session.mesh.peers.get(peerId)?.inConns[kind]?.connectionState;
       const diag = hasInbound
-        ? diagnoseStall(inputKey, r.stalledFor, session.mesh.peers.get(peerId)?.inConns[kind]?.connectionState)
+        ? diagnoseStall(inputKey, r.stalledFor, pcState)
         : { cause: 'desconhecido', line: 'sem conexao de entrada (a arvore diz que devia haver uma)' };
+      // Com "rede", a conexao nova precisaria da mesma rede: segura a
+      // reoferta e deixa o reinicio de ICE de quem transmite (C5) agir. O
+      // vigia devolve a tentativa e refaz a pergunta na proxima olhada.
+      const decision = r.action === 'heal'
+        ? conndiag.reofferDecision({ cause: diag.cause, frozen: r.reason === 'frozen', pcState, stalledForMs: r.stalledFor })
+        : null;
+      if (decision?.hold) {
+        if (stallWatch.defer(inputKey)) {
+          console.warn(`[assistir] diagnostico da tela de ${nome}${via}: ${diag.line}`);
+          console.warn(`[assistir] segurando reoferta: rede -- tela de ${nome}${via} parada ha ${Math.round(r.stalledFor / 1000)}s (pc ${pcState}); esperando o reinicio de ICE de quem transmite, refaz so depois de ${conndiag.NETWORK_HOLD_MAX_MS / 1000}s`);
+          showStallNote(tileId, conndiag.stallNotice(diag.cause, nome), frames, transport);
+        }
+        return;
+      }
       console.warn(`[assistir] diagnostico da tela de ${nome}${via}: ${diag.line}`);
+      if (decision?.reason === 'limite') {
+        console.warn(`[assistir] tela de ${nome}${via} sem contato ha ${Math.round(r.stalledFor / 1000)}s, passou do prazo do reinicio de ICE (${conndiag.NETWORK_HOLD_MAX_MS / 1000}s): soltando a reoferta`);
+      }
       showStallNote(tileId, conndiag.stallNotice(diag.cause, nome, { gaveUp: r.action === 'give-up' }), frames, transport);
     }
     if (r.action === 'heal') {
@@ -3100,7 +3160,9 @@
       console.error(`[assistir] tela de ${nome}${via} continua sem imagem depois de ${r.attempts} tentativas`);
     } else if (r.action === 'recovered') {
       clearStallNote(tileId);
-      console.info(`[assistir] tela de ${nome}${via} voltou a mostrar imagem depois de ${r.attempts} tentativa(s)`);
+      console.info(r.attempts
+        ? `[assistir] tela de ${nome}${via} voltou a mostrar imagem depois de ${r.attempts} tentativa(s)`
+        : `[assistir] tela de ${nome}${via} voltou a mostrar imagem sem refazer a conexao (reoferta segurada: rede)`);
     }
   }
 
@@ -3847,10 +3909,18 @@
           vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
           // Campo novo e opcional: cliente antigo e dado invalido valem carga
           // zero, o caso neutro da eleicao de relay.
+          //
+          // Guardamos so a carga ALHEIA: o que o peer repassa pra OUTRAS
+          // origens. O numero anunciado inclui os filhos que NOS demos a ele;
+          // contado inteiro, o nosso proprio relay ia pro fim da fila no
+          // recalculo seguinte, a arvore trocava de relay, o novo anunciava
+          // carga, e ela trocava de novo a cada janela de histerese. Com dois
+          // relays por origem isso batia nos dois ao mesmo tempo.
           const relayLoadAntes = vsPeer.relayLoad;
-          vsPeer.relayLoad = Number.isInteger(msg.relayLoad) && msg.relayLoad >= 0 && msg.relayLoad <= 16
+          const anunciada = Number.isInteger(msg.relayLoad) && msg.relayLoad >= 0 && msg.relayLoad <= 16
             ? msg.relayLoad
             : 0;
+          vsPeer.relayLoad = Math.max(0, anunciada - filhosQueDemosA(msg.from));
           // R2: a carga deste peer mudou -- se somos origem de algo, o
           // recalculo pode escolher outro relay. recomputeTree ja tem sua
           // propria historese (REELECTION_HYSTERESIS_MS); so disparamos o
@@ -5773,8 +5843,11 @@
     }
     if (!candidates.length) return;
 
+    // `anterior`: com dois relays, e isto que impede um recalculo (alguem
+    // entrou, um dos relays caiu) de trocar de pai as folhas do relay que
+    // continua de pe. Ver tree.js computeTree.
     const assignments = cfg.network.tree
-      ? tree.computeTree(myId, candidates)
+      ? tree.computeTree(myId, candidates, { anterior: originTree[kind].assignments })
       : tree.allDirect(myId, candidates);
 
     // H3: a malha degenerada e o modo de FALHA, nao um estado neutro. So

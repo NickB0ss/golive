@@ -28,6 +28,8 @@ Precisa de Linux com `Xvfb`. Os cenários marcados `(rede)` precisam de
 máquina inteira** (menos DNS) por alguns segundos: só o loopback não basta,
 porque com STUN respondendo a mídia acha outro caminho pela internet. Numa
 máquina de uso diário, isso engasga chamada e jogo enquanto o cenário roda.
+`lider-some` e `lider-volta` descartam também o TCP da porta da sala (a
+9000, nos dois sentidos) por até ~2 min.
 
 Logs, linha do tempo e prints (na falha) ficam em `lab-out/<cenário>/`; o
 resumo, em `lab-out/resumo.txt`. Quando um cenário falha, as últimas linhas
@@ -43,11 +45,14 @@ mesmo com as verificações passando.
 | Cenário | O que prova |
 |---|---|
 | `sala-basica` | 4 PCs; a árvore monta um relay e todos seguem com a tela andando; C6, D1, D6 e as linhas `[rota]` |
-| `queda-curta` | 9 s sem UDP: quem transmite reinicia o ICE na mesma conexão (C5) e a imagem volta |
-| `queda-longa` | 15 s sem UDP: diagnóstico "rede", "Sem contato com o PC de Ana" no tile, e tudo volta sozinho |
+| `queda-curta` | 9 s sem UDP: quem transmite reinicia o ICE na mesma conexão (C5), a imagem volta e ninguém refaz a conexão |
+| `queda-longa` | 15 s sem UDP: diagnóstico "rede", "Sem contato com o PC de Ana" no tile, o vigia segura a reoferta e a mesma conexão volta pelo reinício de ICE |
 | `origem-parada` | a captura congela: diagnóstico "origem", "Ana parou de enviar imagem", e o aviso sai quando ela volta |
 | `perda-udp` | 3% de perda por 20 s: a imagem segue e ninguém refaz a conexão por engano |
-| `lider-cai` | o PC de quem criou a sala morre (SIGKILL): os outros migram e o vídeo entre eles continua |
+| `lider-cai` | o app de quem criou a sala morre (SIGKILL) e a porta recusa: os outros migram em poucos segundos (sem esperar a escada) e o vídeo entre eles continua |
+| `lider-some` | o PC de quem criou a sala some sem recusar nada (TCP da sala descartado, depois SIGKILL): pior caso, a migração espera a escada de reconexão inteira |
+| `lider-volta` | o PC de quem criou a sala some por 40 s (congelado, TCP descartado) e volta: todos reconectam nele e ninguém migra — a queda curta não parte a sala |
+| `sala-de-6` | 6 PCs: a origem manda pra 2 relays (2 encoders, não 3), cada um repassa, a topologia fica parada; um relay cai e as órfãs voltam sem mexer nas folhas do outro |
 
 ## Escrever um cenário
 
@@ -55,7 +60,9 @@ Um arquivo em `cenarios/` exportando `{ nome, descricao, precisaRede?, timeoutMs
 `lab.abrir(['Ana', 'Beto'])` sobe as instâncias (em paralelo) e devolve
 objetos com as ações do app (`criarSala`, `entrar`, `transmitir`,
 `pararOrigem`, `esperarImagemAndando`, `avisoNoTile`, `esperarLog`,
-`derrubar`...); `lab.rede` corta ou degrada o UDP; `lab.verificar`,
+`derrubar`...); `congelar`/`descongelar` param o app inteiro com SIGSTOP/SIGCONT;
+`lab.rede` corta ou degrada o UDP, ou descarta o TCP de uma porta
+(`cortarTcpPorta`); `lab.verificar`,
 `lab.igual` e `lab.contem` registram cada conferência na linha do tempo.
 O driver (`driver.js`) não sabe nada de cenário: só executa comandos
 dentro do app.

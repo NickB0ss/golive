@@ -46,6 +46,14 @@ async function mainWindow(timeoutMs) {
   throw new Error(`janela principal nao apareceu em ${timeoutMs} ms`);
 }
 
+/** A janela principal, ou outra pelo fim da URL (`'espiar.html'`). */
+function janelaAlvo(janela) {
+  if (!janela) return win;
+  const alvo = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().endsWith(`/${janela}`));
+  if (!alvo) throw new Error(`janela ${janela} nao esta aberta`);
+  return alvo;
+}
+
 const comandos = {
   /** Espera a janela principal carregar e fixa o tamanho (prints comparaveis). */
   pronto({ timeoutMs = 60000 }) {
@@ -55,10 +63,12 @@ const comandos = {
       return true;
     });
   },
-  /** Roda codigo no renderer (mundo principal da pagina) e devolve o resultado. */
-  async js({ codigo }) {
-    if (!win || win.isDestroyed()) throw new Error('sem janela');
-    return win.webContents.executeJavaScript(String(codigo), true);
+  /** Roda codigo no renderer (mundo principal da pagina) e devolve o
+   * resultado. `janela` escolhe outra janela do app (ver janelaAlvo). */
+  async js({ codigo, janela }) {
+    const alvo = janelaAlvo(janela);
+    if (!alvo || alvo.isDestroyed()) throw new Error('sem janela');
+    return alvo.webContents.executeJavaScript(String(codigo), true);
   },
   /** Recarrega a pagina e espera terminar (usado depois de gravar a config). */
   async recarregar({ timeoutMs = 30000 }) {
@@ -69,8 +79,10 @@ const comandos = {
       return true;
     });
   },
-  async print({ caminho }) {
-    const img = await win.webContents.capturePage();
+  /** Print da janela principal, ou de outra pelo fim da URL
+   * (`janela: 'espiar.html'`) -- o Espiar e uma janela a parte. */
+  async print({ caminho, janela }) {
+    const img = await janelaAlvo(janela).webContents.capturePage();
     fs.writeFileSync(caminho, img.toPNG());
     return caminho;
   },

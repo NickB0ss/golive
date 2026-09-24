@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { errosNaoTratados, achar, regraUdp, resumo } = require('./verificar');
+const { errosNaoTratados, achar, regraUdp, regraTcp, descendentes, resumo } = require('./verificar');
 
 const linha = (texto, t = 1000) => ({ t, texto });
 
@@ -48,4 +48,21 @@ test('resumo lista cada cenario e conta as falhas', () => {
   assert.match(texto, /^FALHOU queda-curta \(52s\)\n {7}nao reiniciou o ICE$/m);
   assert.match(texto, /1 de 2 cenario\(s\) falharam$/);
   assert.match(resumo([{ nome: 'a', ok: true, ms: 1 }]), /1 cenario\(s\) ok$/);
+});
+
+test('regra de TCP descarta a porta da sala nos dois sentidos, com remocao simetrica', () => {
+  assert.deepEqual(regraTcp('-I', 9000), ['-I', 'INPUT', '-p', 'tcp', '--dport', '9000', '-j', 'DROP']);
+  assert.deepEqual(regraTcp('-I', 9000, 'sport'), ['-I', 'INPUT', '-p', 'tcp', '--sport', '9000', '-j', 'DROP']);
+  assert.deepEqual(regraTcp('-D', 9000).slice(1), regraTcp('-I', 9000).slice(1));
+  assert.throws(() => regraTcp('-I', 9000, 'porta'));
+  assert.throws(() => regraTcp('-A', 9000));
+  assert.throws(() => regraTcp('-I', 0));
+  assert.throws(() => regraTcp('-I', '9000'));
+});
+
+test('descendentes acha a arvore inteira do processo, sem a raiz nem vizinhos', () => {
+  const pares = [[10, 1], [11, 10], [12, 10], [13, 11], [20, 1], [21, 20]];
+  assert.deepEqual(descendentes(pares, 10).sort(), [11, 12, 13]);
+  assert.deepEqual(descendentes(pares, 13), []);
+  assert.deepEqual(descendentes([[5, 5]], 5), []);
 });

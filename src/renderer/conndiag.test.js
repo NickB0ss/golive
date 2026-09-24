@@ -163,3 +163,38 @@ test('o aviso do tile diz de quem e a culpa, e o log carrega os numeros', () => 
   assert.match(linha, /rota host\/radmin udp -> host\/radmin$/, 'sem a banda de subida de quem assiste');
   assert.ok(!linha.includes('26.'), 'nenhum IP no log');
 });
+
+test('com diagnostico "rede" o vigia segura a reoferta e deixa o reinicio de ICE agir', () => {
+  const base = { cause: 'rede', frozen: true, pcState: 'connected', stalledForMs: 6000 };
+  // Antes de o Chromium declarar 'disconnected' (6,5 s) e durante o reinicio.
+  assert.deepEqual(conndiag.reofferDecision(base), { hold: true, reason: 'rede' });
+  assert.equal(conndiag.reofferDecision({ ...base, pcState: 'disconnected', stalledForMs: 14000 }).hold, true);
+  // A queda de 15 s do cenario queda-longa cabe inteira na espera.
+  assert.equal(conndiag.reofferDecision({ ...base, pcState: 'disconnected', stalledForMs: 16000 }).hold, true);
+});
+
+test('passado o limite, ou com a conexao ja encerrada, refaz como antes', () => {
+  const base = { cause: 'rede', frozen: true, pcState: 'disconnected' };
+  assert.deepEqual(conndiag.reofferDecision({ ...base, stalledForMs: conndiag.NETWORK_HOLD_MAX_MS }), { hold: false, reason: 'limite' });
+  assert.equal(conndiag.reofferDecision({ ...base, stalledForMs: NaN }).hold, false, 'sem medida nao segura');
+  assert.deepEqual(conndiag.reofferDecision({ ...base, pcState: 'failed', stalledForMs: 8000 }), { hold: false, reason: 'conexao-encerrada' });
+  assert.equal(conndiag.reofferDecision({ ...base, pcState: 'closed', stalledForMs: 8000 }).hold, false);
+  assert.equal(conndiag.reofferDecision({ ...base, pcState: undefined, stalledForMs: 8000 }).hold, false, 'sem conexao de entrada');
+  assert.equal(conndiag.reofferDecision({ ...base, pcState: 'connecting', stalledForMs: 8000 }).hold, false);
+});
+
+test('so "rede" segura: origem, decoder e pintura refazem na hora; tela que nunca pintou tambem', () => {
+  for (const cause of ['origem', 'decoder', 'pintura', 'desconhecido']) {
+    assert.deepEqual(conndiag.reofferDecision({ cause, frozen: true, pcState: 'connected', stalledForMs: 6000 }), { hold: false, reason: 'diagnostico' }, cause);
+  }
+  assert.deepEqual(conndiag.reofferDecision({ cause: 'rede', frozen: false, pcState: 'connected', stalledForMs: 6000 }), { hold: false, reason: 'nunca-mostrou' });
+});
+
+test('o limite da espera cobre a escada inteira do mesh: deteccao, reinicio de ICE e carencia', () => {
+  const { DISCONNECT_GRACE_MS } = require('./networktiming');
+  const DETECCAO_CHROMIUM_MS = 6500; // medido no Chromium 152 (STATUS.md, C5)
+  const REINICIO_ICE_MS = 1000; // ICE_RESTART_AFTER_MS em mesh.js
+  assert.ok(conndiag.NETWORK_HOLD_MAX_MS > DETECCAO_CHROMIUM_MS + REINICIO_ICE_MS + DISCONNECT_GRACE_MS);
+  // ...mas nao espera pra sempre: uma conexao presa ainda e refeita em menos de meio minuto.
+  assert.ok(conndiag.NETWORK_HOLD_MAX_MS <= 30000);
+});

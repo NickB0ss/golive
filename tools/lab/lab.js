@@ -15,7 +15,7 @@ const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { achar, regraUdp } = require('./verificar');
+const { achar, regraUdp, regraTcp, descendentes } = require('./verificar');
 
 const RAIZ = path.resolve(__dirname, '..', '..');
 const DRIVER = path.join(__dirname, 'driver.js');
@@ -80,6 +80,11 @@ function iptables(args) {
   });
 }
 
+/** Regra UDP (`{ perda }`) ou TCP de uma porta (`{ tcp }`). */
+function regra(acao, opts) {
+  return opts.tcp ? regraTcp(acao, opts.tcp, opts.sentido) : regraUdp(acao, opts);
+}
+
 /** Falhas de rede (UDP de entrada, todas as interfaces, menos DNS), sempre
  * desfeitas no fim do cenario -- ver regraUdp em verificar.js. */
 class Rede {
@@ -98,7 +103,7 @@ class Rede {
   }
 
   async inserir(opts, descricao) {
-    await iptables(regraUdp('-I', opts));
+    await iptables(regra('-I', opts));
     this.ativas.push(opts);
     this.passo(`rede: ${descricao}`);
   }
@@ -106,7 +111,7 @@ class Rede {
   async remover(opts, descricao) {
     const i = this.ativas.indexOf(opts);
     if (i < 0) return;
-    await iptables(regraUdp('-D', opts));
+    await iptables(regra('-D', opts));
     this.ativas.splice(i, 1);
     this.passo(`rede: ${descricao}`);
   }
@@ -126,12 +131,47 @@ class Rede {
     return () => this.remover(opts, 'perda removida');
   }
 
+  /** Descarta todo TCP da `porta`, nos dois sentidos, ate a funcao
+   * devolvida: a sala de quem some fica sem resposta nenhuma (SYN perdido,
+   * nenhum FIN/RST de volta), como numa rota caida -- e nao com a recusa de
+   * um app morto. */
+  async cortarTcpPorta(porta) {
+    const entra = { tcp: porta, sentido: 'dport' };
+    const sai = { tcp: porta, sentido: 'sport' };
+    await this.inserir(entra, `TCP da porta ${porta} descartado`);
+    await iptables(regra('-I', sai));
+    this.ativas.push(sai);
+    return async () => {
+      const i = this.ativas.indexOf(sai);
+      if (i >= 0) {
+        await iptables(regra('-D', sai));
+        this.ativas.splice(i, 1);
+      }
+      await this.remover(entra, `TCP da porta ${porta} de volta`);
+    };
+  }
+
   async restaurar() {
     for (const opts of [...this.ativas].reverse()) {
-      await iptables(regraUdp('-D', opts)).catch(() => {});
+      await iptables(regra('-D', opts)).catch(() => {});
     }
     this.ativas = [];
   }
+}
+
+/** [pid, ppid] de todos os processos (Linux, /proc). */
+function paresDeProcessos() {
+  const pares = [];
+  for (const nome of fs.readdirSync('/proc')) {
+    if (!/^\d+$/.test(nome)) continue;
+    try {
+      const stat = fs.readFileSync(`/proc/${nome}/stat`, 'utf8');
+      // O nome do processo vem entre parenteses e pode ter espacos.
+      const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+      pares.push([Number(nome), ppid]);
+    } catch { /* processo saiu no meio da leitura */ }
+  }
+  return pares;
 }
 
 // ---------- Instancia do app ----------
@@ -251,8 +291,8 @@ class Instancia {
     });
   }
 
-  js(codigo) {
-    return this.chamar('js', { codigo });
+  js(codigo, janela) {
+    return this.chamar('js', { codigo, janela });
   }
 
   esperar(expr, timeoutMs, descricao) {
@@ -267,8 +307,8 @@ class Instancia {
     return ate(() => this.achar(re, desde)[0], { timeoutMs, descricao: `${this.nome}: log ${descricao}` });
   }
 
-  async print(nome) {
-    return this.chamar('print', { caminho: path.join(this.dir, `${nome}.png`) }, 20000).catch(() => null);
+  async print(nome, janela) {
+    return this.chamar('print', { caminho: path.join(this.dir, `${nome}.png`), janela }, 20000).catch(() => null);
   }
 
   // ---------- Acoes do app ----------
@@ -348,10 +388,43 @@ class Instancia {
   /** Mata o processo na hora, como a queda de um PC (sem fechar a sala). */
   derrubar() {
     this.passo(`${this.nome} derrubada (SIGKILL)`);
+    this.matarCongelados();
     try { this.proc.kill('SIGKILL'); } catch { /* ja saiu */ }
   }
 
+  /** Para o app inteiro (SIGSTOP no main e em todos os filhos: GPU, rede,
+   * renderer). Pros outros e um PC travado ou uma rota caida: nada
+   * responde, nem a sinalizacao nem a midia. O processo morto de
+   * `derrubar` o kernel fecha na hora (RST); o congelado, nao. */
+  congelar() {
+    this.congelados = [this.proc.pid, ...descendentes(paresDeProcessos(), this.proc.pid)];
+    for (const pid of this.congelados) {
+      try { process.kill(pid, 'SIGSTOP'); } catch { /* ja saiu */ }
+    }
+    this.passo(`${this.nome} congelada (SIGSTOP em ${this.congelados.length} processos)`);
+  }
+
+  descongelar() {
+    for (const pid of [...(this.congelados || [])].reverse()) {
+      try { process.kill(pid, 'SIGCONT'); } catch { /* ja saiu */ }
+    }
+    this.congelados = null;
+    this.passo(`${this.nome} de volta (SIGCONT)`);
+  }
+
+  /** Filhos parados nao percebem o main morrer: ficariam pra sempre. */
+  matarCongelados() {
+    for (const pid of this.congelados || []) {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* ja saiu */ }
+    }
+    this.congelados = null;
+  }
+
   async encerrar() {
+    if (this.congelados) {
+      this.matarCongelados();
+      try { this.proc.kill('SIGKILL'); } catch { /* ja saiu */ }
+    }
     if (this.saiu === null) {
       await this.chamar('sair', {}, 5000).catch(() => {});
       await ate(() => this.saiu !== null, { timeoutMs: 10000, descricao: 'sair' }).catch(() => {

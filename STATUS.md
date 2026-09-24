@@ -24,7 +24,10 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Áudio de sistema por loopback; áudio por processo (incluir só o Discord)
   quando o addon nativo está compilado.
 - Árvore de retransmissão **sempre ligada** (origem → relay → folha,
-  fanout 1/2, profundidade 2). Teto prático ~4 pessoas.
+  fanout 2/2, profundidade 2). Dois relays a partir da sala de 5: a sala de 6
+  custa 2 encoders na origem em vez de 3, e a de 7 cabe sem ninguém direto.
+  Teto prático ~6-7 pessoas (visto no laboratório com 6; não testado com PCs
+  reais).
 - Qualidade escolhida em **dois eixos** no diálogo de compartilhar
   (Resolução × Fluidez, um controle segmentado cada, em vez dos seis chips
   numa grade de três colunas): os presets são uma matriz 3×2 sem célula
@@ -105,10 +108,10 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 ## Versão atual
 
 `0.20.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **961 testes, 961 passando, 0 falhando**. `npm run lint` → 0
+Testes: `node --test` → **1010 testes, 1010 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
-após `await`). Laboratório: `npm run lab` → 6 cenários (ver abaixo).
+após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
 `npm audit --omit=dev` → **0**. `npm audit` completo → **0**. Branches
 mescladas no remoto ainda não apagadas: **14**.
 
@@ -217,28 +220,82 @@ Fica para depois das medições o C4 (canvas no repasse, depende do M2).
 `npm run lab` (ver `tools/lab/README.md`): várias instâncias do app no
 Linux, cada uma num Xvfb, com captura falsa de canvas e falhas de rede de
 verdade (`iptables` no loopback). Roda na CI (`.github/workflows/lab.yml`).
-Seis cenários: sala de 4 com relay da árvore, queda de UDP curta (C5) e
-longa (diagnóstico "rede" e aviso no tile), origem parada, 3% de perda, e o
-**PC do líder caindo** (SIGKILL) com migração. Não testa encoder de hardware,
-WGC nem VPN de verdade. O que ele já mediu:
+Nove cenários: sala de 4 com relay da árvore, queda de UDP curta (C5) e
+longa (diagnóstico "rede" e aviso no tile), origem parada, 3% de perda, o
+líder caindo de três jeitos: o app morre e a porta recusa (`lider-cai`), o
+PC some sem responder nada (`lider-some`) e o PC some por 40 s e volta
+(`lider-volta`), e a **sala de 6** com dois relays (um deles derrubado no
+meio). Não testa encoder de hardware, WGC nem VPN de verdade. O que ele já
+mediu:
 
-- a migração abrupta leva **~60 s** mesmo com o PC morto recusando na hora
-  (todos esgotam a escada de reconexão antes de migrar, por desenho, pra uma
-  queda de rota da VPN não partir a sala); com SYN sem resposta o pior caso
-  calculado passa de 2 min. O vídeo P2P continua nesse meio tempo, mas a
-  sala fica sem sinalização;
+- a migração abrupta levava **~60 s** mesmo com o app do líder morto e a
+  porta recusando na hora (61,7 s no `lider-cai`), porque todos esgotavam a
+  escada de reconexão antes de migrar. **Agora leva ~5 s** (4,8 s, duas
+  rodadas): o processo principal tenta um TCP cru na porta da sala a cada
+  tentativa que falha, e duas recusas seguidas (ECONNREFUSED, um RST vindo
+  do próprio PC do líder) provam que a sala antiga acabou -- migrar não tem
+  com quem partir. Módulos puros `src/renderer/leaderloss.js` e
+  `src/main/tcpcheck.js`, com teste;
+- quando o PC some sem recusar nada (desligou, travou ou a rota caiu), a
+  escada continua inteira: **134 s** antes e depois (`lider-some`: 15 s do
+  vigia de vida + 116 s da escada + a sonda). Timeout, "sem rota" (ICMP que
+  o adaptador da VPN pode gerar) e o estado das conexões P2P com o líder
+  não separam líder morto de rota caída, e a sonda `probe` não serve pra
+  ouvir os outros sobreviventes (eles não hospedam nada até migrar); mesmo
+  com todos concordando, a queda da VPN do próprio líder partiria a sala.
+  Por isso a proteção contra a queda curta de rota fica como era -- e o
+  `lider-volta` prova: 40 s sem o líder, todos voltam pra sala dele 0,8 s
+  depois, ninguém migra;
+- limite a conferir com PCs de verdade: o Windows com firewall ligado
+  ("modo furtivo") pode não mandar RST pra porta sem ninguém escutando, e
+  aí o app do líder que fechou parece rota caída (espera antiga). O log diz
+  o que cada tentativa viu: `[signaling] porta da sala: recusou na hora` ou
+  `sem resposta`;
+- a primeira versão do `lider-some` (Ana congelada, segurando a porta)
+  pegou uma vez a sala se partindo em duas (Beto e Caio cada um na sua;
+  corrida que existe antes e depois desta mudança): o sucessor assume só
+  ~15-20 s antes da vez do 2º candidato, e no laboratório (todos no mesmo
+  IP) a sala nova caiu numa porta vizinha, que a procura só varre a cada
+  10 s, e o beacon aponta pro 192.0.2.2, que o Chromium do contêiner manda
+  pelo proxy. O cenário agora libera a porta quando alguém assume (como o
+  IP do sucessor seria com PCs de verdade), mas a folga curta entre o
+  sucessor e o 2º candidato vale uma olhada -- sobretudo se a porta do
+  sucessor estiver ocupada ou ele ficar parado no UAC do firewall;
 - numa queda de ~9 s, o vigia de congelamento (6 s parado) às vezes refaz a
   conexão antes do reinício de ICE (o Chromium leva 6,5 s pra declarar
   `disconnected`, e o reinício vem 1 s depois). Refazer não ajuda quando o
-  diagnóstico é "rede" (a conexão nova precisa da mesma rede): candidato a
-  segurar a reoferta nesse caso;
-- achou e corrigiu um erro do C3: queda de rede saía como "origem parou".
+  diagnóstico é "rede" (a conexão nova precisa da mesma rede). **Feito
+  (pós-0.20.0):** com "rede" numa conexão que já mostrou imagem e ainda
+  está `connected`/`disconnected`, o vigia segura a reoferta
+  (`[assistir] segurando reoferta: rede`, decisão pura em
+  `conndiag.reofferDecision`), devolve a tentativa (`stallwatch.defer`) e
+  refaz a pergunta a cada olhada; só refaz se o diagnóstico mudar ou se a
+  tela passar de **25 s** parada (6,5 s até `disconnected` + 1 s até o
+  reinício + 15 s de carência do mesh, com folga; depois disso o próprio
+  mesh já derrubou e refez). O aviso "Sem contato com o PC de X" continua.
+  Medido (3 rodadas antes e depois): `queda-longa` passou de 3/3 conexões
+  refeitas pelo vigia para 0/3, com a mesma conexão voltando pelo reinício
+  de ICE e a imagem de volta no mesmo tempo (~1,5 s depois do UDP);
+  `queda-curta` e `perda-udp` sem reoferta nos dois casos. Os dois cenários
+  de queda agora verificam que ninguém refez a conexão. Numa queda avulsa
+  de 30 s (fora da CI) o vigia caiu de 2 reofertas para 1: a carência do
+  mesh refaz a conexão aos ~22 s, e a nova, que nunca conectou, ainda é
+  refeita uma vez durante a queda (comportamento antigo, fora deste
+  conserto);
+- achou e corrigiu um erro do C3: queda de rede saía como "origem parou";
+- com a sala de 6, achou que a árvore **trocava de relay a cada janela de
+  histerese** (~8 s) sem ninguém entrar ou sair: o relay anunciava como carga
+  os filhos que a própria origem lhe tinha dado, e a origem o mandava pro fim
+  da fila. Pela mesma conta valia pro relay único da sala de 4 (o cenário
+  `sala-basica` acaba antes de ver). Corrigido junto do
+  fanout 2 (a origem desconta a própria parte do `relayLoad`).
 
 ## Próximos passos
 
 - **noite de teste com 2+ PCs reais, na 0.20.0** -- o teste que mais
   importa e derrubar o PC do lider de verdade, de preferencia no Tailscale
-  (e o que a Frente A2 mudou; o laboratorio ja mostrou ~60 s de migracao).
+  (e o que a Frente A2 mudou; no laboratorio a migracao leva ~5 s com a
+  porta recusando e ~134 s com o PC sumido).
   Olhar no log as linhas `[rota]`, `[mesh] ... 'disconnected'`,
   `reiniciando o ICE` e `[assistir] diagnostico`. Aproveitar a mesma
   noite para o roteiro M1-M6 de
@@ -246,13 +303,26 @@ WGC nem VPN de verdade. O que ele já mediu:
   premissas medidas no Chromium 128 (H.264 de hardware agora vai a 1080p60,
   HEVC apareceu), e o M3 diz se o teto de 4 pessoas era o bug do
   `contentHint` e nao o NVENC;
-- decidir as duas propostas que o laboratorio levantou: nao refazer a
-  conexao quando o diagnostico e "rede" (deixar o reinicio de ICE agir) e
-  encurtar ou nao a espera antes de migrar quando o lider cai;
-- Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
-- acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
-  Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
-  sala achada por sonda, aviso de amigo fora do ar).
+- as duas propostas que o laboratorio levantou estao feitas: com
+  diagnostico "rede" a reconexao espera o reinicio de ICE (revisar o limite
+  de 25 s na noite de teste), e a espera antes de migrar foi encurtada so
+  para a recusa: ~60 s -> ~5 s quando a porta do lider recusa; com timeout
+  segue a escada inteira (ver "Laboratorio automatizado"). Na noite com PCs
+  reais, conferir no log se o app do lider fechado no Windows da `recusou
+  na hora` ou `sem resposta` (modo furtivo do firewall);
+- Frente C, o que sobrou: D1 (quebrar o `app.js`). O fanout 2 na origem
+  entrou (laboratório `sala-de-6`); falta vê-lo numa sala real de 5-6 PCs,
+  olhando no log de quem transmite quantas linhas `[diag] tela->` saem (2) e
+  se o relay escolhido muda sem ninguém entrar ou sair (não deveria);
+- acabamento P3 da interface feito (Espiar segue o tema, Tab nao cai no
+  campo de arquivo do chat, h1 na sala, escalas `--fs-*` e `--s-05`/`--s-15`,
+  33 seletores repetidos consolidados, com testes que travam a regressao).
+  Sobrou o que muda o pixel e pede decisao de design: 15px/17px de fonte
+  (juntar com 16/18), 97 espacamentos fora da escala (5, 10, 3, 7px...) e
+  os pesos 550/650; o flash escuro do Espiar antes de carregar (o main
+  nao conhece o tema, igual a janela principal). O resto da P2 da Frente B
+  (selo de sala achada por sonda, aviso de amigo fora do ar) saiu junto com
+  os Amigos salvos: a sonda so serve a migracao.
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.

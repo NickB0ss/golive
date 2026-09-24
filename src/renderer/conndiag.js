@@ -220,6 +220,45 @@
     }
   }
 
+  // ---------- Refazer ou esperar (H13/C5) ----------
+
+  // Quanto tempo de tela congelada o vigia aguenta, com diagnostico "rede",
+  // antes de pedir pra refazer a conexao mesmo assim. A conta, a partir do
+  // ultimo pacote: o Chromium 152 declara 'disconnected' em ~6,5 s (medido),
+  // quem transmite reinicia o ICE 1 s depois (C5, mesh.js) e, se nem isso
+  // voltar, a carencia de 15 s de 'disconnected' (networktiming.js) derruba
+  // a conexao e o proprio transmissor refaz -- ~22,5 s ao todo. 25 s cobre
+  // essa escada inteira com uma olhada do vigia (2 s) de folga: refazer
+  // antes disso so troca uma conexao que o ICE ainda pode salvar por outra
+  // que precisa da MESMA rede, e gasta uma das 3 tentativas do vigia numa
+  // queda longa (a do cenario `queda-longa`, 15 s, fica toda dentro). Depois
+  // disso, "rede" numa conexao que nem voltou nem caiu e conexao presa, e
+  // refazer e o ultimo recurso de sempre.
+  const NETWORK_HOLD_MAX_MS = 25000;
+  // So nestes o reinicio de ICE ainda pode salvar a conexao: 'connected' e
+  // a janela antes de o Chromium perceber a queda; 'failed'/'closed' ja sao
+  // o fim (o mesh derruba na hora), e 'new'/'connecting' nunca conectaram.
+  const ICE_RESTARTABLE_PC_STATES = new Set(['connected', 'disconnected']);
+
+  /** O vigia de tela assistida quer refazer uma conexao congelada: agora, ou
+   * espera o reinicio de ICE de quem transmite agir?
+   *
+   *   - `cause`: veredicto do classifyStall;
+   *   - `frozen`: a tela ja mostrou imagem nesta conexao (congelou, e nao
+   *     "nunca pintou" -- conexao que nunca conectou nao tem ICE a reiniciar);
+   *   - `pcState`: connectionState ATUAL da conexao de entrada;
+   *   - `stalledForMs`: ha quanto tempo a imagem esta parada.
+   *
+   * Devolve { hold, reason }. So segura com "rede": origem, decoder e
+   * pintura nao dependem do caminho, e refazer continua sendo a cura. */
+  function reofferDecision({ cause, frozen, pcState, stalledForMs }) {
+    if (cause !== 'rede') return { hold: false, reason: 'diagnostico' };
+    if (!frozen) return { hold: false, reason: 'nunca-mostrou' };
+    if (!ICE_RESTARTABLE_PC_STATES.has(pcState)) return { hold: false, reason: 'conexao-encerrada' };
+    if (!(stalledForMs < NETWORK_HOLD_MAX_MS)) return { hold: false, reason: 'limite' };
+    return { hold: true, reason: 'rede' };
+  }
+
   const CAUSE_LOG = {
     rede: 'rede (nada chegando)',
     origem: 'origem parou de enviar video (caminho vivo)',
@@ -255,7 +294,9 @@
     classifyStall,
     stallNotice,
     describeStall,
+    reofferDecision,
     NETWORK_SILENCE_MS,
+    NETWORK_HOLD_MAX_MS,
   };
 
   root.GoLive = root.GoLive || {};

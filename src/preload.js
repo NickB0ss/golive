@@ -60,6 +60,11 @@ contextBridge.exposeInMainWorld('golive', {
   startMigrationBeacon: (payload) => ipcRenderer.invoke('room:migrate-beacon:start', payload),
   stopMigrationBeacon: () => ipcRenderer.invoke('room:migrate-beacon:stop'),
 
+  /** Tenta um TCP cru em host:porta (a sala de quem caiu) e devolve
+   * 'open' | 'refused' | 'timeout' | 'unreachable' | 'error'. So 'refused'
+   * (ECONNREFUSED) prova que o PC esta la e o app do lider nao. */
+  checkTcpPort: (host, port) => ipcRenderer.invoke('net:tcp-check', { host, port }),
+
   /** Recebe beacons de migracao da rede; o renderer filtra pela sala atual. */
   onMigrationBeacon: (callback) =>
     ipcRenderer.on('room-migrate:discovered', (_event, beacon) => callback(beacon)),

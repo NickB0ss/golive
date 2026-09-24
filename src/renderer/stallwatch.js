@@ -42,6 +42,10 @@
         attempts: prev?.attempts || 0,
         lastHealAt: prev?.lastHealAt || 0,
         gaveUp: prev?.gaveUp || false,
+        // Cura devolvida por `defer` (o diagnostico mandou esperar) e o
+        // estado de antes da ultima cura, pra poder devolve-la.
+        deferred: false,
+        beforeHeal: null,
       };
     }
 
@@ -93,11 +97,14 @@
         s.shown = true;
         s.stalledFor = 0;
         s.lastWatchedAt = now;
-        if (attempts) {
+        const deferred = s.deferred;
+        s.deferred = false;
+        s.beforeHeal = null;
+        if (attempts || deferred) {
           s.attempts = 0;
           s.lastHealAt = 0;
           s.gaveUp = false;
-          return { action: 'recovered', attempts };
+          return { action: 'recovered', attempts, ...(deferred ? { deferred: true } : {}) };
         }
         return null;
       }
@@ -111,6 +118,8 @@
         s.attempts = 0;
         s.lastHealAt = 0;
         s.gaveUp = false;
+        s.deferred = false;
+        s.beforeHeal = null;
         return null;
       }
       if (s.lastWatchedAt != null) s.stalledFor += Math.max(0, now - s.lastWatchedAt);
@@ -123,6 +132,7 @@
         return { action: 'give-up', stalledFor, attempts: s.attempts };
       }
       if (s.lastHealAt && now - s.lastHealAt < cooldownMs) return null;
+      s.beforeHeal = { attempts: s.attempts, lastHealAt: s.lastHealAt };
       s.attempts += 1;
       s.lastHealAt = now;
       return {
@@ -133,6 +143,23 @@
       };
     }
 
+    /** Quem chamou recebeu 'heal' e decidiu NAO agir agora (queda de rede
+     * com reinicio de ICE a caminho, ver conndiag.reofferDecision): devolve
+     * a tentativa e o intervalo que a cura gastou. O congelamento continua
+     * contando, e a proxima olhada parada devolve 'heal' de novo -- a
+     * decisao e refeita a cada olhada, com o diagnostico daquele momento.
+     * Devolve true so na PRIMEIRA espera deste congelamento (pro log). */
+    function defer(key) {
+      const s = byKey.get(key);
+      if (!s?.beforeHeal) return false;
+      s.attempts = s.beforeHeal.attempts;
+      s.lastHealAt = s.beforeHeal.lastHealAt;
+      s.beforeHeal = null;
+      const first = !s.deferred;
+      s.deferred = true;
+      return first;
+    }
+
     function forget(key) {
       byKey.delete(key);
     }
@@ -141,7 +168,7 @@
       byKey.clear();
     }
 
-    return { observe, forget, reset };
+    return { observe, defer, forget, reset };
   }
 
   // A falha de uma outConn de repasse chega uma vez por PC. Como cada nova
