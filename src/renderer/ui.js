@@ -70,12 +70,35 @@
   let spyWin = null;
   const pinnedPip = new Set();
 
+  /** Cores do Espiar a partir do tema aplicado agora nesta janela (ver
+   * espiar.js). A pagina do Espiar pede isto no boot; as trocas de tema com
+   * ela aberta vao por pushSpyTheme. */
+  function spyTheme() {
+    const cs = getComputedStyle(document.documentElement);
+    return root.GoLive.espiar.spyThemeVars((name) => cs.getPropertyValue(name));
+  }
+  root.GoLive.__espiarTheme = spyTheme;
+
+  function pushSpyTheme() {
+    if (!spyWin || spyWin.closed) return;
+    spyWin.GoLiveSpy?.setTheme?.(spyTheme());
+  }
+
+  // theme.apply so mexe no <html>: `data-theme` (predefinicao) e variaveis
+  // inline (acento proprio e tema personalizado). Observar os dois pega
+  // qualquer troca, venha de onde vier, sem o app.js precisar avisar.
+  new MutationObserver(pushSpyTheme).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'style'],
+  });
+
   function updateSpyWindow() {
     const tileId = spyState.tileId();
     const entry = tileRegistry.get(tileId);
     if (!spyWin || spyWin.closed || !entry) return false;
     const api = spyWin.GoLiveSpy;
     if (!api) return false;
+    api.setTheme?.(spyTheme());
     api.setStream(tileId, entry.stream, entry.displayName || entry.label);
     const paused = tilePaused.get(tileId);
     api.setPaused(Boolean(paused?.paused), paused?.opts);
