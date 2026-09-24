@@ -102,6 +102,63 @@ test('style.css respeita piso de 11px e nao usa backdrop-filter', () => {
   assert.deepEqual(rules.filter(({ property }) => property === 'backdrop-filter'), [], 'backdrop-filter e proibido');
 });
 
+// Tamanhos de fonte fora da escala --fs-*, cada um com o porque. Qualquer
+// font-size literal novo reprova: ou usa um token, ou entra aqui explicado.
+const FONT_SIZE_FORA_DA_ESCALA = new Map([
+  // Relativos ao pai, nao um tamanho: seguem o texto em volta.
+  ['.small', '0.85em'],
+  ['.hint', '0.85em'],
+  // 15px e 17px: juntar com 16/18 (a proposta B2 da auditoria) muda o
+  // pixel, e o acabamento P3 nao podia mudar o visual. Decisao de design.
+  ['.app-brand-name', '15px'],
+  ['.room-badge', '15px'],
+  ['.peer-avatar-fallback', '15px'],
+  ['.tile-paused-title', '15px'],
+  ['.tile-gate-title', '15px'],
+  ['.dialog-box h2', '17px'],
+  ['.picker-box h2', '17px'],
+  ['.tile-gate-avatar', '17px'],
+  ['.room-card .room-badge', '17px'],
+  ['.warn-center-dismiss', '17px'],
+  ['.tile-react-btn', '17px'],
+  // Glifos, nao texto: o emoji da grade e o "+" do PiP.
+  ['.emoji-item', '19px'],
+  ['.pip-add-btn', '20px'],
+  // Titulos grandes de uso unico, entre os degraus 18 e 22 / 22 e 28.
+  ['.rooms-empty-title', '20px'],
+  ['.lobby-title', '26px'],
+  // Cresce com o tile (reacao) e some (feedback de copiado no botao).
+  ['.tile-react-pop', 'clamp(14px, 5vw, 48px)'],
+  ['.my-theme-menu-btn.copied-flash', '0'],
+]);
+
+test('font-size usa a escala de tokens (B2)', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const rules = declarations(css);
+  const tokens = new Map(rules
+    .filter(({ property, stack }) => property.startsWith('--fs-') && isRootBlock(stack))
+    .map(({ property, value }) => [property, value]));
+  assert.ok(tokens.size >= 6, 'a escala --fs-* precisa existir no :root');
+  for (const [name, value] of tokens) {
+    assert.match(value, /^\d+px$/, `${name} precisa ser px inteiro (sem meio-pixel)`);
+    assert.ok(Number.parseInt(value, 10) >= 11, `${name} abaixo do piso de 11px`);
+  }
+
+  const soltos = [];
+  for (const { property, value, stack, line } of rules) {
+    if (property !== 'font-size' || isRootBlock(stack)) continue;
+    const token = value.match(/^var\((--fs-[\w-]+)\)$/)?.[1];
+    if (token) {
+      assert.ok(tokens.has(token), `${line}: ${token} nao existe no :root`);
+      continue;
+    }
+    if (FONT_SIZE_FORA_DA_ESCALA.get(stack.at(-1)) === value) continue;
+    soltos.push(`${line}: ${stack.at(-1)} -> ${value}`);
+  }
+  assert.deepEqual(soltos, [], `font-size sem token (use var(--fs-*) ou explique em FONT_SIZE_FORA_DA_ESCALA): ${soltos.join('; ')}`);
+  assert.ok(!/font-size:\s*\d+\.\d+px/.test(css), 'meio-pixel em font-size voltou');
+});
+
 test('cores literais ficam restritas aos tokens dos blocos de tema', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const literal = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl)\(/i;
