@@ -3,6 +3,15 @@
 Data: 2026-09-24. Plano de estrutura e visual. Nada implementado ainda.
 Protótipo clicável (dados simulados): artifact "Sala em dois modos".
 
+> **Atualização de 2026-09-24 (decisões do Nicolas depois desta spec):**
+> Transmissão e Mesa deixaram de ser um tipo da sala trocado pelo líder.
+> São **vistas**: qualquer pessoa alterna na própria tela sem afetar
+> ninguém, e quem está na Transmissão não recebe nada da Mesa. O líder tem
+> duas travas independentes ("Só o líder mexe na mesa" e "Travar tamanho").
+> Jogos de 2 com cadeiras. Sem "seguir a vista do líder". As seções 2, 3.4
+> e 11 abaixo ficam valendo só no que não contradiz isto; o formato certo
+> está em `docs/superpowers/plans/2026-09-24-mesa-contrato.md`, seção 0.
+
 ## Pedido
 
 > "Imagino uma área grande, sem nada, apenas um grid, e aí as pessoas vão
