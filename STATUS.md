@@ -250,9 +250,14 @@ WGC nem VPN de verdade. O que ele já mediu:
   conexao quando o diagnostico e "rede" (deixar o reinicio de ICE agir) e
   encurtar ou nao a espera antes de migrar quando o lider cai;
 - Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
-- acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
-  Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
-  sala achada por sonda, aviso de amigo fora do ar).
+- acabamento P3 da interface feito (Espiar segue o tema, Tab nao cai no
+  campo de arquivo do chat, h1 na sala, escalas `--fs-*` e `--s-05`/`--s-15`,
+  33 seletores repetidos consolidados, com testes que travam a regressao).
+  Sobrou o que muda o pixel e pede decisao de design: 15px/17px de fonte
+  (juntar com 16/18), 97 espacamentos fora da escala (5, 10, 3, 7px...) e
+  os pesos 550/650; o flash escuro do Espiar antes de carregar (o main
+  nao conhece o tema, igual a janela principal). Resto da P2 da Frente B
+  (selo de sala achada por sonda, aviso de amigo fora do ar).
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
