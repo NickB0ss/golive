@@ -51,6 +51,19 @@ const PROHIBITED = [
   [/\bmembro(s)?\b/i, 'use "pessoa" (nunca "membro")'],
   [/\bparticipante(s)?\b/i, 'use "pessoa" (nunca "participante")'],
   [/\bpeer(s)?\b/i, 'use "pessoa" (nunca "peer")'],
+  // Mesa (2026-09-24). So o que nao tem outro sentido no app: "card" e
+  // "item" viram nome de classe CSS, "fechar"/"remover"/"câmera" sao
+  // palavras legitimas em outros lugares -- ai so a combinacao com a
+  // janela/mesa e cobrada.
+  [/\btipo da sala\b/i, 'use "vista" (Transmissão / Mesa) -- cada pessoa escolhe a sua, nao e tipo da sala'],
+  [/\bmodo (mesa|transmiss[ãa]o)\b/i, 'use "vista Mesa" / "vista Transmissão" (nunca "modo")'],
+  [/\blayout\b/i, 'use "vista" (nunca "layout")'],
+  [/\bcanvas\b/i, 'use "Mesa" (nunca "canvas")'],
+  [/\bwidgets?\b/i, 'use "janela" (nunca "widget")'],
+  [/\b(inserir|fechar|remover) (a |uma |esta |essa )?janela\b/i, 'use "Adicionar janela" / "Tirar da mesa"'],
+  [/\bremover da mesa\b/i, 'use "Tirar da mesa" (nunca "remover")'],
+  [/\bmaximizar\b/i, 'use "Tela cheia" (nunca "maximizar")'],
+  [/\bviewport\b/i, 'use "Ver tudo" / "Ir até" (nunca "viewport")'],
 ];
 
 // Contextos depois dos quais um '/' e INICIO DE REGEX, nao divisao -- o
@@ -235,8 +248,34 @@ test('nenhum termo proibido do glossario aparece em texto visivel', () => {
   const violations = [];
   checkJsFile('app.js', violations);
   checkJsFile('ui.js', violations);
+  // A casca da Mesa (fase 1 da spec) entra na varredura assim que existir.
+  if (fs.existsSync(path.join(DIR, 'mesa-view.js'))) checkJsFile('mesa-view.js', violations);
   checkHtmlFile('index.html', violations);
   assert.deepEqual(violations, [], `termos proibidos (ver docs/glossario.md):\n${violations.join('\n')}`);
+});
+
+// Os nomes do menu "Adicionar janela" vem dos modulos (title), nao do
+// app.js/ui.js -- entao sao conferidos aqui, direto do registro.
+test('os nomes dos tipos de janela da Mesa seguem o glossario', () => {
+  const registry = require('./mesa-modules/index');
+  const violations = [];
+  checkTexts(registry.list().map((m) => ` ${m.title} `), 'mesa-modules', violations);
+  assert.deepEqual(violations, [], violations.join('\n'));
+});
+
+test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o certo', () => {
+  const reprova = ['Mudar o tipo da sala', 'modo Mesa', 'Fechar janela', 'Remover da mesa', 'Maximizar a janela', 'Novo widget'];
+  const passa = ['Adicionar janela', 'Tirar da mesa', 'Tela cheia', 'Ver tudo', 'Ir até Bia', 'vista Mesa', 'Escolha uma tela ou janela'];
+  for (const text of reprova) {
+    const v = [];
+    checkTexts([text], 'amostra', v);
+    assert.ok(v.length > 0, `devia reprovar: ${text}`);
+  }
+  for (const text of passa) {
+    const v = [];
+    checkTexts([text], 'amostra', v);
+    assert.deepEqual(v, [], `devia passar: ${text}`);
+  }
 });
 
 // Controle de sanidade: se a heuristica de extracao quebrar (ex: o
