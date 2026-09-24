@@ -37,7 +37,6 @@
   // com lixo vindo de fora, a mesa tem teto de 32), o resto e ignorado.
   const MAX_OBSTACLES = MAX_WINDOWS * 2;
 
-  const MODES = Object.freeze(['transmissao', 'mesa']);
   const WINDOW_ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
   const TYPE_RE = /^[a-z][a-z0-9]{0,23}$/;
 
@@ -47,10 +46,6 @@
 
   function clamp(v, lo, hi) {
     return v < lo ? lo : v > hi ? hi : v;
-  }
-
-  function isMode(mode) {
-    return MODES.includes(mode);
   }
 
   /** Bytes do JSON de um valor (o que atravessa o fio). Valor que nao vira
@@ -209,28 +204,24 @@
       ids.add(win.id);
       windows.push(win);
     }
-    return { seq, leaderOnly: src.leaderOnly === true, windows };
+    return { seq, leaderOnly: src.leaderOnly === true, lockSize: src.lockSize === true, windows };
   }
 
   function emptyMesa() {
-    return { seq: 0, leaderOnly: false, windows: [] };
+    return { seq: 0, leaderOnly: false, lockSize: false, windows: [] };
   }
 
-  /** Estado inicial de quem acabou de entrar (welcome) ou do servidor
-   * (semente). Tipo invalido cai no padrao: Transmissao. */
-  function createState({ mode, mesa } = {}, opts = {}) {
-    return {
-      mode: isMode(mode) ? mode : 'transmissao',
-      mesa: mesa ? sanitizeMesa(mesa, opts) : emptyMesa(),
-    };
+  /** Estado da mesa: o do servidor (semente de migracao) ou o de quem abriu
+   * a vista Mesa (retrato do mesa-sync). Transmissao e Mesa sao vistas de
+   * cada pessoa, nao estado da sala: aqui so existe a mesa. */
+  function createState({ mesa } = {}, opts = {}) {
+    return { mesa: mesa ? sanitizeMesa(mesa, opts) : emptyMesa() };
   }
 
-  /** Retrato para mandar pela rede (welcome, mesa-sync, migracao). */
+  /** Retrato da mesa para mandar pela rede (mesa-sync, migracao). */
   function snapshot(state) {
-    return {
-      mode: state.mode,
-      mesa: { seq: state.mesa.seq, leaderOnly: state.mesa.leaderOnly, windows: state.mesa.windows.map((w) => ({ ...w })) },
-    };
+    const m = state.mesa;
+    return { seq: m.seq, leaderOnly: m.leaderOnly, lockSize: m.lockSize, windows: m.windows.map((w) => ({ ...w })) };
   }
 
   function findWindow(state, id) {
@@ -250,8 +241,8 @@
    * `{ state, needSync }`, com `state` NOVO quando algo mudou (o anterior
    * nunca e mutado) e o mesmo objeto quando nada mudou.
    *
-   * - `room-mode`: troca o tipo da sala.
-   * - `mesa-sync`: troca o retrato inteiro (resposta a um pedido de sync).
+   * - `mesa-sync`: troca o retrato inteiro (ao abrir a vista Mesa, ou em
+   *   resposta a um pedido de sync).
    * - `mesa` com `seq`: so aplica o proximo da fila. `seq` ja visto e
    *   ignorado (`stale: true`); `seq` pulado devolve `needSync: true`, e
    *   quem chamou pede `{ type: 'mesa-sync' }`. Mensagem que nao casa com o
@@ -263,12 +254,8 @@
   function applyMessage(state, msg, { getModule = defaultGetModule } = {}) {
     const same = { state, needSync: false };
     if (!msg || typeof msg !== 'object') return same;
-    if (msg.type === 'room-mode') {
-      if (!isMode(msg.mode) || msg.mode === state.mode) return same;
-      return { state: { ...state, mode: msg.mode }, needSync: false };
-    }
     if (msg.type === 'mesa-sync') {
-      return { state: createState({ mode: msg.mode === undefined ? state.mode : msg.mode, mesa: msg.mesa || emptyMesa() }), needSync: false };
+      return { state: createState({ mesa: msg.mesa || emptyMesa() }), needSync: false };
     }
     if (msg.type !== 'mesa') return same;
     if (!Number.isSafeInteger(msg.seq)) return same;
@@ -321,7 +308,12 @@
         return { ...mesa, windows: out };
       }
       case 'lock':
-        return { ...mesa, leaderOnly: msg.leaderOnly === true };
+        // Duas travas independentes: campo ausente deixa a trava como esta.
+        return {
+          ...mesa,
+          leaderOnly: typeof msg.leaderOnly === 'boolean' ? msg.leaderOnly : mesa.leaderOnly,
+          lockSize: typeof msg.lockSize === 'boolean' ? msg.lockSize : mesa.lockSize,
+        };
       default:
         return null;
     }
@@ -464,8 +456,8 @@
   }
 
   const api = {
-    WORLD, OVERSCROLL, GAP, MAX_WINDOWS, GRAB_MS, EMIT_HZ, CURSOR_TTL_MS, MIN_W, MIN_H, MODES,
-    isMode, jsonBytes, cloneJson,
+    WORLD, OVERSCROLL, GAP, MAX_WINDOWS, GRAB_MS, EMIT_HZ, CURSOR_TTL_MS, MIN_W, MIN_H,
+    jsonBytes, cloneJson,
     normRect, checkRect, overlaps, nearestFree,
     sanitizeWindow, sanitizeMesa, createState, snapshot, findWindow, applyMessage,
     createGrabs,

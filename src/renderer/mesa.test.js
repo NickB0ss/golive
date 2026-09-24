@@ -25,7 +25,7 @@ test('constantes batem com o contrato', () => {
   assert.equal(MAX_WINDOWS, 32);
   assert.equal(GRAB_MS, 5000);
   assert.equal(EMIT_HZ, 20);
-  assert.deepEqual(mesa.MODES, ['transmissao', 'mesa']);
+  assert.equal(mesa.MODES, undefined, 'Transmissao e Mesa sao vistas de cada um, nao estado da sala');
 });
 
 test('normRect arredonda e recusa o que nao e numero finito', () => {
@@ -120,15 +120,18 @@ test('nearestFree com a mesa cheia de janelas termina rapido e acha um lugar liv
 // Estado e mensagens
 // ---------------------------------------------------------------------------
 
-test('createState cai em Transmissao e mesa vazia sem nada valido', () => {
-  assert.deepEqual(createState(), { mode: 'transmissao', mesa: { seq: 0, leaderOnly: false, windows: [] } });
-  assert.deepEqual(createState({ mode: 'palco', mesa: 'x' }), { mode: 'transmissao', mesa: { seq: 0, leaderOnly: false, windows: [] } });
+test('createState cai na mesa vazia sem nada valido', () => {
+  const vazia = { mesa: { seq: 0, leaderOnly: false, lockSize: false, windows: [] } };
+  assert.deepEqual(createState(), vazia);
+  assert.deepEqual(createState({ mesa: 'x' }), vazia);
+  assert.equal('mode' in createState(), false);
 });
 
 test('sanitizeMesa tira janela invalida, repetida, sobreposta e o que passa do teto', () => {
   const raw = {
     seq: 7,
     leaderOnly: true,
+    lockSize: 'sim', // so o booleano vale
     windows: [
       win('a', 0, 0),
       win('a', 500, 0), // id repetido
@@ -142,6 +145,7 @@ test('sanitizeMesa tira janela invalida, repetida, sobreposta e o que passa do t
   const got = sanitizeMesa(raw);
   assert.equal(got.seq, 7);
   assert.equal(got.leaderOnly, true);
+  assert.equal(got.lockSize, false);
   assert.deepEqual(got.windows.map((w) => w.id), ['a', 'e', 'f']);
   assert.deepEqual(got.windows[1].state, {});
 
@@ -157,37 +161,41 @@ test('sanitizeMesa passa cada janela pelo accept, que pode tirar ou ajustar', ()
 });
 
 test('applyMessage aplica add, place, remove e lock em ordem de seq', () => {
-  let s = createState({ mode: 'mesa' });
+  let s = createState();
   const steps = [
     { type: 'mesa', op: 'add', seq: 1, by: '1', win: win('a', 0, 0) },
     { type: 'mesa', op: 'place', seq: 2, by: '1', id: 'a', x: 300, y: 400, w: 250, h: 120 },
     { type: 'mesa', op: 'lock', seq: 3, by: '1', leaderOnly: true },
+    { type: 'mesa', op: 'lock', seq: 4, by: '1', lockSize: true },
   ];
   for (const msg of steps) {
     const r = applyMessage(s, msg);
     assert.equal(r.needSync, false);
     s = r.state;
   }
-  assert.equal(s.mesa.seq, 3);
-  assert.equal(s.mesa.leaderOnly, true);
+  assert.equal(s.mesa.seq, 4);
+  assert.equal(s.mesa.leaderOnly, true, 'a segunda trava nao mexe na primeira');
+  assert.equal(s.mesa.lockSize, true);
   assert.deepEqual(s.mesa.windows[0], { ...win('a', 300, 400, 250, 120) });
 
-  const r = applyMessage(s, { type: 'mesa', op: 'remove', seq: 4, by: '1', id: 'a' });
+  const r = applyMessage(s, { type: 'mesa', op: 'remove', seq: 5, by: '1', id: 'a' });
   assert.deepEqual(r.state.mesa.windows, []);
-  assert.equal(r.state.mesa.seq, 4);
+  assert.equal(r.state.mesa.seq, 5);
+  const destrava = applyMessage(r.state, { type: 'mesa', op: 'lock', seq: 6, leaderOnly: false, lockSize: true });
+  assert.deepEqual([destrava.state.mesa.leaderOnly, destrava.state.mesa.lockSize], [false, true]);
 });
 
 test('applyMessage nunca muta o estado anterior', () => {
-  const s0 = createState({ mode: 'mesa', mesa: { seq: 1, windows: [win('a', 0, 0)] } });
+  const s0 = createState({ mesa: { seq: 1, windows: [win('a', 0, 0)] } });
   const copia = JSON.parse(JSON.stringify(s0));
   applyMessage(s0, { type: 'mesa', op: 'place', seq: 2, id: 'a', x: 900, y: 900, w: 200, h: 100 });
   applyMessage(s0, { type: 'mesa', op: 'remove', seq: 2, id: 'a' });
-  applyMessage(s0, { type: 'room-mode', mode: 'transmissao' });
+  applyMessage(s0, { type: 'mesa', op: 'lock', seq: 2, leaderOnly: true });
   assert.deepEqual(s0, copia);
 });
 
 test('applyMessage: seq ja visto e ignorado, seq pulado pede sync', () => {
-  const s = createState({ mode: 'mesa', mesa: { seq: 5, windows: [win('a', 0, 0)] } });
+  const s = createState({ mesa: { seq: 5, windows: [win('a', 0, 0)] } });
   const velho = applyMessage(s, { type: 'mesa', op: 'remove', seq: 5, id: 'a' });
   assert.equal(velho.state, s);
   assert.equal(velho.needSync, false);
@@ -199,7 +207,7 @@ test('applyMessage: seq ja visto e ignorado, seq pulado pede sync', () => {
 });
 
 test('applyMessage pede sync quando a mensagem nao casa com o estado', () => {
-  const s = createState({ mode: 'mesa', mesa: { seq: 0, windows: [win('a', 0, 0)] } });
+  const s = createState({ mesa: { seq: 0, windows: [win('a', 0, 0)] } });
   for (const msg of [
     { type: 'mesa', op: 'remove', seq: 1, id: 'nao-existe' },
     { type: 'mesa', op: 'add', seq: 1, win: win('a', 900, 0) },
@@ -219,7 +227,7 @@ test('applyMessage aplica act pelo reduce do modulo, com o mesmo contexto do ser
       return { n: state.n + action.add };
     },
   };
-  const s = createState({ mode: 'mesa', mesa: { seq: 0, windows: [{ ...win('a', 0, 0), type: 'conta', state: { n: 1 } }] } });
+  const s = createState({ mesa: { seq: 0, windows: [{ ...win('a', 0, 0), type: 'conta', state: { n: 1 } }] } });
   const r = applyMessage(s, { type: 'mesa', op: 'act', seq: 1, id: 'a', by: '3', isLeader: true, action: { add: 2 } }, { getModule: () => mod });
   assert.equal(r.needSync, false);
   assert.deepEqual(r.state.mesa.windows[0].state, { n: 3 });
@@ -228,27 +236,25 @@ test('applyMessage aplica act pelo reduce do modulo, com o mesmo contexto do ser
 });
 
 test('applyMessage: reduce que lanca pede sync em vez de derrubar', () => {
-  const s = createState({ mode: 'mesa', mesa: { windows: [win('a', 0, 0)] } });
+  const s = createState({ mesa: { windows: [win('a', 0, 0)] } });
   const r = applyMessage(s, { type: 'mesa', op: 'act', seq: 1, id: 'a', action: {} }, {
     getModule: () => ({ reduce() { throw new Error('bug'); } }),
   });
   assert.equal(r.needSync, true);
 });
 
-test('applyMessage troca o tipo da sala e aceita o retrato do mesa-sync', () => {
+test('applyMessage aceita o retrato do mesa-sync e ignora o que nao e da mesa', () => {
   const s = createState();
-  const r1 = applyMessage(s, { type: 'room-mode', mode: 'mesa', by: '1' });
-  assert.equal(r1.state.mode, 'mesa');
-  assert.equal(applyMessage(r1.state, { type: 'room-mode', mode: 'palco' }).state, r1.state);
-
-  const r2 = applyMessage(r1.state, { type: 'mesa-sync', mode: 'mesa', mesa: { seq: 9, leaderOnly: false, windows: [win('z', 10, 10)] } });
-  assert.equal(r2.state.mesa.seq, 9);
-  assert.deepEqual(r2.state.mesa.windows.map((w) => w.id), ['z']);
+  assert.equal(applyMessage(s, { type: 'room-mode', mode: 'mesa' }).state, s, 'room-mode nao existe mais');
+  const r = applyMessage(s, { type: 'mesa-sync', mesa: { seq: 9, leaderOnly: false, lockSize: true, windows: [win('z', 10, 10)] } });
+  assert.equal(r.state.mesa.seq, 9);
+  assert.equal(r.state.mesa.lockSize, true);
+  assert.deepEqual(r.state.mesa.windows.map((w) => w.id), ['z']);
 });
 
 test('snapshot devolve o formato do fio', () => {
-  const s = createState({ mode: 'mesa', mesa: { seq: 2, leaderOnly: true, windows: [win('a', 0, 0)] } });
-  assert.deepEqual(snapshot(s), { mode: 'mesa', mesa: { seq: 2, leaderOnly: true, windows: [win('a', 0, 0)] } });
+  const s = createState({ mesa: { seq: 2, leaderOnly: true, windows: [win('a', 0, 0)] } });
+  assert.deepEqual(snapshot(s), { seq: 2, leaderOnly: true, lockSize: false, windows: [win('a', 0, 0)] });
 });
 
 // ---------------------------------------------------------------------------
