@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/dados.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Dados e moeda" da Mesa -- modulo PURO.

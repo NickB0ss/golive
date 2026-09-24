@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/roleta.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Roleta" da Mesa -- modulo PURO.

@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/enquete.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Enquete" da Mesa -- modulo PURO.

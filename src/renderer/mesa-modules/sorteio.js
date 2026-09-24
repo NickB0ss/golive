@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/sorteio.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Sorteio de times" da Mesa -- modulo PURO.

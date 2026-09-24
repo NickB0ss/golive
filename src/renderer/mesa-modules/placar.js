@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/placar.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Placar" da Mesa -- modulo PURO (sem DOM, sem relogio, sem sorte).

@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/lista.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Lista" da Mesa -- modulo PURO.

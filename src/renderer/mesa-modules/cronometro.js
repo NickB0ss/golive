@@ -1,6 +1,5 @@
 // src/renderer/mesa-modules/cronometro.js
 'use strict';
-/* global module */
 
 /*
  * Janela "Cronometro" da Mesa -- modulo PURO.
