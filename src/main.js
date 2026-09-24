@@ -210,6 +210,7 @@ const { createSignalingServer, normalizeRoomName } = require('../server/signalin
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
+const { checkTcpPort } = require('./main/tcpcheck');
 const { createDiscovery } = require('./main/discovery');
 const { setupAutoUpdater } = require('./main/updater');
 const { createBootUpdater } = require('./main/boot');
@@ -1183,6 +1184,11 @@ ipcMain.handle('room:migrate-beacon:stop', async () => {
   discovery.stopAdvertisingMigration();
   return true;
 });
+
+// Checagem TCP crua da porta da sala durante a reconexao (leaderloss.js):
+// so ECONNREFUSED (o PC do lider respondeu que ninguem escuta) encurta a
+// espera antes de migrar. Devolve so a classe, nunca o erro cru.
+ipcMain.handle('net:tcp-check', (_event, { host, port } = {}) => checkTcpPort(host, port));
 
 // Endereco desta maquina na rede virtual, pro lobby responder "qual endereco
 // eu passo pros meus amigos?" ANTES de criar a sala -- ate agora essa
