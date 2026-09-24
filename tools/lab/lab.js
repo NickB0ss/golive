@@ -1,8 +1,8 @@
 'use strict';
 
 // Laboratorio automatizado (H15): varias instancias do app na mesma maquina
-// Linux, num Xvfb, com captura de tela falsa (canvas animado) e falhas de rede
-// de verdade no loopback (iptables). Nao testa o encoder de hardware; testa a
+// Linux, cada uma num Xvfb, com captura de tela falsa (canvas animado) e
+// falhas de rede de verdade (iptables no UDP). Nao testa o encoder de hardware; testa a
 // orquestracao inteira -- sala, arvore, retomada, demanda, vigia de
 // congelamento, reinicio de ICE -- que e onde mora a maioria das telas pretas
 // do historico.
@@ -80,7 +80,8 @@ function iptables(args) {
   });
 }
 
-/** Falhas de rede no loopback, sempre desfeitas no fim do cenario. */
+/** Falhas de rede (UDP de entrada, todas as interfaces, menos DNS), sempre
+ * desfeitas no fim do cenario -- ver regraUdp em verificar.js. */
 class Rede {
   constructor(passo) {
     this.passo = passo;

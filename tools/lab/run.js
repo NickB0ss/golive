@@ -18,6 +18,8 @@ const PASTA_CENARIOS = path.join(__dirname, 'cenarios');
 
 // Ruido do ambiente de teste, nao do app. Cada item diz por que pode.
 const PERMITIDOS_SEMPRE = [];
+// Linhas que contam a historia de uma falha (impressas quando um cenario falha).
+const RELEVANTE = /\[(signaling|mesh|assistir|migracao|rota)\]|Uncaught/;
 
 function carregarCenarios() {
   return fs.readdirSync(PASTA_CENARIOS)
@@ -91,6 +93,12 @@ async function rodarCenario(cenario) {
     erro = err;
     passo(`FALHOU: ${err.message}`);
     await Promise.all(instancias.map((i) => i.print('falha')));
+    // No log do job, sem precisar baixar o artefato: o que cada instancia
+    // disse sobre sinalizacao, malha e vigia nos ultimos instantes.
+    for (const i of instancias) {
+      const relevantes = i.linhas.filter((l) => l.origem.startsWith('renderer') && RELEVANTE.test(l.texto)).slice(-15);
+      for (const l of relevantes) passo(`  ${i.nome} ${new Date(l.t).toISOString().slice(11, 23)} ${l.texto.slice(0, 220)}`);
+    }
   } finally {
     await rede.restaurar();
     await Promise.all(instancias.map((i) => i.encerrar()));

@@ -27,10 +27,12 @@ test('achar respeita o instante de inicio', () => {
   assert.deepEqual(achar(linhas, /\[rota\]/, { desde: 150 }).map((l) => l.texto), ['[rota] b']);
 });
 
-test('regra de UDP no loopback: corte total, perda parcial e remocao simetrica', () => {
-  assert.deepEqual(regraUdp('-I'), ['-I', 'INPUT', '-i', 'lo', '-p', 'udp', '-j', 'DROP']);
+test('regra de UDP em todas as interfaces, poupando o DNS: corte total, perda parcial e remocao simetrica', () => {
+  const base = ['INPUT', '-p', 'udp', '-m', 'multiport', '!', '--ports', '53'];
+  assert.deepEqual(regraUdp('-I'), ['-I', ...base, '-j', 'DROP']);
+  assert.ok(!regraUdp('-I').includes('lo'), 'so no loopback a midia escapava pelo par srflx');
   assert.deepEqual(regraUdp('-D', { perda: 0.02 }), [
-    '-D', 'INPUT', '-i', 'lo', '-p', 'udp', '-m', 'statistic', '--mode', 'random', '--probability', '0.02', '-j', 'DROP',
+    '-D', ...base, '-m', 'statistic', '--mode', 'random', '--probability', '0.02', '-j', 'DROP',
   ]);
   assert.throws(() => regraUdp('-A'), /acao invalida/);
   assert.throws(() => regraUdp('-I', { perda: 1 }), /perda fora/);

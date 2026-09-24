@@ -18,17 +18,21 @@ function achar(linhas, re, { desde = 0 } = {}) {
   return linhas.filter((l) => l.t >= desde && re.test(l.texto));
 }
 
-// Toda falha de rede do laboratorio e so no loopback: as instancias rodam na
-// mesma maquina e conversam pelo IP dela, que o kernel entrega pela `lo`.
 // So UDP: a midia (RTP/STUN) cai e a sinalizacao (WebSocket, TCP) fica --
 // e o cenario "a VPN engasgou mas o app continua conectado".
-const BASE_UDP_LO = ['INPUT', '-i', 'lo', '-p', 'udp'];
+//
+// Em TODAS as interfaces, nao so na `lo`: na CI (runner do GitHub, com STUN
+// respondendo) o cenario queda-longa nunca congelava cortando so a `lo` --
+// provavelmente porque o ICE tambem tem um par srflx, que sai pela internet
+// e volta pelo NAT entrando pela eth0, e a midia trocava de caminho. O DNS
+// (porta 53) fica de fora pra nao derrubar a maquina junto.
+const BASE_UDP = ['INPUT', '-p', 'udp', '-m', 'multiport', '!', '--ports', '53'];
 
 /** Argumentos do iptables pra inserir (`-I`) ou remover (`-D`) uma regra.
  * `perda` entre 0 e 1 descarta essa fracao dos pacotes; sem ela, todos. */
 function regraUdp(acao, { perda = null } = {}) {
   if (acao !== '-I' && acao !== '-D') throw new Error(`acao invalida: ${acao}`);
-  const args = [acao, ...BASE_UDP_LO];
+  const args = [acao, ...BASE_UDP];
   if (perda != null) {
     if (!(perda > 0 && perda < 1)) throw new Error(`perda fora de (0, 1): ${perda}`);
     args.push('-m', 'statistic', '--mode', 'random', '--probability', String(perda));

@@ -1,8 +1,8 @@
 # Laboratório automatizado (H15)
 
 Várias instâncias do app na mesma máquina Linux, cada uma no seu Xvfb, com
-captura de tela falsa (um canvas animado) e falhas de rede de verdade no
-loopback (`iptables`). Ver a H15 de
+captura de tela falsa (um canvas animado) e falhas de rede de verdade
+(`iptables` no UDP de entrada). Ver a H15 de
 `docs/2026-09-23-analise-transmissao-hipoteses.md`.
 
 **O que testa:** a orquestração inteira — sala, árvore com relay,
@@ -24,8 +24,15 @@ npm run lab -- --listar
 ```
 
 Precisa de Linux com `Xvfb`. Os cenários marcados `(rede)` precisam de
-`iptables` como root ou com `sudo -n`. Logs, linha do tempo e prints (na
-falha) ficam em `lab-out/<cenário>/`; o resumo, em `lab-out/resumo.txt`.
+`iptables` como root ou com `sudo -n`, e **cortam o UDP de entrada da
+máquina inteira** (menos DNS) por alguns segundos: só o loopback não basta,
+porque com STUN respondendo a mídia acha outro caminho pela internet. Numa
+máquina de uso diário, isso engasga chamada e jogo enquanto o cenário roda.
+
+Logs, linha do tempo e prints (na falha) ficam em `lab-out/<cenário>/`; o
+resumo, em `lab-out/resumo.txt`. Quando um cenário falha, as últimas linhas
+de sinalização, malha e vigia de cada instância saem também no terminal (e
+no log do job da CI).
 
 Um cenário falha se uma verificação falhar **ou** se qualquer instância
 registrar erro não tratado (`Uncaught ...`, `unhandledRejection no main`),
