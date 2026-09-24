@@ -287,7 +287,7 @@
     }
 
     input.addEventListener('focus', () => { aoEntrar = input.value; });
-    input.addEventListener('blur', confirmar);
+    input.addEventListener('blur', () => { if (!movendo) confirmar(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !multilinha) {
         e.preventDefault();
@@ -318,6 +318,12 @@
 
   /** Move `filho` para a posicao `i` de `pai` sem perder o foco de quem
    * esta dentro (mover um no no DOM tira o foco do que esta nele). */
+  let movendo = false; // um porNaPosicao em curso: o blur que ele causa nao vale
+
+  function estaMovendo() {
+    return movendo;
+  }
+
   function porNaPosicao(pai, filho, i) {
     const atual = pai.children[i];
     if (atual === filho) return;
@@ -327,10 +333,15 @@
     if (dentro && typeof dentro.selectionStart === 'number') {
       try { sel = [dentro.selectionStart, dentro.selectionEnd]; } catch { sel = null; }
     }
-    pai.insertBefore(filho, atual || null);
-    if (dentro && document.activeElement !== dentro) {
-      dentro.focus({ preventScroll: true });
-      if (sel) try { dentro.setSelectionRange(sel[0], sel[1]); } catch { /* campo sem selecao */ }
+    movendo = true;
+    try {
+      pai.insertBefore(filho, atual || null);
+      if (dentro && document.activeElement !== dentro) {
+        dentro.focus({ preventScroll: true });
+        if (sel) try { dentro.setSelectionRange(sel[0], sel[1]); } catch { /* campo sem selecao */ }
+      }
+    } finally {
+      movendo = false;
     }
   }
 
@@ -410,6 +421,7 @@
     base,
     campoLocal,
     porNaPosicao,
+    estaMovendo,
     reduzMovimento,
     criarLaco,
   };
