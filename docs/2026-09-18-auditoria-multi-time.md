@@ -422,8 +422,13 @@ Tema: **o que exige o chão pronto.**
          desliga (volta o OpenH264 que a 0.13.0 corrigiu), e `WebRtcHideLocalIps
          WithMdns` volta a ligar (o P2P pode não fechar na LAN virtual).
       3. `binding.gyp:17,24` ainda pede C++17; a 33 exige C++20.
-- [ ] **Fanout 2 na origem** (2 relays em vez de 1): leva a sala a 6-7 pessoas
-      com 2 encoders na origem em vez de 3. *(1 dia, depois do D1)*
+- [x] **Fanout 2 na origem** (2 relays em vez de 1): leva a sala a 6-7 pessoas
+      com 2 encoders na origem em vez de 3. *(1 dia, depois do D1)* — feito
+      antes do D1, com o laboratório no lugar do harness: `FANOUT_ORIGEM` é
+      lido por `computeTree` e testado pelo comportamento (salas de 2 a 8),
+      folha fica com o relay que não caiu, e a origem deixou de contar como
+      carga alheia os filhos que ela mesma deu ao relay (a árvore trocava de
+      relay a cada janela de histerese). Cenário `sala-de-6`.
 - [ ] **Recorte da fonte**, **ensaio de banda** e **clipe de 30 s** (anexo 5,
       P8/P9/P10) — as três de maior risco técnico e as únicas que não consertam
       nada. Melhoria de produto vem depois de o produto contar a verdade.
