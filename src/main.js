@@ -8,7 +8,7 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -224,6 +224,18 @@ const { friendlySourceNames } = require('./main/sourcename');
 const { pickDisplayMediaStreams, replyOnce } = require('./main/displaymedia');
 const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
+const origemLocal = require('./main/origem');
+
+// A janela principal (e a Espiar, que ela abre) vem de http://localhost,
+// servido sem socket por src/main/origem.js: o YouTube recusa embed de
+// pagina sem Referer (erro 153) e a Twitch exige `parent`. GOLIVE_ORIGEM=file
+// volta ao file:// de antes. Splash e rabisco continuam em file://.
+// Ver docs/2026-09-24-spike-origem-local.md.
+const RAIZ_RENDERER = path.join(__dirname, 'renderer');
+const MODO_ORIGEM = origemLocal.escolherModo(process.env);
+const ORIGEM_PRINCIPAL = origemLocal.origemDoModo(MODO_ORIGEM);
+/** Resolve quando o localStorage da origem ja foi migrado (ou nao precisava). */
+let origemPronta = Promise.resolve();
 
 /** Trava cada renderer na sua pagina local e nao deixa popups herdarem IPC. */
 function lockNavigation(webContents, allowedUrl) {
@@ -417,7 +429,7 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
-  const mainUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
+  const mainUrl = origemLocal.urlDaPagina(ORIGEM_PRINCIPAL, RAIZ_RENDERER, 'index.html');
   lockNavigation(win.webContents, mainUrl);
 
   // Controles de janela proprios (Windows, janela sem moldura). fire-and-forget:
@@ -452,7 +464,7 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === 'F11') event.preventDefault();
   });
 
-  const spyUrl = pathToFileURL(path.join(__dirname, 'renderer', 'espiar.html')).href;
+  const spyUrl = origemLocal.urlDaPagina(ORIGEM_PRINCIPAL, RAIZ_RENDERER, 'espiar.html');
   win.webContents.setWindowOpenHandler((details) => {
     if (details.frameName !== 'golive-espiar' || details.url !== spyUrl) return { action: 'deny' };
     return {
@@ -568,7 +580,12 @@ function createWindow() {
     logger[nivel](`[${origem}] ${mensagem}`);
   });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // So carrega depois da migracao do localStorage: o app.js le a config
+  // logo ao abrir. Na pratica ela ja terminou durante a splash.
+  const janela = win;
+  origemPronta
+    .then(() => (janela.isDestroyed() ? null : janela.loadURL(mainUrl)))
+    .catch((err) => logger.error('janela principal: loadURL falhou:', err?.message || err));
 }
 
 // --- Abertura: tela de carregamento + atualizacao automatica -----------
@@ -926,6 +943,19 @@ app.whenReady().then(() => {
   // principal, a descoberta e o atalho global sobem -- ver releaseApp.
   // Instalar uma atualizacao encontrada aqui fecha o processo sozinho
   // (quitAndInstall) e releaseApp nunca chega a rodar nesse caminho.
+  // Origem da janela principal. A migracao (so na primeira abertura depois
+  // de mudar de origem) roda numa janela escondida enquanto a splash checa
+  // atualizacao; createWindow espera por ela antes de carregar.
+  origemLocal.instalarOrigemLocal({ protocol: session.defaultSession.protocol, net, raiz: RAIZ_RENDERER, logger });
+  logger.log(`origem da janela principal: ${ORIGEM_PRINCIPAL}${MODO_ORIGEM === 'file' ? ' (GOLIVE_ORIGEM=file)' : ''}`);
+  origemPronta = origemLocal.prepararOrigem({
+    modo: MODO_ORIGEM,
+    raiz: RAIZ_RENDERER,
+    arquivoEstado: path.join(app.getPath('userData'), 'origem.json'),
+    BrowserWindow,
+    session: session.defaultSession,
+    logger,
+  });
   createSplashWindow()
     .then(() => {
       bootController = createBootUpdater({
