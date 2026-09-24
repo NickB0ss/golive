@@ -104,15 +104,13 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.18.1` (no `package.json`). Electron `^32`
-(fora de suporte — ver backlog), `electron-builder` na `^26`.
-Testes: `node --test` → **923 testes, 923 passando, 0 falhando**. `npm run lint` → 0
+`0.20.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **961 testes, 961 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
-após `await`).
-`npm audit --omit=dev` → **0**. `npm audit` completo → **2 altas**, ambas de
-desenvolvimento, na cadeia do Electron/electron-builder (`electron` e
-`extract-zip`). Branches mescladas no remoto ainda não apagadas: **25**.
+após `await`). Laboratório: `npm run lab` → 6 cenários (ver abaixo).
+`npm audit --omit=dev` → **0**. `npm audit` completo → **0**. Branches
+mescladas no remoto ainda não apagadas: **14**.
 
 ### Frente 0 (auditoria 2026-09-18)
 
@@ -165,7 +163,7 @@ a declaração antes do primeiro uso. `node --test` não carrega `app.js`: a su�
 ficou verde, e o erro só apareceu abrindo o app real. A regra nova é rodar o
 app antes de mesclar mudança no renderer.
 
-### Consertos da análise de 23/09 (ainda não lançados)
+### Consertos da análise de 23/09 (0.20.0)
 
 Da seção 5 de `docs/2026-09-23-analise-transmissao-hipoteses.md`, os que não
 dependem de medição:
@@ -214,7 +212,7 @@ captura X11 do contêiner falha de forma intermitente também no código
 original, e `iptables` pra cortar o UDP). **Não testado com 2+ PCs reais.**
 Fica para depois das medições o C4 (canvas no repasse, depende do M2).
 
-### Laboratório automatizado (H15, ainda não lançado)
+### Laboratório automatizado (H15, 0.20.0)
 
 `npm run lab` (ver `tools/lab/README.md`): várias instâncias do app no
 Linux, cada uma num Xvfb, com captura falsa de canvas e falhas de rede de
@@ -238,16 +236,19 @@ WGC nem VPN de verdade. O que ele já mediu:
 
 ## Próximos passos
 
-- **noite de teste com 2+ PCs reais** -- o passo que falta antes do release,
-  e o teste que mais importa e derrubar o PC do lider de verdade, de
-  preferencia no Tailscale (e o que a Frente A2 mudou). Aproveitar a mesma
+- **noite de teste com 2+ PCs reais, na 0.20.0** -- o teste que mais
+  importa e derrubar o PC do lider de verdade, de preferencia no Tailscale
+  (e o que a Frente A2 mudou; o laboratorio ja mostrou ~60 s de migracao).
+  Olhar no log as linhas `[rota]`, `[mesh] ... 'disconnected'`,
+  `reiniciando o ICE` e `[assistir] diagnostico`. Aproveitar a mesma
   noite para o roteiro M1-M6 de
   `docs/2026-09-23-analise-transmissao-hipoteses.md`: o Electron 44 mudou
   premissas medidas no Chromium 128 (H.264 de hardware agora vai a 1080p60,
   HEVC apareceu), e o M3 diz se o teto de 4 pessoas era o bug do
   `contentHint` e nao o NVENC;
-- subir a versao e lancar (a tag dispara o `release.yml`, que sobe os
-  artefatos num rascunho; publicar continua sendo clique manual);
+- decidir as duas propostas que o laboratorio levantou: nao refazer a
+  conexao quando o diagnostico e "rede" (deixar o reinicio de ICE agir) e
+  encurtar ou nao a espera antes de migrar quando o lider cai;
 - Frente C, o que sobrou: D1 (quebrar o `app.js`) e fanout 2 na origem;
 - acabamento P3 (fontes e espacamentos sem token, Espiar ignorando o tema,
   Tab em campo invisivel, sala sem h1) e o resto da P2 da Frente B (selo de
@@ -255,6 +256,44 @@ WGC nem VPN de verdade. O que ele já mediu:
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
+
+## Lançado na 0.20.0 (2026-09-24)
+
+Os consertos da análise de transmissão de 23/09 que não dependiam de
+medição, e um laboratório que roda o app de verdade com a rede falhando.
+Detalhes técnicos em "Consertos da análise de 23/09" e "Laboratório
+automatizado", acima.
+
+**A tela congelada agora explica o que houve.** Em vez de um quadro parado,
+o tile diz "Sem contato com o PC de X", "X parou de enviar imagem" ou
+"Recuperando a imagem…", até a imagem voltar. O log ganhou o porquê de cada
+congelamento (rede, origem, decoder ou pintura, com os números) e a rota de
+cada conexão -- se o vídeo anda pela Radmin, pelo Tailscale, pela LAN ou pela
+internet --, sem gravar IP.
+
+**Queda de rede curta não refaz mais tudo.** Quando a conexão de quem
+transmite cai, o ICE é reiniciado na mesma conexão 1 s depois, em vez de
+esperar 15 s e recomeçar do zero. No laboratório, 9 s sem rede voltaram na
+mesma conexão. E o app percebe em até 15 s que a sinalização morreu (antes,
+~25 s ou mais), com o servidor mandando sinal de vida a cada 5 s.
+
+**Captura e tela cheia.** A tela cheia deixou de abortar a animação (era o
+`Transition was aborted` do log de 21/09). Quando a tela ou janela escolhida
+some, o aviso manda atualizar a lista, em vez de "Invalid capture
+constraints", e o processo principal parou de chamar a resposta da captura
+duas vezes.
+
+**Interface.** A sala vazia diz "Ninguém transmitindo ainda", com o botão de
+compartilhar; com um monitor só ele já vem escolhido, e o nome é "Monitor 1
+(principal)" em vez de "Entire screen"; o "Ir ao vivo" apagado diz por quê;
+engrenagem no dock; a faixa de título não aparece mais fora do Windows.
+
+**Laboratório (`npm run lab`).** Quatro PCs simulados numa máquina Linux,
+com a rede cortada e degradada de verdade, rodando na CI a cada PR. Já achou
+um erro do diagnóstico antes de a versão sair, e mediu a migração quando o
+líder cai (~60 s, por desenho).
+
+**Não testado com 2+ PCs reais.**
 
 ## Lançado na 0.19.0 (2026-09-20)
 
