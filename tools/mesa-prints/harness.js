@@ -82,6 +82,17 @@ async function pessoa(port, name) {
 }
 
 const PONTE = () => {
+  // Quem abre o app no banco de prova e o lider: o 'join' leva o token de
+  // quem criou a sala (no app ele vem do hostRoom).
+  const enviar = WebSocket.prototype.send;
+  WebSocket.prototype.send = function send(data) {
+    if (typeof data === 'string' && data.includes('"type":"join"')) {
+      const m = JSON.parse(data);
+      m.ownerToken = 'banco-de-prova';
+      return enviar.call(this, JSON.stringify(m));
+    }
+    return enviar.call(this, data);
+  };
   const cbs = {};
   window.__cbs = cbs;
   window.golive = new Proxy({}, {
@@ -257,6 +268,15 @@ async function prints(browser, port, s) {
   await page.screenshot({ path: path.join(PRINTS, '06-menu-da-janela.png') });
   await page.keyboard.press('Escape');
 
+  // Menu "..." da sala (o primeiro a entrar e o lider): trava a mesa.
+  await page.click('#btn-room-more');
+  await page.check('#opt-mesa-leader-only');
+  await espera(300);
+  await page.screenshot({ path: path.join(PRINTS, '08-menu-da-sala-travas.png') });
+  s.trava = await bia.espera((m) => m.type === 'mesa' && m.op === 'lock').then((m) => ({ leaderOnly: m.leaderOnly, lockSize: m.lockSize }));
+  await page.uncheck('#opt-mesa-leader-only');
+  await page.keyboard.press('Escape');
+
   // Volta a Transmissao: nada da mesa fica no DOM e as telas voltam.
   await page.click('#view-tx');
   await espera(300);
@@ -388,7 +408,7 @@ async function desempenho(browser, port, s) {
 
 (async () => {
   const modo = process.argv[2] || 'tudo';
-  const servidor = await createSignalingServer({ port: 0, log: () => {} });
+  const servidor = await createSignalingServer({ port: 0, ownerToken: 'banco-de-prova', log: () => {} });
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', ...(process.env.SEM_VSYNC ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : [])] });
   const s = {};
   try {
