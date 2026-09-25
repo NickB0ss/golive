@@ -288,3 +288,124 @@ dos `<script>` é: `vendor/chess.js`, `mesa-modules/cadeiras.js`, os módulos,
 
 Todos exportam `dropPeer(state, peerId)` e `summary(state, peers?)`; o estado
 guarda `names` junto de `seats`.
+
+## 8. Informação escondida (cartas, palavras secretas) — 2026-09-25
+
+Jogos em que cada pessoa só pode ver parte do estado (mão do pôquer, baralho,
+palavra do "Desenha e adivinha", respostas do Stop antes de revelar). Quem
+abre as ferramentas de desenvolvedor não pode ver o que não é dele: o
+segredo **nunca sai do servidor**.
+
+### Módulo
+
+Além da seção 1, o módulo exporta:
+
+```js
+{
+  secret: true,
+  view(state, peerId) -> estadoVisivel,   // peerId null = quem só assiste
+  migrate?(state) -> estadoSemSegredo,    // ver "Migração"
+  timeoutAt?(state) -> number|null,       // hora do servidor em que alguém "estoura"
+}
+```
+
+- `view` devolve o que **aquela** pessoa pode ver: as cartas dela, as
+  públicas, contagens (quantas cartas cada um tem, quantas restam no
+  baralho), e o que a interface precisa para desligar botões **já
+  calculado** (ex.: `me: { canCheck, toCall, minRaise, actions: [...] }`),
+  porque o cliente não tem o estado inteiro para rodar `validate`.
+- `init`, `prepare` e `reduce` continuam como na seção 1 e rodam **só no
+  servidor** para módulos `secret`. Sorte (embaralhar) em `init`/`prepare`
+  com `ctx.random`; o baralho embaralhado fica no estado do servidor.
+- Tempo esgotado: a interface manda `{ kind: 'timeout' }` quando o relógio
+  da sala (`api.serverNow()`) passa de `timeoutAt(state)`; o servidor aceita
+  só se `ctx.now` (hora dele) já passou do prazo, e o `reduce` aplica o que o
+  jogo define (ex.: pôquer: mesa ou desiste; blackjack: para). Qualquer
+  pessoa na Mesa pode mandar; o primeiro que chega vale.
+- Apoio: `mesa-modules/baralho.js` (`GoLive.mesaBaralho`): cartas "As", "Td",
+  "7c"; `newDeck(n)`, `shuffle(cards, random)`, `draw`, `rankIndex`,
+  `cardName`, `isRed`. Carrega antes dos módulos (tag no `index.html`).
+
+### Servidor
+
+- Para janela `secret`, o eco de `add` e de `act` **não leva a ação**: leva
+  o estado já filtrado, um por pessoa na Mesa:
+  `{ type: 'mesa', op: 'state', id, seq, by, state: view(state, peerId) }`.
+  Todos recebem o mesmo `seq` (cada um com o seu `state`).
+- `mesa-sync` passa cada janela `secret` por `view(state, destinatário)`.
+- Recusa de `act` volta só ao autor, como hoje.
+- `maxStateBytes` vale para o estado inteiro do servidor.
+
+### Cliente (`mesa.js` / `mesa-view.js`)
+
+- `applyMessage` aceita `op: 'state'`: troca o `state` da janela, sem
+  `reduce`. O conteúdo recebe `update(state, meta)` igual aos outros.
+- `api.validate` de janela `secret` devolve `true` (quem decide é o
+  servidor; a interface usa o `me` que veio na `view`).
+
+### Quem sai da sala (vale para TODOS os módulos com `dropPeer`)
+
+O servidor chama `dropPeer(state, peerId)` de cada janela quando alguém sai
+de vez (depois da janela de retomada), e, se o estado mudou, manda
+`{ type: 'mesa', op: 'drop', id, seq, peer }` (clientes aplicam o mesmo
+`dropPeer`) — ou `op: 'state'` com a `view`, se a janela for `secret`.
+
+### Migração
+
+O retrato que vai no `room-migrating` passa por `migrate(state)` (ou, sem
+ele, por `view(state, null)`): o servidor novo não pode receber segredo
+(o retrato vai para todos). Regra dos jogos de cartas: **a mão em andamento
+é cancelada e as apostas voltam** para quem apostou; as fichas e as
+cadeiras ficam.
+
+## 9. Regras clássicas dos jogos de cartas (decididas em 2026-09-25)
+
+Pedido do Nicolas: "decida as regras utilizando padrão clássico". Sempre
+**fichas de mentira** (nada de dinheiro, nada de loja). Todos `secret: true`
+(seção 8).
+
+### Pôquer — Texas Hold'em sem limite (`poquer`, título "Pôquer")
+
+- 2 a 8 cadeiras (`seats` com 8 posições). Quem senta recebe **1 000
+  fichas**. Blinds **10/20**, fixos (o líder pode trocar entre mãos:
+  5/10, 10/20, 25/50, 50/100).
+- **Botão do dealer** gira a cada mão. Mano a mano: quem está no botão paga o
+  small blind e fala primeiro no pré-flop, e por último depois.
+- Rodadas: pré-flop, flop (3), turn (1), river (1), showdown. Queima uma
+  carta antes de cada rodada comunitária.
+- Ações: desistir, passar, pagar, apostar, aumentar, all-in. Aposta mínima =
+  big blind; aumento mínimo = o maior aumento da rodada. All-in menor que um
+  aumento completo **não reabre** a ação para quem já agiu.
+- **Potes paralelos** quando alguém está all-in. No showdown todas as mãos
+  que chegaram são mostradas; melhor jogo de 5 entre as 7 cartas. Empate
+  divide o pote; a ficha que sobra vai para o primeiro à esquerda do botão.
+  Se todos desistem, quem sobrou leva sem mostrar.
+- Ordem das mãos: carta alta, par, dois pares, trinca, sequência (A-2-3-4-5
+  vale; a mais baixa), flush, full house, quadra, straight flush (royal é o
+  maior).
+- Tempo: **30 s** por decisão; estourou, passa se puder, senão desiste.
+- Nova mão: botão "Dar as cartas", que qualquer um sentado aperta com 2+
+  sentados com fichas. Quem senta no meio da mão entra na próxima. Quem
+  zerou pode pedir **recompra** (volta a 1 000) entre mãos. Quem sai da sala
+  no meio da mão desiste dela e libera a cadeira.
+
+### Blackjack — regras de cassino (`blackjack`, título "Blackjack")
+
+- A **banca é o app** (o servidor joga por ela). 1 a 5 lugares. Quem senta
+  recebe **1 000 fichas**; aposta de **10 a 500**.
+- **Sapato de 6 baralhos**, embaralhado de novo quando passa de 75 % (carta
+  de corte).
+- A banca recebe uma carta aberta e uma fechada, e **confere o blackjack**
+  (olha a fechada) quando a aberta é ás ou vale 10.
+- Banca **para em todo 17, inclusive o 17 macio** (S17). Blackjack paga
+  **3:2**; vitória comum 1:1; empate devolve a aposta.
+- **Seguro** quando a banca mostra ás: até metade da aposta, paga 2:1.
+- **Dobrar** em quaisquer duas primeiras cartas, inclusive depois de
+  dividir. **Dividir** pares (mesmo valor, ex.: J e K) até 4 mãos; ases
+  divididos recebem uma carta só cada e não se dividem de novo; 21 depois de
+  dividir não é blackjack. Sem rendição.
+- Rodada: apostas (20 s depois da primeira aposta, ou quando todos
+  apostaram) → cartas → seguro, se houver → cada lugar joga na ordem →
+  banca joga → pagamento → próxima rodada. Tempo de **30 s** por decisão;
+  estourou, para (e sem aposta, fica fora da rodada).
+- Recompra (volta a 1 000) com zero fichas, entre rodadas.

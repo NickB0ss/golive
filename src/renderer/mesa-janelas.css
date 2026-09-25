@@ -1022,3 +1022,41 @@
   overflow: hidden;
 }
 .mjm-radio-audio .ytp-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+/* --- Cartas (mesa-janelas/cartas.js): face clara com tinta preta ou
+   vermelha, como carta de verdade, em qualquer tema; verso neutro. O
+   vermelho das copas e ouros e o --danger travado (cor de naipe, nao de
+   alerta). --- */
+.mj-carta {
+  --mj-carta-w: 44px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--mj-carta-w);
+  aspect-ratio: 5 / 7;
+  border-radius: var(--r-sm);
+  background: var(--on-act);
+  color: var(--video-bg);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  font-family: 'Outfit', system-ui, sans-serif;
+  line-height: 1;
+  user-select: none;
+}
+.mj-carta-p { --mj-carta-w: 30px; }
+.mj-carta-g { --mj-carta-w: 60px; }
+.mj-carta.is-vermelha { color: var(--danger); }
+.mj-carta.is-verso {
+  background: repeating-linear-gradient(45deg, var(--s3) 0 6px, var(--s4) 6px 12px);
+  box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2);
+}
+.mj-carta.is-destaque { box-shadow: 0 0 0 2px var(--act); }
+.mj-carta-canto {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: calc(var(--mj-carta-w) * 0.26);
+  font-weight: 700;
+}
+.mj-carta-naipe { font-size: calc(var(--mj-carta-w) * 0.5); }
+.mj-mao { display: inline-flex; gap: var(--s-1); flex-wrap: wrap; }
