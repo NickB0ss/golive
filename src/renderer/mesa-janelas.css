@@ -796,6 +796,12 @@
 .mj-xadrez-promo-g { font-size: var(--fs-lead); color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6); }
 .mj-xadrez-promo.is-preta .mj-xadrez-promo-g { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong); }
 
+/* ---------- Dentro da caixa da Vista ----------
+   Na Mesa a alca de arrastar ocupa os 28 px de cima do `el` (por cima do
+   conteudo): o topo do conteudo cede esse respiro. */
+
+.mesa-content > .mj { padding-top: calc(var(--s-6) - var(--s-05)); }
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {
