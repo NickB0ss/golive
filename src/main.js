@@ -224,6 +224,7 @@ const { friendlySourceNames } = require('./main/sourcename');
 const { pickDisplayMediaStreams, replyOnce } = require('./main/displaymedia');
 const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
+const { linkParaNavegador } = require('./main/linksexternos');
 const origemLocal = require('./main/origem');
 
 // A janela principal (e a Espiar, que ela abre) vem de http://localhost,
@@ -466,6 +467,14 @@ function createWindow() {
 
   const spyUrl = origemLocal.urlDaPagina(ORIGEM_PRINCIPAL, RAIZ_RENDERER, 'espiar.html');
   win.webContents.setWindowOpenHandler((details) => {
+    // Logo/titulo dentro do player do YouTube ou da Twitch na Mesa: abre no
+    // navegador padrao, so para esses hosts e so vindo desses iframes
+    // (src/main/linksexternos.js). O resto continua recusado.
+    const externo = linkParaNavegador(details);
+    if (externo) {
+      shell.openExternal(externo).catch((err) => logger.error('link do player nao abriu:', err?.message || err));
+      return { action: 'deny' };
+    }
     if (details.frameName !== 'golive-espiar' || details.url !== spyUrl) return { action: 'deny' };
     return {
       action: 'allow',

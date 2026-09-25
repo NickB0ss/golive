@@ -27,6 +27,8 @@
   // Os tipos que os times entregam, um nome por arquivo, na ordem do menu
   // "Adicionar janela". Nome ausente no disco e so pulado.
   const MODULE_NAMES = Object.freeze([
+    // Assistir junto
+    'youtube', 'radio', 'aovivo',
     // Ferramentas
     'nota', 'lista', 'enquete',
     // Noite de jogo
@@ -35,9 +37,10 @@
     'velha', 'lig4', 'damas', 'xadrez',
   ]);
 
-  // Arquivos de apoio da pasta que NAO sao tipo de janela: os jogos os
-  // carregam sozinhos (no renderer, por <script> antes deles).
-  const HELPER_NAMES = Object.freeze(['cadeiras']);
+  // Arquivos de apoio da pasta que NAO sao tipo de janela: os modulos que
+  // os usam os carregam sozinhos (no renderer, por <script> antes deles):
+  // `cadeiras` (jogos) e `midialinks` (youtube, radio, aovivo).
+  const HELPER_NAMES = Object.freeze(['cadeiras', 'midialinks']);
 
   const GROUPS = Object.freeze(['assistir', 'jogos', 'noite', 'ferramentas']);
   const TYPE_RE = /^[a-z][a-z0-9]{0,23}$/;

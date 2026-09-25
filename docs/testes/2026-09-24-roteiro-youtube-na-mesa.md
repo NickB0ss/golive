@@ -96,8 +96,64 @@ $env:GOLIVE_ORIGEM='file'; & "$env:LOCALAPPDATA\Programs\golive-lan\GoLive LAN.e
 sem a variável volta para `http://localhost`, também com os dados mais
 recentes. YouTube e Twitch não funcionam nesse modo.
 
+## 5. Vídeo, Rádio e Ao vivo na Mesa (time Mídia)
+
+Resultado aqui (contra um YouTube falso): `docs/2026-09-24-midia-na-mesa.md`.
+Falta o YouTube e a Twitch de verdade.
+
+### 5.1 Bancada automática com o YouTube real (1 PC, 3 minutos)
+
+```powershell
+npm ci
+$env:GOLIVE_MIDIA_REAL='1'; npx electron tools/midia/main.js
+```
+
+Abrem duas janelas ("PC A" e "PC B") na mesma sala de um servidor local,
+cada uma com os conteúdos reais. O terminal imprime `ok`/`FALHOU` por item e
+o caminho de um relatório JSON.
+
+**Esperado:** `ok` em "load em A: os dois tocando", "5 s tocando", "pausa no
+B", "salto para 1:00", "segundo YouTube entra em espera", "Tocar este",
+"tirar o ativo". As verificações de deriva, sandbox e "sem internet" só
+existem no modo falso (não aparecem). Mande o JSON.
+
+### 5.2 Na sala de verdade (2 PCs)
+
+1. Abra a Mesa nos dois. No A: `+` → **Vídeo do YouTube** → cole um link
+   (`https://youtu.be/<id>?t=30`). **Esperado:** toca nos dois, a partir de
+   0:30, em até ~1 s; a diferença entre os dois PCs a olho/ouvido é menor
+   que meio segundo.
+2. Pause no **B**. **Esperado:** pausa no A também, no mesmo quadro. Toque no
+   A: volta nos dois.
+3. Arraste a barra de posição no B. **Esperado:** os dois pulam juntos.
+4. Volume e mudo no A. **Esperado:** só o A muda.
+5. Deixe tocando 5 minutos. **Esperado:** sem soluços nem pulos visíveis (a
+   correção é por velocidade 1,05/0,95, imperceptível). Se pular de tempos
+   em tempos, anote: pode ser o YouTube arredondando a velocidade.
+6. Ponha um **segundo** vídeo do YouTube na mesa. **Esperado:** ele aparece
+   com a capa e "Tocar este" (não toca junto). Clique: o primeiro vai para a
+   capa. Tire o segundo: o primeiro volta sozinho, no ponto certo.
+7. Clique no logo/título do YouTube dentro do player. **Esperado:** abre o
+   navegador padrão no vídeo; o app não abre janela nenhuma.
+8. Cole o link de um vídeo com embed bloqueado. **Esperado:** "O dono deste
+   vídeo não deixa tocar fora do YouTube." (erro 101/150, **não** 153).
+9. **Rádio da sala:** ponha 3 músicas (uma do YouTube Music, uma com embed
+   bloqueado, outra qualquer). **Esperado:** capa e título aparecem; toca
+   nos dois; a bloqueada é pulada com o aviso; "Pular" só para quem pôs (ou
+   o líder); os outros veem "Votar para pular (n/m)" e a maioria pula.
+10. **Ao vivo:** `+` → **Ao vivo (Twitch)** → `https://www.twitch.tv/<canal ao vivo>`.
+    **Esperado:** a live toca (sem erro de `parent`); o logo abre o navegador.
+11. Tire o cabo/Wi-Fi de um PC e ponha um vídeo novo. **Esperado:** em até
+    15 s, "Sem internet: o YouTube não carregou neste PC." no lugar do
+    player; volta sozinho quando a rede volta.
+
+**Se o vídeo não tocar mas o spike da seção 2 tocou:** o suspeito é o
+`sandbox` do iframe. Com o DevTools (Ctrl+Shift+I) → Console, procure erros
+do player; anote e mande.
+
 ## O que mandar
 
 - O resumo impresso pelo `tools/spike-youtube` (as duas janelas).
 - O log da primeira abertura da versão nova e o `origem.json`.
 - Qualquer item da seção 3 que tenha mudado de comportamento.
+- O JSON da bancada da seção 5.1 e o que divergiu da seção 5.2.

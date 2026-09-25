@@ -373,13 +373,14 @@ test('prepararOrigem: falha na copia nao rejeita, nao grava registro e tenta de 
   assert.equal(nav.loja('http://localhost').get('golive'), 'x');
 });
 
-test('CSP do index.html: a de antes, mais so o frame-src do YouTube e da Twitch', () => {
+test('CSP do index.html: a de antes, mais so o frame-src do YouTube e da Twitch e a capa do YouTube', () => {
   const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
   const csp = html.match(/http-equiv="Content-Security-Policy"\s+content="([^"]+)"/)[1];
   const diretivas = Object.fromEntries(csp.split(';').map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v.join(' ')]));
   assert.deepEqual(diretivas, {
     'default-src': "'self'",
-    'img-src': "'self' data: blob:",
+    // A capa do Radio e da espera do video (i.ytimg.com/vi/<id>/hqdefault.jpg).
+    'img-src': "'self' data: blob: https://i.ytimg.com",
     'media-src': "'self' blob: mediastream:",
     'style-src': "'self' 'unsafe-inline'",
     'connect-src': "'self' ws: wss:",
