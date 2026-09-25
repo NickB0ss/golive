@@ -11,7 +11,7 @@
  * janelas). As telas sao `canvas.captureStream` desenhando sem parar, postas
  * no palco pelo mesmo `ui.grid.showTile` que a track do WebRTC usaria.
  *
- * Uso: node tools/mesa-prints/harness.js [prints|desempenho|tudo]
+ * Uso: node tools/mesa-prints/harness.js [prints|checar|desempenho|tudo]
  *   PLAYWRIGHT=/caminho/do/playwright (padrao: o global do container)
  *
  * Nao entra no `npm test` (precisa de navegador).
@@ -406,6 +406,84 @@ async function desempenho(browser, port, s) {
   await page.close();
 }
 
+/** Conferencias de comportamento que so dao com DOM de verdade. */
+async function checar(browser, port, s) {
+  const { page, erros } = await abrirSala(browser, port);
+  await page.evaluate(CONTEUDO_DE_TESTE);
+  const bia = await pessoa(port, 'Bia');
+  const ok = {};
+  await page.click('#view-mesa');
+  await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  bia.envia({ type: 'mesa-view', on: true });
+  await bia.espera((m) => m.type === 'mesa-sync');
+  // Pelo + do dock.
+  await page.click('#btn-mesa-add');
+  await page.click('.mesa-menu [data-add="nota"]');
+  const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add');
+  const id = add.win.id;
+  await page.waitForSelector(`.mesa-win[data-id="${id}"]`);
+  ok.focoNaJanelaNova = await page.evaluate((i) => document.activeElement?.dataset?.id === i, id);
+  // Setas movem 10 (Shift 100).
+  await page.keyboard.press('ArrowRight');
+  const m1 = await bia.espera((m) => m.type === 'mesa' && m.op === 'place');
+  ok.setaMove10 = m1.x === add.win.x + 10 && m1.y === add.win.y;
+  await page.keyboard.press('Shift+ArrowDown');
+  const m2 = await bia.espera((m) => m.type === 'mesa' && m.op === 'place' && m.seq === m1.seq + 1);
+  ok.shiftMove100 = m2.y === add.win.y + 100;
+  // Alt+seta redimensiona.
+  await page.keyboard.press('Alt+ArrowRight');
+  const m3 = await bia.espera((m) => m.type === 'mesa' && m.op === 'place' && m.seq === m2.seq + 1);
+  ok.altRedimensiona = m3.w === add.win.w + 10;
+  // Arrastar pela alca: a Bia ve a vez, o arraste e o place.
+  const alca = await page.$eval(`.mesa-win[data-id="${id}"] .mesa-handle`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await page.mouse.move(alca.x, alca.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i += 1) {
+    await page.mouse.move(alca.x + i * 15, alca.y + i * 5);
+    await espera(30);
+  }
+  ok.contornoDeOndeAssenta = await page.evaluate(() => Boolean(document.querySelector('.mesa-win.is-dragging')));
+  await page.mouse.up();
+  const grab = await bia.espera((m) => m.type === 'mesa-grab' && m.id === id);
+  const drag = await bia.espera((m) => m.type === 'mesa-drag' && m.id === id);
+  const place = await bia.espera((m) => m.type === 'mesa' && m.op === 'place' && m.seq === m3.seq + 1);
+  await bia.espera((m) => m.type === 'mesa-release' && m.id === id);
+  ok.arrasteComVez = Boolean(grab && drag && place && place.x > m3.x);
+  // F: tela cheia; Esc volta.
+  await page.focus(`.mesa-win[data-id="${id}"]`);
+  await page.keyboard.press('f');
+  ok.telaCheia = await page.evaluate(() => Boolean(document.querySelector('.mesa-win.is-full')) && document.body.classList.contains('mesa-full'));
+  await page.keyboard.press('Escape');
+  ok.escVolta = await page.evaluate(() => !document.querySelector('.mesa-win.is-full') && !document.body.classList.contains('mesa-full'));
+  // Janela da Bia sendo movida: pegar e recusado com o nome dela.
+  bia.envia({ type: 'mesa-grab', id });
+  await espera(200);
+  ok.chipBiaMovendo = await page.evaluate((i) => document.querySelector(`.mesa-win[data-id="${i}"] .mesa-moving`)?.textContent, id);
+  bia.envia({ type: 'mesa-release', id });
+  await espera(100);
+  // Trava: a Bia (nao lider) nao consegue por janela.
+  await page.click('#btn-room-more');
+  await page.check('#opt-mesa-leader-only');
+  await page.keyboard.press('Escape');
+  const lock = await bia.espera((m) => m.type === 'mesa' && m.op === 'lock');
+  bia.envia({ type: 'mesa', op: 'add', win: { type: 'nota', x: 0, y: 0, w: 320, h: 240 } });
+  ok.travaRecusa = (await bia.espera((m) => m.type === 'mesa-denied' && m.op === 'add')).reason === 'locked' && lock.leaderOnly === true;
+  // Delete tira da mesa.
+  await page.focus(`.mesa-win[data-id="${id}"]`);
+  await page.keyboard.press('Delete');
+  ok.deleteTira = (await bia.espera((m) => m.type === 'mesa' && m.op === 'remove')).id === id;
+  // Voltar a Transmissao desmonta tudo.
+  await page.click('#view-tx');
+  ok.nadaDaMesaNoDom = await page.evaluate(() => document.querySelectorAll('.mesa, .mesa-win, .mesa-menu').length === 0);
+  await espera(300);
+  const viewers = bia.caixa.filter((m) => m.type === 'mesa-viewers').pop();
+  ok.mesaViewOff = viewers.peers.length === 1 && viewers.peers[0] === bia.id;
+  ok.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND/.test(e));
+  s.checagem = ok;
+  bia.fecha();
+  await page.close();
+}
+
 (async () => {
   const modo = process.argv[2] || 'tudo';
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'banco-de-prova', log: () => {} });
@@ -413,6 +491,7 @@ async function desempenho(browser, port, s) {
   const s = {};
   try {
     if (modo === 'prints' || modo === 'tudo') await prints(browser, servidor.port, s);
+    if (modo === 'checar' || modo === 'tudo') await checar(browser, servidor.port, s);
     if (modo === 'desempenho' || modo === 'tudo') await desempenho(browser, servidor.port, s);
   } finally {
     await browser.close();
