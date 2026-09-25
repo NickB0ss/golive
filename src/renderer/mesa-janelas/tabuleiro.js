@@ -1,5 +1,4 @@
 'use strict';
-/* global document, setTimeout, clearTimeout, module */
 
 /*
  * Apoio dos tabuleiros da Mesa (velha, lig4, damas, xadrez), em

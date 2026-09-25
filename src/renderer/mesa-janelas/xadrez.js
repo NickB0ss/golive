@@ -1,5 +1,4 @@
 'use strict';
-/* global module */
 
 /*
  * Conteudo da janela "Xadrez" (contrato da Mesa, secoes 6 e 7). A regra e

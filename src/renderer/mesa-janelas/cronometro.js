@@ -1,5 +1,4 @@
 'use strict';
-/* global module */
 
 /*
  * Conteudo da janela "Cronometro" (contrato da Mesa, secao 6). O modulo

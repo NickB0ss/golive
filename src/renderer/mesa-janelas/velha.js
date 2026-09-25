@@ -1,5 +1,4 @@
 'use strict';
-/* global module */
 
 /*
  * Conteudo da janela "Jogo da velha" (contrato da Mesa, secoes 6 e 7). O

@@ -1,5 +1,4 @@
 'use strict';
-/* global document, window, requestAnimationFrame, cancelAnimationFrame, setTimeout, clearTimeout, module */
 
 /*
  * Apoio do conteudo das janelas da Mesa (contrato:

@@ -1,5 +1,4 @@
 'use strict';
-/* global module */
 
 /*
  * Conteudo da janela "Damas" (contrato da Mesa, secoes 6 e 7), regra

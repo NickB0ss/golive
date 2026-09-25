@@ -1,5 +1,4 @@
 'use strict';
-/* global setTimeout, clearTimeout, module */
 
 /*
  * Conteudo da janela "Roleta" (contrato da Mesa, secao 6). Tudo que decide

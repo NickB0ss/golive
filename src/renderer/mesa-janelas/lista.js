@@ -1,5 +1,4 @@
 'use strict';
-/* global document, module */
 
 /*
  * Conteudo da janela "Lista" (contrato da Mesa, secao 6). O modulo puro

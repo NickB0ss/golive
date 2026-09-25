@@ -1,5 +1,4 @@
 'use strict';
-/* global setTimeout, clearTimeout, module */
 
 /*
  * Conteudo da janela "Dados e moeda" (contrato da Mesa, secao 6). O

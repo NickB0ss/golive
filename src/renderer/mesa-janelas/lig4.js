@@ -1,5 +1,4 @@
 'use strict';
-/* global module */
 
 /*
  * Conteudo da janela "Lig 4" (contrato da Mesa, secoes 6 e 7). Cada
