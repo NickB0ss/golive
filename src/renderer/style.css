@@ -3380,7 +3380,10 @@ body.mesa-open #grid { display: none; }
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  /* clip e nao hidden: hidden ainda rola por programa, e o navegador rola
+     a mesa para mostrar um campo focado dentro de uma janela -- a area
+     inteira escorregava para o lado. Quem anda pela mesa e a vista. */
+  overflow: clip;
   border-radius: var(--r-lg);
   background: var(--bg);
   outline: 0;

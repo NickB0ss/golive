@@ -559,7 +559,12 @@
             S.focusAfterAdd = false;
             rec.el.focus({ preventScroll: true });
           }
-          if (!mine) announce(`${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na mesa`, msg.by);
+          if (!mine) {
+            // Tela e camera entram sozinhas (a pessoa foi ao vivo): nao e
+            // alguem "pondo" a janela.
+            const auto = msg.win && isMedia(msg.win) && String(msg.win.state?.peerId) === String(msg.by);
+            announce(auto ? `${labelOf(msg.win)} entrou na mesa` : `${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na mesa`, msg.by);
+          }
           break;
         }
         case 'remove': {
@@ -922,6 +927,17 @@
       });
       el.addEventListener('pointerdown', (e) => onWinDown(e, rec));
       el.addEventListener('keydown', (e) => onWinKey(e, rec));
+      // Chegou pelo Tab numa janela fora da vista: a vista vai ate ela (o
+      // navegador nao rola a mesa -- ela e overflow: clip).
+      el.addEventListener('focus', () => {
+        const w = findWin(rec.id);
+        // So o foco do teclado: clicar numa janela meio de fora nao voa.
+        if (!w || S.fullId || S.drag || !el.matches(':focus-visible')) return;
+        const seen = V.watchable(S.view, S.vw, S.vh, rectOf(w), { minPx: 1 });
+        const s2 = V.screenRect(S.view, rectOf(w));
+        const inteira = s2.x >= 0 && s2.y >= 0 && s2.x + s2.w <= S.vw && s2.y + s2.h <= S.vh;
+        if (!seen.onScreen || !inteira) flyTo(V.centerOn(w.x + w.w / 2, w.y + w.h / 2, S.view.z, S.vw, S.vh));
+      });
       for (const edge of el.querySelectorAll('.mesa-resize')) {
         edge.addEventListener('pointerdown', (e) => onResizeDown(e, rec, edge.dataset.edge));
       }
