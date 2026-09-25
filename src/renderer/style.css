@@ -3290,3 +3290,458 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
   flex: 1; min-width: 0;
   font-family: ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase;
 }
+
+/* ============ VISTA: Transmissao | Mesa ============ */
+/* A vista e de cada pessoa (spec 2026-09-24 + decisoes do dono no contrato
+   da Mesa, secao 0): o seletor fica no cabecalho da sala, para todos. */
+.view-switch {
+  display: inline-flex;
+  flex: none;
+  gap: var(--s-05);
+  padding: var(--s-05);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--s2);
+}
+.view-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-15);
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--tx2);
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.view-switch-btn svg { width: 15px; height: 15px; flex: none; }
+.view-switch-btn:hover:not([aria-checked="true"]) { color: var(--tx); background: transparent; }
+.view-switch-btn[aria-checked="true"] { background: var(--s4); color: var(--tx); }
+.view-switch-count {
+  min-width: 18px;
+  padding: 0 var(--s-15);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  color: var(--tx2);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Menu "..." da sala: travas da Mesa (so o lider) e os ponteiros. */
+.room-more-wrap { position: relative; flex: none; }
+.room-more {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  right: 0;
+  z-index: var(--z-popover);
+  width: 280px;
+  padding: var(--s-15);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: var(--shadow-2);
+}
+.room-more-head {
+  margin: 0;
+  padding: var(--s-2) var(--s-2) var(--s-1);
+  color: var(--tx3);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.room-more-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 38px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-xs);
+  color: var(--tx);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+.room-more-row:hover { background: var(--s3); }
+.room-more-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--act); }
+.room-more-row:has(input:disabled) { color: var(--tx3); cursor: default; }
+.room-more-hint { margin: 0; padding: var(--s-1) var(--s-2) var(--s-2); color: var(--tx3); font-size: var(--fs-small); }
+
+/* ============ MESA ============ */
+/* Na Mesa a grade (as telas de hoje) sai de cena: os tiles moram nas
+   janelas da mesa. `display: none` e nao `visibility`: nada da grade precisa
+   de layout enquanto a Mesa esta aberta. */
+body.mesa-open #grid { display: none; }
+
+.mesa {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  outline: 0;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+}
+.mesa:focus-visible { box-shadow: inset 0 0 0 2px var(--on-text); }
+.mesa.is-panning { cursor: grabbing; }
+/* A grade e UM fundo em linear-gradient, recalculado so quando a vista
+   muda (mesa-vista.gridStyle). */
+.mesa-grid { position: absolute; inset: 0; pointer-events: none; }
+/* Uma transformacao so para a mesa inteira; cada janela anda por
+   `transform` dentro dela. */
+.mesa-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.mesa-world.is-moving { will-change: transform; }
+.mesa-edge { position: absolute; left: 0; top: 0; border-radius: 40px; box-shadow: 0 0 0 1px var(--line); pointer-events: none; }
+.mesa-over { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+/* Janela: plana, sem sombra, contorno de 1 px. */
+.mesa-win {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r-lg);
+  background: var(--s1);
+  box-shadow: 0 0 0 1px var(--line2);
+  overflow: hidden;
+  outline: 0;
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+.mesa-win:focus-visible { box-shadow: 0 0 0 2px var(--on-text); }
+.mesa-win.is-media { cursor: grab; }
+.mesa-win.is-dragging { box-shadow: 0 0 0 1px var(--on-text); opacity: .92; will-change: transform; cursor: grabbing; }
+.mesa-win.is-settling { transition: transform 260ms var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
+.mesa-win.is-remote-drag { transition: transform 60ms linear, width 60ms linear, height 60ms linear; }
+.mesa-win.is-held { box-shadow: 0 0 0 2px var(--who); }
+.mesa-win-body { position: absolute; inset: 0; }
+.mesa-content { position: absolute; inset: 0; container-type: size; overflow: hidden; }
+
+/* O tile do palco dentro da janela: so o video e os avisos de estado. */
+.mesa-win .tile {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: inherit;
+  box-shadow: none;
+  transition: none;
+}
+.mesa-win .tile-fullscreen-btn,
+.mesa-win .tile-gate,
+.mesa-win .tile-unwatch-btn,
+.mesa-win .tile-label,
+.mesa-win .tile-avatar,
+.mesa-win .tile-kind-badge,
+.mesa-win .pip-strip,
+.mesa-win .tile-react-bar,
+.mesa-win .tile-annot-bar { display: none; }
+
+/* Nome sempre visivel embaixo, AO VIVO na tela de quem transmite. */
+.mesa-win-label {
+  position: absolute;
+  left: var(--s-2);
+  bottom: var(--s-2);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--s-15);
+  max-width: calc(100% - var(--s-4));
+  margin: 0;
+  padding: var(--s-05) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--scrim-4);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  pointer-events: none;
+  transform: scale(var(--mesa-inv, 1));
+  transform-origin: 0 100%;
+}
+.mesa-win-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mesa-live-pill {
+  flex: none;
+  padding: 0 var(--s-15);
+  border-radius: var(--r-full);
+  background: var(--live);
+  color: var(--on-act);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+/* Alca de 36 x 4 no topo das janelas com conteudo: aparece com o mouse. */
+.mesa-handle { position: absolute; left: 0; right: 0; top: 0; z-index: 4; height: 28px; display: grid; place-items: center; cursor: grab; }
+.mesa-handle::after { content: ''; width: 36px; height: 4px; border-radius: 2px; background: var(--tx3); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+
+/* Controles so com o mouse em cima (ou foco). */
+.mesa-ctrls {
+  position: absolute;
+  top: var(--s-2);
+  right: var(--s-2);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--s-05);
+  padding: var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--scrim-4);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+  transform: scale(var(--mesa-inv, 1));
+  transform-origin: 100% 0;
+}
+.mesa-win:hover .mesa-ctrls,
+.mesa-win:focus-within .mesa-ctrls,
+.mesa-win:hover .mesa-handle::after,
+.mesa-win:focus-within .mesa-handle::after { opacity: 1; }
+.mesa-ctrl {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--tx2);
+}
+.mesa-ctrl:hover { background: var(--s4); color: var(--tx); }
+.mesa-ctrl svg, .mesa-lock-note svg, .mesa-zoom-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mesa-ctrl[hidden] { display: none; }
+
+/* Avatar de quem pos (e dos avatares "Ir ate"): contorno na cor da pessoa. */
+.mesa-avatar {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--s3);
+  box-shadow: 0 0 0 2px var(--who, var(--line2));
+  color: var(--tx);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+}
+.mesa-avatar[hidden] { display: none; }
+.mesa-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* "Bia esta movendo": chip com a bolinha na cor da pessoa. */
+.mesa-moving {
+  position: absolute;
+  left: var(--s-2);
+  top: var(--s-2);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-15);
+  padding: var(--s-05) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  color: var(--tx);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  pointer-events: none;
+  transform: scale(var(--mesa-inv, 1));
+  transform-origin: 0 0;
+}
+.mesa-moving::before { content: ''; width: 8px; height: 8px; border-radius: var(--r-full); background: var(--who); }
+.mesa-moving[hidden] { display: none; }
+
+/* Redimensionar pelas bordas e cantos de baixo. */
+.mesa-resize { position: absolute; z-index: 6; }
+.mesa-resize[data-edge="l"] { left: 0; top: 14px; bottom: 14px; width: 10px; cursor: ew-resize; }
+.mesa-resize[data-edge="r"] { right: 0; top: 14px; bottom: 14px; width: 10px; cursor: ew-resize; }
+.mesa-resize[data-edge="b"] { left: 14px; right: 14px; bottom: 0; height: 10px; cursor: ns-resize; }
+.mesa-resize[data-edge="bl"] { left: 0; bottom: 0; width: 20px; height: 20px; cursor: nesw-resize; }
+.mesa-resize[data-edge="br"] { right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize; }
+/* Travas: o que nao se pode fazer some (o motivo fica no aviso do canto). */
+.mesa.no-edit .mesa-handle,
+.mesa.no-edit .mesa-resize,
+.mesa.no-resize .mesa-resize { display: none; }
+.mesa.no-edit .mesa-win.is-media { cursor: default; }
+
+/* Onde a janela vai assentar, durante o arraste. */
+.mesa-landing {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 2px dashed var(--on-text);
+  border-radius: var(--r-lg);
+  background: var(--on-fill);
+  pointer-events: none;
+}
+.mesa-landing[hidden] { display: none; }
+
+/* Tela ou camera cujo video ainda nao chegou. */
+.mesa-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: var(--s-2); background: var(--video-bg); color: var(--tx2); font-size: var(--fs-small); }
+.mesa-wait-avatar { width: 48px; height: 48px; font-size: var(--fs-lead); }
+
+/* Tipo sem conteudo registrado: o resumo do modulo. */
+.mesa-summary { position: absolute; inset: 0; display: grid; place-content: center; gap: var(--s-1); padding: var(--s-4); text-align: center; }
+.mesa-summary-title { margin: 0; color: var(--tx); font-family: 'Outfit', sans-serif; font-size: var(--fs-lead); font-weight: 650; }
+.mesa-summary-text { margin: 0; color: var(--tx2); font-size: var(--fs-body); }
+
+/* Ponteiros: seta na cor da pessoa, nome ao lado. */
+.mesa-cursor { position: absolute; left: 0; top: 0; }
+.mesa-cursor svg { display: block; width: 20px; height: 20px; fill: var(--who); stroke: var(--bg); stroke-width: 1.5; stroke-linejoin: round; }
+.mesa-cursor-name {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  padding: var(--s-05) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--who);
+  color: var(--tx);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Mesa vazia e carregando. */
+.mesa-empty, .mesa-loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  max-width: 360px;
+  transform: translate(-50%, -50%);
+  color: var(--tx2);
+  font-size: var(--fs-body);
+  text-align: center;
+  pointer-events: none;
+}
+.mesa-empty b { display: block; margin-bottom: var(--s-15); color: var(--tx); font-family: 'Outfit', sans-serif; font-size: var(--fs-title); }
+.mesa-empty[hidden], .mesa-loading[hidden] { display: none; }
+
+/* Quem esta na Mesa (avatares que levam ate a pessoa). */
+.mesa-people { position: absolute; top: var(--s-3); right: var(--s-3); z-index: 8; display: flex; gap: var(--s-15); }
+.mesa-person { width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; }
+
+/* Mapa e zoom no canto de baixo a esquerda. */
+.mesa-nav { position: absolute; left: var(--s-3); bottom: var(--s-3); z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.mesa-map {
+  position: relative;
+  width: 192px;
+  height: 120px;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  cursor: pointer;
+}
+.mesa-map i, .mesa-map b, .mesa-map u { position: absolute; left: 0; top: 0; }
+.mesa-map i { border-radius: 2px; background: var(--s4); }
+.mesa-map i.is-live { background: var(--live-dim); box-shadow: inset 0 0 0 1px var(--live); }
+.mesa-map b { width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: var(--r-full); background: var(--who); }
+.mesa-map u { border: 1.5px solid var(--tx); border-radius: 3px; }
+.mesa-zoom { display: flex; align-items: center; gap: var(--s-05); padding: var(--s-05); border-radius: var(--r-sm); background: var(--s1); box-shadow: inset 0 0 0 1px var(--line2); }
+.mesa-zoom-btn { display: grid; place-items: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--tx2); }
+.mesa-zoom-btn:hover { background: var(--s3); color: var(--tx); }
+.mesa-zoom-val { min-width: 46px; color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; text-align: center; }
+.mesa-lock-note { display: flex; align-items: center; gap: var(--s-15); margin: 0; padding: var(--s-1) var(--s-2); border-radius: var(--r-full); background: var(--s2); color: var(--tx2); font-size: var(--fs-small); }
+.mesa-lock-note[hidden] { display: none; }
+
+/* Avisos curtos no topo ("Leo pos Lig 4 na mesa"). */
+.mesa-toast {
+  position: absolute;
+  left: 50%;
+  top: var(--s-3);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: calc(100% - var(--s-6));
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  box-shadow: var(--shadow-2);
+  color: var(--tx);
+  font-size: var(--fs-body);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.mesa-toast.is-shown { opacity: 1; }
+.mesa-toast-dot { width: 8px; height: 8px; flex: none; border-radius: var(--r-full); background: var(--who, var(--tx2)); }
+.mesa-toast-dot[hidden] { display: none; }
+.mesa-toast-text { overflow: hidden; text-overflow: ellipsis; }
+
+/* Menu do botao direito (e o submenu "Adicionar janela"). */
+.mesa-menu {
+  position: fixed;
+  z-index: var(--z-popover);
+  min-width: 230px;
+  max-height: calc(100vh - var(--s-4));
+  overflow-y: auto;
+  padding: var(--s-15);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: var(--shadow-2);
+}
+.mesa-menu[hidden] { display: none; }
+.mesa-menu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--tx);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  text-align: left;
+}
+.mesa-menu-row:hover, .mesa-menu-row:focus-visible, .mesa-menu-row.is-open { background: var(--s3); }
+.mesa-menu-row[aria-disabled="true"] { color: var(--tx3); }
+.mesa-menu-row.is-danger { color: var(--danger-soft); }
+.mesa-menu-label { flex: 1; }
+.mesa-menu-row kbd, .mesa-menu-row small { color: var(--tx3); font-family: inherit; font-size: var(--fs-micro); }
+.mesa-menu-chev { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--tx2); }
+.mesa-menu-head { margin: 0; padding: var(--s-2) var(--s-2) var(--s-1); color: var(--tx3); font-size: var(--fs-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.mesa-menu-sep { height: 1px; margin: var(--s-15) var(--s-1); border: 0; background: var(--line); }
+
+/* Tudo some com o mouse parado (o mesmo timer da sala, ui.js). */
+.mesa-nav, .mesa-people { transition: opacity var(--dur-fast) var(--ease-out); }
+.room-idle .mesa-nav,
+.room-idle .mesa-people,
+.room-idle .mesa-ctrls,
+.room-idle .mesa-handle::after { opacity: 0; }
+.room-idle .mesa-nav:focus-within,
+.room-idle .mesa-people:focus-within { opacity: 1; }
+
+/* Tela cheia de uma janela: so ela, a janela toda do app (sem transformacao
+   da mesa por cima, para o fixed valer para a tela inteira). */
+.mesa-win.is-full { position: fixed; inset: 0; z-index: var(--z-popover); width: auto; height: auto; border-radius: 0; box-shadow: none; transform: none; }
+.mesa.has-full .mesa-win:not(.is-full),
+.mesa.has-full .mesa-nav,
+.mesa.has-full .mesa-people,
+.mesa.has-full .mesa-grid,
+.mesa.has-full .mesa-over,
+.mesa.has-full .mesa-edge { visibility: hidden; }
+.mesa-win.is-full .mesa-resize,
+.mesa-win.is-full .mesa-handle { display: none; }
+body.mesa-full .titlebar { display: none; }
+body.mesa-full .stage-header,
+body.mesa-full .control-bar,
+body.mesa-full .room-side { visibility: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mesa-win.is-settling, .mesa-win.is-remote-drag { transition: none; }
+}
