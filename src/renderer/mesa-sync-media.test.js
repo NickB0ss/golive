@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createDrift, DEFAULTS } = require('./mesa-sync-media');
+const { createDrift, createSync, DEFAULTS } = require('./mesa-sync-media');
 
 function tocando(target, current, now, extra = {}) {
   return { target, current, want: 'play', player: 'playing', rate: 1, now, ...extra };
@@ -124,4 +124,30 @@ test('simulacao: 5 s atras salta uma vez', () => {
 test('simulacao: player que ignora a velocidade acaba alinhado por salto', () => {
   const r = simula({ inicioErro: 1, segundos: 10, aceitaRate: false });
   assert.ok(r.final < DEFAULTS.dead, `erro final ${r.final}`);
+});
+
+test('createSync liga o player a deriva e so age com o player pronto', () => {
+  const feitos = [];
+  const player = {
+    ready: false,
+    currentTime: () => 10,
+    playerState: () => 'playing',
+    rate: () => 1,
+    seek: (to) => feitos.push(['seek', to]),
+    setRate: (r) => feitos.push(['rate', r]),
+    play: () => feitos.push(['play']),
+    pause: () => feitos.push(['pause']),
+  };
+  let alvo = { target: 11, want: 'play' };
+  let t = 0;
+  const s = createSync({ player, desired: () => alvo, now: () => t });
+  assert.deepEqual(s.tick(), []);
+  player.ready = true;
+  assert.deepEqual(s.tick(), [{ cmd: 'rate', rate: 1.05 }]);
+  t = 5000;
+  alvo = { target: 30, want: 'play' };
+  s.tick();
+  alvo = null;
+  assert.deepEqual(s.tick(), []);
+  assert.deepEqual(feitos, [['rate', 1.05], ['rate', 1], ['seek', 30]]);
 });

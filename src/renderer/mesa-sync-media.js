@@ -167,7 +167,46 @@
     };
   }
 
-  const api = { DEFAULTS, createDrift };
+  /** Aplica os comandos da deriva num player com a interface do ytplayer
+   * (`seek`, `setRate`, `play`, `pause`). */
+  function applyCommands(player, cmds) {
+    for (const c of cmds) {
+      if (c.cmd === 'seek') player.seek(c.to);
+      else if (c.cmd === 'rate') player.setRate(c.rate);
+      else if (c.cmd === 'play') player.play();
+      else if (c.cmd === 'pause') player.pause();
+    }
+    return cmds;
+  }
+
+  /**
+   * Liga um player a uma deriva. `desired()` devolve `{ target, want }` (ou
+   * null quando nao ha o que tocar); `now()` e o relogio monotonico local.
+   * `tick()` e chamado pelo conteudo (timer de 250 ms) e devolve os comandos
+   * aplicados, para quem quiser medir.
+   */
+  function createSync({ player, desired, now, drift }) {
+    const d = drift || createDrift();
+    return {
+      drift: d,
+      tick() {
+        if (!player || !player.ready) return [];
+        const want = desired();
+        if (!want) return [];
+        return applyCommands(player, d.step({
+          target: want.target,
+          current: player.currentTime(),
+          want: want.want,
+          player: player.playerState(),
+          rate: player.rate(),
+          now: now(),
+        }));
+      },
+      reset: () => d.reset(),
+    };
+  }
+
+  const api = { DEFAULTS, createDrift, applyCommands, createSync };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.mesaSyncMedia = api;

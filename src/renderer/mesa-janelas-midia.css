@@ -1,0 +1,195 @@
+/*
+ * Conteudo das janelas de midia da Mesa (time Midia): youtube, radio, aovivo.
+ * Contrato: docs/superpowers/plans/2026-09-24-mesa-contrato.md, secao 6.
+ * Tudo com prefixo .mjm- (mesa janela midia) e so tokens de style.css.
+ * Quando mesa-janelas.css existir, este bloco pode ir para o fim dele.
+ */
+
+.mjm {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  color: var(--tx);
+  font-size: var(--fs-body);
+  overflow: hidden;
+  container-type: size;
+}
+.mjm [hidden] { display: none !important; }
+
+.mjm-btn {
+  appearance: none;
+  border: 1px solid var(--line2);
+  background: var(--s3);
+  color: var(--tx);
+  border-radius: var(--r-sm);
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+  transition: background var(--t-hover) var(--ease-out);
+  white-space: nowrap;
+}
+.mjm-btn:hover:not(:disabled) { background: var(--s4); }
+.mjm-btn:disabled { opacity: .5; cursor: default; }
+.mjm-btn:focus-visible,
+.mjm-input:focus-visible,
+.mjm-range:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.mjm-btn-act { background: var(--act); border-color: transparent; color: var(--on-act); }
+.mjm-btn-act:hover:not(:disabled) { background: var(--act-hover); }
+.mjm-icon { min-width: 32px; padding: var(--s-1) var(--s-2); line-height: 1; }
+
+.mjm-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--s1);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-ui);
+}
+.mjm-form { display: flex; gap: var(--s-2); align-items: center; }
+.mjm-hint { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-note { margin: 0; min-height: 1em; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-time { color: var(--tx2); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mjm-range { accent-color: var(--act); min-width: 0; }
+.mjm-vol { width: 72px; flex: none; }
+.mjm-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--tx3); flex: none; }
+
+/* ---------- Palco (video) ---------- */
+
+.mjm-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+.mjm-yt .mjm-empty,
+.mjm-live .mjm-empty { position: absolute; inset: 0; background: var(--s2); z-index: 2; }
+
+.mjm-stage { position: absolute; inset: 0; background: var(--video-bg); }
+.mjm-player,
+.mjm-player .ytp-frame,
+.mjm-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+
+.mjm-cover,
+.mjm-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--s1);
+}
+.mjm-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .45; }
+.mjm-cover-cta {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+.mjm-cover-name { margin: 0; font-size: var(--fs-ui); color: var(--tx); }
+.mjm-msg { flex-direction: column; gap: var(--s-3); padding: var(--s-4); text-align: center; }
+.mjm-msg-text { margin: 0; color: var(--tx2); font-size: var(--fs-body); max-width: 40ch; }
+
+/* Barra de controles por cima do video: aparece com o mouse ou o foco. */
+.mjm-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2);
+}
+.mjm-stage .mjm-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to top, var(--scrim-4), transparent);
+  opacity: 0;
+  transition: opacity var(--t-hover) var(--ease-out);
+}
+.mjm-stage .mjm-bar-top { top: 0; bottom: auto; justify-content: flex-end; background: none; }
+.mjm-stage:hover .mjm-bar,
+.mjm-stage:focus-within .mjm-bar { opacity: 1; }
+.mjm-stage .mjm-bar .mjm-range:not(.mjm-vol) { flex: 1; }
+@container (max-width: 380px) {
+  .mjm-yt .mjm-vol, .mjm-yt .mjm-time { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mjm-btn, .mjm-stage .mjm-bar { transition: none; }
+}
+
+/* ---------- Radio ---------- */
+
+.mjm-radio { padding: var(--s-3); background: var(--s2); }
+.mjm-radio-now { display: flex; gap: var(--s-3); align-items: flex-start; }
+.mjm-radio-cover {
+  width: 96px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  flex: none;
+}
+.mjm-radio-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: var(--s-1); }
+.mjm-radio-title {
+  margin: 0;
+  font-size: var(--fs-ui);
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.mjm-radio-who { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-bar-static { padding: 0; flex-wrap: wrap; }
+.mjm-radio-head { margin: 0; color: var(--tx3); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .04em; }
+.mjm-radio-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.mjm-radio-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--s1);
+}
+.mjm-radio-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mjm-radio-item-who { color: var(--tx2); font-size: var(--fs-micro); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mjm-radio-item .mjm-icon { min-width: 26px; padding: 2px var(--s-1); }
+.mjm-radio-failed { color: var(--warn); }
+/* O player do radio: presente (o audio precisa dele) mas invisivel e sem
+   clique, dentro da propria janela. */
+.mjm-radio-audio {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 160px;
+  height: 90px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.mjm-radio-audio .ytp-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
