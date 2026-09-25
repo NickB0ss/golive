@@ -35,6 +35,10 @@
     'velha', 'lig4', 'damas', 'xadrez',
   ]);
 
+  // Arquivos de apoio da pasta que NAO sao tipo de janela: os jogos os
+  // carregam sozinhos (no renderer, por <script> antes deles).
+  const HELPER_NAMES = Object.freeze(['cadeiras']);
+
   const GROUPS = Object.freeze(['assistir', 'jogos', 'noite', 'ferramentas']);
   const TYPE_RE = /^[a-z][a-z0-9]{0,23}$/;
   // Teto do estado de UMA janela, qualquer que seja o que o modulo declare.
@@ -204,7 +208,7 @@
   for (const b of BUILTIN) register(b);
 
   const api = {
-    MODULE_NAMES, GROUPS, MAX_STATE_BYTES_CAP,
+    MODULE_NAMES, HELPER_NAMES, GROUPS, MAX_STATE_BYTES_CAP,
     register, get, list, addable, checkModule, loadFrom, loadErrors,
   };
 

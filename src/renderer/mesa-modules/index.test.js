@@ -40,7 +40,8 @@ test('nenhum arquivo da pasta quebrou ao carregar', () => {
 test('todo arquivo de modulo na pasta esta em MODULE_NAMES (senao o servidor nao o carrega)', () => {
   const files = fs.readdirSync(__dirname)
     .filter((f) => f.endsWith('.js') && !f.endsWith('.test.js') && f !== 'index.js')
-    .map((f) => f.slice(0, -3));
+    .map((f) => f.slice(0, -3))
+    .filter((name) => !registry.HELPER_NAMES.includes(name));
   for (const name of files) assert.ok(registry.MODULE_NAMES.includes(name), `${name}.js fora de MODULE_NAMES`);
 });
 
