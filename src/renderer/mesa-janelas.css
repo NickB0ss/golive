@@ -589,6 +589,135 @@
   .mj-lista .mj-item-acoes .mj-mini:nth-child(3) { display: none; }
 }
 
+/* ---------- Tabuleiros: moldura comum ----------
+   As casas do tabuleiro seguem "claro/escuro" de verdade: nos temas
+   escuros --s4 e a mais clara; no Papel (o unico tema claro) inverte. As
+   pecas tem cor fixa em todos os temas (branca e branca). */
+
+.mj-jogo {
+  gap: var(--s-15);
+  --mj-casa-a: var(--s4);
+  --mj-casa-b: var(--s2);
+  --mj-peca-clara: var(--on-act);
+  --mj-peca-escura: var(--video-bg);
+}
+:root[data-theme="paper"] .mj-jogo { --mj-casa-a: var(--s2); --mj-casa-b: var(--s4); }
+
+.mj-jogo-topo { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.mj-jogo-x { color: var(--tx3); font-size: var(--fs-small); }
+.mj-cadeira {
+  display: inline-flex; align-items: center; gap: var(--s-15);
+  min-width: 0; min-height: 32px;
+  padding: 0 var(--s-05) 0 var(--s-15);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--fs-small);
+}
+.mj-cadeira.is-vez { box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-cadeira.is-eu .mj-cadeira-nome { font-weight: 600; }
+.mj-cadeira:not(.is-livre)::after {
+  /* a cor de quem sentou: so um fio embaixo do nome */
+  content: ""; width: 6px; height: 6px; flex: none;
+  border-radius: var(--r-full); background: var(--mj-cor, transparent);
+  order: 3;
+}
+.mj-cadeira .mj-mini { order: 4; }
+.mj-cadeira-nome { min-width: 0; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj .mj-cadeira-sentar { min-height: 28px; padding: 0 var(--s-2); border-radius: var(--r-full); font-size: var(--fs-small); }
+.mj-amostra {
+  display: inline-grid; place-items: center; flex: none;
+  width: 18px; height: 18px;
+  border-radius: var(--r-full);
+  font: 700 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  line-height: 1;
+}
+.mj-jogo-placa {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  container-type: size;
+  touch-action: none;
+}
+.mj-jogo-status { margin: 0; min-height: 1.3em; text-align: center; color: var(--tx2); font-size: var(--fs-small); }
+.mj-jogo.is-minha-vez .mj-jogo-status { color: var(--tx); font-weight: 600; }
+.mj-jogo.is-fim .mj-jogo-status { color: var(--tx); font-weight: 600; }
+.mj .mj-btn.is-confirmando { color: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-soft); }
+.mj-jogo .mj-aviso { justify-content: center; }
+
+@container mj (max-width: 250px) {
+  .mj-jogo .mj-cadeira-nome { max-width: 7ch; }
+  .mj-jogo .mj-jogo-x { display: none; }
+}
+@container mj (max-height: 200px) {
+  .mj-jogo .mj-jogo-status { display: none; }
+}
+
+/* Casa com foco de teclado: o anel por dentro, para nao ser cortado. */
+.mj-jogo [data-casa]:focus-visible { outline: 2px solid var(--act); outline-offset: -2px; }
+
+/* ---------- Velha ---------- */
+
+.mj-velha .mj-amostra { background: var(--s3); }
+.mj-velha .mj-amostra.s1 { color: var(--on-text); }
+.mj-velha-grade {
+  width: min(100cqw, 100cqh); aspect-ratio: 1;
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  gap: var(--s-15);
+}
+.mj .mj-velha-casa {
+  min-height: 0; padding: 0;
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  font: 700 calc(min(100cqw, 100cqh) / 4.5) 'Outfit', system-ui, sans-serif;
+  line-height: 1;
+}
+.mj .mj-velha-casa:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-velha-casa[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj .mj-velha-casa.is-o { color: var(--on-text); }
+.mj .mj-velha-casa.is-linha { background: var(--on-fill); box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-jogo:not(.is-minha-vez) .mj-velha-casa:not(:disabled) { cursor: default; }
+
+/* ---------- Lig 4 ----------
+   Discos com cor fixa (travada no :root base, igual em todos os temas):
+   vermelhas em --danger-soft, amarelas em --warn. Nao ha token de "peca";
+   --live fica de fora de proposito. */
+
+.mj-lig4 { --mj-v: var(--danger-soft); --mj-a: var(--warn); }
+.mj-lig4 .mj-amostra.s0 { background: var(--mj-v); }
+.mj-lig4 .mj-amostra.s1 { background: var(--mj-a); }
+.mj-lig4-grade {
+  width: min(100cqw, 100cqh * 7 / 6); aspect-ratio: 7 / 6;
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: var(--s-05);
+  padding: var(--s-1);
+  border-radius: var(--r-md);
+  background: var(--s3);
+}
+.mj .mj-lig4-col {
+  min-height: 0; padding: var(--s-05);
+  display: grid; grid-template: repeat(6, 1fr) / 1fr; gap: var(--s-05);
+  /* o button global centra (inline-flex); aqui a grade estica */
+  place-content: stretch; place-items: stretch;
+  border-radius: var(--r-sm);
+  background: transparent;
+}
+.mj .mj-lig4-col:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-lig4-col[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-lig4-furo { display: grid; place-items: center; min-height: 0; }
+.mj-lig4-furo i {
+  display: block;
+  width: 100%; aspect-ratio: 1; max-height: 100%;
+  border-radius: var(--r-full);
+  background: var(--bg);
+  box-shadow: inset 0 2px 0 var(--line2);
+}
+.mj-lig4-furo[data-v="V"] i { background: var(--mj-v); box-shadow: inset 0 -3px 0 var(--scrim-1); }
+.mj-lig4-furo[data-v="A"] i { background: var(--mj-a); box-shadow: inset 0 -3px 0 var(--scrim-1); }
+.mj-lig4-furo.is-ultima i { outline: 2px solid var(--tx2); outline-offset: 1px; }
+.mj-lig4-furo.is-linha i { outline: 3px solid var(--tx); outline-offset: 1px; }
+.mj-lig4-furo[data-v="V"].is-ultima i, .mj-lig4-furo[data-v="A"].is-ultima i { animation: mj-cai var(--dur-slow) var(--ease-out); }
+@keyframes mj-cai { from { transform: translateY(-60%); opacity: 0.4; } }
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {
