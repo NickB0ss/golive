@@ -57,12 +57,15 @@
     return texto.length > max ? `${texto.slice(0, max - 1)}…` : texto;
   }
 
-  /** Transform do texto: ao longo do raio, sem ficar de cabeca para baixo. */
-  function transformRotulo(mid) {
-    const esquerda = mid > 180;
+  /** Transform do texto: ao longo do raio, sem ficar de cabeca para baixo.
+   * `giro` e o angulo em que o disco esta parado: o texto e virado pelo
+   * lado em que a fatia aparece NA TELA, nao no disco. */
+  function transformRotulo(mid, giro) {
+    const tela = (((mid + (giro || 0)) % 360) + 360) % 360;
+    const esquerda = tela > 180;
     return esquerda
-      ? `rotate(${round(mid + 90)}) translate(${-R * 0.6} 0)`
-      : `rotate(${round(mid - 90)}) translate(${R * 0.6} 0)`;
+      ? `rotate(${round(mid + 90)}) translate(${round(-R * 0.6)} 0)`
+      : `rotate(${round(mid - 90)}) translate(${round(R * 0.6)} 0)`;
   }
 
   function round(v) {
@@ -187,7 +190,7 @@
       for (const f of fatias(n)) {
         const g = svg('g', { class: `mj-rol-fatia t${f.tom}`, 'data-i': String(f.i) });
         g.append(svg('path', { d: f.path }));
-        const t = svg('text', { transform: transformRotulo(f.mid), 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+        const t = svg('text', { transform: transformRotulo(f.mid, 0), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'data-mid': String(f.mid) });
         t.textContent = rotuloFatia(state.options[f.i], n);
         g.append(t);
         desenho.append(g);
@@ -213,10 +216,19 @@
     function pararEm(angulo) {
       disco.style.transition = 'none';
       disco.style.transform = `rotate(${angulo}deg)`;
+      orientarRotulos(angulo);
+    }
+
+    /** Disco parado: cada texto le da esquerda para a direita na tela. */
+    function orientarRotulos(angulo) {
+      for (const t of desenho.querySelectorAll('text[data-mid]')) {
+        t.setAttribute('transform', transformRotulo(Number(t.dataset.mid), angulo));
+      }
     }
 
     function terminarGiro() {
       timer = null;
+      if (state.spin) orientarRotulos(anguloAtual());
       rodando = false;
       b.raiz.classList.remove('is-girando');
       if (!state.spin) return;

@@ -64,3 +64,10 @@ test('precisaAnimar: giro novo anima; quem chega depois do fim ve parado', () =>
   assert.equal(janela.precisaAnimar({ ...spin, at: null }, 99999, janela.GIRO_MS), true);
   assert.equal(janela.precisaAnimar(null, 0, 1), false);
 });
+
+test('transformRotulo vira o texto pelo lado em que a fatia aparece na tela', () => {
+  assert.match(janela.transformRotulo(90, 0), /^rotate\(0\) translate\(57\.6 0\)$/);
+  assert.match(janela.transformRotulo(270, 0), /^rotate\(360\) translate\(-57\.6 0\)$/);
+  // A mesma fatia, com o disco girado meia volta, fica a esquerda na tela.
+  assert.match(janela.transformRotulo(90, 180), /translate\(-57\.6 0\)$/);
+});
