@@ -87,6 +87,34 @@
     }
   }
 
+  // Conteudo das janelas (time Janelas): carregado na primeira vez que a
+  // Mesa abre, nunca na Transmissao. Um <script> por tipo do registro;
+  // arquivo ausente da so o 404 do navegador e o tipo fica no resumo.
+  const janelasLoad = { started: false, listeners: new Set() };
+
+  function loadJanelas() {
+    if (janelasLoad.started || typeof document === 'undefined') return;
+    janelasLoad.started = true;
+    const reg = G.mesaRegistry;
+    const names = new Set([...(reg?.MODULE_NAMES || []), ...((reg?.addable?.() || []).map((m) => m.type))]);
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'mesa-janelas.css';
+    document.head.appendChild(css);
+    for (const type of names) {
+      if (!/^[a-z][a-z0-9]{0,23}$/.test(type)) continue;
+      const tag = document.createElement('script');
+      tag.src = `mesa-janelas/${type}.js`;
+      tag.async = false;
+      tag.dataset.mesaJanela = type;
+      tag.onload = () => {
+        for (const fn of janelasLoad.listeners) fn(type);
+      };
+      tag.onerror = () => tag.remove();
+      document.head.appendChild(tag);
+    }
+  }
+
   function now() {
     return root.performance ? root.performance.now() : Date.now();
   }
@@ -159,6 +187,21 @@
         lastWatchKey: '',
       };
       build();
+      loadJanelas();
+      S.onJanela = (type) => {
+        // O conteudo deste tipo chegou depois de a janela ja estar na mesa
+        // (mostrando o resumo): troca pelo conteudo de verdade.
+        if (!S) return;
+        for (const rec of S.wins.values()) {
+          const win = findWin(rec.id);
+          if (win && win.type === type && rec.kind === 'summary') {
+            rec.body.textContent = '';
+            rec.summaryEl = null;
+            mountContent(rec, win);
+          }
+        }
+      };
+      janelasLoad.listeners.add(S.onJanela);
       deps.onOpenChange?.(true);
       deps.send({ type: 'mesa-view', on: true });
       startTimeSync();
@@ -178,6 +221,7 @@
       root.clearTimeout(s.cursorTimer);
       root.clearTimeout(s.watchTimer);
       for (const off of s.off) off();
+      janelasLoad.listeners.delete(s.onJanela);
       s.ro?.disconnect();
       for (const rec of s.wins.values()) unmountWin(rec, { returnTile: true });
       s.section.remove();

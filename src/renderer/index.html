@@ -6,9 +6,6 @@
       content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://player.twitch.tv" />
 <title>GoLive LAN</title>
 <link rel="stylesheet" href="style.css" />
-<!-- Conteudo das janelas da Mesa (time Janelas). Enquanto o arquivo nao
-     existe, o navegador so registra o 404 e segue. -->
-<link rel="stylesheet" href="mesa-janelas.css" />
 </head>
 <body>
 
@@ -528,9 +525,11 @@
 <script src="pcm-planar.js"></script>
 <!-- Mesa (spec 2026-09-24): o modelo puro, as contas da vista, os tipos de
      janela (ordem do contrato, secao 7: chess.js e cadeiras.js antes dos
-     modulos, o registro depois), o conteudo de cada tipo (time Janelas) e a
-     vista. Arquivo de conteudo que ainda nao existe da so um 404 no
-     console: o tipo cai no resumo do modulo. -->
+     modulos, o registro depois) e a vista. O conteudo de cada tipo
+     (mesa-janelas/<tipo>.js e mesa-janelas.css, do time Janelas) NAO tem tag
+     aqui: a vista os carrega na primeira vez que a Mesa abre, um por nome do
+     registro, e arquivo que ainda nao existe so fica de fora (o tipo cai no
+     resumo do modulo). Assim quem nunca abre a Mesa nao paga por eles. -->
 <script src="mesa.js"></script>
 <script src="mesa-vista.js"></script>
 <script src="vendor/chess.js"></script>
@@ -548,18 +547,6 @@
 <script src="mesa-modules/damas.js"></script>
 <script src="mesa-modules/xadrez.js"></script>
 <script src="mesa-modules/index.js"></script>
-<script src="mesa-janelas/nota.js"></script>
-<script src="mesa-janelas/lista.js"></script>
-<script src="mesa-janelas/enquete.js"></script>
-<script src="mesa-janelas/placar.js"></script>
-<script src="mesa-janelas/cronometro.js"></script>
-<script src="mesa-janelas/sorteio.js"></script>
-<script src="mesa-janelas/dados.js"></script>
-<script src="mesa-janelas/roleta.js"></script>
-<script src="mesa-janelas/velha.js"></script>
-<script src="mesa-janelas/lig4.js"></script>
-<script src="mesa-janelas/damas.js"></script>
-<script src="mesa-janelas/xadrez.js"></script>
 <script src="mesa-view.js"></script>
 <script src="app.js"></script>
 </body>
