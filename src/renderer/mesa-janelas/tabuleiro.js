@@ -173,6 +173,52 @@
     placa.addEventListener('dragstart', (e) => e.preventDefault());
   }
 
+  /** Tabuleiro 8x8 de botoes (damas e xadrez). As casas ficam na ordem da
+   * TELA; `dataset.l`/`dataset.c` dizem a casa do estado (muda ao virar).
+   * `clique(l, c, botao)` recebe a casa do estado. */
+  function grade8(placa, opts) {
+    const C = root.GoLive.mesaJanelasComum;
+    const { el } = C;
+    const N = 8;
+    const grade = el('div', { class: 'mj-grade8', attrs: { role: 'grid', 'aria-label': opts.rotulo } });
+    placa.append(grade);
+    let virar = false;
+    const casas = [];
+    for (let vl = 0; vl < N; vl++) {
+      for (let vc = 0; vc < N; vc++) {
+        const bt = el('button', { class: `mj-casa ${(vl + vc) % 2 ? 'is-b' : 'is-a'}`, attrs: { type: 'button', 'data-casa': '' } });
+        bt.addEventListener('click', () => opts.clique(Number(bt.dataset.l), Number(bt.dataset.c), bt));
+        grade.append(bt);
+        casas.push(bt);
+      }
+    }
+    function posicionar() {
+      casas.forEach((bt, i) => {
+        const [l, c] = casaDoEstado(Math.floor(i / N), i % N, N, virar);
+        bt.dataset.l = String(l);
+        bt.dataset.c = String(c);
+      });
+    }
+    posicionar();
+    const tecl = gradeTeclado(grade, () => casas, N);
+    return {
+      grade,
+      casas,
+      tecl,
+      virar(v) {
+        if (v === virar) return;
+        virar = v;
+        grade.classList.toggle('is-virado', v);
+        posicionar();
+      },
+      /** Botao da casa do estado (l, c). */
+      em(l, c) {
+        const [vl, vc] = casaDoEstado(l, c, N, virar); // a mesma troca desfaz
+        return casas[vl * N + vc];
+      },
+    };
+  }
+
   /** Moldura comum: cadeiras, Nova partida, Desistir e a situacao. */
   function moldura(b, api, opts) {
     const C = root.GoLive.mesaJanelasComum;
@@ -181,6 +227,10 @@
     let confirmando = null;
 
     const topo = el('div', { class: 'mj-jogo-topo' });
+    const placa = el('div', { class: 'mj-jogo-placa' });
+    const status = el('p', { class: 'mj-jogo-status', attrs: { role: 'status', 'aria-live': 'polite' } });
+    // Onde as recusas aparecem: logo abaixo da situacao, perto do tabuleiro.
+    const zona = el('div', { class: 'mj-jogo-rodape' }, status);
     const cadeiras = [0, 1].map((i) => {
       const amostra = el('span', { class: `mj-amostra s${i}`, attrs: { 'aria-hidden': 'true' } });
       if (opts.amostra) opts.amostra(amostra, i);
@@ -188,8 +238,8 @@
       const sentar = C.botao({ text: 'Sentar', class: 'mj-cadeira-sentar' });
       const levantar = C.botao({ icone: 'x', class: 'mj-mini mj-fantasma', label: 'Levantar da cadeira' });
       const caixa = el('div', { class: 'mj-cadeira' }, amostra, nome, sentar, levantar);
-      b.clique(sentar, topo, () => b.acao(topo, { kind: 'sit', seat: i }));
-      b.clique(levantar, topo, () => b.acao(topo, { kind: 'stand' }));
+      b.clique(sentar, zona, () => b.acao(zona, { kind: 'sit', seat: i }));
+      b.clique(levantar, zona, () => b.acao(zona, { kind: 'stand' }));
       return { caixa, nome, sentar, levantar };
     });
     const nova = C.botao({ icone: 'zerar', class: 'mj-mini mj-fantasma', label: 'Nova partida' });
@@ -197,17 +247,15 @@
     topo.append(cadeiras[0].caixa, el('span', { class: 'mj-jogo-x', text: '×', attrs: { 'aria-hidden': 'true' } }), cadeiras[1].caixa, el('span', { class: 'mj-mola' }), nova);
     if (desistir) topo.append(desistir);
 
-    const placa = el('div', { class: 'mj-jogo-placa' });
-    const status = el('p', { class: 'mj-jogo-status', attrs: { role: 'status', 'aria-live': 'polite' } });
     b.raiz.classList.add('mj-jogo');
-    b.raiz.append(topo, placa, status);
+    b.raiz.append(topo, placa, zona);
 
-    b.clique(nova, topo, () => b.acao(topo, { kind: 'reset' }));
+    b.clique(nova, zona, () => b.acao(zona, { kind: 'reset' }));
     if (desistir) {
       // Dois toques: o primeiro so pergunta, e desarma sozinho.
-      b.clique(desistir, topo, () => {
+      b.clique(desistir, zona, () => {
         if (!confirmando) {
-          b.aviso.mostrar('Toque de novo para desistir', topo);
+          b.aviso.mostrar('Toque de novo para desistir', zona);
           desistir.classList.add('is-confirmando');
           confirmando = setTimeout(() => {
             confirmando = null;
@@ -218,7 +266,7 @@
         clearTimeout(confirmando);
         confirmando = null;
         desistir.classList.remove('is-confirmando');
-        b.acao(topo, { kind: 'resign' });
+        b.acao(zona, { kind: 'resign' });
       });
       b.faxina.push(() => { if (confirmando) clearTimeout(confirmando); });
     }
@@ -262,7 +310,7 @@
       b.raiz.classList.toggle('is-fim', !!state.result);
     }
 
-    return { topo, placa, status, update, nameOf };
+    return { topo, placa, zona, status, update, nameOf };
   }
 
   const api = {
@@ -275,6 +323,7 @@
     passoGrade,
     gradeTeclado,
     arrastar,
+    grade8,
     moldura,
   };
 

@@ -42,7 +42,7 @@
     mold.placa.append(grade);
     const casas = Array.from({ length: 9 }, (_, i) => {
       const bt = el('button', { class: 'mj-velha-casa', attrs: { type: 'button', 'data-casa': String(i) } });
-      b.clique(bt, mold.placa, () => b.acao(mold.placa, { kind: 'move', cell: i }));
+      b.clique(bt, mold.zona, () => b.acao(mold.zona, { kind: 'move', cell: i }));
       grade.append(bt);
       return bt;
     });

@@ -718,6 +718,84 @@
 .mj-lig4-furo[data-v="V"].is-ultima i, .mj-lig4-furo[data-v="A"].is-ultima i { animation: mj-cai var(--dur-slow) var(--ease-out); }
 @keyframes mj-cai { from { transform: translateY(-60%); opacity: 0.4; } }
 
+/* ---------- Tabuleiro 8x8 (damas e xadrez) ---------- */
+
+.mj-jogo-rodape { display: flex; flex-direction: column; align-items: center; gap: var(--s-05); }
+.mj-grade8 {
+  width: min(100cqw, 100cqh); aspect-ratio: 1;
+  display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line2);
+}
+.mj .mj-casa {
+  position: relative;
+  min-height: 0; padding: 0;
+  border: 0; border-radius: 0;
+  display: grid; grid-template: 1fr / 1fr; place-content: stretch; place-items: center;
+  background: var(--mj-casa-a);
+  cursor: default;
+  --mj-lado: calc(min(100cqw, 100cqh) / 8);
+}
+.mj .mj-casa.is-b { background: var(--mj-casa-b); }
+.mj .mj-casa:active { transform: none; }
+.mj .mj-casa.is-ultimo::before { content: ""; position: absolute; inset: 0; background: var(--on-fill); }
+.mj .mj-casa.is-sel::after,
+.mj .mj-casa.is-xeque::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 3px var(--on-text); }
+.mj .mj-casa.is-xeque::after { box-shadow: inset 0 0 0 3px var(--warn); }
+.mj .mj-casa.is-destino { cursor: pointer; }
+.mj .mj-casa.is-destino::after {
+  content: ""; position: absolute;
+  width: 30%; height: 30%;
+  border-radius: var(--r-full);
+  background: var(--on-line);
+}
+.mj .mj-casa.is-destino.is-tem-peca::after { width: 88%; height: 88%; background: transparent; box-shadow: inset 0 0 0 3px var(--on-line); }
+.mj .mj-casa.is-mexe, .mj .mj-casa.is-sel { cursor: grab; }
+.mj-peca { position: relative; z-index: 1; display: block; pointer-events: none; }
+.mj-peca.is-arrastando { z-index: 5; opacity: 0.9; }
+
+/* ---------- Damas ---------- */
+
+.mj-damas .mj-amostra.s0 { background: var(--mj-peca-clara); box-shadow: inset 0 0 0 1px var(--scrim-2); }
+.mj-damas .mj-amostra.s1 { background: var(--mj-peca-escura); box-shadow: inset 0 0 0 1px var(--veil-strong); }
+.mj-damas .mj-peca { width: 76%; aspect-ratio: 1; border-radius: var(--r-full); }
+.mj-damas .mj-peca:not(.is-clara):not(.is-escura) { display: none; }
+.mj-damas .mj-peca.is-clara { background: var(--mj-peca-clara); box-shadow: inset 0 -3px 0 var(--scrim-1), 0 1px 2px var(--scrim-2); }
+.mj-damas .mj-peca.is-escura { background: var(--mj-peca-escura); box-shadow: inset 0 0 0 2px var(--veil-hover), inset 0 -3px 0 var(--scrim-4), 0 1px 2px var(--scrim-2); }
+.mj-damas .mj-peca.is-dama::after {
+  content: ""; position: absolute; inset: 24%;
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 3px var(--warn);
+}
+.mj-damas.is-posso .mj-casa.is-mexe .mj-peca { outline: 2px solid var(--on-text); outline-offset: 1px; }
+.mj .mj-casa.is-cai .mj-peca { opacity: 0.45; }
+
+/* ---------- Xadrez ---------- */
+
+.mj-xadrez .mj-peca {
+  font: calc(min(100cqw, 100cqh) / 8 * 0.78)/1 'Segoe UI Symbol', 'DejaVu Sans', system-ui, sans-serif;
+}
+.mj-xadrez .mj-peca.is-branca, .mj-xadrez .mj-amostra.is-branca { color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6), 0 1px 2px var(--scrim-4); }
+.mj-xadrez .mj-peca.is-preta, .mj-xadrez .mj-amostra.is-preta { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong), 0 0 2px var(--veil); }
+.mj-xadrez .mj-amostra { font-size: var(--fs-lead); }
+.mj-xadrez.is-posso .mj-casa.is-mexe:hover::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-jogo-placa { position: relative; }
+.mj-xadrez-promo {
+  position: absolute; z-index: 6;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-1);
+  max-width: 100%;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: 0 0 0 1px var(--line2), var(--shadow-2);
+}
+.mj-xadrez-promo[hidden] { display: none; }
+.mj-xadrez-promo-g { font-size: var(--fs-lead); color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6); }
+.mj-xadrez-promo.is-preta .mj-xadrez-promo-g { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong); }
+
 /* ---------- Movimento ---------- */
 
 @media (prefers-reduced-motion: reduce) {

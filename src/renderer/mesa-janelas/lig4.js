@@ -55,7 +55,7 @@
         bt.append(f);
         return f;
       });
-      b.clique(bt, mold.placa, () => b.acao(mold.placa, { kind: 'move', col: c }));
+      b.clique(bt, mold.zona, () => b.acao(mold.zona, { kind: 'move', col: c }));
       grade.append(bt);
       return { bt, furos };
     });
