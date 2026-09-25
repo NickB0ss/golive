@@ -22,6 +22,7 @@
   const TICK_MS = 250;
   const NOTE_MS = 4000;
   const VOL_KEY = 'golive-mesa-volume';
+  const MIN_PLAY_MS = 1500;
 
   function mod() {
     return (root.GoLive.mesaRegistry && root.GoLive.mesaRegistry.get('youtube')) || root.GoLive.mesaModules.youtube;
@@ -74,10 +75,12 @@
     let dragging = false;
     let showForm = false;
     let noteTimer = null;
+    let loadedAt = 0;
+    let endedSent = null; // videoId cujo fim este PC ja avisou
     const volume = loadVolume();
 
     // ---------- DOM (montado uma vez) ----------
-    const input = h('input', { class: 'mjm-input', type: 'url', placeholder: 'Cole um link do YouTube', 'aria-label': 'Link do YouTube', maxlength: 2048 });
+    const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'Cole um link do YouTube', 'aria-label': 'Link do YouTube', maxlength: 2048 });
     const submit = h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Pôr' });
     const cancel = h('button', { class: 'mjm-btn', type: 'button', text: 'Cancelar' });
     const form = h('form', { class: 'mjm-form' }, input, submit, cancel);
@@ -130,8 +133,21 @@
       sync = null;
     }
 
+    /** O video acabou neste PC: avisa a sala (o modulo so muda na primeira
+     * vez). So se o proprio player diz que e este video e ja tocou um tempo:
+     * o fim atrasado do video anterior nao para o novo. */
+    function reportEnded() {
+      if (!player || !state.videoId || !state.playing || endedSent === state.videoId) return;
+      const seen = player.info().videoId;
+      if ((seen && seen !== state.videoId) || now() - loadedAt < MIN_PLAY_MS) return;
+      endedSent = state.videoId;
+      const pos = player.currentTime();
+      api.act(pos !== null ? { kind: 'ended', videoId: state.videoId, pos: Math.round(pos * 100) / 100 } : { kind: 'ended', videoId: state.videoId });
+    }
+
     function createPlayer() {
       errorCode = null;
+      loadedAt = now();
       player = YP.create({
         container: host,
         videoId: state.videoId,
@@ -142,7 +158,10 @@
           if (sync) sync.tick();
           render();
         },
-        onState: () => render(),
+        onState: (st) => {
+          if (st === 'ended') reportEnded();
+          render();
+        },
         onError: (code, text) => {
           errorCode = code;
           msgText.textContent = text;
@@ -171,6 +190,7 @@
       if (!active && player) destroyPlayer();
       if (player && player.videoId !== state.videoId) {
         player.load(state.videoId, target());
+        loadedAt = now();
         if (sync) sync.reset();
       }
       cover.hidden = active;
@@ -294,6 +314,7 @@
       update(next) {
         if (!next || typeof next !== 'object') return;
         const changedVideo = next.videoId !== state.videoId;
+        if (next.playing && !state.playing) endedSent = null;
         state = next;
         if (changedVideo) {
           errorCode = null;

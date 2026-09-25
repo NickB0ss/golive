@@ -20,6 +20,8 @@
   const TICK_MS = 250;
   const NOTE_MS = 4000;
   const VOL_KEY = 'golive-mesa-volume-radio';
+  // `ended` antes disso depois de carregar e o fim atrasado da anterior.
+  const MIN_PLAY_MS = 1500;
 
   function mod() {
     return (root.GoLive.mesaRegistry && root.GoLive.mesaRegistry.get('radio')) || root.GoLive.mesaModules.radio;
@@ -70,6 +72,8 @@
     let errorCode = null;
     let noteTimer = null;
     let queueKey = '';
+    let loadedFor = null; // id da musica que o player deste PC carregou
+    let loadedAt = 0;
     const reported = new Set(); // ids ja avisados (ended/failed) por este PC
     const titled = new Set(); // ids cujo titulo este PC ja mandou
     const volume = loadVolume();
@@ -93,7 +97,7 @@
     const failed = h('p', { class: 'mjm-note mjm-radio-failed' });
     const list = h('ol', { class: 'mjm-radio-queue', 'aria-label': 'Fila do rádio' });
     const queueHead = h('p', { class: 'mjm-radio-head' });
-    const input = h('input', { class: 'mjm-input', type: 'url', placeholder: 'Link do YouTube', 'aria-label': 'Link do YouTube para a fila', maxlength: 2048 });
+    const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'Link do YouTube', 'aria-label': 'Link do YouTube para a fila', maxlength: 2048 });
     const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Pôr na fila' }));
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
     const audio = h('div', { class: 'mjm-radio-audio', 'aria-hidden': 'true' });
@@ -128,15 +132,27 @@
       sync = null;
     }
 
+    /** Avisa a sala que a musica atual acabou (ou nao deixa embed). So se o
+     * proprio player diz que esta nesse video e ja o tocou por um tempo: um
+     * `ended` atrasado da musica anterior (a sala ja avancou) nao pode pular
+     * a seguinte. */
     function report(kind) {
       const cur = state.current;
-      if (!cur || reported.has(`${kind}:${cur.id}`)) return;
+      if (!cur || !player || loadedFor !== cur.id || reported.has(`${kind}:${cur.id}`)) return;
+      if (kind === 'ended') {
+        const seen = player.info().videoId;
+        if ((seen && seen !== cur.videoId) || now() - loadedAt < MIN_PLAY_MS) return;
+      }
+      // `failed` vem logo depois de carregar e e do video carregado: o
+      // player que recusa nem chega a contar o videoId dele.
       reported.add(`${kind}:${cur.id}`);
       send({ kind, videoId: cur.videoId, id: cur.id }, true);
     }
 
     function createPlayer() {
       errorCode = null;
+      loadedFor = state.current.id;
+      loadedAt = now();
       player = YP.create({
         container: audio,
         videoId: state.current.videoId,
@@ -205,8 +221,11 @@
       standby.hidden = !cur || active;
       if (!cur || !active) destroyPlayer();
       if (cur && active && !player && errorCode === null) createPlayer();
-      if (player && cur && player.videoId !== cur.videoId) {
-        player.load(cur.videoId, target());
+      if (player && cur && loadedFor !== cur.id) {
+        // Musica nova (mesmo video repetido tambem: a deriva volta ao comeco).
+        if (player.videoId !== cur.videoId) player.load(cur.videoId, target());
+        loadedFor = cur.id;
+        loadedAt = now();
         if (sync) sync.reset();
       }
       msg.hidden = errorCode === null;

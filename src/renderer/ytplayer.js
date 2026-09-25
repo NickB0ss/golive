@@ -289,6 +289,8 @@
       rate: () => clock.snapshot().rate,
       duration: () => clock.snapshot().duration,
       title: () => clock.snapshot().title,
+      /** O que o PROPRIO player contou por ultimo (videoId, titulo, estado...). */
+      info: () => clock.snapshot(),
       destroy: () => {
         if (destroyed) return;
         destroyed = true;
