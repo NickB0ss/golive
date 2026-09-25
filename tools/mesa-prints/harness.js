@@ -17,6 +17,9 @@
  * Nao entra no `npm test` (precisa de navegador).
  */
 
+/* global window, document, requestAnimationFrame -- o codigo
+   dentro de page.evaluate/addInitScript roda no navegador */
+
 const path = require('node:path');
 const fs = require('node:fs');
 const WebSocket = require('ws');
@@ -29,7 +32,9 @@ const RAIZ = path.join(__dirname, '..', '..');
 const PAGINA = `file://${path.join(RAIZ, 'src', 'renderer', 'index.html')}`;
 const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-24-mesa');
 
-const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+const espera = (ms) => new Promise((r) => {
+  setTimeout(r, ms);
+});
 
 /** Pessoa da sala falando o protocolo por um `ws` cru. */
 async function pessoa(port, name) {
@@ -52,7 +57,10 @@ async function pessoa(port, name) {
     envia: (msg) => ws.send(JSON.stringify(msg)),
     espera: (pred, ms = 5000) => new Promise((res, rej) => {
       const achou = caixa.find(pred);
-      if (achou) return res(achou);
+      if (achou) {
+        res(achou);
+        return;
+      }
       const t = setTimeout(() => {
         ouvintes.delete(fn);
         rej(new Error(`${name}: esperou demais`));
@@ -131,7 +139,6 @@ async function abrirSala(browser, port, { largura = 1440, altura = 900 } = {}) {
 
 async function mostrarTela(page, id, rotulo, cor, kind = 'screen', w = 1280, h = 720) {
   await page.evaluate(([fn, id, rotulo, cor, kind, w, h]) => {
-    // eslint-disable-next-line no-new-func
     const fake = new Function(`return (${fn})`)();
     const stream = fake([rotulo, cor, w, h]);
     window.GoLive.ui.grid.showTile(id, rotulo, stream, { kind });
@@ -315,8 +322,8 @@ async function desempenho(browser, port, s) {
   await page.click('#view-mesa');
   await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
   // Um iframe em branco (conteudo de teste no lugar do placar).
-  await page.mouse.click(700, 250, { button: 'right' });
-  await page.keyboard.press('ArrowRight');
+  // Pelo + do dock: a janela nasce no meio da vista.
+  await page.click('#btn-mesa-add');
   await page.click('.mesa-menu [data-add="placar"]');
   await page.waitForSelector('.mesa-win[data-type="placar"] iframe');
   await page.click('.mesa-zoom-btn[data-zoom="fit"]');
@@ -382,7 +389,7 @@ async function desempenho(browser, port, s) {
 (async () => {
   const modo = process.argv[2] || 'tudo';
   const servidor = await createSignalingServer({ port: 0, log: () => {} });
-  const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', ...(process.env.SEM_VSYNC ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : [])] });
   const s = {};
   try {
     if (modo === 'prints' || modo === 'tudo') await prints(browser, servidor.port, s);
