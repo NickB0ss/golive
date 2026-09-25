@@ -85,6 +85,22 @@
     return true;
   }
 
+  /** Lances legais de uma casa, para a interface marcar os destinos:
+   * `[{ to, promotion }]`. Casa invalida ou estado quebrado da lista vazia. */
+  function legalMoves(state, from) {
+    return C.safe(() => {
+      if (typeof from !== 'string' || !SQUARE.test(from)) return [];
+      return new chessjs.Chess(state.fen).moves({ square: from, verbose: true })
+        .map((m) => ({ to: m.to, promotion: m.promotion || null }));
+    }, []);
+  }
+
+  /** `true` se `peerId` pode lancar agora (sentado, com adversario, na vez),
+   * ou o motivo. Para a interface, sem montar um lance de mentira. */
+  function canPlay(state, peerId) {
+    return C.safe(() => C.canPlay(state, { from: peerId }, state.turn), 'Ação inválida');
+  }
+
   function validate(state, action, ctx) {
     return C.safe(() => {
       if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
@@ -170,6 +186,11 @@
     }, 'Xadrez');
   }
 
+  /** So no servidor: o nome de quem senta vai na acao `sit`. */
+  function prepare(state, action, ctx) {
+    return C.safe(() => (C.isSeatAction(action) ? C.prepareSeat(state, action, ctx) : action), action);
+  }
+
   const mod = {
     type: 'xadrez',
     title: 'Xadrez',
@@ -177,9 +198,12 @@
     size: { w: 480, h: 480, minW: 240, minH: 240, aspect: 1 },
     maxStateBytes: 4096,
     init,
+    prepare,
     validate,
     reduce,
     dropPeer,
+    legalMoves,
+    canPlay,
     summary,
     positionMark,
   };

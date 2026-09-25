@@ -81,10 +81,22 @@
     return Object.assign({}, state, { seats, names });
   }
 
-  /** Aplica `sit` / `stand` ja validados. */
+  /** So no servidor: grava na acao `sit` o nome de quem senta, tirado de
+   * `ctx.peers`. O `reduce` dos clientes nao tem `peers`; lendo o nome da
+   * acao, servidor e clientes chegam ao mesmo estado. */
+  function prepareSeat(state, action, ctx) {
+    if (!isObj(action) || action.kind !== 'sit') return action;
+    const name = peerName(ctx, fromOf(ctx));
+    return { kind: 'sit', seat: action.seat, name };
+  }
+
+  /** Aplica `sit` / `stand` ja validados. O nome vem da acao (prepareSeat). */
   function reduceSeat(state, action, ctx) {
     const from = fromOf(ctx);
-    if (action.kind === 'sit') return withSeat(state, action.seat, from, peerName(ctx, from));
+    if (action.kind === 'sit') {
+      const name = typeof action.name === 'string' && action.name ? action.name.trim().slice(0, NAME_MAX) || null : null;
+      return withSeat(state, action.seat, from, name);
+    }
     return withSeat(state, seatOf(state, from), null, null);
   }
 
@@ -163,6 +175,7 @@
     emptySeats,
     isSeatAction,
     validateSeat,
+    prepareSeat,
     reduceSeat,
     dropPeer,
     canReset,

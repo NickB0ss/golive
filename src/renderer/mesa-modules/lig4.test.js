@@ -17,7 +17,9 @@ function deepFreeze(o) {
 function act(state, action, from, extra) {
   const c = ctx(from, extra);
   assert.equal(lig4.validate(state, action, c), true, JSON.stringify(action));
-  return deepFreeze(lig4.reduce(deepFreeze(state), action, c));
+  // Como no servidor: prepare (com peers) e depois reduce.
+  const prepared = lig4.prepare(deepFreeze(state), action, c);
+  return deepFreeze(lig4.reduce(deepFreeze(state), prepared, c));
 }
 
 function seated() {

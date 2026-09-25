@@ -275,6 +275,11 @@
     }, 'Damas');
   }
 
+  /** So no servidor: o nome de quem senta vai na acao `sit`. */
+  function prepare(state, action, ctx) {
+    return C.safe(() => (C.isSeatAction(action) ? C.prepareSeat(state, action, ctx) : action), action);
+  }
+
   const mod = {
     type: 'damas',
     title: 'Damas',
@@ -283,6 +288,7 @@
     maxStateBytes: 2048,
     KING_ONLY_DRAW,
     init,
+    prepare,
     validate,
     reduce,
     dropPeer,

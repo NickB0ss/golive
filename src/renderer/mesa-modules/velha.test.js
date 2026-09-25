@@ -18,7 +18,9 @@ function deepFreeze(o) {
 function act(state, action, from, extra) {
   const c = ctx(from, extra);
   assert.equal(velha.validate(state, action, c), true, JSON.stringify(action));
-  return deepFreeze(velha.reduce(deepFreeze(state), action, c));
+  // Como no servidor: prepare (com peers) e depois reduce.
+  const prepared = velha.prepare(deepFreeze(state), action, c);
+  return deepFreeze(velha.reduce(deepFreeze(state), prepared, c));
 }
 
 function seated() {

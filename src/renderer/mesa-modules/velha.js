@@ -96,6 +96,11 @@
     }, 'Jogo da velha');
   }
 
+  /** So no servidor: o nome de quem senta vai na acao `sit`. */
+  function prepare(state, action, ctx) {
+    return C.safe(() => (C.isSeatAction(action) ? C.prepareSeat(state, action, ctx) : action), action);
+  }
+
   const mod = {
     type: 'velha',
     title: 'Jogo da velha',
@@ -103,6 +108,7 @@
     size: { w: 360, h: 360, minW: 180, minH: 180, aspect: 1 },
     maxStateBytes: 1024,
     init,
+    prepare,
     validate,
     reduce,
     dropPeer,

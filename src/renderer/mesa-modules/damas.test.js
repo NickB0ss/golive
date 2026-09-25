@@ -17,7 +17,9 @@ function deepFreeze(o) {
 function act(state, action, from, extra) {
   const c = ctx(from, extra);
   assert.equal(damas.validate(state, action, c), true, JSON.stringify(action));
-  return deepFreeze(damas.reduce(deepFreeze(state), action, c));
+  // Como no servidor: prepare (com peers) e depois reduce.
+  const prepared = damas.prepare(deepFreeze(state), action, c);
+  return deepFreeze(damas.reduce(deepFreeze(state), prepared, c));
 }
 
 function seated() {

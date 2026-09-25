@@ -241,7 +241,8 @@
       g.virar(eu === 1);
       minhaCor = corDaCadeira(eu);
       tab = new (chessjs().Chess)(state.fen).board();
-      posso = eu >= 0 && C.podeFazer(api, { kind: 'move', from: 'a1', to: 'a1' }) === 'Lance inválido';
+      const regra = root.GoLive.mesaModules && root.GoLive.mesaModules.xadrez;
+      posso = eu >= 0 && !!regra && regra.canPlay(state, api.me()) === true;
       if (sel && !podeMexer(sel)) {
         sel = null;
         alvosSel = new Map();

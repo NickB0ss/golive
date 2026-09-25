@@ -15,8 +15,8 @@ const ctx = (from) => ({ from, isLeader: from === '1', peers: [{ id: '1', name: 
 
 function sentados() {
   let s = velha.init();
-  s = velha.reduce(s, { kind: 'sit', seat: 0 }, ctx('1'));
-  return velha.reduce(s, { kind: 'sit', seat: 1 }, ctx('2'));
+  s = velha.reduce(s, velha.prepare(s, { kind: 'sit', seat: 0 }, ctx('1')), ctx('1'));
+  return velha.reduce(s, velha.prepare(s, { kind: 'sit', seat: 1 }, ctx('2')), ctx('2'));
 }
 
 test('minhaCadeira e virado', () => {

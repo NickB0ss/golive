@@ -21,7 +21,9 @@ function deepFreeze(o) {
 function act(state, action, from, extra) {
   const c = ctx(from, extra);
   assert.equal(xadrez.validate(state, action, c), true, JSON.stringify(action));
-  return deepFreeze(xadrez.reduce(deepFreeze(state), action, c));
+  // Como no servidor: prepare (com peers) e depois reduce.
+  const prepared = xadrez.prepare(deepFreeze(state), action, c);
+  return deepFreeze(xadrez.reduce(deepFreeze(state), prepared, c));
 }
 
 function seated() {
@@ -246,4 +248,20 @@ test('mensagem malformada nunca lanca e nao muda o estado', () => {
   assert.equal(xadrez.validate(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), 'Ação inválida');
   assert.equal(xadrez.reduce(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), broken);
   assert.equal(typeof xadrez.summary(undefined), 'string');
+});
+
+test('legalMoves lista os destinos de uma casa e aguenta entrada ruim', () => {
+  const s = xadrez.init({});
+  const destinos = xadrez.legalMoves(s, 'e2').map((m) => m.to).sort();
+  assert.deepEqual(destinos, ['e3', 'e4']);
+  assert.deepEqual(xadrez.legalMoves(s, 'z9'), []);
+  assert.deepEqual(xadrez.legalMoves({ fen: 'lixo' }, 'e2'), []);
+});
+
+test('canPlay diz quem pode lancar sem montar lance', () => {
+  const s = seated();
+  assert.equal(xadrez.canPlay(s, 'bia'), true);
+  assert.equal(xadrez.canPlay(s, 'leo'), 'Não é a sua vez');
+  assert.equal(xadrez.canPlay(s, 'ana'), 'Sente-se para jogar');
+  assert.equal(xadrez.canPlay(null, 'bia'), 'Ação inválida');
 });

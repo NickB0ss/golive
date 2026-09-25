@@ -5,14 +5,27 @@ const C = require('./cadeiras');
 
 const PEERS = [{ id: 'bia', name: 'Bia' }, { id: 'leo', name: 'Leo' }, { id: 'ana', name: 'Ana' }];
 const ctx = (from, extra) => Object.assign({ from, isLeader: false, peers: PEERS }, extra);
+// Como o servidor aplica: prepare com peers, reduce com o ctx dos clientes.
+const sit = (state, seat, from) =>
+  C.reduceSeat(state, C.prepareSeat(state, { kind: 'sit', seat }, ctx(from)), { from, isLeader: false });
 
 test('sit guarda o id e o nome de quem sentou', () => {
-  const s = C.reduceSeat(C.emptySeats(), { kind: 'sit', seat: 1 }, ctx('leo'));
+  const s = sit(C.emptySeats(), 1, 'leo');
   assert.deepEqual(s, { seats: [null, 'leo'], names: [null, 'Leo'] });
 });
 
+test('o nome vem da acao preparada: servidor e clientes chegam ao mesmo estado', () => {
+  const acao = C.prepareSeat(C.emptySeats(), { kind: 'sit', seat: 0, name: 'Forjado' }, ctx('bia'));
+  assert.deepEqual(acao, { kind: 'sit', seat: 0, name: 'Bia' });
+  const servidor = C.reduceSeat(C.emptySeats(), acao, ctx('bia'));
+  const cliente = C.reduceSeat(C.emptySeats(), acao, { from: 'bia', isLeader: false });
+  assert.deepEqual(cliente, servidor);
+  // Sem prepare (acao crua), o reduce nao inventa nome a partir de peers.
+  assert.deepEqual(C.reduceSeat(C.emptySeats(), { kind: 'sit', seat: 0 }, ctx('bia')).names, [null, null]);
+});
+
 test('sit recusa cadeira ocupada, cadeira invalida e quem ja esta sentado', () => {
-  const s = C.reduceSeat(C.emptySeats(), { kind: 'sit', seat: 0 }, ctx('bia'));
+  const s = sit(C.emptySeats(), 0, 'bia');
   assert.equal(C.validateSeat(s, { kind: 'sit', seat: 0 }, ctx('leo')), 'Cadeira ocupada');
   assert.equal(C.validateSeat(s, { kind: 'sit', seat: 1 }, ctx('bia')), 'Você já está sentado');
   for (const seat of [2, -1, '0', 0.5, null, undefined]) {
@@ -22,14 +35,14 @@ test('sit recusa cadeira ocupada, cadeira invalida e quem ja esta sentado', () =
 });
 
 test('stand so vale para quem esta sentado e libera a cadeira', () => {
-  const s = C.reduceSeat(C.emptySeats(), { kind: 'sit', seat: 0 }, ctx('bia'));
+  const s = sit(C.emptySeats(), 0, 'bia');
   assert.equal(C.validateSeat(s, { kind: 'stand' }, ctx('leo')), 'Você não está sentado');
   assert.equal(C.validateSeat(s, { kind: 'stand' }, ctx('bia')), true);
   assert.deepEqual(C.reduceSeat(s, { kind: 'stand' }, ctx('bia')), C.emptySeats());
 });
 
 test('sit sem nome na lista de peers guarda nome nulo', () => {
-  const s = C.reduceSeat(C.emptySeats(), { kind: 'sit', seat: 0 }, { from: 'zeca' });
+  const s = sit(C.emptySeats(), 0, 'zeca');
   assert.deepEqual(s.names, [null, null]);
   assert.equal(C.nameOf(s, 0, ['Brancas', 'Pretas']), 'Brancas');
 });
@@ -71,7 +84,8 @@ test('nameOf prefere o nome atual da sala quando a lista vem', () => {
 
 test('nome longo e cortado no teto', () => {
   const long = 'a'.repeat(100);
-  const s = C.reduceSeat(C.emptySeats(), { kind: 'sit', seat: 0 }, { from: 'x', peers: [{ id: 'x', name: long }] });
+  const c = { from: 'x', peers: [{ id: 'x', name: long }] };
+  const s = C.reduceSeat(C.emptySeats(), C.prepareSeat(C.emptySeats(), { kind: 'sit', seat: 0 }, c), c);
   assert.equal(s.names[0].length, C.NAME_MAX);
 });
 

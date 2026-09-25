@@ -119,6 +119,11 @@
     }, 'Lig 4');
   }
 
+  /** So no servidor: o nome de quem senta vai na acao `sit`. */
+  function prepare(state, action, ctx) {
+    return C.safe(() => (C.isSeatAction(action) ? C.prepareSeat(state, action, ctx) : action), action);
+  }
+
   const mod = {
     type: 'lig4',
     title: 'Lig 4',
@@ -128,6 +133,7 @@
     COLS,
     ROWS,
     init,
+    prepare,
     validate,
     reduce,
     dropPeer,
