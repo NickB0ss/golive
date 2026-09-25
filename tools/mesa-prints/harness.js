@@ -63,7 +63,7 @@ async function pessoa(port, name) {
       }
       const t = setTimeout(() => {
         ouvintes.delete(fn);
-        rej(new Error(`${name}: esperou demais`));
+        rej(new Error(`${name}: esperou demais por ${pred.toString()}`));
       }, ms);
       const fn = (m) => {
         if (pred(m)) {

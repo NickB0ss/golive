@@ -449,6 +449,11 @@
     return best;
   }
 
+  /** Mesmo retangulo (x, y, w, h)? Falso se um dos dois nao existe. */
+  function sameRect(a, b) {
+    return Boolean(a && b) && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  }
+
   const api = {
     WORLD, OVERSCROLL, GAP,
     ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, GRID_MINOR, GRID_MAJOR, GRID_MINOR_MIN_PX,
@@ -458,7 +463,7 @@
     boundsOf, fitRect, fitAll, focusRect,
     easeOut, flyStep, transformFor, gridStyle,
     minimapScale, fromMinimap,
-    fits, landing, resizeRect, resizeStop, keyRect, keyPan,
+    fits, landing, resizeRect, resizeStop, keyRect, keyPan, sameRect,
     watchable, createWatchTracker, clockOffset,
   };
 

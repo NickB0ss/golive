@@ -198,3 +198,12 @@ test('relogio do servidor: fica a ida e volta de menor atraso', () => {
   assert.deepEqual(r, { rtt: 20, offset: 1215 - 210 });
   assert.equal(v.clockOffset([]), null);
 });
+
+test('sameRect compara x, y, w e h e recusa ausente', () => {
+  const r = { x: 10, y: 20, w: 300, h: 200 };
+  assert.equal(v.sameRect(r, { ...r, id: 'a', seq: 3 }), true);
+  assert.equal(v.sameRect(r, { ...r, x: 11 }), false);
+  assert.equal(v.sameRect(r, { ...r, h: 201 }), false);
+  assert.equal(v.sameRect(undefined, r), false);
+  assert.equal(v.sameRect(r, null), false);
+});

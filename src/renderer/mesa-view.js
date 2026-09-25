@@ -583,7 +583,10 @@
           break;
         }
         case 'place': {
-          if (mine) S.local.delete(msg.id);
+          // So o eco do ULTIMO place meu solta a posicao local: com setas
+          // apertadas em sequencia, o eco da primeira chega quando a janela
+          // ja esta na terceira, e solta-la ali fazia a janela voltar e pular.
+          if (mine && V.sameRect(S.local.get(msg.id), msg)) S.local.delete(msg.id);
           S.remote.delete(msg.id);
           const rec = S.wins.get(msg.id);
           if (rec) {
@@ -989,7 +992,14 @@
       const r = S.fullId === rec.id ? null : rectOf(win);
       if (!r) return;
       const st = rec.el.style;
-      st.transform = `translate(${r.x}px, ${r.y}px)`;
+      const pos = `translate(${r.x}px, ${r.y}px)`;
+      // A entrada anima o transform com a posicao de quando nasceu: se a
+      // janela muda de lugar no meio, a animacao sai para nao prende-la la.
+      if (rec.entrance && st.transform !== pos) {
+        rec.entrance.cancel();
+        rec.entrance = null;
+      }
+      st.transform = pos;
       st.width = `${r.w}px`;
       st.height = `${r.h}px`;
     }
@@ -1004,7 +1014,18 @@
 
     function animateIn(rec) {
       if (reducedMotion() || typeof rec.el.animate !== 'function') return;
-      rec.el.animate([{ opacity: 0, scale: '0.94' }, { opacity: 1, scale: '1' }], { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' });
+      // A escala vai DENTRO do transform, depois do translate: a propriedade
+      // `scale` avulsa e aplicada por fora do transform e encolhia tambem a
+      // posicao, e a janela nascia voando de perto do canto da mesa.
+      const pos = rec.el.style.transform;
+      const a = rec.el.animate(
+        [{ opacity: 0, transform: `${pos} scale(0.94)` }, { opacity: 1, transform: pos }],
+        { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' },
+      );
+      rec.entrance = a;
+      a.onfinish = () => {
+        if (rec.entrance === a) rec.entrance = null;
+      };
     }
 
     function removeWin(rec) {
@@ -1018,7 +1039,8 @@
         return;
       }
       el.style.pointerEvents = 'none';
-      el.animate([{ opacity: 1, scale: '1' }, { opacity: 0, scale: '0.96' }], { duration: 120, easing: 'cubic-bezier(0.4, 0, 1, 1)' }).onfinish = () => el.remove();
+      const pos = el.style.transform;
+      el.animate([{ opacity: 1, transform: pos }, { opacity: 0, transform: `${pos} scale(0.96)` }], { duration: 120, easing: 'cubic-bezier(0.4, 0, 1, 1)' }).onfinish = () => el.remove();
     }
 
     function unmountWin(rec, { returnTile = false } = {}) {
