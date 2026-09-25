@@ -74,6 +74,7 @@
     let queueKey = '';
     let loadedFor = null; // id da musica que o player deste PC carregou
     let loadedAt = 0;
+    let erroredFor = null; // item cujo video o player recusou (101/150...)
     const reported = new Set(); // ids ja avisados (ended/failed) por este PC
     const titled = new Set(); // ids cujo titulo este PC ja mandou
     const volume = loadVolume();
@@ -174,6 +175,9 @@
         },
         onError: (code, text) => {
           if (YP.isVideoError(code)) {
+            // Para de comandar este item: cada `play` num video bloqueado
+            // gera outro erro, que poderia chegar ja na musica seguinte.
+            erroredFor = loadedFor;
             report('failed');
             return;
           }
@@ -186,7 +190,7 @@
       sync = S.createSync({
         player,
         now,
-        desired: () => (state.current ? { target: target(), want: state.playing ? 'play' : 'pause' } : null),
+        desired: () => (state.current && erroredFor !== loadedFor ? { target: target(), want: state.playing ? 'play' : 'pause' } : null),
       });
     }
 

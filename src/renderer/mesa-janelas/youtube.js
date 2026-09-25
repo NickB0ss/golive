@@ -172,7 +172,8 @@
       sync = S.createSync({
         player,
         now,
-        desired: () => (state.videoId ? { target: target(), want: state.playing ? 'play' : 'pause' } : null),
+        // Com erro na tela (video bloqueado, removido), nada de insistir.
+        desired: () => (state.videoId && errorCode === null ? { target: target(), want: state.playing ? 'play' : 'pause' } : null),
       });
     }
 

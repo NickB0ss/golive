@@ -56,12 +56,20 @@
     let cmdUntil = -Infinity; // depois de play/pause
     let lastErr = 0;
 
-    function reset() {
+    /** Esquece a correcao em curso. Com `now` e `holdMs`, tambem fica quieta
+     * esse tempo: depois de `loadVideoById` (que ja toca sozinho) um `play`
+     * imediato so geraria um segundo aviso do player (um erro 150 repetido
+     * que chegaria depois de a sala ja ter trocado de musica). */
+    function reset(now, holdMs) {
       correcting = 0;
       rateAskedAt = null;
       holdUntil = -Infinity;
       cmdUntil = -Infinity;
       lastErr = 0;
+      if (isNum(now) && isNum(holdMs) && holdMs > 0) {
+        holdUntil = now + holdMs;
+        cmdUntil = now + holdMs;
+      }
     }
 
     function seek(to, now, cmds) {
@@ -202,7 +210,8 @@
           now: now(),
         }));
       },
-      reset: () => d.reset(),
+      /** Depois de carregar outro video: quieta por `holdMs` (padrao 1 s). */
+      reset: (holdMs = 1000) => d.reset(now(), holdMs),
     };
   }
 

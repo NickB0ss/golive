@@ -151,3 +151,10 @@ test('createSync liga o player a deriva e so age com o player pronto', () => {
   assert.deepEqual(s.tick(), []);
   assert.deepEqual(feitos, [['rate', 1.05], ['rate', 1], ['seek', 30]]);
 });
+
+test('reset com espera: depois de carregar outro video, nada de play por 1 s', () => {
+  const d = createDrift();
+  d.reset(0, 1000);
+  assert.deepEqual(d.step({ target: 0.2, current: 0, want: 'play', player: 'unstarted', now: 250 }), []);
+  assert.deepEqual(d.step({ target: 1.1, current: 0, want: 'play', player: 'unstarted', now: 1100 }), [{ cmd: 'seek', to: 1.1 }, { cmd: 'play' }]);
+});
