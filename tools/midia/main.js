@@ -188,12 +188,12 @@ async function main() {
   await A.js(`bancada.clicar(${idJs}, '.mjm-bar .mjm-icon')`);
   await ate(async () => (await B.js(`bancada.medir(${idJs})`)).estado === 'playing', 5000);
   const tSalto = Date.now();
-  await B.js(`bancada.act(${idJs}, { kind: 'seek', pos: 120 })`);
+  await B.js(`bancada.act(${idJs}, { kind: 'seek', pos: 60 })`);
   const saltou = await ate(async () => {
     const ms = await Promise.all(pcs.map((pc) => pc.js(`bancada.medir(${idJs})`)));
-    return ms.every((m) => m.pos > 119 && Math.abs(m.alvo - m.pos) < 0.3) ? Date.now() - tSalto : null;
+    return ms.every((m) => m.pos > 59 && Math.abs(m.alvo - m.pos) < 0.3) ? Date.now() - tSalto : null;
   }, 5000);
-  check('salto para 2:00 no B: os dois chegam', saltou, { ms: saltou });
+  check('salto para 1:00 no B: os dois chegam', saltou, { ms: saltou });
 
   if (!REAL) {
     // ---------- Deriva: o video do B anda 3% mais rapido ----------
