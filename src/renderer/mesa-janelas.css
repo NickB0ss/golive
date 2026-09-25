@@ -1,8 +1,10 @@
+/* --- Midia (youtube, radio, aovivo) --- */
 /*
- * Conteudo das janelas de midia da Mesa (time Midia): youtube, radio, aovivo.
- * Contrato: docs/superpowers/plans/2026-09-24-mesa-contrato.md, secao 6.
- * Tudo com prefixo .mjm- (mesa janela midia) e so tokens de style.css.
- * Quando mesa-janelas.css existir, este bloco pode ir para o fim dele.
+ * Conteudo das janelas de midia da Mesa (time Midia). Contrato:
+ * docs/superpowers/plans/2026-09-24-mesa-contrato.md, secao 6. Tudo com
+ * prefixo .mjm- (mesa janela midia) e so tokens de style.css. A alca da
+ * Vista cobre os 28 px de cima: o que e texto ou botao comeca em 30 px; o
+ * video fica por baixo da alca, inteiro.
  */
 
 .mjm {
@@ -55,6 +57,23 @@
 .mjm-form { display: flex; gap: var(--s-2); align-items: center; }
 .mjm-hint { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
 .mjm-note { margin: 0; min-height: 1em; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-loading { margin: 0; padding: 30px var(--s-4) var(--s-4); color: var(--tx2); font-size: var(--fs-small); }
+/* No video a nota (recusa, erro de link) flutua abaixo da alca. */
+.mjm-yt > .mjm-note,
+.mjm-live > .mjm-note {
+  position: absolute;
+  top: 32px;
+  left: var(--s-2);
+  right: var(--s-2);
+  z-index: 3;
+  min-height: 0;
+  padding: var(--s-1) var(--s-2);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.mjm-yt > .mjm-note:empty,
+.mjm-live > .mjm-note:empty { display: none; }
 .mjm-time { color: var(--tx2); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mjm-range { accent-color: var(--act); min-width: 0; }
 .mjm-vol { width: 72px; flex: none; }
@@ -68,7 +87,7 @@
   flex-direction: column;
   justify-content: center;
   gap: var(--s-3);
-  padding: var(--s-4);
+  padding: 30px var(--s-4) var(--s-4);
 }
 .mjm-yt .mjm-empty,
 .mjm-live .mjm-empty { position: absolute; inset: 0; background: var(--s2); z-index: 2; }
@@ -120,7 +139,7 @@
   opacity: 0;
   transition: opacity var(--t-hover) var(--ease-out);
 }
-.mjm-stage .mjm-bar-top { top: 0; bottom: auto; justify-content: flex-end; background: none; }
+.mjm-stage .mjm-bar-top { top: 30px; bottom: auto; justify-content: flex-start; background: none; }
 .mjm-stage:hover .mjm-bar,
 .mjm-stage:focus-within .mjm-bar { opacity: 1; }
 .mjm-stage .mjm-bar .mjm-range:not(.mjm-vol) { flex: 1; }
@@ -133,7 +152,7 @@
 
 /* ---------- Radio ---------- */
 
-.mjm-radio { padding: var(--s-3); background: var(--s2); }
+.mjm-radio { padding: 30px var(--s-3) var(--s-3); background: var(--s2); }
 .mjm-radio-now { display: flex; gap: var(--s-3); align-items: flex-start; }
 .mjm-radio-cover {
   width: 96px;

@@ -32,7 +32,9 @@ const RAIZ = path.join(__dirname, '..', '..', 'src', 'renderer');
 const VIDEO = REAL ? (process.env.SPIKE_VIDEO || 'M7lc1UVf-VE') : 'M7lc1UVf-VE';
 const SCRIPTS = [
   'mesa-modules/midialinks.js', 'mesa-modules/youtube.js', 'mesa-modules/radio.js', 'mesa-modules/aovivo.js',
-  'mesa-modules/index.js', 'ytplayer.js', 'mesa-sync-media.js', 'mesa-midia.js',
+  // ytplayer.js, mesa-sync-media.js e mesa-midia.js NAO: os conteudos os
+  // carregam sob demanda, como no app (a Vista so poe mesa-janelas/<tipo>.js).
+  'mesa-modules/index.js',
   'mesa-janelas/youtube.js', 'mesa-janelas/radio.js', 'mesa-janelas/aovivo.js',
 ];
 
@@ -57,7 +59,7 @@ function paginaHtml() {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="${csp}" />
 <title>bancada midia</title>
-<link rel="stylesheet" href="style.css" /><link rel="stylesheet" href="mesa-janelas-midia.css" />
+<link rel="stylesheet" href="style.css" /><link rel="stylesheet" href="mesa-janelas.css" />
 <style>
 body{overflow:auto;background:var(--bg)}
 #mesa{display:flex;flex-wrap:wrap;gap:12px;padding:12px}
@@ -235,7 +237,12 @@ async function main() {
       erroB: um.porPc['PC B'],
       velocidades: cmdsUm.filter((c) => c[1] === 'setPlaybackRate').map((c) => c[2][0]),
       saltos: cmdsUm.filter((c) => c[1] === 'seekTo').length,
-      msAteCruzar: (um.traco.find((t) => t[1] !== null && t[1] < 0.05) || [null])[0],
+      // Do momento em que o conteudo viu o atraso (> 0,5 s) ate o erro cair abaixo de 0,05 s.
+      msAteCruzar: (() => {
+        const i = um.traco.findIndex((t) => t[1] !== null && t[1] > 0.5);
+        const j = i < 0 ? -1 : um.traco.findIndex((t, k) => k > i && t[1] !== null && t[1] < 0.05);
+        return j < 0 ? null : um.traco[j][0] - um.traco[i][0];
+      })(),
     };
     check('B 1 s atrasado: 1,05 ate cruzar e volta a 1, sem salto', rel.atraso1s.saltos === 0 && rel.atraso1s.velocidades.join(',') === '1.05,1' && rel.atraso1s.erroB.ultimo < 0.3, rel.atraso1s);
 

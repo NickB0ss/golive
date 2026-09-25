@@ -30,7 +30,7 @@
     return n;
   }
 
-  function mount(el, api) {
+  function mountReal(el, api) {
     const M = mod();
     let state = M.init({});
     let frame = null;
@@ -151,6 +151,64 @@
       focus() {
         (state.channel ? swapBtn : input).focus();
       },
+    };
+  }
+
+  // ---------- Dependencias sob demanda ----------
+  // A Vista so carrega `mesa-janelas/<tipo>.js`; o player, a deriva e o
+  // coordenador de midia nao tem tag no index.html. O primeiro conteudo de
+  // midia que monta injeta cada <script> uma vez (promessa dividida em
+  // GoLive.mesaMidiaCarga) e so entao monta de verdade.
+  const DEPS = [['mesa-midia.js', 'mesaMidia']];
+
+  function carregar(src, global) {
+    if (root.GoLive[global]) return Promise.resolve();
+    root.GoLive.mesaMidiaCarga = root.GoLive.mesaMidiaCarga || {};
+    const cache = root.GoLive.mesaMidiaCarga;
+    if (!cache[src]) {
+      cache[src] = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = false;
+        s.onload = () => (root.GoLive[global] ? resolve() : reject(new Error(`${src} nao registrou ${global}`)));
+        s.onerror = () => reject(new Error(`${src} nao carregou`));
+        document.head.appendChild(s);
+      });
+      cache[src].catch(() => { delete cache[src]; });
+    }
+    return cache[src];
+  }
+
+  function mount(el, api) {
+    let inner = null;
+    let dead = false;
+    let last = null; // [state, meta] que chegou antes de montar
+    const wait = document.createElement('p');
+    wait.className = 'mjm-loading';
+    wait.textContent = 'Carregando…';
+    el.appendChild(wait);
+    Promise.all(DEPS.map(([src, global]) => carregar(src, global))).then(() => {
+      if (dead) return;
+      wait.remove();
+      inner = mountReal(el, api);
+      if (last) inner.update(last[0], last[1]);
+    }).catch(() => {
+      if (!dead) wait.textContent = 'Não deu para carregar o player desta janela.';
+    });
+    return {
+      update(state, meta) {
+        if (inner) inner.update(state, meta);
+        else last = [state, meta];
+      },
+      destroy() {
+        dead = true;
+        wait.remove();
+        if (inner) inner.destroy();
+      },
+      focus() {
+        if (inner && inner.focus) inner.focus();
+      },
+      _debug: () => (inner && inner._debug ? inner._debug() : {}),
     };
   }
 
