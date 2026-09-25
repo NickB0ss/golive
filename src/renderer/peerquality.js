@@ -123,7 +123,38 @@
     return { steps: prev.steps, badSinceMs: null, goodSinceMs, startedAtMs };
   }
 
-  const api = { initialState, next, isBad, LIMITS };
+  /** Largura em pixels que quem assiste anunciou no 'view-state' (a janela
+   * da tela na Mesa dele, ja com o zoom e a densidade da tela). Ausente,
+   * lixo ou fora da faixa: `null`, o caso neutro (sem teto). */
+  function normViewWidth(v) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+    const n = Math.round(v);
+    return n >= 1 && n <= 16384 ? n : null;
+  }
+
+  /** Teto de qualidade pelo TAMANHO NA TELA de quem assiste (spec da Mesa,
+   * 2026-09-24, secao 5): nao ha por que codificar 1080p para uma janela de
+   * 400 px. Entre os presets com o MESMO fps (o tamanho da janela nao diz
+   * nada sobre movimento) e resolucao nao maior que a de `preset`, fica o
+   * menor que ainda cobre `maxWidth`. Nenhum cobre (janela maior que tudo)
+   * ou sem largura: `preset` intacto. `presets` e a tabela de config.js. */
+  function capForWidth(preset, maxWidth, presets) {
+    const cur = presets && presets[preset];
+    const w = normViewWidth(maxWidth);
+    if (!cur || w == null) return preset;
+    let best = preset;
+    let bestW = cur.width;
+    for (const [name, dims] of Object.entries(presets)) {
+      if (dims.fps !== cur.fps || dims.width > cur.width || dims.width < w) continue;
+      if (dims.width < bestW) {
+        best = name;
+        bestW = dims.width;
+      }
+    }
+    return best;
+  }
+
+  const api = { initialState, next, isBad, normViewWidth, capForWidth, LIMITS };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.peerquality = api;

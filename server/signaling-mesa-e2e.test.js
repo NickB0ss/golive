@@ -502,6 +502,84 @@ test('quem sai da sala ou fecha a Mesa solta a vez', async (t) => {
 });
 
 // ---------------------------------------------------------------------------
+// O que quem esta na Transmissao ainda precisa saber (time Vista, 2026-09-24)
+// ---------------------------------------------------------------------------
+
+test('mesa-count vai para a sala inteira so quando a quantidade de janelas muda', async (t) => {
+  const p = palco(t);
+  const { s, ana } = await salaNaMesa(p);
+  const caio = await p.cliente(s, 'caio');
+  await caio.entra('Caio'); // fica na Transmissao
+
+  const um = caio.esperaNova((m) => m.type === 'mesa-count', 'mesa-count 1');
+  const n = await ana.op({ op: 'add', win: nota(0, 0) });
+  assert.deepEqual(await um, { type: 'mesa-count', count: 1 });
+
+  // Mover, redimensionar e agir nao mudam a conta: nada de mesa-count.
+  await ana.op({ op: 'place', id: n.win.id, x: 900, y: 0, w: 400, h: 300 });
+  await ana.op({ op: 'act', id: n.win.id, action: { kind: 'set', text: 'oi' } });
+  await ana.barreira();
+  await caio.barreira();
+  assert.equal(caio.msgs('mesa-count').length, 1);
+
+  const zero = caio.esperaNova((m) => m.type === 'mesa-count', 'mesa-count 0');
+  await ana.op({ op: 'remove', id: n.win.id });
+  assert.deepEqual(await zero, { type: 'mesa-count', count: 0 });
+  // Quem esta na Mesa tambem recebe (barato, e o seletor dele usa o mesmo).
+  assert.equal(ana.msgs('mesa-count').length, 2);
+});
+
+test('mesa-sync leva as vezes em andamento', async (t) => {
+  const p = palco(t);
+  const { s, ana } = await salaNaMesa(p);
+  const n = await ana.op({ op: 'add', win: nota(0, 0) });
+  ana.envia({ type: 'mesa-grab', id: n.win.id });
+  await ana.esperaTipo('mesa-grab');
+
+  const caio = await p.cliente(s, 'caio');
+  await caio.entra('Caio');
+  const retrato = caio.esperaNova((m) => m.type === 'mesa-sync', 'mesa-sync');
+  caio.envia({ type: 'mesa-view', on: true });
+  const msg = await retrato;
+  assert.deepEqual(msg.grabs, [{ id: n.win.id, by: ana.id }]);
+  assert.equal(msg.mesa.grabs, undefined, 'as vezes nao sao estado da mesa');
+
+  // Pedido de sync (buraco de seq) tambem leva.
+  const denovo = caio.esperaNova((m) => m.type === 'mesa-sync', 'mesa-sync pedido');
+  caio.envia({ type: 'mesa-sync' });
+  assert.deepEqual((await denovo).grabs, [{ id: n.win.id, by: ana.id }]);
+
+  // Solta: o proximo retrato vem sem vez nenhuma.
+  ana.envia({ type: 'mesa-release', id: n.win.id });
+  await caio.esperaTipo('mesa-release');
+  const limpo = caio.esperaNova((m) => m.type === 'mesa-sync', 'mesa-sync sem vez');
+  caio.envia({ type: 'mesa-sync' });
+  assert.deepEqual((await limpo).grabs, []);
+});
+
+test('quem esta na Transmissao recebe mesa-ack do proprio pedido aceito; quem esta na Mesa nao', async (t) => {
+  const p = palco(t);
+  const { s, ana } = await salaNaMesa(p);
+  const caio = await p.cliente(s, 'caio');
+  await caio.entra('Caio');
+
+  const ack = caio.esperaNova((m) => m.type === 'mesa-ack', 'mesa-ack do add');
+  const eco = ana.esperaMsg((m) => m.type === 'mesa' && m.op === 'add' && m.by === caio.id, 'eco para a Ana');
+  caio.envia({ type: 'mesa', op: 'add', win: nota(0, 0) });
+  const [a, e] = await Promise.all([ack, eco]);
+  assert.deepEqual(a, { type: 'mesa-ack', op: 'add', id: e.win.id, seq: e.seq });
+
+  const ack2 = caio.esperaNova((m) => m.type === 'mesa-ack', 'mesa-ack do remove');
+  caio.envia({ type: 'mesa', op: 'remove', id: e.win.id });
+  assert.deepEqual(await ack2, { type: 'mesa-ack', op: 'remove', id: e.win.id, seq: e.seq + 1 });
+
+  await ana.op({ op: 'add', win: nota(0, 0) });
+  await ana.barreira();
+  assert.deepEqual(ana.msgs('mesa-ack'), [], 'quem esta na Mesa ja tem o eco');
+  assert.equal(caio.msgs('mesa-ack').length, 2, 'o pedido dos outros nao gera ack para ninguem');
+});
+
+// ---------------------------------------------------------------------------
 // Tela e camera: o servidor poe e tira
 // ---------------------------------------------------------------------------
 
