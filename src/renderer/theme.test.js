@@ -121,6 +121,7 @@ test('marca usa os tokens do site e passa na trava de contraste', () => {
     bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
     tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
     line: 'rgba(237,237,242,.08)', line2: 'rgba(237,237,242,.14)',
+    grid: 'rgba(237,237,242,.065)', grid2: 'rgba(237,237,242,.11)',
   });
   assert.equal(marca.act, '#5B4BE8');
   assert.equal(marca.actHover, '#6D5CF6');

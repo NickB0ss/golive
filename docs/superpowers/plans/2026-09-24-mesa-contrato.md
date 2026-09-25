@@ -189,6 +189,17 @@ do último `mesa-grab`/`mesa-drag`), `shouldEmit(last, now, hz = 20)`,
 some em 1 s). `applyMessage` também aceita `mesa-sync` e devolve sempre
 `{ state, needSync }` (`stale: true` para `seq` já visto).
 
+**Acréscimos do time Vista (2026-09-24)**, sem mudar nada acima:
+
+- `{ type: 'mesa-count', count }` vai para a **sala inteira** quando a
+  quantidade de janelas muda (add/remove; mover e agir não mandam). É o que
+  mantém o seletor de vista de quem está na Transmissão depois do `welcome`.
+- `mesa-sync` ganha `grabs: [{ id, by }]` (as vezes em andamento), **fora**
+  de `mesa`: não é estado da sala, não migra, não tem `seq`.
+- `{ type: 'mesa-ack', op, id, seq }` vai **só ao autor** de uma operação
+  aceita quando ele **não** está na vista Mesa (quem está já recebe o eco).
+  `id` é o da janela nova no `add`.
+
 ## 6. Conteúdo das janelas (fronteira entre os times Vista e Janelas)
 
 A **Vista** (`src/renderer/mesa-view.js`) cuida da mesa: área, grade, andar,
@@ -228,6 +239,37 @@ registra em `GoLive.mesaJanelas[<tipo>]`:
   a cor de uma pessoa só em detalhes (bolinha, contorno), nunca como fundo de
   texto. `--live` nunca. CSS do conteúdo em `src/renderer/mesa-janelas.css`.
 - Tipo sem conteúdo registrado: a Vista mostra o `summary(state)` do módulo.
+
+**Como a Vista implementou (time Vista, 2026-09-24).** A `api` acima ficou
+exatamente como está; só estes detalhes a mais:
+
+- **Carregamento**: `mesa-janelas/<tipo>.js` e `mesa-janelas.css` **não têm
+  tag no `index.html`** (a origem local confere que todo arquivo citado lá
+  existe). A Vista cria um `<script src="mesa-janelas/<tipo>.js">` por nome de
+  `MODULE_NAMES` (e por tipo que `addable()` listar) na **primeira vez que a
+  Mesa abre**, mais o `<link>` do CSS. Arquivo ausente é pulado. Se o
+  conteúdo chegar depois de a janela já estar na mesa, a Vista troca o resumo
+  pelo `mount`. Então: o arquivo tem de se chamar exatamente `<tipo>.js` e o
+  tipo tem de estar no registro.
+- `mount` é chamado **uma vez por janela** e logo depois vem
+  `update(state, null)`; depois, `update(state, { by, isLeader })` a cada
+  `act` aplicado e `update(state, null)` a cada retrato novo (`mesa-sync`).
+- `el` tem a classe `mesa-content`, `position: absolute; inset: 0`,
+  `container-type: size` e `overflow: hidden`. Nas janelas com conteúdo a
+  alça ocupa os **28 px de cima** (sobre o conteúdo, `z-index` 4): deixe um
+  respiro no topo (o protótipo usa ~30 px). Os controles da janela (avatar,
+  Tela cheia, Tirar) aparecem no canto de cima à direita com o mouse em cima.
+- **Tela cheia** não tira `el` do lugar (um iframe não recarrega): a janela
+  passa a `position: fixed; inset: 0` e `el` cresce; só `container queries`.
+- `focus()` (opcional) é chamado quando a pessoa aperta Enter com a janela
+  focada.
+- `validate(action)` roda com `ctx = { from, isLeader, now: serverNow(),
+  peers }`. `peers()` inclui a própria pessoa.
+- Roda do mouse dentro do conteúdo: se algum ancestral dentro de `el` rola
+  (`overflow-y: auto|scroll`) e ainda tem para onde, a roda rola ele; senão
+  aproxima a mesa.
+- `serverNow()`: 5 idas e voltas de `time` ao abrir a Mesa, fica a de menor
+  atraso, refeita a cada 60 s; antes da primeira medida devolve `Date.now()`.
 
 ## 7. Jogos (time Jogos, 2026-09-24)
 

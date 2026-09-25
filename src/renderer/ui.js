@@ -170,7 +170,8 @@
    * e a unica saida ("Compartilhar tela", "Sair da sala") -- esconde-la ali
    * seria deixar a pessoa numa tela preta sem porta. */
   function canGoIdle() {
-    return !!gridEl?.querySelector('.tile');
+    // Na vista Mesa os tiles moram nas janelas da mesa, fora da grade.
+    return !!gridEl?.querySelector('.tile') || !!document.querySelector('.mesa-win');
   }
 
   function scheduleIdle() {
@@ -406,7 +407,10 @@
    * (MediaStreamSource -> GainNode -> destination). Pausar o elemento para
    * de PINTAR, nao de ouvir -- mesmo fundamento do F1.4. */
   function syncPainting() {
-    gridEl.querySelectorAll('video').forEach((video) => {
+    // `.mesa-win video`: na vista Mesa o tile (com o mesmo <video>) mora
+    // numa janela da mesa, fora da grade -- e minimizar tem de parar de
+    // pintar ali tambem.
+    document.querySelectorAll('#grid video, .mesa-win video').forEach((video) => {
       // O veu de pausa ja mandou o video pausar e sumir -- a janela
       // ficar visivel de novo nao pode religar a decodificacao por baixo
       // dele (ver renderPausedOverlay).
@@ -850,6 +854,26 @@
     // de palco precisa ver o kind novo, nao o que havia antes no DOM.
     syncGridCount();
     if (spyState.tileId() === id) updateSpyWindow();
+    // A vista Mesa pega o tile para a janela dele (o mesmo <video>).
+    onTileShown?.(id);
+  }
+
+  let onTileShown = null;
+
+  /** O palco se arruma de novo depois que a vista Mesa devolve os tiles:
+   * tira o cartao de "ninguem transmitindo" que um removeTile possa ter
+   * posto enquanto os tiles estavam fora, reorganiza e religa a pintura. */
+  function resyncGrid() {
+    if (gridEl.querySelector('.tile')) gridEl.querySelector(':scope > .empty')?.remove();
+    syncGridCount();
+    renderEmptyGrid();
+    syncPainting();
+    scheduleIdle();
+  }
+
+  /** Devolve ao palco um tile que estava numa janela da mesa. */
+  function returnTile(tile) {
+    if (tile && tile.parentElement !== gridEl) gridEl.appendChild(tile);
   }
 
   // Estado vazio da grade. So existe dentro da sala (a grade mora no
@@ -2972,6 +2996,8 @@
     $('stage-status-badge').classList.add('hidden');
     roomViewEl.classList.add('hidden');
     lobbyViewEl.classList.remove('hidden');
+    // A sala saiu da tela: a vista Mesa (se aberta) desmonta junto.
+    document.dispatchEvent(new CustomEvent('golive:room-hidden'));
   }
 
   // ---------- Modal de Configuracoes ----------
@@ -4363,7 +4389,14 @@
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,
-    grid: { showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown, setHealthChip, setStallNote },
+    grid: {
+      showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown, setHealthChip, setStallNote,
+      element: () => gridEl,
+      tileEl: (id) => document.getElementById(`tile-${id}`),
+      returnTile,
+      resync: resyncGrid,
+      onTileShown: (fn) => { onTileShown = fn; },
+    },
     annotations: {
       setSelf: annotSetSelf,
       setSurface: setAnnotSurface,
