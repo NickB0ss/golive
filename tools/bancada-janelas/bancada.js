@@ -64,6 +64,7 @@
   function negar(from, reason, detail) {
     const c = clientes.get(from);
     log.push({ from, negado: reason, detail });
+    if (!c) return; // Caio e Duda nao tem tela na bancada
     for (const fn of c.negados) fn({ reason, detail });
   }
 
@@ -157,6 +158,8 @@
       return c.el.childElementCount;
     },
     negados: () => log.filter((x) => x.negado),
+    tela: (id) => clientes.get(id).tela,
+    conteudoEl: (id) => clientes.get(id).el,
   };
   document.body.dataset.pronto = '1';
 })();

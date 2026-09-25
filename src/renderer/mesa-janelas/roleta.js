@@ -255,6 +255,8 @@
 
     function pintarPainel() {
       const auto = state.options.length < m.MIN_SPIN_OPTIONS;
+      // Aberto sozinho e a pessoa esta digitando nele: nao fecha embaixo dela.
+      if (abertoPorMim === null && !auto && !painel.hidden && painel.contains(root.document.activeElement)) abertoPorMim = true;
       const aberto = abertoPorMim === null ? auto : abertoPorMim;
       painel.hidden = !aberto;
       alternar.setAttribute('aria-expanded', String(aberto));
