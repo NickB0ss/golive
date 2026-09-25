@@ -127,7 +127,12 @@
     caixa.style.width = `${dims.w}px`;
     caixa.style.height = `${dims.h}px`;
     const el = document.createElement('div');
-    el.className = 'conteudo';
+    // O mesmo `el` que a Vista entrega: `.mesa-content`, com a alca de
+    // 28 px por cima do topo.
+    el.className = 'conteudo mesa-content';
+    const alca = document.createElement('div');
+    alca.className = 'alca';
+    caixa.append(alca);
     caixa.append(el);
     coluna.append(rot, caixa);
     palco.append(coluna);

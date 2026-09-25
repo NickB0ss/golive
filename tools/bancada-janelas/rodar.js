@@ -331,6 +331,161 @@ const ROTEIROS = {
   },
 };
 
+// ---------- Jogos ----------
+
+async function sentarOsDois(c) {
+  await c.ana.getByRole('button', { name: /^Sentar/ }).first().click();
+  await espera(40);
+  await c.bia.getByRole('button', { name: /^Sentar/ }).first().click();
+  await espera(40);
+  const s = await c.estado('1');
+  conferir(s.seats[0] === '1' && s.seats[1] === '2', `${c.tipo}: Ana e Bia sentaram (${JSON.stringify(s.seats)})`);
+}
+
+/** Conta `pointerdown` que escapam do conteudo para a caixa da janela. */
+async function vigiarSubida(c) {
+  await c.page.evaluate(() => {
+    window.__subiu = 0;
+    for (const j of document.querySelectorAll('.janela')) j.addEventListener('pointerdown', () => { window.__subiu++; });
+  });
+}
+
+async function arrastarCasa(c, quem, de, para) {
+  const a = await quem.locator(`.mj-casa[data-l="${de[0]}"][data-c="${de[1]}"]`).boundingBox();
+  const b = await quem.locator(`.mj-casa[data-l="${para[0]}"][data-c="${para[1]}"]`).boundingBox();
+  await c.page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await c.page.mouse.down();
+  for (let i = 1; i <= 6; i++) {
+    await c.page.mouse.move(a.x + a.width / 2 + ((b.x - a.x) * i) / 6, a.y + a.height / 2 + ((b.y - a.y) * i) / 6);
+    await espera(16);
+  }
+  await c.page.mouse.up();
+  await espera(60);
+}
+
+Object.assign(ROTEIROS, {
+  async velha(c, tam) {
+    c.tipo = `velha/${tam}`;
+    conferir((await c.ana.locator('.mj-jogo-status').textContent()).startsWith('Cadeiras livres'), `velha/${tam}: comeca com cadeiras livres`);
+    await sentarOsDois(c);
+    // Bia fora da vez: a casa esta desligada e o clique diz por que.
+    const casaBia = c.bia.locator('.mj-velha-casa').nth(0);
+    conferir((await casaBia.getAttribute('aria-disabled')) === 'true', `velha/${tam}: fora da vez a casa desliga`);
+    // Ana joga pelo teclado: setas ate o meio, Enter.
+    const primeira = c.ana.locator('.mj-velha-casa').first();
+    await primeira.focus();
+    await c.page.keyboard.press('ArrowRight');
+    await c.page.keyboard.press('ArrowDown');
+    await c.page.keyboard.press('Enter');
+    await espera(50);
+    let s = await c.estado('2');
+    conferir(s.board[4] === 'X', `velha/${tam}: setas + Enter jogam no meio (${s.board})`);
+    conferir(await c.page.evaluate(() => document.activeElement?.dataset?.casa === '4'), `velha/${tam}: o foco fica na casa`);
+    conferir((await c.bia.locator('.mj-jogo-status').textContent()) === 'Sua vez', `velha/${tam}: vez passa para Bia`);
+    for (const [quem, i] of [[c.bia, 0], [c.ana, 2], [c.bia, 1], [c.ana, 6]]) {
+      await quem.locator('.mj-velha-casa').nth(i).click();
+      await espera(40);
+    }
+    s = await c.estado('1');
+    conferir(s.result && s.result.winner === 0, `velha/${tam}: Ana fecha a diagonal`);
+    conferir((await c.bia.locator('.mj-jogo-status').textContent()) === 'Ana venceu', `velha/${tam}: Bia ve quem venceu`);
+    conferir((await c.ana.locator('.mj-velha-casa.is-linha').count()) === 3, `velha/${tam}: a linha vencedora aparece`);
+    await c.bia.getByRole('button', { name: 'Nova partida' }).click();
+    await espera(40);
+    conferir((await c.estado('1')).board === '.........', `velha/${tam}: nova partida`);
+  },
+
+  async lig4(c, tam) {
+    c.tipo = `lig4/${tam}`;
+    await sentarOsDois(c);
+    const col = c.ana.locator('.mj-lig4-col').first();
+    await col.focus();
+    for (let i = 0; i < 3; i++) await c.page.keyboard.press('ArrowRight');
+    await c.page.keyboard.press('Enter');
+    await espera(50);
+    const s = await c.estado('2');
+    conferir(s.board[5][3] === 'V', `lig4/${tam}: a peca cai no fundo da coluna 4`);
+    conferir((await c.bia.locator('.mj-lig4-col').nth(3).getAttribute('aria-label')) === 'Coluna 4: 5 casas livres', `lig4/${tam}: rotulo da coluna`);
+    await c.bia.locator('.mj-lig4-col').nth(3).click();
+    await espera(50);
+    conferir((await c.estado('1')).board[4][3] === 'A', `lig4/${tam}: Bia empilha`);
+  },
+
+  async damas(c, tam) {
+    c.tipo = `damas/${tam}`;
+    await sentarOsDois(c);
+    await vigiarSubida(c);
+    conferir(await c.bia.locator('.mj-grade8.is-virado').count() === 1, `damas/${tam}: Bia (escuras) ve o tabuleiro virado`);
+    // Clique: escolher a pedra, destinos marcados, clicar no destino.
+    await c.ana.locator('.mj-casa[data-l="5"][data-c="2"]').click();
+    conferir((await c.ana.locator('.mj-casa.is-destino').count()) === 2, `damas/${tam}: dois destinos marcados`);
+    await c.ana.locator('.mj-casa[data-l="4"][data-c="3"]').click();
+    await espera(50);
+    let s = await c.estado('2');
+    conferir(s.board[4][3] === 'c' && s.board[5][2] === '.', `damas/${tam}: lance por clique`);
+    // Arrastar (Bia): a peca anda por dentro e nada sobe para a janela.
+    await arrastarCasa(c, c.bia, [2, 5], [3, 4]);
+    s = await c.estado('1');
+    conferir(s.board[3][4] === 'e', `damas/${tam}: lance por arrastar`);
+    conferir((await c.page.evaluate(() => window.__subiu)) === 0, `damas/${tam}: arrastar nao sobe para a janela`);
+    // Captura obrigatoria: so a pedra que captura mexe.
+    conferir((await c.ana.locator('.mj-casa.is-mexe').count()) === 1, `damas/${tam}: so a pedra que captura fica marcada`);
+    // Teclado: Enter na pedra, setas ate o destino, Enter.
+    const origem = c.ana.locator('.mj-casa[data-l="4"][data-c="3"]');
+    await origem.focus();
+    await c.page.keyboard.press('Enter');
+    await c.page.keyboard.press('ArrowUp');
+    await c.page.keyboard.press('ArrowUp');
+    await c.page.keyboard.press('ArrowRight');
+    await c.page.keyboard.press('ArrowRight');
+    await c.page.keyboard.press('Enter');
+    await espera(50);
+    s = await c.estado('2');
+    conferir(s.board[2][5] === 'c' && s.board[3][4] === '.', `damas/${tam}: captura pelo teclado`);
+    // Desistir pede confirmacao.
+    const desistir = c.bia.getByRole('button', { name: 'Desistir' });
+    await desistir.click();
+    conferir(!(await c.estado('1')).result, `damas/${tam}: o primeiro toque em Desistir so pergunta`);
+    await desistir.click();
+    await espera(50);
+    conferir((await c.estado('1')).result?.reason === 'abandono', `damas/${tam}: o segundo toque desiste`);
+    conferir((await c.ana.locator('.mj-jogo-status').textContent()) === 'Bia desistiu; você venceu', `damas/${tam}: situacao do fim`);
+  },
+
+  async xadrez(c, tam) {
+    c.tipo = `xadrez/${tam}`;
+    await sentarOsDois(c);
+    await vigiarSubida(c);
+    // e2-e4 arrastando.
+    await arrastarCasa(c, c.ana, [6, 4], [4, 4]);
+    let s = await c.estado('2');
+    conferir(s.fen.startsWith('rnbqkbnr/pppppppp/8/8/4P3'), `xadrez/${tam}: e4 por arrastar (${s.fen})`);
+    conferir((await c.page.evaluate(() => window.__subiu)) === 0, `xadrez/${tam}: arrastar nao sobe para a janela`);
+    // e7-e5 por clique (Bia, tabuleiro virado).
+    await c.bia.locator('.mj-casa[data-l="1"][data-c="4"]').click();
+    conferir((await c.bia.locator('.mj-casa.is-destino').count()) === 2, `xadrez/${tam}: o peao mostra dois destinos`);
+    await c.bia.locator('.mj-casa[data-l="3"][data-c="4"]').click();
+    await espera(50);
+    s = await c.estado('1');
+    conferir(s.san[s.san.length - 1] === 'e5', `xadrez/${tam}: e5 por clique`);
+    // Promocao: posicao imposta, peao em a7.
+    await c.page.evaluate(() => {
+      const m = window.GoLive.mesaModules.xadrez;
+      const st = window.bancada.estado('1');
+      const fen = '8/P6k/8/8/8/8/8/K7 w - - 0 1';
+      window.bancada.impor({ ...st, fen, seen: [m.positionMark(fen)], san: [], turn: 0, check: false, result: null, last: null });
+    });
+    await c.ana.locator('.mj-casa[data-l="1"][data-c="0"]').click();
+    await c.ana.locator('.mj-casa[data-l="0"][data-c="0"]').click();
+    conferir(await c.ana.locator('.mj-xadrez-promo').isVisible(), `xadrez/${tam}: a escolha da promocao aparece`);
+    conferir(await c.page.evaluate(() => document.activeElement?.closest('.mj-xadrez-promo') !== null), `xadrez/${tam}: o foco vai para a escolha`);
+    await c.ana.locator('.mj-xadrez-promo').getByRole('button', { name: /Cavalo/ }).click();
+    await espera(50);
+    s = await c.estado('2');
+    conferir(s.fen.startsWith('N7/'), `xadrez/${tam}: promoveu a cavalo (${s.fen})`);
+  },
+});
+
 // ---------- Cenas para os prints ----------
 
 const CENAS = {
@@ -366,7 +521,19 @@ async function montarCena(c, tipo) {
   await espera(tipo === 'roleta' ? 4600 : 700);
 }
 
-const CENAS_EXTRA = {};
+const SENTAR = [{ kind: 'sit', seat: 0, de: '1' }, { kind: 'sit', seat: 1, de: '2' }];
+Object.assign(CENAS, {
+  velha: [...SENTAR, ...[['1', 4], ['2', 0], ['1', 2], ['2', 6]].map(([de, cell]) => ({ kind: 'move', cell, de }))],
+  lig4: [...SENTAR, ...[['1', 3], ['2', 3], ['1', 2], ['2', 4], ['1', 4], ['2', 2], ['1', 3]].map(([de, col]) => ({ kind: 'move', col, de }))],
+  damas: [...SENTAR, { kind: 'move', path: [[5, 2], [4, 3]], de: '1' }, { kind: 'move', path: [[2, 5], [3, 4]], de: '2' }],
+  xadrez: [...SENTAR, ...[['1', 'e2', 'e4'], ['2', 'e7', 'e5'], ['1', 'g1', 'f3'], ['2', 'b8', 'c6']].map(([de, from, to]) => ({ kind: 'move', from, to, de }))],
+});
+
+// Nos tabuleiros, Ana escolhe uma peca: os destinos aparecem no print.
+const CENAS_EXTRA = {
+  async damas(c) { await c.ana.locator('.mj-casa.is-mexe').first().click(); },
+  async xadrez(c) { await c.ana.locator('.mj-casa[data-l="7"][data-c="5"]').click(); },
+};
 
 async function prints(browser, tipos) {
   fs.mkdirSync(PRINTS, { recursive: true });
