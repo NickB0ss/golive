@@ -199,6 +199,18 @@
         <h1 id="stage-room-name" class="stage-room-name"></h1>
         <span id="stage-member-count" class="stage-member-count">0 pessoas</span>
       </div>
+      <!-- Vista de CADA pessoa (nao da sala): trocar nao afeta ninguem. -->
+      <div id="view-switch" class="view-switch" role="radiogroup" aria-label="Vista">
+        <button id="view-tx" class="view-switch-btn" type="button" role="radio" aria-checked="true" tabindex="0" data-view="transmissao">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span>Transmissão</span>
+        </button>
+        <button id="view-mesa" class="view-switch-btn" type="button" role="radio" aria-checked="false" tabindex="-1" data-view="mesa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+          <span>Mesa</span>
+          <span id="view-mesa-count" class="view-switch-count hidden"></span>
+        </button>
+      </div>
       <span id="stage-room-address" class="stage-room-address"></span>
       <span id="stage-room-pin" class="stage-room-pin hidden"></span>
       <span id="stage-status-badge" class="stage-status-badge hidden"></span>
@@ -209,6 +221,18 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
       <span id="copy-address-status" class="visually-hidden" aria-live="polite"></span>
+      <div class="room-more-wrap">
+        <button id="btn-room-more" class="icon-btn-inline" type="button" title="Opções da sala" aria-label="Opções da sala" aria-expanded="false" aria-controls="room-more">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>
+        </button>
+        <div id="room-more" class="room-more hidden" role="group" aria-label="Opções da sala">
+          <p class="room-more-head">Mesa</p>
+          <label id="opt-mesa-leader-only-row" class="room-more-row hidden"><input id="opt-mesa-leader-only" type="checkbox" />Só o líder mexe na mesa</label>
+          <label id="opt-mesa-lock-size-row" class="room-more-row hidden"><input id="opt-mesa-lock-size" type="checkbox" />Travar tamanho</label>
+          <p id="opt-mesa-locks-hint" class="room-more-hint hidden">Abra a Mesa para ver e mudar as travas.</p>
+          <label class="room-more-row"><input id="opt-mesa-cursors" type="checkbox" checked />Mostrar o ponteiro das pessoas</label>
+        </div>
+      </div>
       <button id="btn-toggle-side" class="icon-btn-inline" title="Recolher coluna" aria-label="Recolher coluna" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
@@ -243,6 +267,10 @@
       <button id="btn-swap-share" class="secondary control-btn hidden" type="button" aria-label="Trocar de tela ou janela">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span class="btn-label">Trocar</span>
+      </button>
+      <button id="btn-mesa-add" class="secondary control-btn hidden" type="button" aria-haspopup="menu" data-mesa-add>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="btn-label">Adicionar janela</span>
       </button>
       <span class="control-separator" aria-hidden="true"></span>
       <button id="btn-room-settings" class="icon-btn-inline control-btn control-settings" title="Configurações" aria-label="Configurações" type="button">
@@ -495,6 +523,31 @@
 <script src="audiometer.js"></script>
 <script src="viewhold.js"></script>
 <script src="pcm-planar.js"></script>
+<!-- Mesa (spec 2026-09-24): o modelo puro, as contas da vista, os tipos de
+     janela (ordem do contrato, secao 7: chess.js e cadeiras.js antes dos
+     modulos, o registro depois) e a vista. O conteudo de cada tipo
+     (mesa-janelas/<tipo>.js e mesa-janelas.css, do time Janelas) NAO tem tag
+     aqui: a vista os carrega na primeira vez que a Mesa abre, um por nome do
+     registro, e arquivo que ainda nao existe so fica de fora (o tipo cai no
+     resumo do modulo). Assim quem nunca abre a Mesa nao paga por eles. -->
+<script src="mesa.js"></script>
+<script src="mesa-vista.js"></script>
+<script src="vendor/chess.js"></script>
+<script src="mesa-modules/cadeiras.js"></script>
+<script src="mesa-modules/nota.js"></script>
+<script src="mesa-modules/lista.js"></script>
+<script src="mesa-modules/enquete.js"></script>
+<script src="mesa-modules/placar.js"></script>
+<script src="mesa-modules/cronometro.js"></script>
+<script src="mesa-modules/sorteio.js"></script>
+<script src="mesa-modules/dados.js"></script>
+<script src="mesa-modules/roleta.js"></script>
+<script src="mesa-modules/velha.js"></script>
+<script src="mesa-modules/lig4.js"></script>
+<script src="mesa-modules/damas.js"></script>
+<script src="mesa-modules/xadrez.js"></script>
+<script src="mesa-modules/index.js"></script>
+<script src="mesa-view.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

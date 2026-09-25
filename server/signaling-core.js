@@ -849,12 +849,23 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
 
     /** A pessoa abriu (on) ou fechou a vista Mesa. Abrir sempre manda o
      * retrato, mesmo para quem ja estava (serve de "me manda de novo"). */
+    /** O retrato que vai para quem abre a Mesa (ou pede sync): a mesa e as
+     * vezes em andamento. Sem as vezes, quem abre a Mesa no meio de um
+     * arraste so saberia do "Bia esta movendo" no proximo mesa-drag, e podia
+     * pegar a janela e levar um `held` sem aviso nenhum antes. As vezes
+     * ficam FORA de `mesa` de proposito: nao sao estado da sala (nao migram,
+     * nao tem seq), so o que esta acontecendo agora. */
+    function mesaSyncMsg() {
+      const grabs = mesaGrabs.list(Date.now()).map(({ id, by }) => ({ id, by }));
+      return { type: 'mesa-sync', mesa: mesaModel.snapshot(mesaState), grabs };
+    }
+
     function setMesaView(pid, on) {
       const peer = peers.get(pid);
       if (!peer) return;
       const was = peer.mesaView === true;
       peer.mesaView = on;
-      if (on) send(peer.ws, { type: 'mesa-sync', mesa: mesaModel.snapshot(mesaState) });
+      if (on) send(peer.ws, mesaSyncMsg());
       else releaseMesaGrabsOf(peer.room, pid);
       if (was !== on) announceMesaViewers(peer.room);
     }
@@ -880,9 +891,27 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       return { full, state: res.state };
     }
 
-    function commitMesa(room, cand) {
+    /** Aplica a mudanca aceita e manda o eco para quem esta na Mesa.
+     *
+     * Quem esta na Transmissao nao recebe a mesa, mas o seletor de vista dele
+     * mostra se a mesa tem janelas: quando a QUANTIDADE muda (add/remove),
+     * vai um `mesa-count` para a sala inteira -- uma mensagem de 30 bytes,
+     * so quando a conta muda (mover, redimensionar e agir nao mandam nada).
+     *
+     * `author` (opcional): quem pediu. Se ele esta na Transmissao nao ve o
+     * eco, entao ganha um `mesa-ack` so para ele (o "Por na mesa" do chat
+     * precisa saber que deu certo e qual id a janela ganhou). */
+    function commitMesa(room, cand, author = null) {
+      const before = mesaState.mesa.windows.length;
       mesaState = cand.state;
       broadcastToMesa(room, null, cand.full);
+      const count = mesaState.mesa.windows.length;
+      if (count !== before) broadcastToRoom(room, null, { type: 'mesa-count', count });
+      const who = author ? peers.get(author) : null;
+      if (who && !who.mesaView) {
+        const f = cand.full;
+        send(who.ws, { type: 'mesa-ack', op: f.op, id: f.op === 'add' ? f.win.id : (f.id ?? null), seq: f.seq });
+      }
       return cand.full;
     }
 
@@ -968,7 +997,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           if (mesaModel.jsonBytes(init.value) > mod.maxStateBytes) return deny('state-too-big');
           const cand = mesaCandidate({ op: 'add', by: pid, win: { id: newWindowId(), type: mod.type, owner: pid, ...rect, state: init.value } });
           if (!cand) return deny('error');
-          commitMesa(me.room, cand);
+          commitMesa(me.room, cand, pid);
           return;
         }
         case 'remove': {
@@ -982,7 +1011,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           if (holder !== null && holder !== pid) return deny('held', { holder });
           const cand = mesaCandidate({ op: 'remove', id: win.id, by: pid });
           if (!cand) return deny('error');
-          commitMesa(me.room, cand);
+          commitMesa(me.room, cand, pid);
           mesaGrabs.drop(win.id);
           return;
         }
@@ -1003,7 +1032,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           if (verdict === 'out-of-world' || others.some((o) => mesaModel.overlaps(rect, o, 0))) return denyPlace(verdict, rect, win.id);
           const cand = mesaCandidate({ op: 'place', id: win.id, ...rect, by: pid });
           if (!cand) return deny('error');
-          commitMesa(me.room, cand);
+          commitMesa(me.room, cand, pid);
           return;
         }
         case 'act': {
@@ -1035,7 +1064,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           }
           const after = cand.state.mesa.windows.find((w) => w.id === win.id);
           if (!after || mesaModel.jsonBytes(after.state) > mod.maxStateBytes) return deny('state-too-big');
-          commitMesa(me.room, cand);
+          commitMesa(me.room, cand, pid);
           return;
         }
         case 'lock': {
@@ -1052,7 +1081,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
             by: pid,
           });
           if (!cand) return deny('error');
-          commitMesa(me.room, cand);
+          commitMesa(me.room, cand, pid);
           return;
         }
         default:
@@ -1832,7 +1861,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
             case 'mesa-sync': {
               const me = peers.get(peerId);
               if (!me || !mesaHit(peerId, 'sync')) return;
-              send(ws, { type: 'mesa-sync', mesa: mesaModel.snapshot(mesaState) });
+              send(ws, mesaSyncMsg());
               break;
             }
 

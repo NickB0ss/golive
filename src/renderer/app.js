@@ -73,6 +73,14 @@
   let retryTimer = null;
   let myId = null;
   let ownerId = null; // 'me' quando EU sou o dono, ou o id do peer marcado owner:true
+  // Mesa (spec 2026-09-24): a vista e de cada pessoa. `mesaView` e o
+  // controlador de mesa-view.js (criado mais abaixo, junto dos outros
+  // ganchos da grade); `mesaViewers` e quem esta na vista Mesa agora e
+  // `mesaCount` quantas janelas a mesa tem -- as duas coisas chegam mesmo a
+  // quem esta na Transmissao (welcome, mesa-viewers, mesa-count).
+  let mesaView = null;
+  let mesaViewers = [];
+  let mesaCount = 0;
   let joinedAtMs = null;
   let notifyTracker = livenotify.createTracker();
   let roomId = null;
@@ -537,8 +545,14 @@
 
     const st = peerQuality.get(`${peerId}:${baseKind}`);
     const steps = st?.steps || 0;
-    if (!steps) return floor;
-    return config.qualityFromPreset(config.degradePreset(floor.preset, steps));
+    const degraded = steps ? config.degradePreset(floor.preset, steps) : floor.preset;
+    // Mesa: a janela desta tela na vista de quem assiste tem N pixels de
+    // largura -- nao ha por que codificar mais que isso (so a resolucao
+    // desce; o fps fica).
+    const width = baseKind === 'screen' ? currentSession?.mesh?.peers.get(peerId)?.viewWidth?.screen ?? null : null;
+    const capped = peerquality.capForWidth(degraded, width, config.QUALITY_PRESETS);
+    if (capped === floor.preset) return floor;
+    return config.qualityFromPreset(capped);
   }
 
   /** Reaplica o teto de encode E o formato da captura nas conexoes abertas
@@ -1455,6 +1469,9 @@
       initialTransferredTo: migration.newOwnerClientId || null,
       initialBans: migration.bans,
       initialChatHistory: migration.chat.length ? migration.chat : localChatTail,
+      // Mesa: o retrato que o servidor antigo mandou no room-migrating.
+      // Queda abrupta nao tem retrato: a mesa recomeca vazia.
+      initialMesa: migration.mesa || null,
       // P1: o sucessor preserva o nome da sala em vez de a sala nova cair
       // no proprio nome de quem assumiu.
       roomName: migration.roomName || currentRoomName || null,
@@ -3096,7 +3113,7 @@
     const origem = sourceId || peerId;
     const tileId = baseKind === 'camera' ? `cam-${origem}` : String(origem);
     const originPeer = session.mesh.peers.get(origem);
-    const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+    const querendo = wantsMedia(baseKind, origem);
     // A decisao pura do vigia separa ausencia legitima de demanda da
     // carencia: nesta ultima o sender ainda esta reservado, mas o relogio
     // pausa para uma piscada nao apagar o progresso acumulado.
@@ -3493,12 +3510,22 @@
         // updateEncoderWarning nunca mais dispara. startStatsLoop chama
         // stopStatsLoop antes, entao e seguro chamar mesmo ja parado.
         if (localStream || cameraStream) startStatsLoop();
+        // Mesa: o welcome nao traz a mesa, so quantas janelas e quem esta
+        // nela. Quem estava na vista Mesa pede o retrato de novo (depois de
+        // QUALQUER welcome -- o servidor tira a pessoa da Mesa ao retomar).
+        mesaCount = Number.isInteger(msg.mesaCount) ? msg.mesaCount : 0;
+        mesaViewers = Array.isArray(msg.mesaViewers) ? msg.mesaViewers.map(String) : [];
+        renderViewSwitch();
+        mesaView?.afterWelcome();
+        mesaView?.onViewers();
+        mesaView?.onLeaderChange();
         break;
       }
       case 'peer-joined': {
         mesh.addPeer(msg.id, msg.name, msg.avatar);
         if (msg.owner) ownerId = msg.id;
         renderMembersPanel();
+        mesaView?.onPeersChange();
         playSoundEvent('join');
         // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
         // oferta abaixo ja sai com ele (qualityFor le o tamanho da sala,
@@ -3581,6 +3608,7 @@
         // Se quem saiu era o dono, zera ownerId -- senao a coroa e o "iAmOwner"
         // ficam presos num id que nao esta mais na sala.
         if (msg.id === ownerId) ownerId = null;
+        mesaViewers = mesaViewers.filter((id) => id !== String(msg.id));
         relayRetry.cancelPeer(msg.id);
         pendingTrees.forgetOrigin(msg.id);
         mesh.removePeer(msg.id);
@@ -3684,6 +3712,31 @@
         applyMigrationInfo(msg);
         break;
       }
+      // ---- Mesa: quem esta nela e quantas janelas tem (chega a todos) ----
+      case 'mesa-viewers': {
+        mesaViewers = Array.isArray(msg.peers) ? msg.peers.map(String) : [];
+        mesaView?.onViewers();
+        break;
+      }
+      case 'mesa-count': {
+        if (Number.isInteger(msg.count) && msg.count >= 0) mesaCount = msg.count;
+        renderViewSwitch();
+        break;
+      }
+      // O resto da Mesa so chega a quem esta na vista Mesa (ou e resposta a
+      // um pedido dela): a vista cuida.
+      case 'mesa':
+      case 'mesa-sync':
+      case 'mesa-denied':
+      case 'mesa-grab':
+      case 'mesa-release':
+      case 'mesa-drag':
+      case 'mesa-ack':
+      case 'cursor':
+      case 'time': {
+        mesaView?.handle(msg);
+        break;
+      }
       case 'room-migrating': {
         clearTimeout(migrationBeaconTimer);
         migrationBeaconTimer = null;
@@ -3704,6 +3757,8 @@
           roomName: currentRoomName,
           bans: Array.isArray(msg.bans) ? msg.bans : [],
           chat: Array.isArray(msg.chat) ? msg.chat : [],
+          // A mesa da sala (retrato + idFloor): o sucessor a semeia.
+          mesa: msg.mesa && typeof msg.mesa === 'object' ? msg.mesa : null,
         }, {
           candidates: migrationCandidates(session),
           announcedSuccessor: typeof msg.successor === 'string' ? msg.successor : null,
@@ -3821,6 +3876,8 @@
           showToast(souEu ? 'Você é o líder da sala agora.' : `${msg.name} é o líder da sala agora.`);
         }
         renderMembersPanel();
+        mesaView?.onLeaderChange();
+        renderRoomMore();
         break;
       }
       // Lista de banidos atualizada (so o dono recebe).
@@ -3932,6 +3989,15 @@
         // Slot por baseKind: um viewer que recebe tela E camera nao pode
         // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
         if (vsPeer) {
+          // Mesa: largura da janela desta tela na vista dele. So reaplica o
+          // encode quando o teto MUDA de preset (andar pela mesa nao pode
+          // reconfigurar o encoder a cada passo).
+          const vsBaseKind = parseKind(msg.kind).baseKind;
+          if (vsBaseKind === 'screen') {
+            const antes = qualityForPeer(msg.from, msg.kind).preset;
+            (vsPeer.viewWidth ||= {}).screen = peerquality.normViewWidth(msg.maxWidth);
+            if (qualityForPeer(msg.from, msg.kind).preset !== antes) reapplyAudienceQuality();
+          }
           const rh = normalizeReceiveHealth(msg.receiveHealth);
           (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
             rh ? { ...rh, atMs: Date.now() } : null;
@@ -5468,6 +5534,179 @@
 
   ui.grid.onWatchIntent(applyWatchIntent);
 
+  /** Quero o video desta tela/camera? Na vista Mesa, manda a mesa: a janela
+   * aparece na tela (com a carencia de 2 s para sair, mesa-vista.js) -- e a
+   * camera que a pessoa largou pelo menu continua largada. Na Transmissao,
+   * a regra de sempre (uma tela por vez, cameras opt-out). */
+  function wantsMedia(baseKind, origem) {
+    const naMesa = mesaView?.wants(baseKind === 'camera' ? 'camera' : 'screen', origem) ?? null;
+    if (naMesa !== null) return naMesa && (baseKind !== 'camera' || watchingCamera(origem));
+    return baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+  }
+
+  // ---------- Mesa: a vista de cada pessoa ----------
+  //
+  // Transmissao e Mesa sao VISTAS (decisoes do dono no contrato da Mesa,
+  // secao 0): cada um troca na propria tela, sem afetar ninguem. Na
+  // Transmissao nada da Mesa existe no DOM nem roda; `mesaView.open()` monta
+  // tudo e pede o retrato, `close()` desmonta e devolve as telas ao palco.
+
+  /** Id do tile do palco para a tela/camera de alguem (o mesmo espaco de
+   * ids de showTile: 'me'/'cam-me' para as minhas). */
+  function mesaTileId(kind, peerId) {
+    const mine = String(peerId) === String(myId);
+    if (kind === 'camera') return mine ? 'cam-me' : `cam-${peerId}`;
+    return mine ? 'me' : String(peerId);
+  }
+
+  function mesaPeerName(id) {
+    if (id == null) return 'Alguém';
+    if (String(id) === String(myId)) return cfg.name || 'Você';
+    const peer = (currentSession || orphanSession)?.mesh?.peers.get(String(id));
+    return peer?.name || 'Alguém';
+  }
+
+  mesaView = window.GoLive.mesaView.create({
+    grid: ui.grid.element(),
+    send: (msg) => {
+      const session = currentSession;
+      if (!session?.sig?.isOpen()) return false;
+      session.sig.send(msg);
+      return true;
+    },
+    me: () => myId,
+    isLeader: () => ownerId === 'me',
+    peers: () => {
+      const out = myId != null ? [{ id: String(myId), name: cfg.name || 'Você' }] : [];
+      for (const p of currentSession?.mesh?.peers.values() || []) out.push({ id: String(p.id), name: p.name });
+      return out;
+    },
+    nameOf: mesaPeerName,
+    colorFor: (id) => annotate.colorFor(id),
+    avatarOf: (id) => (String(id) === String(myId) ? cfg.avatar || null : currentSession?.mesh?.peers.get(String(id))?.avatar || null),
+    viewers: () => mesaViewers,
+    tileIdFor: mesaTileId,
+    tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
+    returnTile: ui.grid.returnTile,
+    resyncGrid: ui.grid.resync,
+    onWatchChange: () => broadcastViewState(),
+    onOpenChange: (on) => {
+      document.body.classList.toggle('mesa-open', on);
+      $('btn-mesa-add').classList.toggle('hidden', !on);
+      renderViewSwitch();
+      renderRoomMore();
+    },
+    onLocksChange: () => renderRoomMore(),
+    setFullScreen: (on) => window.golive.setFullScreen(on),
+  });
+  ui.grid.onTileShown((id) => mesaView.onTile(id));
+  window.golive.onFullScreenChange((on) => mesaView.onFullScreenChange(on));
+
+  const viewButtons = [$('view-tx'), $('view-mesa')];
+
+  function setRoomView(view) {
+    if (view === 'mesa') mesaView.open();
+    else mesaView.close();
+    renderViewSwitch();
+  }
+
+  function renderViewSwitch() {
+    const naMesa = Boolean(mesaView?.isOpen());
+    for (const b of viewButtons) {
+      const on = (b.dataset.view === 'mesa') === naMesa;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    // Quem esta na Transmissao ve que a mesa tem janelas (mesa-count).
+    const count = $('view-mesa-count');
+    count.textContent = mesaCount > 0 ? String(mesaCount) : '';
+    count.classList.toggle('hidden', !(mesaCount > 0));
+    $('view-mesa').setAttribute('aria-label', mesaCount > 0 ? `Mesa, ${mesaCount} ${mesaCount === 1 ? 'janela' : 'janelas'}` : 'Mesa');
+  }
+
+  viewButtons.forEach((b, i) => {
+    b.addEventListener('click', () => setRoomView(b.dataset.view));
+    // radiogroup: setas trocam e escolhem (padrao ARIA).
+    b.addEventListener('keydown', (e) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      e.preventDefault();
+      const next = viewButtons[(i + 1) % viewButtons.length];
+      setRoomView(next.dataset.view);
+      next.focus();
+    });
+  });
+
+  $('btn-mesa-add').addEventListener('click', (e) => {
+    e.stopPropagation();
+    mesaView.openAddMenu($('btn-mesa-add'));
+  });
+
+  // Menu "..." da sala: as duas travas do lider (so aparecem para ele) e os
+  // ponteiros das pessoas (de cada um).
+  const MESA_CURSORS_KEY = 'golive.mesa.ponteiros';
+  try {
+    if (localStorage.getItem(MESA_CURSORS_KEY) === '0') mesaView.setShowCursors(false);
+  } catch {
+    // armazenamento indisponivel: fica o padrao (mostrar)
+  }
+
+  function renderRoomMore() {
+    const leader = ownerId === 'me';
+    const locks = mesaView?.locks() || null;
+    $('opt-mesa-leader-only-row').classList.toggle('hidden', !leader);
+    $('opt-mesa-lock-size-row').classList.toggle('hidden', !leader);
+    // As travas so sao conhecidas com a Mesa aberta (quem esta na
+    // Transmissao nao recebe a mesa): fora dela, o motivo no lugar.
+    $('opt-mesa-locks-hint').classList.toggle('hidden', !leader || Boolean(locks));
+    for (const [id, key] of [['opt-mesa-leader-only', 'leaderOnly'], ['opt-mesa-lock-size', 'lockSize']]) {
+      const box = $(id);
+      box.disabled = !locks;
+      box.checked = Boolean(locks?.[key]);
+    }
+    $('opt-mesa-cursors').checked = Boolean(mesaView?.showsCursors());
+  }
+
+  function setRoomMoreOpen(open) {
+    $('room-more').classList.toggle('hidden', !open);
+    $('btn-room-more').setAttribute('aria-expanded', String(open));
+    if (open) renderRoomMore();
+  }
+
+  $('btn-room-more').addEventListener('click', (e) => {
+    e.stopPropagation();
+    setRoomMoreOpen($('room-more').classList.contains('hidden'));
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest?.('.room-more-wrap')) setRoomMoreOpen(false);
+  });
+  $('room-more').addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    setRoomMoreOpen(false);
+    $('btn-room-more').focus();
+  });
+  $('opt-mesa-leader-only').addEventListener('change', (e) => mesaView.setLock('leaderOnly', e.target.checked));
+  $('opt-mesa-lock-size').addEventListener('change', (e) => mesaView.setLock('lockSize', e.target.checked));
+  $('opt-mesa-cursors').addEventListener('change', (e) => {
+    mesaView.setShowCursors(e.target.checked);
+    try {
+      localStorage.setItem(MESA_CURSORS_KEY, e.target.checked ? '1' : '0');
+    } catch {
+      // sem armazenamento: vale so ate fechar o app
+    }
+  });
+
+  // A sala saiu da tela (Sair da sala, sala fechada, entrada recusada): a
+  // Mesa desmonta sem avisar ninguem e a proxima sala abre na Transmissao.
+  document.addEventListener('golive:room-hidden', () => {
+    mesaView.close({ silent: true });
+    mesaViewers = [];
+    mesaCount = 0;
+    setRoomMoreOpen(false);
+    renderViewSwitch();
+  });
+  renderViewSwitch();
+
   // Avisa cada transmissor de quem estamos recebendo se ainda estamos ou nao
   // olhando. Peer que nunca recebeu um 'view-state' conta como assistindo --
   // padrao seguro. Quando esta sessao e RELAY do peer em questao (F2), o
@@ -5499,7 +5738,7 @@
       // camera tem defaults opostos -- tela e opt-in (watchedScreens),
       // camera e opt-out (unwatchedCameras) -- mas dos dois da pra sair.
       const origem = sourceId || peerId;
-      const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+      const querendo = wantsMedia(baseKind, origem);
       // Um relay que nao esta assistindo continua RECEBENDO: cortar aqui
       // cortaria junto os filhos que estao. E o mesmo motivo de a janela
       // minimizada nao poder cortar -- so que agora vale pra duas causas.
@@ -5525,7 +5764,11 @@
         lastViewStateSent.set(vsChave, vsValor);
         console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${looking}`);
       }
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
+      // Mesa: a largura da janela desta tela na minha vista vira teto de
+      // qualidade do lado de quem manda (peerquality.capForWidth). Fora da
+      // Mesa (ou relay com filhos atras de mim), sem teto.
+      const maxWidth = baseKind === 'screen' && !anyFolhaWatching ? mesaView?.widthFor('screen', origem) ?? null : null;
+      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, maxWidth, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
     }
   }
 
