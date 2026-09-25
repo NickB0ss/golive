@@ -133,7 +133,6 @@
       const peca = casa.querySelector('.mj-peca');
       if (!peca || !opts.podePegar(casa)) return;
       ativo = { casa, peca, x: e.clientX, y: e.clientY, id: e.pointerId, movendo: false };
-      try { placa.setPointerCapture(e.pointerId); } catch { /* sem captura, segue */ }
     });
     placa.addEventListener('pointermove', (e) => {
       if (!ativo || e.pointerId !== ativo.id) return;
@@ -142,6 +141,9 @@
       if (!ativo.movendo && Math.hypot(dx, dy) < 5) return;
       if (!ativo.movendo) {
         ativo.movendo = true;
+        // A captura so quando o arraste comeca: com ela desde o toque, o
+        // clique simples iria para a placa e nao para a casa.
+        try { placa.setPointerCapture(e.pointerId); } catch { /* sem captura, segue */ }
         ativo.peca.classList.add('is-arrastando');
         opts.aoPegar(ativo.casa);
       }
