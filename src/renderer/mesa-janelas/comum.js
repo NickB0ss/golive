@@ -111,6 +111,7 @@
     embaralhar: '<path d="M4 7h3l10 10h3M4 17h3l3-3M14 10l3-3h3M18 4l3 3-3 3M18 14l3 3-3 3"/>',
     pessoas: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 11a3 3 0 1 0 0-6M21 20a6 6 0 0 0-4-5.6"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
+    bandeira: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   };
 
   function icone(nome) {
