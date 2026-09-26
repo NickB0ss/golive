@@ -1644,3 +1644,44 @@
   .mj-bj .mj-bj-mao .mj-carta-p { --mj-carta-w: 40px; }
   .mj-bj-banca .mj-carta-m { --mj-carta-w: 60px; }
 }
+
+/* === quadro === */
+/* Folha em branco (contrato, secao 10): barra de ferramentas fixa em cima,
+   o canvas ocupa o resto. Sem @container aqui -- nada de secundario pra
+   esconder num tamanho pequeno; a propria barra encolhe (texto some antes
+   dos botoes na largura minima da janela). */
+.mj-quadro { padding: var(--s-2); gap: var(--s-2); }
+.mj-qd-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+.mj .mj-qd-ferr, .mj .mj-qd-acao { min-height: 32px; padding: 0 var(--s-2); font-size: var(--fs-small); }
+.mj .mj-qd-ferr.is-on { background: var(--act); border-color: var(--act); color: var(--on-act); }
+.mj-qd-paleta { display: flex; align-items: center; gap: var(--s-05); padding: 0 var(--s-1); }
+.mj-qd-cor {
+  width: 18px; height: 18px; flex: none;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--r-full);
+  background: var(--mj-cor);
+  box-shadow: inset 0 0 0 1px var(--scrim-1);
+  cursor: pointer;
+}
+.mj-qd-cor.is-on { border-color: var(--tx); }
+.mj-qd-palco {
+  position: relative;
+  flex: 1; min-height: 0;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  touch-action: none;
+}
+.mj-qd-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.mj-qd-texto-input {
+  position: absolute;
+  min-width: 120px;
+  padding: 2px var(--s-1);
+  background: var(--s2);
+  border: 1px dashed var(--line2);
+  border-radius: var(--r-xs);
+  font: inherit;
+  font-size: var(--fs-body);
+}

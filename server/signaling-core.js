@@ -247,6 +247,22 @@ function surfaceOwner(surfaceId) {
   return SURFACE_KINDS.has(raw.slice(at + 1)) ? raw.slice(0, at) : raw;
 }
 
+// Rabisco de uma janela da Mesa (Quadro, Desenha e adivinha -- contrato,
+// secao 10): a superficie deixa de ser "tela/camera de uma pessoa" e vira
+// 'mesa:<id da janela>'. So existe enquanto a janela existir na mesa: uma
+// vez fechada, `annotateMesaWindow` (abaixo, dentro de createSignalingServer,
+// que enxerga `mesaState`) devolve null e o servidor para de repassar
+// qualquer coisa para aquela chave -- e o que faz o traco "sumir do
+// servidor" ao fechar a janela (o servidor nunca guardou o traco, so parava
+// de aceitar endereca-lo). Espelho de `parseSurface`/`surfaceOwner` acima:
+// so aceita o formato exato, nunca inventa um dono/janela que nao existe.
+const MESA_SURFACE_RE = /^mesa:([A-Za-z0-9_-]{1,32})$/;
+
+function mesaSurfaceWindowId(surfaceId) {
+  const m = typeof surfaceId === 'string' ? MESA_SURFACE_RE.exec(surfaceId) : null;
+  return m ? m[1] : null;
+}
+
 // Cor do pincel: ou e um #rrggbb, ou o campo nao existe e o traco cai na cor
 // derivada de quem desenhou (colorOf em annotate.js). Nada de "consertar" o
 // que veio torto -- valor invalido some, nunca vira um valor inventado.
@@ -836,6 +852,37 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
     function broadcastToMesa(room, exceptId, payload) {
       for (const [pid, peer] of peers) {
         if (peer.room === room && peer.mesaView && pid !== exceptId) send(peer.ws, payload);
+      }
+    }
+
+    // ---- Rabisco em janela da Mesa (contrato, secao 10: "Quadro") -------
+    //
+    // Extensao do contrato de modulo (secao 1): um tipo pode declarar
+    // `annotate: true` para aceitar o canal de rabisco na propria
+    // superficie ('mesa:<id>'). `canAnnotateDraw(state, from, ctx)` decide
+    // quem pode desenhar AGORA (sem ela, qualquer um na Mesa pode -- e o
+    // padrao do Quadro); `canAnnotateClear(state, from, ctx)` decide quem
+    // pode apagar tudo (sem ela, ninguem pode -- limpar sem dono nem lider
+    // seria "qualquer um apaga o desenho dos outros"). As duas sao puras,
+    // do mesmo jeito que `validate`: excecao vira recusa silenciosa, nunca
+    // queda da sala.
+
+    /** Janela viva do tipo certo, ou null (janela fechada ou tipo sem
+     * rabisco) -- e o unico ponto que decide se uma superficie 'mesa:<id>'
+     * ainda existe. */
+    function annotateMesaWindow(wid) {
+      const win = mesaState.mesa.windows.find((w) => w.id === wid);
+      if (!win) return null;
+      const mod = mesaRegistry.get(win.type);
+      return mod && mod.annotate === true ? win : null;
+    }
+
+    function safeAnnotateCheck(mod, name, fn) {
+      try {
+        return fn() === true;
+      } catch {
+        log(`mesa: modulo ${JSON.stringify(mod.type)} lancou em ${name}`);
+        return false;
       }
     }
 
@@ -1778,14 +1825,35 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               const limiter = annotateLimiters.get(peerId) || createRateLimiter({ limit: MAX_ANNOTATE_PER_SECOND, windowMs: 1000 });
               annotateLimiters.set(peerId, limiter);
               if (!limiter.hit(Date.now())) return; // estoura em silencio, igual ao chat
+              const op = sanitizeAnnotateOp(msg);
+              if (!op) return;
+              const wid = mesaSurfaceWindowId(msg.surface);
+              if (wid !== null) {
+                // Janela da Mesa: so quem esta na vista Mesa fala aqui, e so
+                // pra quem tambem esta na Mesa (broadcastToMesa) -- quem esta
+                // na Transmissao nem monta esta janela, nem precisa do traco.
+                if (!me.mesaView) return;
+                const win = annotateMesaWindow(wid);
+                if (!win) return; // janela fechada (ou tipo sem rabisco): a superficie nao existe mais
+                const mod = mesaRegistry.get(win.type);
+                const ctx = { isLeader: me.owner === true, peers: mesaPeersCtx(me.room) };
+                if (op.op === 'clear' && op.scope === 'all') {
+                  const pode = typeof mod.canAnnotateClear === 'function'
+                    && safeAnnotateCheck(mod, 'canAnnotateClear', () => mod.canAnnotateClear(win.state, peerId, ctx));
+                  if (!pode) return;
+                } else if (typeof mod.canAnnotateDraw === 'function'
+                  && !safeAnnotateCheck(mod, 'canAnnotateDraw', () => mod.canAnnotateDraw(win.state, peerId, ctx))) {
+                  return;
+                }
+                broadcastToMesa(me.room, peerId, { ...op, type: 'annotate', surface: String(msg.surface), from: peerId });
+                break;
+              }
               // A chave e '<dono>:<kind>', nao o id cru: procurar a chave
               // inteira na tabela de peers nunca acha ninguem, e TODA op cai
               // neste `return` -- o rabisco parava aqui, em silencio, com a
               // cara de "tela de quem nao esta na sala". Ver surfaceOwner.
               const surface = peers.get(surfaceOwner(msg.surface));
               if (!surface || surface.room !== me.room) return; // tela de quem nao esta nesta sala
-              const op = sanitizeAnnotateOp(msg);
-              if (!op) return;
               broadcastToRoom(me.room, peerId, { ...op, type: 'annotate', surface: String(msg.surface), from: peerId });
               break;
             }
@@ -1829,10 +1897,20 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               const me = peers.get(peerId);
               if (!me || typeof msg.to !== 'string' || !CONNECTION_ID_RE.test(msg.to)) return;
               const target = peers.get(msg.to);
-              const surface = parseSurface(msg.surface);
-              if (!target || me.room !== target.room || !surface) return;
-              const owner = peers.get(surface.ownerId);
-              if (!owner || owner.room !== me.room || !Array.isArray(msg.items)) return;
+              if (!target || me.room !== target.room || !Array.isArray(msg.items)) return;
+              let surfaceOut;
+              const wid = mesaSurfaceWindowId(msg.surface);
+              if (wid !== null) {
+                // Janela da Mesa: o snapshot so faz sentido entre quem esta
+                // na vista Mesa, e so enquanto a janela existir.
+                if (!me.mesaView || !target.mesaView || !annotateMesaWindow(wid)) return;
+                surfaceOut = String(msg.surface);
+              } else {
+                const surface = parseSurface(msg.surface);
+                const owner = surface ? peers.get(surface.ownerId) : null;
+                if (!owner || owner.room !== me.room) return;
+                surfaceOut = surface.surface;
+              }
               // Um snapshot sai para cada peer-joined. Balde por remetente
               // comporta uma sala inteira entrando junta, mas repoe so 2/s.
               const limiter = annotateSyncLimiters.get(peerId) || createBurstLimiter({ capacity: MAX_CONNECTIONS, refillMs: 500 });
@@ -1846,7 +1924,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               send(target.ws, {
                 type: 'annotate-sync',
                 from: peerId,
-                surface: surface.surface,
+                surface: surfaceOut,
                 items,
               });
               break;

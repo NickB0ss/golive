@@ -30,7 +30,7 @@
     // Assistir junto
     'youtube', 'radio', 'aovivo',
     // Ferramentas
-    'nota', 'lista', 'enquete', 'imagem', 'galeria',
+    'nota', 'lista', 'enquete', 'imagem', 'galeria', 'quadro',
     // Noite de jogo
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
