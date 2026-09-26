@@ -285,6 +285,7 @@ dos `<script>` é: `vendor/chess.js`, `mesa-modules/cadeiras.js`, os módulos,
 | lig4 | 420×360 (7/6) | `sit`, `stand`, `reset`, `move {col: 0..6}` |
 | damas | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {path: [[l,c],...]}`; `legalMoves(state)` |
 | xadrez | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {from, to, promotion?}` |
+| batalha (secret, seção 8) | 720×460 (livre) | `sit`, `stand`, `shuffle`, `ready`, `fire {cell: 0..99}`, `timeout`, `resign`, `reset` |
 
 Todos exportam `dropPeer(state, peerId)` e `summary(state, peers?)`; o estado
 guarda `names` junto de `seats`.
@@ -357,6 +358,70 @@ ele, por `view(state, null)`): o servidor novo não pode receber segredo
 (o retrato vai para todos). Regra dos jogos de cartas: **a mão em andamento
 é cancelada e as apostas voltam** para quem apostou; as fichas e as
 cadeiras ficam.
+
+### Como o time Segredo implementou (2026-09-26)
+
+O que mudou em relação ao texto acima, e o que os times de cartas usam:
+
+- **Assinatura**: `view(state, peerId, ctx)`, com `ctx = { peers: [{ id, name }] }`
+  (quem está na sala agora). `peerId` é o id de quem recebe (sentado ou só
+  assistindo); `null` só na migração sem `migrate`. `init`/`prepare`
+  continuam com `ctx.peers` como na seção 1. O registro confere: `secret`
+  booleano, `secret: true` exige `view`; `migrate`, `timeoutAt` e
+  `dropPeer`, se existirem, são funções. O módulo conferido ganha
+  `secret: false|true`.
+- **Eco de `add` de janela secret**: continua `op: 'add'` (o cliente precisa
+  de `id`, `type` e retângulo), mas `win.state` é a `view` de quem recebe.
+  O de `act` é, para cada pessoa na Mesa, com o mesmo `seq`:
+  `{ type: 'mesa', op: 'state', id, seq, by, isLeader, state }` — **sem**
+  `action` (o `prepare` pode ter posto carta dada nela). `mesa-ack` não
+  muda.
+- **`timeout`**: o servidor confere **antes** do `validate` do módulo, para
+  qualquer módulo: sem `timeoutAt` ou prazo `null` → `invalid` com
+  `detail: 'Sem prazo'`; `Date.now()` do servidor menor que o prazo →
+  `mesa-denied` com **`reason: 'early', at: <prazo>`**. Depois passa pelo
+  `validate` e pelo `prepare` como toda ação (o `prepare` recebe
+  `ctx.now` e `ctx.random`: é onde o jogo decide o que o tempo esgotado
+  faz). O conteúdo **não mostra** a recusa `early` (outra pessoa mandou
+  antes, ou o relógio dela está adiantado): a batalha filtra no
+  `onDenied`, e manda de novo 2 s depois se o prazo não mudou. Para não
+  chover `timeout`, a batalha manda na hora só pelo adversário de quem
+  estourou; os outros esperam 3 s a mais.
+- **Quem sai de vez**: vale para **todo** módulo com `dropPeer`. O servidor
+  chama no único caminho de saída (`removePeer`: close limpo, fim da janela
+  de retomada, expulsão, fantasma do mesmo `clientId`), depois do
+  `peer-left`. Quem cai (1006) e volta dentro da janela de retomada
+  continua sentado. Estado igual (JSON) não manda nada. Não secret:
+  `{ type: 'mesa', op: 'drop', id, seq, by: peer, peer }`, e o
+  `applyMessage` chama o mesmo `dropPeer(state, peer)` (sem `dropPeer`, ou
+  se ele lançar, o cliente pede sync). Secret: `op: 'state'` com a `view`
+  de cada um e também `peer`.
+- **`mesa-sync`**: cada janela secret vai com a `view` de quem pediu.
+- **Migração**: `room-migrating.mesa` passa cada janela secret por
+  `migrate(state)` (sem ele, `view(state, null, { peers: [] })`); se lançar,
+  a janela **não migra**. O resultado tem de ser um estado inteiro válido
+  para o `reduce` do servidor novo (ele é a semente). Os ids das pessoas
+  mudam na migração: trate cadeira de quem não está em `ctx.peers` como
+  livre no `validate` e na `view` (a batalha faz assim).
+- **Teto**: `maxStateBytes` confere o estado inteiro do servidor (depois do
+  `init`, do `reduce` e do `dropPeer`), não a `view`.
+- **Cliente**: `applyMessage` aplica `op: 'state'` (troca o estado, sem
+  `reduce`) e `op: 'drop'`; a Vista chama `update(state, { by, isLeader })`
+  nos dois, igual ao `act`. `api.validate` de janela secret devolve
+  `true`; a interface liga os botões pelo que veio pronto na `view`.
+  A moldura dos tabuleiros (`tabuleiro.js`) aceita `opts.pode(action)`
+  para isso.
+- **Prova**: `batalha` ("Batalha naval", grupo `jogos`, 720×460, aspecto
+  livre). Estado inteiro com `fleets` (5 navios: 5, 4, 3, 3, 2, retos, sem
+  se encostar, sorteados no `prepare` ao sentar, em "Sortear de novo" e em
+  "Nova partida"), `ready`, `shots`, `turn`, `deadline` (60 s por tiro;
+  estourou, o tiro sai numa casa sorteada), `result`. A `view` tem
+  `boards[i] = { shots: [[casa, acertou]], ships (os do dono; os
+  afundados; todos no fim), left, hasFleet }` e `me = { seat, can: { sit:
+  [a, b], stand, shuffle, ready, fire, resign, reset } }`. O teste
+  `server/signaling-mesa-segredo-e2e.test.js` confere, mensagem por
+  mensagem, que o socket de quem não é dono nunca recebe um navio que não
+  afundou (ecos, `mesa-sync`, `room-migrating`).
 
 ## 9. Regras clássicas dos jogos de cartas (decididas em 2026-09-25)
 

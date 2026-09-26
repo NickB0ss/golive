@@ -34,7 +34,7 @@
     // Noite de jogo
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
-    'velha', 'lig4', 'damas', 'xadrez',
+    'velha', 'lig4', 'damas', 'xadrez', 'batalha',
   ]);
 
   // Arquivos de apoio da pasta que NAO sao tipo de janela: os modulos que
@@ -105,14 +105,19 @@
     if (!media && (typeof mod.validate !== 'function' || typeof mod.reduce !== 'function')) {
       return { ok: false, reason: 'sem validate/reduce' };
     }
-    for (const opt of ['prepare', 'view']) {
+    for (const opt of ['prepare', 'view', 'migrate', 'timeoutAt', 'dropPeer']) {
       if (mod[opt] != null && typeof mod[opt] !== 'function') return { ok: false, reason: `${opt} não é função` };
     }
+    // Informacao escondida (contrato, secao 8): sem `view` o servidor nao
+    // teria como mandar o estado sem o segredo.
+    if (mod.secret != null && typeof mod.secret !== 'boolean') return { ok: false, reason: 'secret inválido' };
+    if (mod.secret === true && typeof mod.view !== 'function') return { ok: false, reason: 'secret sem view' };
     const maxStateBytes = Math.max(MIN_STATE_BYTES, Math.min(MAX_STATE_BYTES_CAP, Math.floor(mod.maxStateBytes)));
     const module = Object.freeze({
       ...mod,
       group: media ? null : mod.group,
       media,
+      secret: mod.secret === true,
       size: Object.freeze({ ...size, aspect: size.aspect == null ? null : size.aspect }),
       maxStateBytes,
     });

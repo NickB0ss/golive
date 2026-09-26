@@ -66,11 +66,22 @@ test('checkModule recusa o que foge do contrato', () => {
     [{ init: null }, 'init'],
     [{ reduce: undefined }, 'reduce'],
     [{ prepare: 'x' }, 'prepare'],
+    [{ secret: true }, 'secret sem view'],
+    [{ secret: 'sim', view: () => ({}) }, 'secret'],
+    [{ migrate: 1 }, 'migrate'],
+    [{ timeoutAt: {} }, 'timeoutAt'],
   ]) {
     const res = registry.checkModule(modulo(extra));
     assert.equal(res.ok, false, motivo);
   }
   assert.equal(registry.checkModule(null).ok, false);
+});
+
+test('checkModule marca secret so quando o modulo tem view', () => {
+  assert.equal(registry.checkModule(modulo()).module.secret, false);
+  const res = registry.checkModule(modulo({ secret: true, view: (st) => st, migrate: (st) => st, timeoutAt: () => null }));
+  assert.equal(res.ok, true);
+  assert.equal(res.module.secret, true);
 });
 
 test('checkModule aplica o teto do estado', () => {

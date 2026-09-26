@@ -855,9 +855,103 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
      * pegar a janela e levar um `held` sem aviso nenhum antes. As vezes
      * ficam FORA de `mesa` de proposito: nao sao estado da sala (nao migram,
      * nao tem seq), so o que esta acontecendo agora. */
-    function mesaSyncMsg() {
+    function mesaSyncMsg(pid) {
       const grabs = mesaGrabs.list(Date.now()).map(({ id, by }) => ({ id, by }));
-      return { type: 'mesa-sync', mesa: mesaModel.snapshot(mesaState), grabs };
+      const room = peers.get(pid)?.room ?? null;
+      const mesa = mesaModel.snapshot(mesaState);
+      // Janela `secret` (contrato, secao 8): cada um recebe so a sua vista.
+      mesa.windows = mesa.windows.map((w) => {
+        const mod = secretModOf(w.type);
+        return mod ? { ...w, state: viewFor(mod, w.state, pid, room) } : w;
+      });
+      return { type: 'mesa-sync', mesa, grabs };
+    }
+
+    // ---- Informacao escondida (contrato, secao 8) ----------------------
+    //
+    // Modulo `secret` (cartas, palavra secreta): o estado inteiro so existe
+    // aqui. Todo estado que sai do servidor -- eco de add/act/drop,
+    // mesa-sync, room-migrating -- passa antes pelo `view` (por pessoa) ou
+    // pelo `migrate`. O segredo nunca atravessa o fio, nem para o lider,
+    // nem para quem hospeda, nem para o sucessor da migracao.
+
+    function secretModOf(type) {
+      const mod = mesaRegistry.get(type);
+      return mod && mod.secret === true ? mod : null;
+    }
+
+    /** O que `pid` (null = quem so assiste) pode ver. Excecao ou valor que
+     * nao vira JSON vira null -- nunca o estado inteiro. */
+    function viewFor(mod, state, pid, room) {
+      try {
+        const v = mesaModel.cloneJson(mod.view(state, pid ?? null, { peers: room ? mesaPeersCtx(room) : [] }));
+        return v === undefined ? null : v;
+      } catch {
+        log(`mesa: modulo ${JSON.stringify(mod.type)} lancou em view`);
+        return null;
+      }
+    }
+
+    /** O eco de uma operacao aceita numa janela secret, para uma pessoa:
+     * `add` leva a janela com o estado ja filtrado; `act` e `drop` viram
+     * `op: 'state'` (sem a acao, que pode trazer carta dada no prepare). */
+    function secretEcho(full, win, mod, pid, room) {
+      const state = viewFor(mod, win.state, pid, room);
+      if (full.op === 'add') return { ...full, win: { ...full.win, state } };
+      const out = { type: 'mesa', op: 'state', id: full.id, seq: full.seq, by: full.by ?? null, isLeader: full.isLeader === true, state };
+      if (full.op === 'drop') out.peer = full.peer;
+      return out;
+    }
+
+    /** Retrato da mesa para o room-migrating: vai para TODOS da sala, e o
+     * servidor novo o semeia. Janela secret passa por `migrate` (ou, sem
+     * ele, pelo `view` de quem so assiste); se o modulo lancar, a janela
+     * fica de fora -- melhor perder a partida que vazar o segredo. */
+    function migrationMesa() {
+      const mesa = mesaModel.snapshot(mesaState);
+      const windows = [];
+      for (const w of mesa.windows) {
+        const mod = secretModOf(w.type);
+        if (!mod) {
+          windows.push(w);
+          continue;
+        }
+        let state;
+        try {
+          state = mesaModel.cloneJson(typeof mod.migrate === 'function' ? mod.migrate(w.state) : mod.view(w.state, null, { peers: [] }));
+        } catch {
+          state = undefined;
+        }
+        if (state === undefined) {
+          log(`mesa: modulo ${JSON.stringify(mod.type)} falhou em migrate; a janela nao migra`);
+          continue;
+        }
+        windows.push({ ...w, state });
+      }
+      return { ...mesa, windows, idFloor: nextId };
+    }
+
+    /** Quem saiu da sala de vez (o fim da janela de retomada ou o close
+     * limpo) larga o que tinha nas janelas: cadeira, mao, vez. O servidor
+     * chama o `dropPeer` de cada modulo que tem um e, se o estado mudou,
+     * manda `op: 'drop'` (os clientes aplicam o mesmo dropPeer) ou, na
+     * janela secret, `op: 'state'` com a vista de cada um. */
+    function dropPeerFromMesa(room, pid) {
+      for (const win of mesaState.mesa.windows.slice()) {
+        const mod = mesaRegistry.get(win.type);
+        if (!mod || typeof mod.dropPeer !== 'function') continue;
+        let after;
+        try {
+          after = mesaModel.cloneJson(mod.dropPeer(win.state, pid));
+        } catch {
+          log(`mesa: modulo ${JSON.stringify(mod.type)} lancou em dropPeer`);
+          continue;
+        }
+        if (after === undefined || JSON.stringify(after) === JSON.stringify(win.state)) continue;
+        if (mesaModel.jsonBytes(after) > mod.maxStateBytes) continue;
+        const cand = mesaCandidate({ op: 'drop', id: win.id, peer: pid, by: pid });
+        if (cand) commitMesa(room, cand);
+      }
     }
 
     function setMesaView(pid, on) {
@@ -865,7 +959,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       if (!peer) return;
       const was = peer.mesaView === true;
       peer.mesaView = on;
-      if (on) send(peer.ws, mesaSyncMsg());
+      if (on) send(peer.ws, mesaSyncMsg(pid));
       else releaseMesaGrabsOf(peer.room, pid);
       if (was !== on) announceMesaViewers(peer.room);
     }
@@ -904,7 +998,18 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
     function commitMesa(room, cand, author = null) {
       const before = mesaState.mesa.windows.length;
       mesaState = cand.state;
-      broadcastToMesa(room, null, cand.full);
+      const f0 = cand.full;
+      const target = f0.op === 'add' ? f0.win
+        : (f0.op === 'act' || f0.op === 'drop') ? mesaState.mesa.windows.find((w) => w.id === f0.id) : null;
+      const secret = target ? secretModOf(target.type) : null;
+      if (secret) {
+        // Mesmo seq para todos, cada um com a sua vista.
+        for (const [pid, peer] of peers) {
+          if (peer.room === room && peer.mesaView) send(peer.ws, secretEcho(f0, target, secret, pid, room));
+        }
+      } else {
+        broadcastToMesa(room, null, f0);
+      }
       const count = mesaState.mesa.windows.length;
       if (count !== before) broadcastToRoom(room, null, { type: 'mesa-count', count });
       const who = author ? peers.get(author) : null;
@@ -1045,6 +1150,18 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           if (mesaModel.jsonBytes(raw) > MAX_MESA_ACTION_BYTES) return deny('too-big');
           const action = mesaModel.cloneJson(raw);
           const c = ctx();
+          // Tempo esgotado (contrato, secao 8): quem decide e a hora DESTE
+          // servidor. O cliente manda quando o relogio da sala dele passa do
+          // prazo; chegou cedo (relogio adiantado, ou alguem apressado), volta
+          // `early` com o prazo em `at`. O primeiro que chega depois do prazo
+          // vale; o reduce empurra o prazo e o segundo ja chega cedo.
+          if (action.kind === 'timeout') {
+            if (typeof mod.timeoutAt !== 'function') return deny('invalid', { detail: 'Sem prazo' });
+            const at = guard('timeoutAt', mod.type, () => mod.timeoutAt(win.state));
+            if (!at.ok) return deny('error');
+            if (typeof at.value !== 'number' || !Number.isFinite(at.value)) return deny('invalid', { detail: 'Sem prazo' });
+            if (now < at.value) return deny('early', { at: at.value });
+          }
           // validate ve a acao como o cliente mandou (o cliente chama o
           // mesmo validate para desligar botoes, sem prepare); prepare poe
           // sorte e hora depois; reduce so le o que veio na acao.
@@ -1190,11 +1307,14 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       // ficaria sem ninguem podendo moderar, com a sala aberta pra
       // rede. A lideranca volta pra quem criou a sala.
       if (me.owner && transferredTo && !keepOwnership) reclaimOwnership(me.room);
-      // Mesa: solta as vezes de quem saiu e tira a tela e a camera dele. As
-      // outras janelas que ele pos ficam (sao da sala).
+      // Mesa: solta as vezes de quem saiu, tira a tela e a camera dele e o
+      // tira das janelas (cadeira, mao: dropPeer). As outras janelas que
+      // ele pos ficam (sao da sala). Retomada nao passa por aqui: quem esta
+      // suspenso continua sentado ate a janela de retomada acabar.
       if (!closingRoom) {
         releaseMesaGrabsOf(me.room, peerId);
         removeMediaWindows(me.room, peerId, ['tela', 'camera']);
+        dropPeerFromMesa(me.room, peerId);
         if (me.mesaView) announceMesaViewers(me.room);
       }
       // Quem saiu (ou foi expulso/banido) conhecia o segredo atual: rotaciona
@@ -1861,7 +1981,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
             case 'mesa-sync': {
               const me = peers.get(peerId);
               if (!me || !mesaHit(peerId, 'sync')) return;
-              send(ws, mesaSyncMsg());
+              send(ws, mesaSyncMsg(peerId));
               break;
             }
 
@@ -1998,8 +2118,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               bans: listBans(),
               chat: chatHistory.slice(),
               // A mesa vai inteira (o sucessor a semeia como initialMesa) com
-              // o piso de ids: ver seedIdFloor.
-              mesa: { ...mesaModel.snapshot(mesaState), idFloor: nextId },
+              // o piso de ids (ver seedIdFloor) -- menos o segredo das janelas
+              // secret, que passa por migrate (ver migrationMesa).
+              mesa: migrationMesa(),
             });
           }
           log(`sala encerrada: room-closed para ${wss.clients.size} conexao(oes)`);

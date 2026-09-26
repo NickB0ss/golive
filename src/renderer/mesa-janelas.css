@@ -1060,3 +1060,82 @@
 }
 .mj-carta-naipe { font-size: calc(var(--mj-carta-w) * 0.5); }
 .mj-mao { display: inline-flex; gap: var(--s-1); flex-wrap: wrap; }
+
+/* ---------- Batalha naval ----------
+   Dois mares de 10x10 lado a lado (um em cima do outro quando a janela e
+   mais alta que larga). Agua em --s2; navio num cinza entre --s2 e --tx3
+   (--s4 some no tema escuro); acerto e navio afundado com o X em
+   --danger-soft (a unica cor forte: fogo); tiro na agua e um ponto em
+   --tx3. O mar onde se atira ganha o contorno --on-line. --good nao: ele e
+   o --live. */
+
+.mj-batalha .mj-amostra { background: var(--s3); color: var(--tx2); }
+.mj-batalha .mj-cadeira.is-pronta { box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-batalha .mj-jogo-placa {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-2);
+  --mj-bn-cab: 22px;
+  --mj-bn-acoes: 0px;
+}
+.mj-batalha.is-posicionando .mj-jogo-placa { --mj-bn-acoes: 44px; }
+.mj-bn-mares {
+  --mj-bn-lado: min(calc((100cqw - var(--s-4)) / 2), calc(100cqh - var(--mj-bn-cab) - var(--mj-bn-acoes) - var(--s-1)));
+  display: flex; gap: var(--s-4); justify-content: center;
+}
+@container (max-aspect-ratio: 5 / 4) {
+  .mj-bn-mares {
+    flex-direction: column; gap: var(--s-2);
+    --mj-bn-lado: min(100cqw, calc((100cqh - 2 * var(--mj-bn-cab) - var(--mj-bn-acoes) - var(--s-2) - var(--s-1)) / 2));
+  }
+}
+.mj-bn-mar { display: flex; flex-direction: column; gap: var(--s-05); width: var(--mj-bn-lado); min-width: 0; }
+.mj-bn-cab {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-1);
+  height: calc(var(--mj-bn-cab) - var(--s-05)); min-width: 0;
+  font-size: var(--fs-small);
+}
+.mj-bn-titulo { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-bn-conta { color: var(--tx2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mj-bn-grade {
+  width: var(--mj-bn-lado); aspect-ratio: 1;
+  display: grid; grid-template: repeat(10, 1fr) / repeat(10, 1fr);
+  gap: 1px; padding: 1px;
+  border-radius: var(--r-sm);
+  background: var(--line2);
+}
+.mj-bn-mar.is-alvo .mj-bn-grade { box-shadow: 0 0 0 2px var(--on-line); }
+.mj .mj-bn-casa {
+  position: relative;
+  min-width: 0; min-height: 0; padding: 0;
+  border-radius: 0;
+  background: var(--s2);
+  font-size: 0;
+}
+.mj .mj-bn-casa[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-bn-mar.is-alvo .mj-bn-casa:not([aria-disabled="true"]) { cursor: crosshair; }
+.mj-bn-mar.is-alvo .mj-bn-casa:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-bn-casa[data-m="navio"] { background: color-mix(in srgb, var(--tx3) 38%, var(--s2)); }
+.mj .mj-bn-casa[data-m="afundado"] { background: var(--danger-dim); }
+.mj .mj-bn-casa[data-m="acerto"]::after,
+.mj .mj-bn-casa[data-m="afundado"]::after {
+  content: ""; position: absolute; inset: 16%;
+  background:
+    linear-gradient(45deg, transparent 41%, var(--danger-soft) 41% 59%, transparent 59%),
+    linear-gradient(-45deg, transparent 41%, var(--danger-soft) 41% 59%, transparent 59%);
+}
+.mj .mj-bn-casa[data-m="agua"]::after {
+  content: ""; position: absolute; inset: 37%;
+  border-radius: var(--r-full);
+  background: var(--tx3);
+}
+.mj .mj-bn-casa.is-ultimo { box-shadow: inset 0 0 0 2px var(--tx2); }
+.mj-bn-acoes { display: flex; gap: var(--s-2); justify-content: center; }
+.mj-bn-acoes[hidden] { display: none; }
+.mj .mj-bn-pronto.is-feito { color: var(--tx); box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-bn-relogio { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-bn-relogio.is-pouco { color: var(--warn); font-weight: 600; }
+.mj-bn-relogio[hidden] { display: none; }
+
+@container mj (max-width: 480px) {
+  .mj-bn-acoes .mj-btn span { display: none; }
+}

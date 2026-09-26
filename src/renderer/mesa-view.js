@@ -597,7 +597,12 @@
           scheduleWatch();
           break;
         }
-        case 'act': {
+        // Janela secret: o servidor manda o estado ja filtrado para mim
+        // (`state`); quem saiu de vez larga cadeira e mao (`drop`).
+        // Para o conteudo e igual a um act: update(state, meta).
+        case 'act':
+        case 'state':
+        case 'drop': {
           const rec = S.wins.get(msg.id);
           const win = findWin(msg.id);
           if (rec && win) updateContent(rec, win, { by: msg.by ?? null, isLeader: msg.isLeader === true });
@@ -1140,6 +1145,9 @@
           const win = S && findWin(rec.id);
           const mod = win ? modOf(win.type) : null;
           if (!mod || typeof mod.validate !== 'function') return 'janela sem ação';
+          // Janela secret: o cliente nao tem o estado inteiro; quem decide e
+          // o servidor, e a interface usa o `me` que veio na view.
+          if (mod.secret === true) return true;
           try {
             return mod.validate(win.state, action, { from: String(deps.me()), isLeader: deps.isLeader(), now: serverNow(), peers: deps.peers() });
           } catch {
