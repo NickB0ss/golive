@@ -33,7 +33,6 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const WebSocket = require('ws');
 const { createSignalingServer } = require('../../server/signaling-core');
 
 const PW = process.env.PLAYWRIGHT_DIR || '/opt/node22/lib/node_modules/playwright';
