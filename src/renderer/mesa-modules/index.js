@@ -35,6 +35,8 @@
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
     'velha', 'lig4', 'damas', 'xadrez', 'batalha',
+    // Festa: Spotify Jam (assistir), sons (noite), link (ferramentas)
+    'jam', 'sons', 'link',
   ]);
 
   // Arquivos de apoio da pasta que NAO sao tipo de janela: os modulos que

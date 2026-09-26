@@ -1138,4 +1138,102 @@
 
 @container mj (max-width: 480px) {
   .mj-bn-acoes .mj-btn span { display: none; }
+/* ======================================================================
+   Festa (time Festa, 2026-09-25): Spotify Jam, Sons e Link.
+   ====================================================================== */
+/* ---------- Spotify Jam ---------- */
+.mj-jam-vazio, .mj-jam-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-jam-vazio { justify-content: center; }
+.mj-jam-titulo { margin: 0; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-jam-cabeca { display: flex; flex-direction: column; gap: var(--s-05); min-width: 0; }
+.mj-jam-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-jam-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-jam-acoes { flex-wrap: wrap; }
+.mj-jam-acoes .mj-jam-entrar { flex: 1 1 auto; }
+.mj .mj-btn.is-on { border-color: var(--act); }
+.mj-jam-lista {
+  flex: 1;
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--s-1) var(--s-3);
+.mj-jam-lista li { display: inline-flex; align-items: center; gap: var(--s-15); font-size: var(--fs-small); }
+.mj-jam-rodape .mj-btn { min-height: 28px; font-size: var(--fs-small); }
+@container mj (max-height: 230px) {
+  .mj-jam .mj-jam-meta, .mj-jam .mj-dica { display: none; }
+/* ---------- Sons ---------- */
+.mj-sons-grade {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  grid-auto-rows: minmax(36px, 56px);
+  align-content: start;
+  gap: var(--s-15);
+.mj .mj-sons-btn { min-height: 0; height: 100%; padding: 0 var(--s-2); justify-content: center; }
+.mj .mj-sons-btn > span { overflow: hidden; text-overflow: ellipsis; }
+.mj .mj-sons-btn.is-toca { animation: mj-sons-toca 360ms var(--ease-out); }
+@keyframes mj-sons-toca {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+/* A espera de 3 s de quem tocou: uma linha que encolhe ate sumir. */
+.mj-sons-espera { height: 3px; flex: none; border-radius: var(--r-full); background: var(--s3); opacity: 0; transition: opacity var(--dur-fast); overflow: hidden; }
+.mj-sons-espera.is-on { opacity: 1; }
+.mj-sons-espera > span { display: block; height: 100%; background: var(--act); transform-origin: left center; transform: scaleX(0); }
+.mj-sons-espera > span.is-anda { animation: mj-sons-espera var(--mj-dur, 3000ms) linear both; }
+@keyframes mj-sons-espera {
+  from { transform: scaleX(var(--mj-falta, 1)); }
+  to { transform: scaleX(0); }
+.mj-sons-rodape { flex: none; }
+.mj-sons-tocou {
+  margin: 0; min-width: 0;
+  display: inline-flex; align-items: center; gap: var(--s-15);
+  color: var(--tx2); font-size: var(--fs-small);
+  white-space: nowrap; overflow: hidden;
+.mj-sons-tocou > em { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
+.mj-sons-tocou > span:not(.mj-dot) { flex: none; }
+.mj .mj-sons-rodape .mj-ic { width: 28px; min-height: 28px; }
+.mj .mj-sons-vol { width: 88px; flex: none; accent-color: var(--act); }
+.mj-sons-vol:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.mj-sons.is-mudo .mj-sons-vol { opacity: 0.5; }
+@container mj (max-width: 300px) {
+  .mj-sons-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-1); }
+  .mj .mj-sons-btn { padding: 0 var(--s-1); font-size: var(--fs-small); }
+  .mj .mj-sons-vol { width: 64px; }
+@container mj (max-height: 200px) {
+  .mj-sons-grade { grid-auto-rows: 28px; gap: var(--s-1); }
+  .mj .mj-sons-btn { font-size: var(--fs-small); }
+/* ---------- Link ---------- */
+.mj-link-vazio, .mj-link-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-link-vazio { justify-content: center; }
+.mj-link-form { display: flex; flex-direction: column; gap: var(--s-15); min-width: 0; }
+.mj-link-cheio { justify-content: space-between; }
+.mj-link-cabeca { min-width: 0; display: flex; flex-direction: column; gap: var(--s-05); }
+.mj-link-titulo {
+  margin: 0;
+  font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.mj-link-titulo.is-dominio { font-variant-numeric: tabular-nums; }
+.mj-link-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-link-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-link-dominio { color: var(--tx); font-weight: 600; }
+.mj-link-resto {
+  margin: 0;
+  color: var(--tx3); font-size: var(--fs-small);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.mj-link-acoes .mj-fantasma { min-height: 28px; font-size: var(--fs-small); }
+.mj-link-confirma {
+  display: flex; flex-direction: column; gap: var(--s-15);
+  padding: var(--s-2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+.mj-link-pergunta { margin: 0; font-size: var(--fs-body); overflow-wrap: anywhere; }
+.mj-link-pergunta strong { font-weight: 700; }
+/* Alturas do container sao da caixa de conteudo (sem o respiro da alca). */
+@container mj (max-height: 130px) {
+  .mj-link .mj-sec { display: none; }
+  .mj-link-cheio.is-confirmando .mj-link-cabeca { display: none; }
+@container mj (max-width: 330px) {
+  .mj-link-acoes .mj-fantasma > span { display: none; }
+  .mj-link-acoes .mj-fantasma { width: 28px; padding: 0; }
 }
