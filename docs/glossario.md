@@ -16,6 +16,27 @@ pessoa menos quer decifrar sinônimo. Este arquivo fixa um termo por conceito;
 | Desenhar por cima de uma tela | **rabisco** / **rabiscar** | anotação |
 | Encerrar a própria conexão com a sala | **Sair da sala** (rótulo real do botão) | desconectar |
 | Qualquer pessoa na sala | **pessoa** | membro, participante, peer |
+| Os dois jeitos de ver a sala, que cada pessoa escolhe para si | **vista**: **Transmissão** e **Mesa** | modo, tipo da sala, layout, canvas |
+| O que se põe na Mesa | **janela** ("janela na mesa" quando puder confundir) | widget, card, item |
+| Pôr / tirar uma janela | **Adicionar janela** / **Tirar da mesa** | inserir, fechar, remover |
+| Ocupar a tela toda com uma janela | **Tela cheia** | maximizar |
+| Para onde você olha dentro da Mesa | sem nome na interface: os botões dizem **Ver tudo** e **Ir até** | câmera (é a webcam), viewport |
+
+### A Mesa (2026-09-24)
+
+Termos da spec `docs/superpowers/specs/2026-09-24-sala-em-dois-modos-design.md`
+(seção 9), já com a decisão de que Transmissão e Mesa **não são um tipo da
+sala trocado pelo líder**: são **vistas**, e cada pessoa alterna a sua sem
+mudar a de ninguém (contrato da Mesa, seção 0). Por isso "tipo da sala" entrou
+na coluna do "nunca use".
+
+"Vista" fica reservada para Transmissão e Mesa. Para onde você olha dentro da
+mesa (andar, aproximar) não ganha substantivo na interface: os controles dizem
+o que fazem ("Ver tudo", "Ir até Bia").
+
+"Janela" também é o que se escolhe no seletor de fonte ("Telas | Janelas").
+Os dois vivem em lugares que não se cruzam (diálogo de compartilhar × Mesa), e
+quando o texto puder confundir ele diz qual é ("janela na mesa").
 
 **Por que "líder da sala" e não "dono da sala".** A auditoria original
 recomendou "dono" por já estar na coroa do ícone. Uma contagem com `rg` nas

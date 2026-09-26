@@ -197,7 +197,10 @@ const localPlugin = { rules: { 'no-floating-promise': noFloatingPromise } };
 
 module.exports = [
   {
-    ignores: ['build/**', 'dist/**', 'native/**'],
+    // src/renderer/vendor/ e codigo de terceiros copiado como veio (ver o
+    // cabecalho de cada arquivo): nao e nosso para corrigir, e as diretivas
+    // `eslint-disable` que ele traz de casa virariam erro de diretiva inutil.
+    ignores: ['build/**', 'dist/**', 'native/**', 'src/renderer/vendor/**'],
   },
 
   {
@@ -244,8 +247,8 @@ module.exports = [
   // como somente-leitura: qualquer outro nome de Node aqui e engano, e o
   // no-undef deve acusar.
   {
-    files: ['src/renderer/*.js'],
-    ignores: ['src/renderer/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
+    files: ['src/renderer/*.js', 'src/renderer/mesa-modules/*.js', 'src/renderer/mesa-janelas/*.js'],
+    ignores: ['src/renderer/*.test.js', 'src/renderer/mesa-modules/*.test.js', 'src/renderer/mesa-janelas/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
     languageOptions: {
       sourceType: 'script',
       globals: {
@@ -260,6 +263,23 @@ module.exports = [
   // `module` entra porque o arquivo tambem e carregado pelo `node --test`:
   // o AudioWorklet nao tem require, entao o buffer circular mora nele mesmo
   // e so da pra cobrir exportando sob `typeof module !== 'undefined'`.
+  // Tipos de janela da Mesa: o mesmo UMD do renderer, carregado tambem pelo
+  // servidor de sinalizacao. So o registro (index.js) usa `require`, e so
+  // quando esta em Node.
+  {
+    files: ['src/renderer/mesa-modules/*.js'],
+    ignores: ['src/renderer/mesa-modules/*.test.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        module: 'readonly',
+        global: 'readonly',
+        require: 'readonly',
+      },
+    },
+  },
+
   {
     files: ['src/renderer/pcm-injector-worklet.js'],
     languageOptions: {

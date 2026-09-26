@@ -8,7 +8,7 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -224,6 +224,19 @@ const { friendlySourceNames } = require('./main/sourcename');
 const { pickDisplayMediaStreams, replyOnce } = require('./main/displaymedia');
 const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
+const { linkParaNavegador, linkDaMesa } = require('./main/linksexternos');
+const origemLocal = require('./main/origem');
+
+// A janela principal (e a Espiar, que ela abre) vem de http://localhost,
+// servido sem socket por src/main/origem.js: o YouTube recusa embed de
+// pagina sem Referer (erro 153) e a Twitch exige `parent`. GOLIVE_ORIGEM=file
+// volta ao file:// de antes. Splash e rabisco continuam em file://.
+// Ver docs/2026-09-24-spike-origem-local.md.
+const RAIZ_RENDERER = path.join(__dirname, 'renderer');
+const MODO_ORIGEM = origemLocal.escolherModo(process.env);
+const ORIGEM_PRINCIPAL = origemLocal.origemDoModo(MODO_ORIGEM);
+/** Resolve quando o localStorage da origem ja foi migrado (ou nao precisava). */
+let origemPronta = Promise.resolve();
 
 /** Trava cada renderer na sua pagina local e nao deixa popups herdarem IPC. */
 function lockNavigation(webContents, allowedUrl) {
@@ -417,7 +430,7 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
-  const mainUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
+  const mainUrl = origemLocal.urlDaPagina(ORIGEM_PRINCIPAL, RAIZ_RENDERER, 'index.html');
   lockNavigation(win.webContents, mainUrl);
 
   // Controles de janela proprios (Windows, janela sem moldura). fire-and-forget:
@@ -452,8 +465,16 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === 'F11') event.preventDefault();
   });
 
-  const spyUrl = pathToFileURL(path.join(__dirname, 'renderer', 'espiar.html')).href;
+  const spyUrl = origemLocal.urlDaPagina(ORIGEM_PRINCIPAL, RAIZ_RENDERER, 'espiar.html');
   win.webContents.setWindowOpenHandler((details) => {
+    // Logo/titulo dentro do player do YouTube ou da Twitch na Mesa: abre no
+    // navegador padrao, so para esses hosts e so vindo desses iframes
+    // (src/main/linksexternos.js). O resto continua recusado.
+    const externo = linkParaNavegador(details);
+    if (externo) {
+      shell.openExternal(externo).catch((err) => logger.error('link do player nao abriu:', err?.message || err));
+      return { action: 'deny' };
+    }
     if (details.frameName !== 'golive-espiar' || details.url !== spyUrl) return { action: 'deny' };
     return {
       action: 'allow',
@@ -568,7 +589,12 @@ function createWindow() {
     logger[nivel](`[${origem}] ${mensagem}`);
   });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // So carrega depois da migracao do localStorage: o app.js le a config
+  // logo ao abrir. Na pratica ela ja terminou durante a splash.
+  const janela = win;
+  origemPronta
+    .then(() => (janela.isDestroyed() ? null : janela.loadURL(mainUrl)))
+    .catch((err) => logger.error('janela principal: loadURL falhou:', err?.message || err));
 }
 
 // --- Abertura: tela de carregamento + atualizacao automatica -----------
@@ -926,6 +952,19 @@ app.whenReady().then(() => {
   // principal, a descoberta e o atalho global sobem -- ver releaseApp.
   // Instalar uma atualizacao encontrada aqui fecha o processo sozinho
   // (quitAndInstall) e releaseApp nunca chega a rodar nesse caminho.
+  // Origem da janela principal. A migracao (so na primeira abertura depois
+  // de mudar de origem) roda numa janela escondida enquanto a splash checa
+  // atualizacao; createWindow espera por ela antes de carregar.
+  origemLocal.instalarOrigemLocal({ protocol: session.defaultSession.protocol, net, raiz: RAIZ_RENDERER, logger });
+  logger.log(`origem da janela principal: ${ORIGEM_PRINCIPAL}${MODO_ORIGEM === 'file' ? ' (GOLIVE_ORIGEM=file)' : ''}`);
+  origemPronta = origemLocal.prepararOrigem({
+    modo: MODO_ORIGEM,
+    raiz: RAIZ_RENDERER,
+    arquivoEstado: path.join(app.getPath('userData'), 'origem.json'),
+    BrowserWindow,
+    session: session.defaultSession,
+    logger,
+  });
   createSplashWindow()
     .then(() => {
       bootController = createBootUpdater({
@@ -1078,7 +1117,7 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 });
 
 ipcMain.handle('room:host', async (_event, {
-  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory, preferredPort,
+  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory, initialMesa, preferredPort,
 } = {}) => {
   if (embeddedServerHosting) return embeddedServerHosting;
   embeddedServerHosting = (async () => {
@@ -1101,6 +1140,9 @@ ipcMain.handle('room:host', async (_event, {
       initialTransferredTo,
       initialBans,
       initialChatHistory,
+      // A mesa da sala que caiu (room-migrating.mesa), limpa pelo servidor
+      // como o historico do chat. Ver sanitizeInitialMesa.
+      initialMesa,
       appVersion: app.getVersion(),
       log: (...a) => logger.log('[servidor]', ...a),
     }), {
@@ -1361,6 +1403,29 @@ ipcMain.handle('overlay:fx', (_event, payload) => sendToOverlay('overlay:fx', pa
 
 // Abre a pasta de logs no explorador de arquivos -- pra mandar pra quem for
 // investigar um bug depois (ver golive #12).
+// Janelas "Spotify Jam" e "Link" da Mesa: abre no navegador padrao o link
+// que a pessoa clicou (e confirmou). So a pagina principal do app pede (nem
+// iframe, nem Espiar, nem overlay), so os formatos de linkDaMesa, e no
+// maximo um por segundo -- uma pagina travada em laco nao abre abas sem fim.
+let ultimoLinkDaMesa = 0;
+ipcMain.handle('mesa:abrir-link', async (event, { tipo, url } = {}) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
+    return { ok: false, reason: 'origem' };
+  }
+  const destino = linkDaMesa(tipo, url);
+  if (!destino) return { ok: false, reason: 'recusado' };
+  const agora = Date.now();
+  if (agora - ultimoLinkDaMesa < 1000) return { ok: false, reason: 'rapido' };
+  ultimoLinkDaMesa = agora;
+  try {
+    await shell.openExternal(destino);
+    return { ok: true };
+  } catch (err) {
+    logger.error('link da mesa nao abriu:', err?.message || err);
+    return { ok: false, reason: 'falhou' };
+  }
+});
+
 ipcMain.handle('logs:openFolder', () => {
   shell.openPath(logger.dir);
   return true;

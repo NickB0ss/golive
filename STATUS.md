@@ -292,6 +292,12 @@ mediu:
 
 ## Próximos passos
 
+- **a Mesa está implementada, sem release** (branch
+  `claude/project-planning-analysis-5e9lub`; ver "A Mesa" logo abaixo).
+  **Onde parou e o que falta: `docs/superpowers/plans/2026-09-26-passagem-mesa.md`.**
+  Falta o teste com 2+ PCs reais (`docs/testes/2026-09-25-roteiro-mesa.md`)
+  e o YouTube de verdade (`docs/testes/2026-09-24-roteiro-youtube-na-mesa.md`)
+  antes de virar versão;
 - **noite de teste com 2+ PCs reais, na 0.20.0** -- o teste que mais
   importa e derrubar o PC do lider de verdade, de preferencia no Tailscale
   (e o que a Frente A2 mudou; no laboratorio a migracao leva ~5 s com a
@@ -323,6 +329,60 @@ mediu:
   nao conhece o tema, igual a janela principal). O resto da P2 da Frente B
   (selo de sala achada por sonda, aviso de amigo fora do ar) saiu junto com
   os Amigos salvos: a sonda so serve a migracao.
+
+### A Mesa (2026-09-25, sem release)
+
+Spec: `docs/superpowers/specs/2026-09-24-sala-em-dois-modos-design.md`.
+Formatos e decisões: `docs/superpowers/plans/2026-09-24-mesa-contrato.md`
+(a seção 0 manda sobre a spec). Feita por sete times em paralelo
+(Protocolo, Ferramentas, Jogos, Origem local, Vista, Janelas, Mídia) e
+integrada nesta branch.
+
+- **Transmissão e Mesa são vistas de cada pessoa** (decisão do Nicolas): o
+  seletor no topo não afeta ninguém. Na Transmissão nada da Mesa existe no
+  DOM nem chega pela rede; entrar na Mesa pede o retrato (`mesa-view on` →
+  `mesa-sync`).
+- **O líder tem duas travas**: "Só o líder mexe na mesa" e "Travar tamanho".
+  Jogar e dar play continuam livres.
+- **Janelas**: 23 tipos, mais tela e câmera. Ferramentas (nota, lista,
+  imagem e galeria do chat, link), noite de jogo (enquete, placar,
+  cronômetro, sorteio de times, dados e moeda, roleta, sons), jogos com
+  cadeiras (jogo da velha, Lig 4, damas na regra brasileira, xadrez pelo
+  `chess.js` 1.4.0 vendorizado), jogos com informação escondida (batalha
+  naval, pôquer Texas Hold'em, blackjack de cassino, fichas de mentira) e
+  mídia (Vídeo do YouTube que toca junto, Rádio da sala, Ao vivo da Twitch,
+  Spotify Jam). Regra de cada tipo num módulo puro que roda no
+  servidor e nos clientes (`src/renderer/mesa-modules/`); desenho em
+  `src/renderer/mesa-janelas/`.
+- **Telas e câmeras viram janelas** postas pelo servidor; o mesmo `<video>`
+  do palco muda de casca, sem renegociar. Tela 2 s fora da vista manda
+  `watching:false`; a largura na tela vira teto de qualidade (`maxWidth` no
+  `view-state`).
+- **Origem local**: a janela principal e a Espiar abrem por
+  `http://localhost` (`protocol.handle`, sem porta aberta), para o YouTube
+  aceitar o embed (erro 153) e a Twitch o `parent`. O `localStorage` é
+  copiado uma vez do `file://`; `GOLIVE_ORIGEM=file` volta ao de antes.
+- **Bancos de prova** (rodam aqui, sem PC real): `tools/mesa-prints/harness.js
+  checar|prints|desempenho`, `tools/bancada-janelas/rodar.js` e
+  `mesa-real.js`, `xvfb-run -a npx electron tools/midia/main.js` (YouTube e
+  Twitch falsos).
+
+**O que só o PC real prova:** YouTube e Twitch de verdade (o proxy daqui
+bloqueia os dois; contra os falsos, 23/23), a migração do `localStorage` numa
+atualização real da 0.21, "fora da vista para de receber" com WebRTC de
+verdade (log `[assistir] view-state ... watching=false` 2 s depois), o
+desempenho com GPU (no Chromium sem GPU a Mesa parada custa o mesmo que a
+Transmissão; zoom e "Ver tudo" pesam mais: `docs/2026-09-24-spike-desempenho-mesa.md`)
+e a mesa sobrevivendo à queda do líder.
+
+**Ficou de fora** (lista completa e ordem na passagem de 2026-09-26): pôquer
+e blackjack ainda não cabem na janela em todo tamanho; travas visíveis para o
+líder que está na Transmissão; Truco, Oito maluco, Quadro, Desenha e
+adivinha, Stop, Quiz e Dominó (regras no contrato, seção 10); Kick; Spotify
+tocando no app (ver a pesquisa).
+
+**Defeito antigo visto nos prints (já na 0.21.0):** o cartão "Assistir" da
+tela não escolhida corta o texto em cima quando fica na tira de miniaturas.
 
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.

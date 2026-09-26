@@ -1,0 +1,1570 @@
+/* Conteudo das janelas da Mesa (contrato da Mesa, secao 6).
+ *
+ * A Vista (mesa-view.js) cuida da caixa da janela; aqui so o que vai DENTRO
+ * do `el` que ela entrega. Regras do arquivo:
+ *   - so tokens de style.css (cores, --fs-*, --s-*, --r-*); nada de --live;
+ *   - a cor de uma pessoa (--mj-cor) so em detalhe: bolinha, contorno, ou
+ *     misturada ao --tx para o nome ficar legivel no tema claro;
+ *   - so transform e opacity animam, e prefers-reduced-motion desliga
+ *     (a regra global de style.css ja zera as duracoes; as daqui tambem
+ *     saem explicitamente no fim do arquivo);
+ *   - cada conteudo e um container (`mj`) de tamanho: o secundario some por
+ *     @container quando a janela fica pequena, nunca por media query.
+ */
+
+/* ---------- Base ---------- */
+
+.mj {
+  container: mj / size;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  overflow: hidden;
+  color: var(--tx);
+  font-family: 'Work Sans', system-ui, sans-serif;
+  font-size: var(--fs-body);
+  line-height: 1.4;
+}
+
+.mj [hidden] { display: none !important; }
+
+.mj-i {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+.mj .mj-btn {
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  gap: var(--s-15);
+  background: var(--s3);
+  border-color: var(--line2);
+  color: var(--tx);
+  white-space: nowrap;
+}
+.mj .mj-btn:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-btn[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.mj .mj-btn[aria-disabled="true"]:active { transform: none; }
+.mj .mj-btn svg { width: 16px; height: 16px; }
+.mj .mj-pri { background: var(--act); border-color: var(--act); color: var(--on-act); }
+.mj .mj-pri:hover:not([aria-disabled="true"]) { background: var(--act-hover); border-color: var(--act-hover); }
+.mj .mj-fantasma { background: transparent; border-color: transparent; color: var(--tx2); }
+.mj .mj-fantasma:hover:not([aria-disabled="true"]) { background: var(--s3); color: var(--tx); }
+.mj .mj-ic { width: 36px; padding: 0; }
+.mj .mj-mini { min-height: 28px; width: 28px; padding: 0; border-radius: var(--r-xs); }
+.mj .mj-mini svg { width: 14px; height: 14px; }
+
+.mj .mj-campo, .mj .mj-sel {
+  width: auto;
+  min-height: 36px;
+  min-width: 0;
+  padding: 0 var(--s-2);
+  background: var(--s2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+.mj-campo::placeholder { color: var(--tx3); }
+.mj-sel { cursor: pointer; }
+.mj-sel option { background: var(--s2); color: var(--tx); }
+
+.mj-barra { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.mj-barra > .mj-sel { flex: 0 1 auto; }
+.mj-mola { flex: 1; }
+.mj-form { display: flex; gap: var(--s-15); min-width: 0; }
+.mj-form .mj-campo { flex: 1; }
+
+.mj-dot {
+  width: 10px; height: 10px; flex: none;
+  border-radius: var(--r-full);
+  background: var(--mj-cor, var(--tx3));
+  box-shadow: 0 0 0 1px var(--line2);
+}
+
+.mj-rotulo {
+  margin: 0;
+  font: 600 var(--fs-micro) 'Outfit', system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx3);
+}
+
+.mj-dica { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+
+/* A recusa: texto curto, perto do controle, com um ponto de aviso. */
+.mj-aviso {
+  margin: 0;
+  display: flex; align-items: center; gap: var(--s-15);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+  line-height: 1.3;
+}
+.mj-aviso::before {
+  content: ""; width: 6px; height: 6px; flex: none;
+  border-radius: var(--r-full); background: var(--warn);
+}
+.mj-aviso:not(.is-on) { display: none; }
+
+.mj-rola { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* ---------- Placar ---------- */
+
+.mj-times {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--mj-n, 2), minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.mj-time {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj-time.is-vence { box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj .mj-nome {
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--s-1);
+  text-align: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--tx2);
+  font: 600 var(--fs-body) 'Work Sans', system-ui, sans-serif;
+  text-overflow: ellipsis;
+}
+.mj .mj-nome:hover { border-color: var(--line2); }
+.mj .mj-nome:focus { background: var(--s1); color: var(--tx); }
+.mj-pontos {
+  font: 700 clamp(var(--fs-hero), min(26cqh, 14cqw), calc(var(--fs-hero) * 4)) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.mj-pm { display: flex; gap: var(--s-1); }
+.mj-time .mj-aviso { text-align: center; }
+.mj-placar-rodape { margin: 0; text-align: center; color: var(--tx2); font-size: var(--fs-small); }
+.mj-placar-rodape:empty { display: none; }
+.mj-placar-rodape.is-vence { color: var(--tx); font-weight: 600; }
+
+@container mj (max-height: 199px) {
+  .mj-placar .mj-sec { display: none; }
+}
+@container mj (max-width: 335px) {
+  .mj-placar .mj-barra .mj-btn span { display: none; }
+  .mj-placar .mj-barra .mj-btn { width: 36px; padding: 0; }
+}
+
+/* ---------- Nota ---------- */
+
+.mj-nota { gap: var(--s-15); padding: var(--s-15); }
+.mj .mj-nota-texto {
+  flex: 1; min-height: 0; width: 100%;
+  resize: none;
+  padding: var(--s-2) var(--s-3);
+  background: var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  font: var(--fs-ui)/1.5 'Work Sans', system-ui, sans-serif;
+  user-select: text;
+}
+.mj .mj-nota-texto::placeholder { color: var(--tx3); }
+.mj .mj-nota-texto:focus { border-color: var(--line2); }
+.mj-nota-rodape {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: 0 var(--s-1);
+  color: var(--tx3);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+.mj-nota-autor { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-nota-conta.is-passou { color: var(--danger-soft); font-weight: 600; }
+.mj-nota .mj-aviso { padding: 0 var(--s-1); }
+
+@container mj (max-height: 150px) {
+  .mj-nota .mj-nota-autor { display: none; }
+}
+@container mj (max-height: 110px) {
+  .mj-nota .mj-nota-rodape:not(:has(.is-passou)) { display: none; }
+}
+
+/* ---------- Imagem (do chat) ---------- */
+
+.mj-imagem { gap: var(--s-1); padding-left: var(--s-15); padding-right: var(--s-15); padding-bottom: var(--s-15); }
+.mj-img-quadro {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--video-bg);
+  overflow: hidden;
+}
+.mj-img-foto { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; }
+.mj-img-falta { margin: 0; padding: var(--s-3); max-width: 32em; text-align: center; color: var(--tx2); font-size: var(--fs-small); }
+.mj-img-legenda {
+  margin: 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--tx3); font-size: var(--fs-micro);
+}
+@container mj (max-height: 160px) {
+  .mj-imagem .mj-img-legenda { display: none; }
+}
+
+/* ---------- Galeria (imagens do chat) ---------- */
+
+.mj-gal-conta { color: var(--tx3); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.mj-gal-grade {
+  flex: 1;
+  margin: 0; padding: 0; list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-auto-rows: max-content;
+  gap: var(--s-2);
+}
+.mj-gal-item {
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+}
+.mj-gal-foto {
+  width: 100%; aspect-ratio: 4 / 3;
+  object-fit: cover; display: block;
+  border-radius: var(--r-xs);
+  background: var(--video-bg);
+  user-select: none;
+}
+.mj .mj-gal-por { min-height: 28px; justify-content: center; font-size: var(--fs-small); }
+.mj-gal-vazio { flex: 1; display: grid; place-items: center; text-align: center; }
+@container mj (max-height: 220px) {
+  .mj-galeria .mj-gal-dica { display: none; }
+}
+
+/* ---------- Segmentado (modo, duracoes) ---------- */
+
+.mj-segs {
+  display: flex; gap: var(--s-05); padding: var(--s-05);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj .mj-seg {
+  min-height: 32px; padding: 0 var(--s-2);
+  background: transparent; border-color: transparent;
+  color: var(--tx2); font-size: var(--fs-small);
+}
+.mj .mj-seg:hover:not([aria-disabled="true"]) { background: var(--s3); color: var(--tx); }
+.mj .mj-seg[aria-pressed="true"] { background: var(--s4); color: var(--tx); }
+
+/* ---------- Cronometro ---------- */
+
+.mj-cron-nome { flex: 1; }
+.mj-cron-relogio {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-2);
+}
+.mj-cron-tempo {
+  font: 700 clamp(var(--fs-hero), min(32cqh, 22cqw), calc(var(--fs-hero) * 5)) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.mj-cron-barra {
+  width: min(100%, calc(var(--s-7) * 6)); height: 4px;
+  border-radius: var(--r-full);
+  background: var(--s3);
+  overflow: hidden;
+}
+.mj-cron-barra i {
+  display: block; height: 100%;
+  background: var(--tx2);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+.mj-cronometro.is-up .mj-cron-barra { visibility: hidden; }
+.mj-cronometro.is-fim .mj-cron-tempo { color: var(--warn); }
+.mj-cron-pre { justify-content: center; flex-wrap: wrap; }
+.mj-cron-pre[hidden] { display: none; }
+.mj-cron-pre .mj-seg { background: var(--s2); border-color: var(--line); }
+.mj-cron-ctrl { justify-content: center; }
+.mj-cron-ctrl .mj-pri { min-width: calc(var(--s-7) * 2); }
+.mj-cronometro .mj-aviso { justify-content: center; }
+
+@container mj (max-height: 190px) {
+  .mj-cronometro .mj-sec { display: none; }
+}
+@container mj (max-width: 300px) {
+  .mj-cronometro .mj-cron-ctrl .mj-sec { display: none; }
+  .mj-cronometro .mj-cron-zerar span { display: none; }
+  .mj-cronometro .mj-cron-zerar { width: 36px; padding: 0; }
+}
+
+/* ---------- Nome de pessoa na cor dela ----------
+   Misturado ao --tx: no escuro puxa para a cor, no Papel escurece o
+   bastante para ler (o gelo e o ambar puros somem no fundo claro). */
+
+.mj .is-pessoa > .mj-chip-nome,
+.mj .is-pessoa > span:not(.mj-dot) {
+  color: color-mix(in srgb, var(--mj-cor) 62%, var(--tx));
+  font-weight: 600;
+}
+
+/* ---------- Sorteio ---------- */
+
+.mj-sort-corpo {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--s-3);
+  margin: 0 calc(-1 * var(--s-1));
+  padding: 0 var(--s-1);
+}
+.mj-sort-times, .mj-sort-nomes { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.mj-sort-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--s-7) * 3), 1fr));
+  gap: var(--s-2);
+}
+.mj-sort-time {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj-sort-time h4 { margin: 0 0 var(--s-1); font: 700 var(--fs-body) 'Outfit', system-ui, sans-serif; color: var(--tx2); }
+.mj-sort-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-05); }
+.mj-sort-lista li { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-body); }
+.mj-sort-lista li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-dot.is-vazio { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tx3); }
+.mj-sort-time.is-entra {
+  animation: mj-entra var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--mj-i, 0) * 60ms);
+}
+@keyframes mj-entra {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+.mj-sort-times .mj-dica[hidden] { display: none; }
+
+.mj-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.mj-chip {
+  display: inline-flex; align-items: center; gap: var(--s-15);
+  max-width: 100%;
+  padding: 0 var(--s-05) 0 var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--fs-small);
+}
+.mj-chip .mj-dot { width: 8px; height: 8px; }
+.mj-chip .mj-dot[hidden] { display: none; }
+.mj-chip-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-chip .mj-mini { border-radius: var(--r-full); }
+.mj-sort-acoes .mj-btn { min-height: 32px; font-size: var(--fs-small); }
+
+@container mj (min-width: 600px) {
+  .mj-sort-corpo { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+}
+@container mj (max-height: 300px) {
+  .mj-sorteio.tem-times .mj-sort-nomes .mj-sort-acoes { display: none; }
+}
+
+/* ---------- Enquete ---------- */
+
+.mj-enq-votar, .mj-enq-form { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-enq-votar[hidden], .mj-enq-form[hidden], .mj-enq-espera[hidden], .mj-enq-gestao[hidden] { display: none; }
+.mj-enq-pergunta {
+  margin: 0;
+  font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.mj-enq-opcoes { list-style: none; margin: 0; padding: 0; flex: 1; display: flex; flex-direction: column; gap: var(--s-15); }
+.mj .mj-enq-opcao {
+  position: relative;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--s-3);
+  justify-content: flex-start;
+  gap: var(--s-2);
+  overflow: hidden;
+  background: var(--s2);
+  border-color: var(--line);
+  color: var(--tx);
+  font-weight: 500;
+  text-align: left;
+}
+.mj .mj-enq-opcao:hover:not([aria-disabled="true"]) { border-color: var(--line2); }
+.mj .mj-enq-opcao[aria-disabled="true"] { cursor: default; }
+.mj .mj-enq-opcao[aria-disabled="true"]:active { transform: none; }
+.mj .mj-enq-opcao[aria-pressed="true"] { border-color: var(--on-line); }
+.mj-enq-fundo {
+  position: absolute; inset: 0;
+  background: var(--s3);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.mj-enq-opcao[aria-pressed="true"] .mj-enq-fundo { background: var(--on-fill); }
+.mj-enq-opcao > :not(.mj-enq-fundo) { position: relative; }
+.mj-enq-marca { display: inline-flex; width: 16px; color: var(--on-text); opacity: 0; transform: scale(0.6); transition: opacity var(--dur-fast), transform var(--dur-fast) var(--ease-out); }
+.mj-enq-opcao[aria-pressed="true"] .mj-enq-marca { opacity: 1; transform: none; }
+.mj-enq-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-enq-opcao.is-frente .mj-enq-texto { font-weight: 600; }
+.mj-enq-quem { display: inline-flex; align-items: center; }
+.mj-enq-quem .mj-dot { margin-left: calc(-1 * var(--s-05)); box-shadow: 0 0 0 2px var(--s2); }
+.mj-enq-mais { margin-left: var(--s-1); color: var(--tx2); font-size: var(--fs-micro); }
+.mj-enq-conta { min-width: 2ch; text-align: right; font: 700 var(--fs-ui) 'Outfit', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.mj-enq-total { color: var(--tx2); font-size: var(--fs-small); }
+.mj-enq-gestao { display: inline-flex; gap: var(--s-05); }
+.mj-enquete.is-fechada .mj-enq-pergunta::after {
+  content: "Encerrada";
+  margin-left: var(--s-2);
+  padding: var(--s-05) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  color: var(--tx2);
+  font: 600 var(--fs-micro) 'Work Sans', system-ui, sans-serif;
+  vertical-align: middle;
+}
+.mj-enq-ed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-15); }
+.mj-enq-form .mj-campo { width: 100%; }
+.mj-enq-espera { margin: auto; text-align: center; }
+
+@container mj (max-height: 300px) {
+  .mj-enquete .mj-enq-quem { display: none; }
+  .mj-enquete .mj-enq-pergunta { font-size: var(--fs-ui); }
+}
+
+/* ---------- Dados e moeda ---------- */
+
+.mj-dados-corpo { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-3); }
+.mj-dados-meio {
+  min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-2);
+}
+.mj-dados-palco {
+  --mj-lado: clamp(var(--s-6), min(26cqh, calc(80cqw / var(--mj-n, 1) - var(--s-2))), calc(var(--s-7) * 2));
+  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2);
+}
+.mj-dado, .mj-moeda {
+  width: var(--mj-lado); height: var(--mj-lado);
+  display: grid; place-items: center;
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--line2), inset 0 -3px 0 var(--line);
+  font: 700 calc(var(--mj-lado) * 0.45) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.mj-dado { border-radius: var(--r-md); }
+.mj-dado.is-vazio { color: var(--tx3); background: var(--s2); }
+.mj-moeda {
+  width: calc(var(--mj-lado) * 1.5); height: calc(var(--mj-lado) * 1.5);
+  border-radius: var(--r-full);
+  font-size: calc(var(--mj-lado) * 0.34);
+}
+.mj-dado.is-rola {
+  animation: mj-rola 450ms var(--ease-out) both;
+  animation-delay: calc(var(--mj-i, 0) * 30ms);
+}
+.mj-moeda.is-rola { animation: mj-gira-moeda 450ms var(--ease-out) both; }
+@keyframes mj-rola {
+  0% { transform: translateY(-10%) rotate(-160deg) scale(0.7); opacity: 0.4; }
+  60% { transform: translateY(3%) rotate(12deg) scale(1.04); opacity: 1; }
+  100% { transform: none; }
+}
+@keyframes mj-gira-moeda {
+  0% { transform: scaleX(1); }
+  25% { transform: scaleX(0.1); }
+  50% { transform: scaleX(1); }
+  75% { transform: scaleX(0.1); }
+  100% { transform: scaleX(1); }
+}
+.mj-dados-res {
+  margin: 0;
+  font: 600 var(--fs-ui) 'Work Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  transition: opacity var(--dur-fast);
+}
+.mj-dados-res.is-espera { opacity: 0; }
+.mj-dados-quem { display: inline-flex; align-items: center; gap: var(--s-15); min-height: 18px; color: var(--tx2); font-size: var(--fs-small); }
+.mj-dados-col { display: none; min-height: 0; flex-direction: column; gap: var(--s-1); }
+.mj-dados-col .mj-btn { min-height: 28px; font-size: var(--fs-small); }
+.mj-dados-hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-dados-hist li { display: flex; align-items: center; gap: var(--s-2); color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-dados-ctrl { justify-content: center; }
+.mj-dados-ctrl .mj-pri { min-width: calc(var(--s-7) * 2); }
+.mj-dados .mj-aviso { justify-content: center; }
+
+@container mj (min-width: 520px) and (min-height: 360px) {
+  .mj-dados-corpo { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .mj-dados-col { display: flex; }
+}
+@container mj (max-height: 230px) {
+  .mj-dados .mj-sec { display: none; }
+}
+
+/* ---------- Roleta ---------- */
+
+.mj-roleta { flex-direction: row; gap: var(--s-3); }
+.mj-rol-lado { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-rol-roda {
+  flex: 1; min-height: 0;
+  position: relative;
+  display: grid; place-items: center;
+  container-type: size;
+}
+.mj-rol-disco {
+  width: min(100cqw, 100cqh); aspect-ratio: 1;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.mj-rol-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.mj-rol-aro { fill: var(--s1); stroke: var(--line2); stroke-width: 1.5; }
+.mj-rol-fatia path { stroke: var(--line2); stroke-width: 0.8; }
+.mj-rol-fatia.t0 path { fill: var(--s2); }
+.mj-rol-fatia.t1 path { fill: var(--s3); }
+.mj-rol-fatia.t2 path { fill: var(--s4); }
+.mj-rol-fatia text {
+  fill: var(--tx);
+  font: 600 9px 'Work Sans', system-ui, sans-serif;
+}
+.mj-rol-fatia.is-sorteada path { fill: var(--on-fill); stroke: var(--on-text); stroke-width: 2; }
+.mj-rol-vazio { fill: var(--tx3); font: 600 11px 'Work Sans', system-ui, sans-serif; }
+.mj-rol-eixo { fill: var(--s4); stroke: var(--line2); stroke-width: 1.5; }
+/* O ponteiro no topo: um triangulo de borda (sem imagem, sem filtro). */
+.mj-rol-ponteiro {
+  position: absolute; left: 50%; top: calc(50% - min(50cqw, 50cqh) - var(--s-1));
+  width: 0; height: 0;
+  margin-left: calc(-1 * var(--s-2));
+  border-left: var(--s-2) solid transparent;
+  border-right: var(--s-2) solid transparent;
+  border-top: var(--s-4) solid var(--tx);
+}
+.mj-rol-res { display: flex; flex-direction: column; align-items: center; gap: var(--s-05); min-height: 40px; }
+.mj-rol-saida { margin: 0; font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; }
+.mj-roleta.is-girando .mj-rol-saida { color: var(--tx2); }
+.mj-rol-painel {
+  width: calc(var(--s-7) * 5); max-width: 45%;
+  min-height: 0;
+  display: flex; flex-direction: column; gap: var(--s-2);
+}
+.mj-rol-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-rol-lista .mj-campo { flex: 1; }
+
+/* Estreita: o painel de opcoes cobre a roda (e o botao Opcoes alterna). */
+@container mj (max-width: 559px) {
+  .mj-roleta { flex-direction: column; }
+  .mj-rol-painel { position: absolute; inset: 0; width: auto; max-width: none; padding: var(--s-3) var(--s-3) calc(var(--s-3) + 44px); background: var(--s1); }
+  .mj-roleta.is-painel .mj-rol-roda { visibility: hidden; }
+  .mj-roleta { position: relative; }
+  .mj-rol-ctrl { position: relative; z-index: 1; }
+}
+@container mj (min-width: 560px) {
+  .mj-rol-alternar { display: none !important; }
+  .mj-rol-painel[hidden] { display: flex !important; }
+}
+
+/* ---------- Lista ---------- */
+
+.mj .mj-lista-titulo {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--s-1);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--tx);
+  font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+}
+.mj .mj-lista-titulo::placeholder { color: var(--tx3); }
+.mj .mj-lista-titulo:hover { border-color: var(--line2); }
+.mj .mj-lista-titulo:focus { background: var(--s2); }
+.mj-lista-itens { list-style: none; margin: 0; padding: 0; flex: 1; display: flex; flex-direction: column; gap: var(--s-05); }
+.mj-lista-vazio { flex: 1; }
+.mj-item {
+  display: flex; align-items: center; gap: var(--s-1);
+  min-height: 36px;
+  padding: 0 var(--s-1) 0 var(--s-2);
+  border-radius: var(--r-sm);
+}
+.mj-item:hover, .mj-item:focus-within { background: var(--s2); }
+.mj-item-rot { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+.mj-item.is-editando .mj-item-rot { flex: none; }
+.mj-item.is-editando .mj-item-texto { display: none; }
+.mj-item-texto { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; padding: var(--s-15) 0; }
+.mj-item.is-feito .mj-item-texto { color: var(--tx3); text-decoration: line-through; text-decoration-color: var(--tx3); }
+.mj-item-campo { flex: 1; min-height: 30px; }
+.mj-caixa-wrap { position: relative; display: inline-grid; place-items: center; flex: none; }
+.mj .mj-caixa {
+  appearance: none;
+  width: 18px; height: 18px; margin: 0;
+  border: 1.5px solid var(--tx3);
+  border-radius: var(--r-xs);
+  background: var(--s1);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-in-out), border-color var(--dur-fast) var(--ease-in-out);
+}
+.mj .mj-caixa:checked { background: var(--act); border-color: var(--act); }
+.mj-caixa-marca {
+  position: absolute; width: 12px; height: 12px;
+  color: var(--on-act); stroke-width: 3;
+  pointer-events: none;
+  opacity: 0; transform: scale(0.6);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.mj-caixa:checked + .mj-caixa-marca { opacity: 1; transform: none; }
+.mj-item-acoes { display: inline-flex; gap: var(--s-05); opacity: 0; transition: opacity var(--dur-fast); }
+.mj-item:hover .mj-item-acoes, .mj-item:focus-within .mj-item-acoes { opacity: 1; }
+.mj-item.is-editando .mj-item-acoes { display: none; }
+.mj-lista-conta { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-lista-rodape .mj-btn { min-height: 32px; font-size: var(--fs-small); }
+
+@container mj (max-height: 250px) {
+  .mj-lista .mj-sec { display: none; }
+}
+@container mj (max-width: 280px) {
+  .mj-lista .mj-item-acoes .mj-mini:nth-child(2),
+  .mj-lista .mj-item-acoes .mj-mini:nth-child(3) { display: none; }
+}
+
+/* ---------- Tabuleiros: moldura comum ----------
+   As casas do tabuleiro seguem "claro/escuro" de verdade: nos temas
+   escuros --s4 e a mais clara; no Papel (o unico tema claro) inverte. As
+   pecas tem cor fixa em todos os temas (branca e branca). */
+
+.mj-jogo {
+  gap: var(--s-15);
+  --mj-casa-a: var(--s4);
+  --mj-casa-b: var(--s2);
+  --mj-peca-clara: var(--on-act);
+  --mj-peca-escura: var(--video-bg);
+}
+:root[data-theme="paper"] .mj-jogo { --mj-casa-a: var(--s2); --mj-casa-b: var(--s4); }
+
+.mj-jogo-topo { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.mj-jogo-x { color: var(--tx3); font-size: var(--fs-small); }
+.mj-cadeira {
+  display: inline-flex; align-items: center; gap: var(--s-15);
+  min-width: 0; min-height: 32px;
+  padding: 0 var(--s-05) 0 var(--s-15);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--fs-small);
+}
+.mj-cadeira.is-vez { box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-cadeira.is-eu .mj-cadeira-nome { font-weight: 600; }
+.mj-cadeira:not(.is-livre)::after {
+  /* a cor de quem sentou: so um fio embaixo do nome */
+  content: ""; width: 6px; height: 6px; flex: none;
+  border-radius: var(--r-full); background: var(--mj-cor, transparent);
+  order: 3;
+}
+.mj-cadeira .mj-mini { order: 4; }
+.mj-cadeira-nome { min-width: 0; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj .mj-cadeira-sentar { min-height: 28px; padding: 0 var(--s-2); border-radius: var(--r-full); font-size: var(--fs-small); }
+.mj-amostra {
+  display: inline-grid; place-items: center; flex: none;
+  width: 18px; height: 18px;
+  border-radius: var(--r-full);
+  font: 700 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  line-height: 1;
+}
+.mj-jogo-placa {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  container-type: size;
+  touch-action: none;
+}
+.mj-jogo-status { margin: 0; min-height: 1.3em; text-align: center; color: var(--tx2); font-size: var(--fs-small); }
+.mj-jogo.is-minha-vez .mj-jogo-status { color: var(--tx); font-weight: 600; }
+.mj-jogo.is-fim .mj-jogo-status { color: var(--tx); font-weight: 600; }
+.mj .mj-btn.is-confirmando { color: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-soft); }
+.mj-jogo .mj-aviso { justify-content: center; }
+
+@container mj (max-width: 250px) {
+  .mj-jogo .mj-cadeira-nome { max-width: 7ch; }
+  .mj-jogo .mj-jogo-x { display: none; }
+}
+@container mj (max-height: 200px) {
+  .mj-jogo .mj-jogo-status { display: none; }
+}
+
+/* Casa com foco de teclado: o anel por dentro, para nao ser cortado. */
+.mj-jogo [data-casa]:focus-visible { outline: 2px solid var(--act); outline-offset: -2px; }
+
+/* ---------- Velha ---------- */
+
+.mj-velha .mj-amostra { background: var(--s3); }
+.mj-velha .mj-amostra.s1 { color: var(--on-text); }
+.mj-velha-grade {
+  width: min(100cqw, 100cqh); aspect-ratio: 1;
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  gap: var(--s-15);
+}
+.mj .mj-velha-casa {
+  min-height: 0; padding: 0;
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  font: 700 calc(min(100cqw, 100cqh) / 4.5) 'Outfit', system-ui, sans-serif;
+  line-height: 1;
+}
+.mj .mj-velha-casa:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-velha-casa[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj .mj-velha-casa.is-o { color: var(--on-text); }
+.mj .mj-velha-casa.is-linha { background: var(--on-fill); box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-jogo:not(.is-minha-vez) .mj-velha-casa:not(:disabled) { cursor: default; }
+
+/* ---------- Lig 4 ----------
+   Discos com cor fixa (travada no :root base, igual em todos os temas):
+   vermelhas em --danger-soft, amarelas em --warn. Nao ha token de "peca";
+   --live fica de fora de proposito. */
+
+.mj-lig4 { --mj-v: var(--danger-soft); --mj-a: var(--warn); }
+.mj-lig4 .mj-amostra.s0 { background: var(--mj-v); }
+.mj-lig4 .mj-amostra.s1 { background: var(--mj-a); }
+.mj-lig4-grade {
+  width: min(100cqw, 100cqh * 7 / 6); aspect-ratio: 7 / 6;
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: var(--s-05);
+  padding: var(--s-1);
+  border-radius: var(--r-md);
+  background: var(--s3);
+}
+.mj .mj-lig4-col {
+  min-height: 0; padding: var(--s-05);
+  display: grid; grid-template: repeat(6, 1fr) / 1fr; gap: var(--s-05);
+  /* o button global centra (inline-flex); aqui a grade estica */
+  place-content: stretch; place-items: stretch;
+  border-radius: var(--r-sm);
+  background: transparent;
+}
+.mj .mj-lig4-col:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-lig4-col[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-lig4-furo { display: grid; place-items: center; min-height: 0; }
+.mj-lig4-furo i {
+  display: block;
+  width: 100%; aspect-ratio: 1; max-height: 100%;
+  border-radius: var(--r-full);
+  background: var(--bg);
+  box-shadow: inset 0 2px 0 var(--line2);
+}
+.mj-lig4-furo[data-v="V"] i { background: var(--mj-v); box-shadow: inset 0 -3px 0 var(--scrim-1); }
+.mj-lig4-furo[data-v="A"] i { background: var(--mj-a); box-shadow: inset 0 -3px 0 var(--scrim-1); }
+.mj-lig4-furo.is-ultima i { outline: 2px solid var(--tx2); outline-offset: 1px; }
+.mj-lig4-furo.is-linha i { outline: 3px solid var(--tx); outline-offset: 1px; }
+.mj-lig4-furo[data-v="V"].is-ultima i, .mj-lig4-furo[data-v="A"].is-ultima i { animation: mj-cai var(--dur-slow) var(--ease-out); }
+@keyframes mj-cai { from { transform: translateY(-60%); opacity: 0.4; } }
+
+/* ---------- Tabuleiro 8x8 (damas e xadrez) ---------- */
+
+.mj-jogo-rodape { display: flex; flex-direction: column; align-items: center; gap: var(--s-05); }
+.mj-grade8 {
+  width: min(100cqw, 100cqh); aspect-ratio: 1;
+  display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line2);
+}
+.mj .mj-casa {
+  position: relative;
+  min-height: 0; padding: 0;
+  border: 0; border-radius: 0;
+  display: grid; grid-template: 1fr / 1fr; place-content: stretch; place-items: center;
+  background: var(--mj-casa-a);
+  cursor: default;
+  --mj-lado: calc(min(100cqw, 100cqh) / 8);
+}
+.mj .mj-casa.is-b { background: var(--mj-casa-b); }
+.mj .mj-casa:active { transform: none; }
+.mj .mj-casa.is-ultimo::before { content: ""; position: absolute; inset: 0; background: var(--on-fill); }
+.mj .mj-casa.is-sel::after,
+.mj .mj-casa.is-xeque::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 3px var(--on-text); }
+.mj .mj-casa.is-xeque::after { box-shadow: inset 0 0 0 3px var(--warn); }
+.mj .mj-casa.is-destino { cursor: pointer; }
+.mj .mj-casa.is-destino::after {
+  content: ""; position: absolute;
+  width: 30%; height: 30%;
+  border-radius: var(--r-full);
+  background: var(--on-line);
+}
+.mj .mj-casa.is-destino.is-tem-peca::after { width: 88%; height: 88%; background: transparent; box-shadow: inset 0 0 0 3px var(--on-line); }
+.mj .mj-casa.is-mexe, .mj .mj-casa.is-sel { cursor: grab; }
+.mj-peca { position: relative; z-index: 1; display: block; pointer-events: none; }
+.mj-peca.is-arrastando { z-index: 5; opacity: 0.9; }
+
+/* ---------- Damas ---------- */
+
+.mj-damas .mj-amostra.s0 { background: var(--mj-peca-clara); box-shadow: inset 0 0 0 1px var(--scrim-2); }
+.mj-damas .mj-amostra.s1 { background: var(--mj-peca-escura); box-shadow: inset 0 0 0 1px var(--veil-strong); }
+.mj-damas .mj-peca { width: 76%; aspect-ratio: 1; border-radius: var(--r-full); }
+.mj-damas .mj-peca:not(.is-clara):not(.is-escura) { display: none; }
+.mj-damas .mj-peca.is-clara { background: var(--mj-peca-clara); box-shadow: inset 0 -3px 0 var(--scrim-1), 0 1px 2px var(--scrim-2); }
+.mj-damas .mj-peca.is-escura { background: var(--mj-peca-escura); box-shadow: inset 0 0 0 2px var(--veil-hover), inset 0 -3px 0 var(--scrim-4), 0 1px 2px var(--scrim-2); }
+.mj-damas .mj-peca.is-dama::after {
+  content: ""; position: absolute; inset: 24%;
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 3px var(--warn);
+}
+.mj-damas.is-posso .mj-casa.is-mexe .mj-peca { outline: 2px solid var(--on-text); outline-offset: 1px; }
+.mj .mj-casa.is-cai .mj-peca { opacity: 0.45; }
+
+/* ---------- Xadrez ---------- */
+
+.mj-xadrez .mj-peca {
+  font: calc(min(100cqw, 100cqh) / 8 * 0.78)/1 'Segoe UI Symbol', 'DejaVu Sans', system-ui, sans-serif;
+}
+.mj-xadrez .mj-peca.is-branca, .mj-xadrez .mj-amostra.is-branca { color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6), 0 1px 2px var(--scrim-4); }
+.mj-xadrez .mj-peca.is-preta, .mj-xadrez .mj-amostra.is-preta { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong), 0 0 2px var(--veil); }
+.mj-xadrez .mj-amostra { font-size: var(--fs-lead); }
+.mj-xadrez.is-posso .mj-casa.is-mexe:hover::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-jogo-placa { position: relative; }
+.mj-xadrez-promo {
+  position: absolute; z-index: 6;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-1);
+  max-width: 100%;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: 0 0 0 1px var(--line2), var(--shadow-2);
+}
+.mj-xadrez-promo[hidden] { display: none; }
+.mj-xadrez-promo-g { font-size: var(--fs-lead); color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6); }
+.mj-xadrez-promo.is-preta .mj-xadrez-promo-g { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong); }
+
+/* ---------- Dentro da caixa da Vista ----------
+   Na Mesa a alca de arrastar ocupa os 28 px de cima do `el` (por cima do
+   conteudo): o topo do conteudo cede esse respiro. */
+
+.mesa-content > .mj { padding-top: calc(var(--s-6) - var(--s-05)); }
+
+/* ---------- Movimento ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .mj *, .mj *::before, .mj *::after { transition: none !important; animation: none !important; }
+}
+
+/* --- Midia (youtube, radio, aovivo) --- */
+/*
+ * Conteudo das janelas de midia da Mesa (time Midia). Contrato:
+ * docs/superpowers/plans/2026-09-24-mesa-contrato.md, secao 6. Tudo com
+ * prefixo .mjm- (mesa janela midia) e so tokens de style.css. A alca da
+ * Vista cobre os 28 px de cima: o que e texto ou botao comeca em 30 px; o
+ * video fica por baixo da alca, inteiro.
+ */
+
+.mjm {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  color: var(--tx);
+  font-size: var(--fs-body);
+  overflow: hidden;
+  container-type: size;
+}
+.mjm [hidden] { display: none !important; }
+
+.mjm-btn {
+  appearance: none;
+  border: 1px solid var(--line2);
+  background: var(--s3);
+  color: var(--tx);
+  border-radius: var(--r-sm);
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+  transition: background var(--t-hover) var(--ease-out);
+  white-space: nowrap;
+}
+.mjm-btn:hover:not(:disabled) { background: var(--s4); }
+.mjm-btn:disabled { opacity: .5; cursor: default; }
+.mjm-btn:focus-visible,
+.mjm-input:focus-visible,
+.mjm-range:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.mjm-btn-act { background: var(--act); border-color: transparent; color: var(--on-act); }
+.mjm-btn-act:hover:not(:disabled) { background: var(--act-hover); }
+.mjm-icon { min-width: 32px; padding: var(--s-1) var(--s-2); line-height: 1; }
+
+.mjm-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--s1);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-ui);
+}
+.mjm-form { display: flex; gap: var(--s-2); align-items: center; }
+.mjm-hint { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-note { margin: 0; min-height: 1em; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-loading { margin: 0; padding: 30px var(--s-4) var(--s-4); color: var(--tx2); font-size: var(--fs-small); }
+/* No video a nota (recusa, erro de link) flutua abaixo da alca. */
+.mjm-yt > .mjm-note,
+.mjm-live > .mjm-note {
+  position: absolute;
+  top: 32px;
+  left: var(--s-2);
+  right: var(--s-2);
+  z-index: 3;
+  min-height: 0;
+  padding: var(--s-1) var(--s-2);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.mjm-yt > .mjm-note:empty,
+.mjm-live > .mjm-note:empty { display: none; }
+.mjm-time { color: var(--tx2); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mjm-range { accent-color: var(--act); min-width: 0; }
+.mjm-vol { width: 72px; flex: none; }
+.mjm-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--tx3); flex: none; }
+
+/* ---------- Palco (video) ---------- */
+
+.mjm-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--s-3);
+  padding: 30px var(--s-4) var(--s-4);
+}
+.mjm-yt .mjm-empty,
+.mjm-live .mjm-empty { position: absolute; inset: 0; background: var(--s2); z-index: 2; }
+
+.mjm-stage { position: absolute; inset: 0; background: var(--video-bg); }
+.mjm-player,
+.mjm-player .ytp-frame,
+.mjm-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+
+.mjm-cover,
+.mjm-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--s1);
+}
+.mjm-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .45; }
+.mjm-cover-cta {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+.mjm-cover-name { margin: 0; font-size: var(--fs-ui); color: var(--tx); }
+.mjm-msg { flex-direction: column; gap: var(--s-3); padding: var(--s-4); text-align: center; }
+.mjm-msg-text { margin: 0; color: var(--tx2); font-size: var(--fs-body); max-width: 40ch; }
+
+/* Barra de controles por cima do video: aparece com o mouse ou o foco. */
+.mjm-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2);
+}
+.mjm-stage .mjm-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to top, var(--scrim-4), transparent);
+  opacity: 0;
+  transition: opacity var(--t-hover) var(--ease-out);
+}
+.mjm-stage .mjm-bar-top { top: 30px; bottom: auto; justify-content: flex-start; background: none; }
+.mjm-stage:hover .mjm-bar,
+.mjm-stage:focus-within .mjm-bar { opacity: 1; }
+.mjm-stage .mjm-bar .mjm-range:not(.mjm-vol) { flex: 1; }
+@container (max-width: 380px) {
+  .mjm-yt .mjm-vol, .mjm-yt .mjm-time { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mjm-btn, .mjm-stage .mjm-bar { transition: none; }
+}
+
+/* ---------- Radio ---------- */
+
+.mjm-radio { padding: 30px var(--s-3) var(--s-3); background: var(--s2); }
+.mjm-radio-now { display: flex; gap: var(--s-3); align-items: flex-start; }
+.mjm-radio-cover {
+  width: 96px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  flex: none;
+}
+.mjm-radio-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: var(--s-1); }
+.mjm-radio-title {
+  margin: 0;
+  font-size: var(--fs-ui);
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.mjm-radio-who { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mjm-bar-static { padding: 0; flex-wrap: wrap; }
+.mjm-radio-head { margin: 0; color: var(--tx3); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .04em; }
+.mjm-radio-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.mjm-radio-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--s1);
+}
+.mjm-radio-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mjm-radio-item-who { color: var(--tx2); font-size: var(--fs-micro); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mjm-radio-item .mjm-icon { min-width: 26px; padding: 2px var(--s-1); }
+.mjm-radio-failed { color: var(--warn); }
+/* O player do radio: presente (o audio precisa dele) mas invisivel e sem
+   clique, dentro da propria janela. */
+.mjm-radio-audio {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 160px;
+  height: 90px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.mjm-radio-audio .ytp-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+/* --- Cartas (mesa-janelas/cartas.js): face clara com tinta preta ou
+   vermelha, como carta de verdade, em qualquer tema; verso neutro. O
+   vermelho das copas e ouros e o --danger travado (cor de naipe, nao de
+   alerta). --- */
+.mj-carta {
+  --mj-carta-w: 44px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--mj-carta-w);
+  aspect-ratio: 5 / 7;
+  border-radius: var(--r-sm);
+  background: var(--on-act);
+  color: var(--video-bg);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  font-family: 'Outfit', system-ui, sans-serif;
+  line-height: 1;
+  user-select: none;
+}
+.mj-carta-p { --mj-carta-w: 30px; }
+.mj-carta-g { --mj-carta-w: 60px; }
+.mj-carta.is-vermelha { color: var(--danger); }
+.mj-carta.is-verso {
+  background: repeating-linear-gradient(45deg, var(--s3) 0 6px, var(--s4) 6px 12px);
+  box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2);
+}
+.mj-carta.is-destaque { box-shadow: 0 0 0 2px var(--act); }
+.mj-carta-canto {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: calc(var(--mj-carta-w) * 0.26);
+  font-weight: 700;
+}
+.mj-carta-naipe { font-size: calc(var(--mj-carta-w) * 0.5); }
+.mj-mao { display: inline-flex; gap: var(--s-1); flex-wrap: wrap; }
+
+/* ---------- Batalha naval ----------
+   Dois mares de 10x10 lado a lado (um em cima do outro quando a janela e
+   mais alta que larga). Agua em --s2; navio num cinza entre --s2 e --tx3
+   (--s4 some no tema escuro); acerto e navio afundado com o X em
+   --danger-soft (a unica cor forte: fogo); tiro na agua e um ponto em
+   --tx3. O mar onde se atira ganha o contorno --on-line. --good nao: ele e
+   o --live. */
+
+.mj-batalha .mj-amostra { background: var(--s3); color: var(--tx2); }
+.mj-batalha .mj-cadeira.is-pronta { box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-batalha .mj-jogo-placa {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-2);
+  --mj-bn-cab: 22px;
+  --mj-bn-acoes: 0px;
+}
+.mj-batalha.is-posicionando .mj-jogo-placa { --mj-bn-acoes: 44px; }
+.mj-bn-mares {
+  --mj-bn-lado: min(calc((100cqw - var(--s-4)) / 2), calc(100cqh - var(--mj-bn-cab) - var(--mj-bn-acoes) - var(--s-1)));
+  display: flex; gap: var(--s-4); justify-content: center;
+}
+@container (max-aspect-ratio: 5 / 4) {
+  .mj-bn-mares {
+    flex-direction: column; gap: var(--s-2);
+    --mj-bn-lado: min(100cqw, calc((100cqh - 2 * var(--mj-bn-cab) - var(--mj-bn-acoes) - var(--s-2) - var(--s-1)) / 2));
+  }
+}
+.mj-bn-mar { display: flex; flex-direction: column; gap: var(--s-05); width: var(--mj-bn-lado); min-width: 0; }
+.mj-bn-cab {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-1);
+  height: calc(var(--mj-bn-cab) - var(--s-05)); min-width: 0;
+  font-size: var(--fs-small);
+}
+.mj-bn-titulo { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-bn-conta { color: var(--tx2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mj-bn-grade {
+  width: var(--mj-bn-lado); aspect-ratio: 1;
+  display: grid; grid-template: repeat(10, 1fr) / repeat(10, 1fr);
+  gap: 1px; padding: 1px;
+  border-radius: var(--r-sm);
+  background: var(--line2);
+}
+.mj-bn-mar.is-alvo .mj-bn-grade { box-shadow: 0 0 0 2px var(--on-line); }
+.mj .mj-bn-casa {
+  position: relative;
+  min-width: 0; min-height: 0; padding: 0;
+  border-radius: 0;
+  background: var(--s2);
+  font-size: 0;
+}
+.mj .mj-bn-casa[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-bn-mar.is-alvo .mj-bn-casa:not([aria-disabled="true"]) { cursor: crosshair; }
+.mj-bn-mar.is-alvo .mj-bn-casa:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-bn-casa[data-m="navio"] { background: color-mix(in srgb, var(--tx3) 38%, var(--s2)); }
+.mj .mj-bn-casa[data-m="afundado"] { background: var(--danger-dim); }
+.mj .mj-bn-casa[data-m="acerto"]::after,
+.mj .mj-bn-casa[data-m="afundado"]::after {
+  content: ""; position: absolute; inset: 16%;
+  background:
+    linear-gradient(45deg, transparent 41%, var(--danger-soft) 41% 59%, transparent 59%),
+    linear-gradient(-45deg, transparent 41%, var(--danger-soft) 41% 59%, transparent 59%);
+}
+.mj .mj-bn-casa[data-m="agua"]::after {
+  content: ""; position: absolute; inset: 37%;
+  border-radius: var(--r-full);
+  background: var(--tx3);
+}
+.mj .mj-bn-casa.is-ultimo { box-shadow: inset 0 0 0 2px var(--tx2); }
+.mj-bn-acoes { display: flex; gap: var(--s-2); justify-content: center; }
+.mj-bn-acoes[hidden] { display: none; }
+.mj .mj-bn-pronto.is-feito { color: var(--tx); box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-bn-relogio { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-bn-relogio.is-pouco { color: var(--warn); font-weight: 600; }
+.mj-bn-relogio[hidden] { display: none; }
+
+@container mj (max-width: 480px) {
+  .mj-bn-acoes .mj-btn span { display: none; }
+/* ======================================================================
+   Festa (time Festa, 2026-09-25): Spotify Jam, Sons e Link.
+   ====================================================================== */
+/* ---------- Spotify Jam ---------- */
+.mj-jam-vazio, .mj-jam-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-jam-vazio { justify-content: center; }
+.mj-jam-titulo { margin: 0; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-jam-cabeca { display: flex; flex-direction: column; gap: var(--s-05); min-width: 0; }
+.mj-jam-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-jam-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-jam-acoes { flex-wrap: wrap; }
+.mj-jam-acoes .mj-jam-entrar { flex: 1 1 auto; }
+.mj .mj-btn.is-on { border-color: var(--act); }
+.mj-jam-lista {
+  flex: 1;
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--s-1) var(--s-3);
+.mj-jam-lista li { display: inline-flex; align-items: center; gap: var(--s-15); font-size: var(--fs-small); }
+.mj-jam-rodape .mj-btn { min-height: 28px; font-size: var(--fs-small); }
+@container mj (max-height: 230px) {
+  .mj-jam .mj-jam-meta, .mj-jam .mj-dica { display: none; }
+/* ---------- Sons ---------- */
+.mj-sons-grade {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  grid-auto-rows: minmax(36px, 56px);
+  align-content: start;
+  gap: var(--s-15);
+.mj .mj-sons-btn { min-height: 0; height: 100%; padding: 0 var(--s-2); justify-content: center; }
+.mj .mj-sons-btn > span { overflow: hidden; text-overflow: ellipsis; }
+.mj .mj-sons-btn.is-toca { animation: mj-sons-toca 360ms var(--ease-out); }
+@keyframes mj-sons-toca {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+/* A espera de 3 s de quem tocou: uma linha que encolhe ate sumir. */
+.mj-sons-espera { height: 3px; flex: none; border-radius: var(--r-full); background: var(--s3); opacity: 0; transition: opacity var(--dur-fast); overflow: hidden; }
+.mj-sons-espera.is-on { opacity: 1; }
+.mj-sons-espera > span { display: block; height: 100%; background: var(--act); transform-origin: left center; transform: scaleX(0); }
+.mj-sons-espera > span.is-anda { animation: mj-sons-espera var(--mj-dur, 3000ms) linear both; }
+@keyframes mj-sons-espera {
+  from { transform: scaleX(var(--mj-falta, 1)); }
+  to { transform: scaleX(0); }
+.mj-sons-rodape { flex: none; }
+.mj-sons-tocou {
+  margin: 0; min-width: 0;
+  display: inline-flex; align-items: center; gap: var(--s-15);
+  color: var(--tx2); font-size: var(--fs-small);
+  white-space: nowrap; overflow: hidden;
+.mj-sons-tocou > em { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
+.mj-sons-tocou > span:not(.mj-dot) { flex: none; }
+.mj .mj-sons-rodape .mj-ic { width: 28px; min-height: 28px; }
+.mj .mj-sons-vol { width: 88px; flex: none; accent-color: var(--act); }
+.mj-sons-vol:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.mj-sons.is-mudo .mj-sons-vol { opacity: 0.5; }
+@container mj (max-width: 300px) {
+  .mj-sons-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-1); }
+  .mj .mj-sons-btn { padding: 0 var(--s-1); font-size: var(--fs-small); }
+  .mj .mj-sons-vol { width: 64px; }
+@container mj (max-height: 200px) {
+  .mj-sons-grade { grid-auto-rows: 28px; gap: var(--s-1); }
+  .mj .mj-sons-btn { font-size: var(--fs-small); }
+/* ---------- Link ---------- */
+.mj-link-vazio, .mj-link-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-link-vazio { justify-content: center; }
+.mj-link-form { display: flex; flex-direction: column; gap: var(--s-15); min-width: 0; }
+.mj-link-cheio { justify-content: space-between; }
+.mj-link-cabeca { min-width: 0; display: flex; flex-direction: column; gap: var(--s-05); }
+.mj-link-titulo {
+  margin: 0;
+  font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.mj-link-titulo.is-dominio { font-variant-numeric: tabular-nums; }
+.mj-link-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-link-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-link-dominio { color: var(--tx); font-weight: 600; }
+.mj-link-resto {
+  margin: 0;
+  color: var(--tx3); font-size: var(--fs-small);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.mj-link-acoes .mj-fantasma { min-height: 28px; font-size: var(--fs-small); }
+.mj-link-confirma {
+  display: flex; flex-direction: column; gap: var(--s-15);
+  padding: var(--s-2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+.mj-link-pergunta { margin: 0; font-size: var(--fs-body); overflow-wrap: anywhere; }
+.mj-link-pergunta strong { font-weight: 700; }
+/* Alturas do container sao da caixa de conteudo (sem o respiro da alca). */
+@container mj (max-height: 130px) {
+  .mj-link .mj-sec { display: none; }
+  .mj-link-cheio.is-confirmando .mj-link-cabeca { display: none; }
+@container mj (max-width: 330px) {
+  .mj-link-acoes .mj-fantasma > span { display: none; }
+  .mj-link-acoes .mj-fantasma { width: 28px; padding: 0; }
+/* ---------- Pôquer (mesa-janelas/poquer.js) ----------
+   Mesa oval com 8 lugares (a de quem ve fica embaixo, no meio), as cartas
+   da mesa e o pote no meio, e embaixo as suas cartas e a barra de acoes.
+   A vez e o vencedor tem contorno no --act; o relogio fica no --warn quando
+   falta pouco. A cor da pessoa so na bolinha. */
+
+.mj-poquer {
+  --pq-lugar-w: 116px;
+  --pq-carta-lugar: 22px;
+  gap: var(--s-1);
+}
+.mj-pq-topo { min-height: 30px; }
+.mj-pq-titulo {
+  font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  color: var(--tx2);
+  font-variant-numeric: tabular-nums;
+}
+.mj-poquer .mj-pq-topo .mj-btn { min-height: 30px; }
+.mj-poquer .mj-pq-blinds { min-height: 30px; font-size: var(--fs-small); }
+
+/* A mesa: o feltro (oval) por tras, os lugares e as apostas por cima. */
+.mj-pq-mesa { position: relative; flex: 1; min-height: 0; }
+.mj-pq-feltro {
+  position: absolute;
+  inset: 14% 13%;
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2), inset 0 0 0 7px var(--s1), inset 0 0 0 8px var(--line);
+}
+.mj-pq-centro {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
+  max-width: 62%;
+  text-align: center;
+}
+.mj-pq-pote {
+  font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  color: var(--tx);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mj-pq-board { display: flex; gap: var(--s-1); }
+.mj-pq-slot { display: inline-flex; }
+.mj-pq-slot .mj-carta { --mj-carta-w: 38px; }
+.mj-pq-slot.is-vazio {
+  width: 38px; aspect-ratio: 5 / 7;
+  border-radius: var(--r-sm);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+/* No showdown, as cartas fora das maos vencedoras apagam. */
+.mj-poquer.is-showdown .mj-pq-board .mj-carta:not(.is-destaque),
+.mj-poquer.is-showdown .mj-pq-cartas .mj-carta:not(.is-destaque):not(.is-verso) { opacity: 0.45; }
+.mj-pq-resultado { display: flex; flex-direction: column; gap: 2px; }
+.mj-pq-resultado p {
+  font-size: var(--fs-small);
+  line-height: 1.25;
+  color: var(--tx);
+}
+.mj-pq-resultado p:first-child { font-weight: 600; }
+
+/* Lugar: plaquinha centrada no ponto da oval. */
+.mj-pq-lugar {
+  position: absolute;
+  width: var(--pq-lugar-w);
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s-05) var(--s-15);
+  border-radius: var(--r-md);
+  background: var(--s3);
+  font-size: var(--fs-small);
+  line-height: 1.2;
+}
+.mj-pq-lugar.is-livre {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  align-items: center;
+  color: var(--tx3);
+}
+.mj-pq-lugar.is-eu .mj-pq-nome { font-weight: 600; }
+.mj-pq-lugar.is-fora { opacity: 0.55; }
+.mj-pq-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-pq-lugar.is-vencedor { box-shadow: inset 0 0 0 2px var(--act); background: var(--s4); }
+.mj-pq-linha { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.mj-pq-lugar.is-livre .mj-pq-linha + .mj-pq-linha { display: none; }
+.mj-pq-nome { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-pq-lugar.is-livre .mj-pq-nome { flex: none; }
+.mj-pq-d {
+  display: inline-grid; place-items: center; flex: none;
+  width: 16px; height: 16px;
+  border-radius: var(--r-full);
+  background: var(--on-act);
+  color: var(--video-bg);
+  font: 700 10px/1 'Outfit', system-ui, sans-serif;
+}
+.mj-pq-tag {
+  font: 600 var(--fs-micro) 'Outfit', system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--tx3);
+}
+.mj-pq-pilha { font-variant-numeric: tabular-nums; color: var(--tx2); }
+.mj-pq-estado {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-micro); line-height: 1.1; color: var(--tx3);
+}
+.mj-pq-lugar.is-vencedor .mj-pq-estado { color: var(--tx); font-weight: 600; }
+.mj-pq-cartas { display: inline-flex; gap: 2px; margin-left: auto; }
+.mj-pq-cartas .mj-carta { --mj-carta-w: var(--pq-carta-lugar); border-radius: var(--r-xs); }
+.mj-pq-cartas .mj-carta-canto { top: 2px; left: 2px; font-size: 9px; }
+.mj-pq-cartas .mj-carta-naipe { display: none; }
+.mj-pq-cartas .mj-carta.is-verso { box-shadow: inset 0 0 0 1px var(--s2), inset 0 0 0 2px var(--line2); }
+.mj .mj-pq-lugar .mj-cadeira-sentar { min-height: 26px; }
+
+/* O relogio de quem esta na vez: um fio que encolhe. */
+.mj-pq-relogio {
+  position: absolute; left: var(--s-15); right: var(--s-15); bottom: 2px;
+  height: 2px; border-radius: var(--r-full);
+  background: var(--line);
+  overflow: hidden;
+}
+.mj-pq-lugar:not(.is-vez) .mj-pq-relogio { display: none; }
+.mj-pq-relogio > span {
+  display: block; height: 100%;
+  background: var(--act);
+  transform-origin: left center;
+  transition: transform 250ms linear;
+}
+.mj-pq-relogio.is-pouco > span { background: var(--warn); }
+
+/* Aposta da rodada: ficha + valor, entre o lugar e o meio. */
+.mj-pq-aposta {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex; align-items: center; gap: var(--s-05);
+  padding: 1px var(--s-15) 1px var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  font: 600 var(--fs-micro) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mj-pq-aposta::before {
+  content: ""; width: 10px; height: 10px; flex: none;
+  border-radius: var(--r-full);
+  background: var(--on-act);
+  box-shadow: inset 0 0 0 2px var(--tx3);
+}
+
+/* Embaixo: suas cartas (grandes) a esquerda; estado e acoes a direita. */
+.mj-pq-baixo {
+  flex: none;
+  display: flex; align-items: flex-end; gap: var(--s-3);
+  min-height: 84px;
+}
+.mj-pq-eu { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: none; }
+.mj-pq-minhas { display: inline-flex; gap: var(--s-1); }
+.mj-pq-minhas .mj-carta { --mj-carta-w: 50px; }
+.mj-pq-jogo { margin: 0; font-size: var(--fs-micro); color: var(--tx2); white-space: nowrap; }
+.mj-pq-direita {
+  flex: 1; min-width: 0; min-height: 84px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: var(--s-1);
+}
+.mj-poquer .mj-pq-status { text-align: left; font-variant-numeric: tabular-nums; outline: none; }
+.mj-poquer.is-pouco .mj-pq-status { color: var(--warn); }
+.mj-pq-acoes { display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-pq-valores, .mj-pq-botoes { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.mj-pq-botoes { justify-content: flex-end; }
+.mj-poquer .mj-pq-botoes .mj-btn { min-height: 32px; }
+.mj-poquer .mj-pq-atalho { min-height: 28px; padding: 0 var(--s-2); font-size: var(--fs-small); }
+.mj-pq-slider { flex: 1; min-width: 60px; accent-color: var(--act); }
+.mj .mj-pq-valor { width: 76px; min-height: 28px; flex: none; font-variant-numeric: tabular-nums; }
+.mj-pq-anuncio {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.mj-poquer .mj-aviso { justify-content: flex-start; }
+
+@container mj (max-width: 640px) {
+  .mj-poquer { --pq-lugar-w: 100px; --pq-carta-lugar: 18px; }
+  .mj-pq-slot .mj-carta { --mj-carta-w: 32px; }
+  .mj-pq-slot.is-vazio { width: 32px; }
+  .mj-pq-minhas .mj-carta { --mj-carta-w: 42px; }
+  .mj-poquer .mj-pq-atalho[aria-label="Meio pote"] { display: none; }
+}
+@container mj (max-height: 400px) {
+  .mj-pq-jogo { display: none; }
+  .mj-pq-lugar .mj-pq-tag { display: none; }
+/* ---------- Blackjack (mesa-janelas/blackjack.js) ----------
+   A banca em cima, os 5 lugares embaixo, a barra da pessoa no pe. Cartas
+   de cada mao se sobrepoem pela metade (maos longas cabem no lugar). A cor
+   da pessoa so na bolinha; a vez e o --act (contorno). */
+.mj.mj-bj { padding-top: 30px; gap: var(--s-2); }
+.mj-bj-topo { display: flex; align-items: center; gap: var(--s-2); min-height: 22px; }
+.mj-bj-status {
+  font-weight: 600;
+.mj-bj.is-minha-vez .mj-bj-status { color: var(--on-text); }
+.mj-bj-status:focus { outline: none; }
+.mj-bj-status:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; border-radius: var(--r-xs); }
+.mj-bj-prazo {
+  min-width: 40px;
+  padding: 1px var(--s-2);
+.mj-bj-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
+.mj-bj-sapato { flex: none; color: var(--tx3); font-size: var(--fs-micro); }
+/* Banca */
+.mj-bj-banca {
+  display: flex; align-items: center; justify-content: center; gap: var(--s-3);
+  min-height: 80px;
+.mj-bj-banca-mao { display: flex; min-height: 62px; align-items: center; }
+.mj-bj-banca .mj-bj-total { min-width: 72px; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-bj-banca.is-estourou .mj-bj-total { color: var(--tx3); }
+/* Cartas de uma mao: sobrepostas, sem quebrar linha. */
+.mj-bj .mj-mao { flex-wrap: nowrap; gap: 0; }
+.mj-bj .mj-mao > .mj-carta + .mj-carta { margin-left: calc(var(--mj-carta-w) * -0.45); }
+.mj-bj .mj-carta { box-shadow: inset 0 0 0 1px var(--line2), -2px 0 3px var(--scrim-1); }
+.mj-bj .mj-carta.is-verso { box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2), -2px 0 3px var(--scrim-1); }
+/* Lugares */
+.mj-bj-lugares {
+  flex: 1; min-height: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+.mj-bj-lugar {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-15);
+.mj-bj-lugar.is-vazio { align-items: center; justify-content: center; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); }
+.mj-bj-lugar.is-meu { box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-bj-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-bj-lugar .mj-btn { min-height: 32px; }
+.mj-bj-livre { color: var(--tx3); font-size: var(--fs-small); }
+.mj-bj-quem { display: flex; align-items: center; gap: var(--s-15); min-width: 0; }
+.mj-bj-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--fs-small); }
+.mj-bj-saldo { display: flex; flex-wrap: wrap; column-gap: var(--s-15); font-size: var(--fs-micro); color: var(--tx2); }
+.mj-bj-aposta { color: var(--tx); font-weight: 600; }
+.mj-bj-seguro { color: var(--tx2); }
+.mj-bj-maos { display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-bj-mao {
+  grid-template-columns: auto 1fr;
+  column-gap: var(--s-15);
+  padding: var(--s-05);
+  border-radius: var(--r-xs);
+.mj-bj-mao > .mj-mao { grid-row: span 2; }
+.mj-bj-mao.is-vez { box-shadow: 0 0 0 2px var(--act); }
+.mj-bj-mao .mj-bj-total { font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif; white-space: nowrap; }
+.mj-bj-mao-aposta { font-size: var(--fs-micro); color: var(--tx3); white-space: nowrap; }
+.mj-bj-res {
+  grid-column: 1 / -1;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis;
+.mj-bj-mao.is-ganhou .mj-bj-res { color: var(--on-text); }
+.mj-bj-mao.is-perdeu .mj-bj-res { color: var(--tx3); }
+.mj-bj-mao.is-empate .mj-bj-res { color: var(--tx2); }
+/* Nas apostas, as maos que ficaram sao da rodada anterior: apagadas. */
+.mj-bj-lugar.is-anterior .mj-bj-mao { opacity: 0.7; }
+/* Barra da pessoa */
+.mj-bj-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-15); min-height: 36px; }
+.mj-bj-grupo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-15); }
+.mj-bj-rot { font-size: var(--fs-small); color: var(--tx2); }
+.mj .mj-bj-campo { width: 76px; }
+.mj .mj-bj-ficha {
+  min-width: 44px;
+  padding: 0 var(--s-2);
+.mj-bj-dica { flex: 1; min-width: 0; }
+.mj-bj-barra .mj-aviso { flex-basis: 100%; }
+@container mj (max-width: 560px) {
+  .mj-bj-sapato, .mj-bj-rot, .mj-bj-mao-aposta { display: none; }
+  .mj-bj-lugares { gap: var(--s-1); }
+  .mj-bj-lugar { padding: var(--s-1); }
+  .mj .mj-bj-ficha { min-width: 36px; padding: 0 var(--s-15); }
+  .mj .mj-bj-campo { width: 64px; }
+  /* Lugar estreito: o total vai para baixo das cartas. */
+  .mj-bj-mao { grid-template-columns: minmax(0, 1fr); }
+  .mj-bj-mao > .mj-mao { grid-row: auto; }
+@container mj (max-height: 360px) {
+  .mj-bj-banca { min-height: 0; padding: var(--s-1); }
+  .mj-bj-banca-mao { min-height: 0; }
+  .mj-bj-banca .mj-carta-m { --mj-carta-w: 32px; }
+@container mj (min-width: 900px) and (min-height: 560px) {
+  .mj-bj .mj-bj-mao .mj-carta-p { --mj-carta-w: 40px; }
+  .mj-bj-banca .mj-carta-m { --mj-carta-w: 60px; }
+}
