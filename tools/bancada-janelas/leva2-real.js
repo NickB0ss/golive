@@ -102,6 +102,10 @@ async function caixaDe(page) {
   return page.evaluate(() => window.__caixa || []);
 }
 
+/** So serve para condicoes que nascem UMA vez e ficam valendo (uma pessoa
+ * sentou, a fase mudou): `caixa.find` acha a primeira mensagem que bate,
+ * que e exatamente a hora da transicao. NAO serve para "qual e o estado
+ * agora" -- para isso, `ultimoEstado`. */
 async function esperaMsg(page, pred, ms = 6000) {
   const fim = Date.now() + ms;
   while (Date.now() < fim) {
@@ -111,6 +115,21 @@ async function esperaMsg(page, pred, ms = 6000) {
     await espera(30);
   }
   throw new Error('esperou demais por mensagem');
+}
+
+/** O estado MAIS RECENTE que a pessoa recebeu para a janela `id` (state ou
+ * o `add` inicial). Ao contrario de `esperaMsg` (que acha a primeira
+ * mensagem que bate e nunca muda depois disso), isto acompanha o jogo
+ * andando -- e o que os lacos de "jogue ate acabar" precisam. */
+async function ultimoEstado(page, id) {
+  const caixa = await caixaDe(page);
+  for (let i = caixa.length - 1; i >= 0; i--) {
+    const m = caixa[i];
+    if (m.type === 'mesa' && m.id === id && (m.op === 'state' || m.op === 'add')) {
+      return m.op === 'add' ? m.win.state : m.state;
+    }
+  }
+  return null;
 }
 
 async function abrirPessoa(browser, servidor, nome) {
@@ -145,9 +164,16 @@ function janela(page, id) {
   return page.locator(`.mesa-win[data-id="${id}"]`);
 }
 
-/** conteudo cabe sem rolar/cortar + nada sob a faixa do topo (28 px reais
+/** conteudo cabe sem rolar/cortar + nada sob a faixa do topo (28 px logicos
  * da alca/`.mesa-ctrls`, com uma folga de 2 px) + todo controle visivel tem
- * nome -- a mesma vara de medir do poquer-rodar.js/rodar-blackjack.js. */
+ * nome -- a mesma vara de medir do poquer-rodar.js/rodar-blackjack.js.
+ *
+ * A mesa tem zoom por pessoa (o "Ver tudo" quase nunca fica 1:1 com mais de
+ * uma janela postas): `getBoundingClientRect()` devolve pixel de TELA, ja
+ * multiplicado pelo zoom, mas `clientWidth` e layout (nao muda com
+ * `transform: scale`). A razao entre os dois desfaz o zoom antes de
+ * comparar com os 26px logicos -- senao, zoom < 1 acusa respiro de sobra
+ * como se estivesse faltando. */
 async function conferirGeometria(page, rotulo) {
   const r = await page.evaluate(() => {
     const out = { vaza: [], semNome: 0, sobAlca: [] };
@@ -160,13 +186,15 @@ async function conferirGeometria(page, rotulo) {
         out.vaza.push(`${rotulo2}: ${mj.scrollWidth}x${mj.scrollHeight} > ${mj.clientWidth}x${mj.clientHeight}`);
       }
       const caixaConteudo = conteudo.getBoundingClientRect();
+      const escala = conteudo.clientWidth > 0 ? caixaConteudo.width / conteudo.clientWidth : 1;
       for (const b of mj.querySelectorAll('button, input, select, textarea')) {
         if (b.offsetParent === null) continue;
         const nome = b.getAttribute('aria-label') || (b.textContent && b.textContent.trim()) || b.getAttribute('title') || b.getAttribute('placeholder');
         if (!nome) out.semNome++;
         const rc = b.getBoundingClientRect();
-        if (rc.height > 0 && rc.top < caixaConteudo.top + 26) {
-          out.sobAlca.push(`${rotulo2}: "${nome}" a ${Math.round(rc.top - caixaConteudo.top)}px do topo`);
+        const folgaLogica = (rc.top - caixaConteudo.top) / escala;
+        if (rc.height > 0 && folgaLogica < 26) {
+          out.sobAlca.push(`${rotulo2}: "${nome}" a ${Math.round(folgaLogica)}px (logicos) do topo`);
         }
       }
     }
@@ -206,12 +234,36 @@ async function conferirSemErro(pessoas, rotulo) {
  * mesa comeca perto de -600,-600 -- bem fora do que a camera mostra ao
  * abrir -- entao clicar direto num botao de uma janela recem-posta falha
  * com "outside of the viewport" sem isto). Chama em CADA pagina, porque o
- * zoom e por pessoa. */
+ * zoom e por pessoa. A Vista tambem tem um "seguir a propria janela"
+ * (mesa-view.js: `flyTo` quando a janela que a pessoa mexeu sai da tela):
+ * espera um pouco antes E clica duas vezes, senao um eco tardio da ultima
+ * jogada do laco de jogo reabre o voo da camera bem na hora do fit. */
 async function verTudo(...pessoas) {
+  await espera(250);
   for (const p of pessoas) {
     await p.page.click('.mesa-zoom-btn[data-zoom="fit"]').catch(() => {});
   }
   await espera(400);
+  for (const p of pessoas) {
+    await p.page.click('.mesa-zoom-btn[data-zoom="fit"]').catch(() => {});
+  }
+  await espera(400);
+}
+
+/** Tela cheia (mesma ideia do mesa-real.js para poquer/blackjack): no "Ver
+ * tudo" com mais de uma janela a caixa fica pequena e os controles do
+ * canto (avatar/tela cheia/tirar) tem tamanho fixo na tela, entao ficam
+ * por cima do que seria clicavel perto da borda. Tela cheia tira a janela
+ * do zoom da mesa e da tamanho de sobra -- como uma pessoa faria antes de
+ * jogar de verdade numa janela pequena. */
+async function telaCheia(w) {
+  await w.hover();
+  await w.locator('.mesa-ctrl[data-act="full"]').click();
+  await espera(250);
+}
+async function sairTelaCheia(pessoa) {
+  await pessoa.page.keyboard.press('Escape');
+  await espera(250);
 }
 
 async function print(page, nome) {
@@ -256,24 +308,22 @@ async function cenaTruco(browser) {
     // Joga uma mao inteira: quem estiver na vez clica a primeira carta
     // descoberta ("Jogar"), ate a mao acabar (phase sai de 'play').
     let acabou = false;
-    for (let i = 0; i < 12 && !acabou; i++) {
-      for (const [w, outro] of [[wAna, bia], [wBia, ana]]) {
+    for (let i = 0; i < 30 && !acabou; i++) {
+      const view = await ultimoEstado(ana.page, id);
+      if (!view || view.phase === 'waiting' || view.phase === 'finished') { acabou = true; break; }
+      for (const w of [wAna, wBia]) {
         const botaoJogar = w.locator('.mj-tr-carta').getByRole('button', { name: 'Jogar' }).first();
-        if (await botaoJogar.count()) {
-          const ligado = (await botaoJogar.getAttribute('aria-disabled')) !== 'true';
-          if (ligado) {
-            await botaoJogar.click();
-            await espera(250);
-          }
+        if (await botaoJogar.count() && (await botaoJogar.getAttribute('aria-disabled')) !== 'true') {
+          await botaoJogar.click();
+          await espera(200);
         }
       }
-      const st = await esperaMsg(ana.page, (m) => m.type === 'mesa' && (m.op === 'state' || m.op === 'add') && m.id === id, 4000);
-      const view = st.op === 'add' ? st.win.state : st.state;
-      if (view.phase === 'waiting' || view.phase === 'finished' || (view.result && !view.hand)) acabou = true;
+      await espera(80);
     }
     conferir(acabou, `${rotulo}: a mao terminou depois de jogar as cartas`);
 
     // Tamanho minimo: so sentar e conferir o layout (sem jogar a mao toda).
+    await verTudo(ana);
     await janela(ana.page, idMin).locator('.mj-tr-lugar').nth(0).getByRole('button', { name: 'Sentar' }).click();
     await espera(200);
 
@@ -323,27 +373,35 @@ async function cenaOito(browser) {
     await semVazamento(bia, await cartasDe(wAna), `${rotulo}: mao da Ana`);
     await semVazamento(ana, await cartasDe(wBia), `${rotulo}: mao da Bia`);
 
+    // Tela cheia: no "Ver tudo" com 2 janelas de oito a caixa fica pequena
+    // e os controles do canto atrapalham cliques perto da borda.
+    await telaCheia(wAna);
+    await telaCheia(wBia);
+
     let acabou = false;
-    for (let i = 0; i < 120 && !acabou; i++) {
+    for (let i = 0; i < 200 && !acabou; i++) {
+      const view = await ultimoEstado(ana.page, id);
+      if (view && (view.phase === 'finished' || view.last)) { acabou = true; break; }
       for (const w of [wAna, wBia]) {
         const jogavel = w.locator('.mj-oito-carta:not([aria-disabled="true"])').first();
         if (await jogavel.count()) {
           await jogavel.click();
-          await espera(120);
+          await espera(100);
           continue;
         }
         const comprar = w.locator('.mj-oito-comprar');
         if ((await comprar.getAttribute('aria-disabled')) !== 'true') {
           await comprar.click();
-          await espera(120);
+          await espera(100);
         }
       }
-      const st = await esperaMsg(ana.page, (m) => m.type === 'mesa' && (m.op === 'state' || m.op === 'add') && m.id === id, 4000);
-      const view = st.op === 'add' ? st.win.state : st.state;
-      if (view.phase === 'finished' || view.last) acabou = true;
+      await espera(60);
     }
     conferir(acabou, `${rotulo}: a rodada terminou (alguem descartou a ultima carta)`);
+    await sairTelaCheia(ana);
+    await sairTelaCheia(bia);
 
+    await verTudo(ana);
     await janela(ana.page, idMin).getByRole('button', { name: /^Sentar/ }).first().click();
     await espera(200);
 
@@ -392,32 +450,33 @@ async function cenaDomino(browser) {
     await semVazamento(ana, await pedrasDe(wBia), `${rotulo}: pedras da Bia`);
 
     let acabou = false;
-    for (let i = 0; i < 60 && !acabou; i++) {
+    for (let i = 0; i < 150 && !acabou; i++) {
+      const view = await ultimoEstado(ana.page, id);
+      if (view && view.phase === 'done') { acabou = true; break; }
       for (const w of [wAna, wBia]) {
         const jogavel = w.locator('.mj-do-mao .mj-do-pedra:not([aria-disabled="true"])').first();
         if (await jogavel.count()) {
           await jogavel.click();
-          await espera(150);
+          await espera(120);
           continue;
         }
         const comprar = w.locator('.mj-do-acoes button', { hasText: 'Comprar' });
         if ((await comprar.getAttribute('aria-disabled')) !== 'true') {
           await comprar.click();
-          await espera(150);
+          await espera(120);
           continue;
         }
         const passar = w.locator('.mj-do-acoes button', { hasText: 'Passar' });
         if ((await passar.getAttribute('aria-disabled')) !== 'true') {
           await passar.click();
-          await espera(150);
+          await espera(120);
         }
       }
-      const st = await esperaMsg(ana.page, (m) => m.type === 'mesa' && (m.op === 'state' || m.op === 'add') && m.id === id, 4000);
-      const view = st.op === 'add' ? st.win.state : st.state;
-      if (view.phase === 'done') acabou = true;
+      await espera(60);
     }
     conferir(acabou, `${rotulo}: a mao terminou (bateu ou trancou)`);
 
+    await verTudo(ana);
     await janela(ana.page, idMin).locator('.mj-do-lugar').nth(0).getByRole('button', { name: 'Sentar' }).click();
     await espera(200);
 
@@ -491,6 +550,7 @@ async function cenaStop(browser) {
     await conferirGeometria(bia.page, `${rotulo}/padrao (Bia)`);
     await print(ana.page, 'stop-padrao');
 
+    await verTudo(ana);
     await janela(ana.page, idMin).getByRole('button', { name: 'Começar rodada' }).click();
     await espera(300);
     await conferirGeometria(ana.page, `${rotulo}/minimo`);
@@ -708,6 +768,7 @@ async function cenaDesenha(browser) {
     await print(ana.page, 'desenha-padrao-ana');
     await print(bia.page, 'desenha-padrao-bia');
 
+    await verTudo(ana);
     await janela(ana.page, idMin).getByRole('button', { name: 'Entrar na rodada' }).click();
     await espera(200);
     await conferirGeometria(ana.page, `${rotulo}/minimo`);

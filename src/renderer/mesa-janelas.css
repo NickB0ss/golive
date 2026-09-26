@@ -1705,7 +1705,19 @@
 .mj-oito-carta:not([disabled]):hover { transform: translateY(-4px); }
 .mj-oito-acoes { flex-wrap: wrap; justify-content: center; }
 .mj-oito-selecao { min-height: 30px; max-width: 110px; }
-@container mj (max-height: 300px) { .mj-oito-pessoas { display: none; } .mj-oito-mesa { min-height: 58px; } .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; } .mj-oito-minha .mj-carta { --mj-carta-w: 32px; } }
+/* .mj-oito-pessoas NUNCA some por @container: e onde moram os botoes
+   "Sentar" dos lugares livres (a janela nao tem outro jeito de sentar) --
+   no tamanho minimo do modulo (420x280) isto escondia a unica forma de
+   entrar no jogo. */
+@container mj (max-height: 300px) {
+  .mj-oito { gap: var(--s-1); }
+  .mj-oito-topo, .mj-oito-pessoas { min-height: 22px; }
+  .mj-oito-mesa { min-height: 40px; }
+  .mj-oito-descarte { min-height: 40px; }
+  .mj-oito-minha { min-height: 44px; }
+  .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; }
+  .mj-oito-minha .mj-carta { --mj-carta-w: 32px; }
+}
 
 /* === domino ===
    Linha de pedras quebra dentro da mesa; não há imagens externas. */

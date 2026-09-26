@@ -68,21 +68,23 @@
     function renderPeople() {
       pessoas.replaceChildren();
       state.seats.forEach((id, i) => {
-        if (id) {
-          pessoas.append(el(
-            'span',
-            { class: `mj-oito-pessoa${state.turn === i ? ' is-vez' : ''}` },
-            `${nome(i)} · ${state.counts[i]} cartas · ${state.scores[i]} pts`,
-          ));
-          return;
-        }
-        // Lugar livre: sem isto nao havia como sentar (a janela so tinha
-        // "Dar cartas"/"Levantar"/"Recomeçar" -- nenhuma acao 'sit').
-        const sentar = C.botao({ text: 'Sentar', class: 'mj-fantasma mj-oito-sentar' });
-        C.ligado(sentar, state.me?.can?.sit?.[i] ? true : 'Lugar indisponível');
-        b.clique(sentar, b.raiz, () => b.acao(b.raiz, { kind: 'sit', seat: i }));
-        pessoas.append(sentar);
+        if (!id) return;
+        pessoas.append(el(
+          'span',
+          { class: `mj-oito-pessoa${state.turn === i ? ' is-vez' : ''}` },
+          `${nome(i)} · ${state.counts[i]} cartas · ${state.scores[i]} pts`,
+        ));
       });
+      // Sem isto nao havia como sentar (a janela so tinha "Dar cartas"/
+      // "Levantar"/"Recomeçar" -- nenhuma acao 'sit'). Um botao so (nao um
+      // por lugar, ate 8): a pessoa nao escolhe QUAL lugar, so entra no
+      // primeiro livre, como "Entrar na rodada" do Desenha.
+      const livre = state.me?.can?.sit?.findIndex(Boolean) ?? -1;
+      if (livre >= 0) {
+        const sentar = C.botao({ text: 'Sentar', class: 'mj-fantasma mj-oito-sentar' });
+        b.clique(sentar, b.raiz, () => b.acao(b.raiz, { kind: 'sit', seat: livre }));
+        pessoas.append(sentar);
+      }
     }
     function renderHand() {
       minha.replaceChildren();
