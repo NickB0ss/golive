@@ -59,18 +59,23 @@ const espera = (ms) => new Promise((r) => { setTimeout(r, ms); });
 // Infra: servidor de verdade + pessoas em paginas separadas de verdade.
 // ---------------------------------------------------------------------
 
-/** Roda no navegador (addInitScript): injeta ownerToken/nome no `join` e
- * guarda toda mensagem recebida em `window.__caixa`, alem da conexao viva
- * em `window.__ws` -- so pra dar `add`/`sit`/etc. pelo mesmo canal que a
- * pessoa usaria (a Vista continua sendo quem desenha, ninguem chama o
- * modulo por fora). */
-function PONTE(nome) {
+/** Roda no navegador (addInitScript): injeta nome (e, so pra Ana, o
+ * ownerToken) no `join` e guarda toda mensagem recebida em
+ * `window.__caixa`, alem da conexao viva em `window.__ws` -- so pra dar
+ * `add`/`sit`/etc. pelo mesmo canal que a pessoa usaria (a Vista continua
+ * sendo quem desenha, ninguem chama o modulo por fora).
+ *
+ * So a PRIMEIRA pessoa leva o token: se todo mundo entrasse com o mesmo
+ * `ownerToken`, todo mundo virava "dono" da sala (`isLeader() === true`)
+ * pra sempre, e testes de "so o lider" ou "so quem pos a janela" (Quadro:
+ * `podeLimpar()`) passariam por engano mesmo quebrados de verdade. */
+function PONTE({ nome, ehDona }) {
   const OrigWS = window.WebSocket;
   const enviarOriginal = OrigWS.prototype.send;
   OrigWS.prototype.send = function send(data) {
     if (typeof data === 'string' && data.includes('"type":"join"')) {
       const m = JSON.parse(data);
-      m.ownerToken = 'bancada-leva2';
+      if (ehDona) m.ownerToken = 'bancada-leva2';
       m.name = nome;
       return enviarOriginal.call(this, JSON.stringify(m));
     }
@@ -132,12 +137,12 @@ async function ultimoEstado(page, id) {
   return null;
 }
 
-async function abrirPessoa(browser, servidor, nome) {
+async function abrirPessoa(browser, servidor, nome, ehDona = false) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   const erros = [];
   page.on('console', (m) => { if (m.type() === 'error') erros.push(m.text()); });
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
-  await page.addInitScript(PONTE, nome);
+  await page.addInitScript(PONTE, { nome, ehDona });
   await page.goto(PAGINA);
   await page.click('#btn-join-address');
   await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
@@ -280,7 +285,7 @@ async function cenaTruco(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'truco';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const pessoas = [ana, bia];
     const id = await adicionarJanela(ana, 'truco', 140, 140, 720, 460);
@@ -349,7 +354,7 @@ async function cenaOito(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'oito';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const pessoas = [ana, bia];
     const id = await adicionarJanela(ana, 'oito', 140, 140, 640, 400);
@@ -426,7 +431,7 @@ async function cenaDomino(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'domino';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const pessoas = [ana, bia];
     const id = await adicionarJanela(ana, 'domino', 140, 140, 720, 480);
@@ -506,7 +511,7 @@ async function cenaStop(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'stop';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const caio = await abrirPessoa(browser, servidor, 'Caio');
     const pessoas = [ana, bia, caio];
@@ -581,7 +586,7 @@ async function cenaQuiz(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'quiz';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const pessoas = [ana, bia];
     const id = await adicionarJanela(ana, 'quiz', 140, 140, 560, 460);
@@ -630,7 +635,7 @@ async function cenaQuadro(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'quadro';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const pessoas = [ana, bia];
     const id = await adicionarJanela(ana, 'quadro', 140, 140, 640, 480);
@@ -668,7 +673,10 @@ async function cenaQuadro(browser) {
     await espera(300);
 
     // Limpar: so quem pos (Ana) ou o lider. Bia tenta e ve o aviso.
-    await wBia.getByRole('button', { name: 'Limpar' }).click();
+    // aria-disabled (nao "disabled" de verdade -- comum.js#ligado): o
+    // clique de um mouse de verdade chega ao JS mesmo assim; so o
+    // Playwright bloqueia por padrao, entao forca.
+    await wBia.getByRole('button', { name: 'Limpar' }).click({ force: true });
     const avisoBia = await wBia.locator('.mj-aviso.is-on').textContent().catch(() => '');
     conferir(!!avisoBia, `${rotulo}: Bia tentando limpar ve o motivo (${avisoBia})`);
     await wAna.getByRole('button', { name: 'Limpar' }).click();
@@ -700,7 +708,7 @@ async function cenaDesenha(browser) {
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
   const rotulo = 'desenha';
   try {
-    const ana = await abrirPessoa(browser, servidor, 'Ana');
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia');
     const pessoas = [ana, bia];
     const id = await adicionarJanela(ana, 'desenha', 140, 140, 720, 560);
