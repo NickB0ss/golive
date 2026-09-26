@@ -522,7 +522,8 @@ Pedido do Nicolas: "decida as regras utilizando padrão clássico". Sempre
 ### Desenha e adivinha (`desenha`, "Desenha e adivinha")
 - Vez de desenhar gira entre quem entrou na rodada. Quem desenha escolhe 1
   entre 3 palavras sorteadas (lista em português embutida); só ele vê a
-  palavra (segredo). 80 s para desenhar.
+  palavra (segredo). **15 s para escolher; estourou, vai a primeira**. Depois,
+  há 80 s para desenhar.
 - Quem adivinha escreve o palpite **na janela** (não no chat); o servidor
   compara sem acento e sem caixa. Acertou: pontos pelo tempo que sobrou
   (100 a 10), e quem desenha ganha 10 por acerto. Palpite "quase" (uma letra

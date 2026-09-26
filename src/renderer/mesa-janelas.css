@@ -1708,21 +1708,121 @@
 
 /* === domino ===
    Linha de pedras quebra dentro da mesa; não há imagens externas. */
-.mj.mj-domino { padding-top: 30px; gap: var(--s-2); }
-.mj-do-topo, .mj-do-acoes { display: flex; align-items: center; gap: var(--s-2); }
-.mj-do-status { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.mj-do-mesa { flex: 1; min-height: 92px; display: grid; place-items: center; padding: var(--s-2); border-radius: var(--r-md); background: var(--s2); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-.mj-do-linha { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 2px; max-width: 100%; }
-.mj-do-pedra { flex: none; width: 60px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; }
-.mj-do-pedra svg { display: block; width: 100%; fill: var(--tx); stroke: var(--line2); stroke-width: 2; }
-.mj-do-pedra circle { fill: var(--s4); stroke: none; }
-.mj-do-mesa-pedra { width: 44px; }
-.mj-do-lugares { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-1); }
-.mj-do-lugar { min-width: 0; padding: var(--s-1); border-radius: var(--r-sm); background: var(--s2); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-micro); }
-.mj-do-lugar.is-eu { box-shadow: inset 0 0 0 1px var(--on-line); }.mj-do-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
-.mj-do-mao { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s-1); min-height: 42px; }
-@container mj (max-width: 520px) { .mj-do-pedra { width: 48px; }.mj-do-mesa-pedra { width: 34px; }.mj-do-lugares { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container mj (max-height: 350px) { .mj-do-lugares { display: none; }.mj-do-mesa { min-height: 55px; }.mj-do-pedra { width: 42px; }.mj-do-mesa-pedra { width: 30px; } }
+.mj.mj-domino {
+  padding-top: 30px;
+  gap: var(--s-2);
+}
+.mj-do-topo,
+.mj-do-acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.mj-do-status {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.mj-do-mesa {
+  flex: 1;
+  min-height: 92px;
+  display: grid;
+  place-items: center;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.mj-do-linha {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+  gap: 2px;
+  max-width: 100%;
+}
+.mj-do-pedra {
+  flex: none;
+  width: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+}
+.mj-do-pedra svg {
+  display: block;
+  width: 100%;
+  fill: var(--tx);
+  stroke: var(--line2);
+  stroke-width: 2;
+}
+.mj-do-pedra circle {
+  fill: var(--s4);
+  stroke: none;
+}
+.mj-do-mesa-pedra {
+  width: 44px;
+}
+.mj-do-lugares {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-1);
+}
+.mj-do-lugar {
+  min-width: 0;
+  padding: var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+}
+.mj-do-lugar.is-eu {
+  box-shadow: inset 0 0 0 1px var(--on-line);
+}
+.mj-do-lugar.is-vez {
+  box-shadow: inset 0 0 0 2px var(--act);
+}
+.mj-do-mao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  min-height: 42px;
+}
+@container mj (max-width: 520px) {
+  .mj-do-pedra {
+    width: 48px;
+  }
+  .mj-do-mesa-pedra {
+    width: 34px;
+  }
+  .mj-do-lugares {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container mj (max-height: 350px) {
+  .mj-do-lugares {
+    display: none;
+  }
+  .mj-do-mesa {
+    min-height: 55px;
+  }
+  .mj-do-pedra {
+    width: 42px;
+  }
+  .mj-do-mesa-pedra {
+    width: 30px;
+  }
+}
 
 /* === quadro === */
 /* Folha em branco (contrato, secao 10): barra de ferramentas fixa em cima,

@@ -67,7 +67,7 @@ test('join: so na fase lobby, nao duplica, respeita o teto', () => {
   assert.equal(s.players.length, 2);
 });
 
-test('start: precisa de 2+, poe a fase choosing com 3 opcoes pro primeiro da lista', () => {
+test('start: precisa de 2+, poe a fase choosing com 3 opcoes e prazo pro primeiro da lista', () => {
   let s = passo(desenha.init(), { kind: 'join' }, '1');
   assert.notEqual(desenha.validate(s, { kind: 'start' }, ctx('1')), true, 'so tem 1');
   s = passo(s, { kind: 'join' }, '2');
@@ -76,9 +76,30 @@ test('start: precisa de 2+, poe a fase choosing com 3 opcoes pro primeiro da lis
   assert.equal(s.drawerIdx, 0);
   assert.equal(s.options.length, 3);
   assert.equal(new Set(s.options).size, 3);
+  assert.equal(s.deadline, 1000 + desenha.CHOOSE_MS);
 });
 
-test('choose: so quem desenha, vira a palavra secreta e comeca o prazo de 80s', () => {
+test('timeout escolhendo usa a primeira palavra e inicia os 80 s de desenho', () => {
+  let s = entramTodos(desenha.init());
+  s = passo(s, { kind: 'start' }, '1');
+  const primeira = s.options[0];
+  s = passo(s, { kind: 'timeout' }, '2', { now: 1000 + desenha.CHOOSE_MS + 1 });
+  assert.equal(s.phase, 'drawing');
+  assert.equal(s.word, primeira);
+  assert.equal(s.options, null);
+  assert.equal(s.deadline, 1000 + desenha.CHOOSE_MS + 1 + desenha.DRAW_MS);
+});
+
+test('view nao entrega a palavra escolhida por timeout a quem adivinha', () => {
+  let s = entramTodos(desenha.init());
+  s = passo(s, { kind: 'start' }, '1');
+  s = passo(s, { kind: 'timeout' }, '2', { now: 1000 + desenha.CHOOSE_MS + 1 });
+  const vistaDaBia = desenha.view(s, '2', { peers: PEERS });
+  assert.equal(vistaDaBia.word, null);
+  assert.equal(vistaDaBia.options, null);
+});
+
+test('choose antes dos 15 s: so quem desenha, vira a palavra secreta e comeca o prazo de 80 s', () => {
   let s = entramTodos(desenha.init());
   s = passo(s, { kind: 'start' }, '1');
   assert.notEqual(desenha.validate(s, { kind: 'choose', index: 0 }, ctx('2')), true, 'nao e a vez da Bia');
@@ -263,11 +284,11 @@ test('migrate: nao leva segredo nenhum, so jogadores e pontos; jogo cancelado (v
   assert.equal(JSON.stringify(m).includes(JSON.stringify(s.word)), false);
 });
 
-test('timeoutAt: so durante a fase drawing', () => {
+test('timeoutAt: vale na escolha e durante a fase drawing', () => {
   let s = entramTodos(desenha.init());
   assert.equal(desenha.timeoutAt(s), null);
   s = passo(s, { kind: 'start' }, '1');
-  assert.equal(desenha.timeoutAt(s), null, 'escolhendo, sem prazo ainda');
+  assert.equal(desenha.timeoutAt(s), s.deadline, 'escolhendo, tem prazo');
   s = passo(s, { kind: 'choose', index: 0 }, '1');
   assert.equal(desenha.timeoutAt(s), s.deadline);
 });

@@ -321,7 +321,9 @@
     let pedidoEm = 0;
     function tique() {
       const s = state;
-      const correndo = s && s.phase === 'drawing' && Number.isFinite(s.deadline);
+      const correndo = s
+        && (s.phase === 'choosing' || s.phase === 'drawing')
+        && Number.isFinite(s.deadline);
       if (!correndo) {
         relogio.textContent = '';
         relogio.hidden = true;

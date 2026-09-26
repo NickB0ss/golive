@@ -16,7 +16,8 @@
  *   - Quem desenha escolhe 1 de 3 palavras sorteadas (lista em portugues
  *     embutida, PALAVRAS abaixo); so ele ve as 3 e a escolhida, ate alguem
  *     acertar (ou a rodada acabar, quando ela vira publica em `lastRound`).
- *   - 80 s pra desenhar (DRAW_MS). Palpite (`guess`) so na janela; o
+ *   - 15 s pra escolher (CHOOSE_MS); se estourar, vai a primeira opcao.
+ *     Depois ha 80 s pra desenhar (DRAW_MS). Palpite (`guess`) so na janela; o
  *     servidor compara sem acento e sem caixa (`normalizar`).
  *   - Acertou: pontos pelo tempo que sobrou (100 a 10); quem desenha ganha
  *     10 por acerto. "Quase" (uma letra de diferenca -- `dentroDe1`) avisa
@@ -36,6 +37,7 @@
 
 (function (root) {
   const DRAW_MS = 80 * 1000;
+  const CHOOSE_MS = 15 * 1000;
   const MAX_PLAYERS = 8;
   const MIN_SCORE = 10;
   const MAX_SCORE = 100;
@@ -209,7 +211,7 @@
         return true;
       }
       case 'timeout':
-        return state.phase === 'drawing' ? true : 'Nada correndo';
+        return state.phase === 'choosing' || state.phase === 'drawing' ? true : 'Nada correndo';
       default:
         return 'Ação desconhecida';
     }
@@ -230,7 +232,7 @@
         return { kind: 'join', name: nome };
       }
       case 'start':
-        return { kind: 'start', options: sorteiaOpcoes(random) };
+        return { kind: 'start', options: sorteiaOpcoes(random), at };
       case 'choose':
         return { kind: 'choose', index: action.index, at };
       case 'guess':
@@ -249,7 +251,7 @@
    * vez pra quem vem depois. `nextOptions` vem do `prepare` (sorteado com
    * `ctx.random`); sem ele (dropPeer nao tem sorte nenhuma pra usar), cai
    * nas 3 primeiras palavras da lista -- deterministico, nunca undefined. */
-  function endRound(state, nextOptions) {
+  function endRound(state, nextOptions, at) {
     const id = drawerIdOf(state);
     const drawCounts = id ? { ...state.drawCounts, [id]: (state.drawCounts[id] || 0) + 1 } : { ...state.drawCounts };
     const lastRound = state.word ? { round: state.round, word: state.word, drawerId: id } : state.lastRound;
@@ -265,7 +267,15 @@
     const opcoes = Array.isArray(nextOptions) && nextOptions.length === 3 ? nextOptions : PALAVRAS.slice(0, 3);
     return {
       ...state, phase: 'choosing', drawerIdx: proximo, word: null, options: opcoes,
-      guessedBy: [], deadline: null, drawCounts, lastRound, round: state.round + 1,
+      guessedBy: [], deadline: at + CHOOSE_MS, drawCounts, lastRound, round: state.round + 1,
+    };
+  }
+
+  function startDrawing(state, word, at, by) {
+    return {
+      ...state, phase: 'drawing', word, options: null, guessedBy: [],
+      deadline: at + DRAW_MS, startedAt: at, seq: state.seq + 1,
+      lastEvent: { seq: state.seq + 1, kind: 'started', by },
     };
   }
 
@@ -287,9 +297,10 @@
       case 'start': {
         if (state.phase !== 'lobby' || state.players.length < 2) return state;
         const opcoes = Array.isArray(action.options) && action.options.length === 3 ? action.options : PALAVRAS.slice(0, 3);
+        const at = Number.isFinite(action.at) ? action.at : 0;
         return {
           ...state, phase: 'choosing', drawerIdx: 0, options: opcoes, drawCounts: {}, round: 1,
-          guessedBy: [], word: null, deadline: null, lastEvent: null, lastRound: null,
+          guessedBy: [], word: null, deadline: at + CHOOSE_MS, lastEvent: null, lastRound: null,
         };
       }
       case 'choose': {
@@ -297,11 +308,7 @@
         const escolhida = Array.isArray(state.options) ? state.options[action.index] : null;
         if (typeof escolhida !== 'string') return state;
         const at = Number.isFinite(action.at) ? action.at : 0;
-        return {
-          ...state, phase: 'drawing', word: escolhida, options: null, guessedBy: [],
-          deadline: at + DRAW_MS, startedAt: at, seq: state.seq + 1,
-          lastEvent: { seq: state.seq + 1, kind: 'started', by: from },
-        };
+        return startDrawing(state, escolhida, at, from);
       }
       case 'guess': {
         if (state.phase !== 'drawing') return state;
@@ -318,7 +325,7 @@
           players = withScore(players, dono, DRAWER_BONUS);
           const guessedBy = state.guessedBy.concat([from]);
           let next = { ...state, players, guessedBy, seq, lastEvent: { seq, kind: 'correct', by: from } };
-          if (guessedBy.length >= state.players.length - 1) next = endRound(next, action.nextOptions);
+          if (guessedBy.length >= state.players.length - 1) next = endRound(next, action.nextOptions, at);
           return next;
         }
         if (dentroDe1(palpite, alvo)) {
@@ -327,8 +334,15 @@
         return { ...state, seq, lastEvent: { seq, kind: 'wrong', by: from, text: String(action.text).slice(0, 40) } };
       }
       case 'timeout':
+        if (state.phase === 'choosing') {
+          const escolhida = Array.isArray(state.options) ? state.options[0] : null;
+          if (typeof escolhida !== 'string') return state;
+          const at = Number.isFinite(action.at) ? action.at : 0;
+          // A escolha automatica usa a primeira opcao, sem expor a palavra aos outros.
+          return startDrawing(state, escolhida, at, drawerIdOf(state));
+        }
         if (state.phase !== 'drawing') return state;
-        return endRound(state, action.nextOptions);
+        return endRound(state, action.nextOptions, Number.isFinite(action.at) ? action.at : 0);
       default:
         return state;
     }
@@ -356,12 +370,14 @@
     let drawerIdx = state.drawerIdx;
     if (idx < drawerIdx) drawerIdx -= 1;
     else if (idx === drawerIdx) drawerIdx %= players.length;
-    if (eraDesenhista) return endRound({ ...state, players, drawCounts, guessedBy, drawerIdx }, null);
+    if (eraDesenhista) return endRound({ ...state, players, drawCounts, guessedBy, drawerIdx }, null, 0);
     return { ...state, players, drawCounts, guessedBy, drawerIdx };
   }
 
   function timeoutAt(state) {
-    return state.phase === 'drawing' && Number.isFinite(state.deadline) ? state.deadline : null;
+    return (state.phase === 'choosing' || state.phase === 'drawing') && Number.isFinite(state.deadline)
+      ? state.deadline
+      : null;
   }
 
   /** O que `peerId` (null = so assiste) pode ver (contrato, secao 8): a
@@ -464,6 +480,7 @@
     summary,
     // Para os testes e a janela.
     DRAW_MS,
+    CHOOSE_MS,
     MAX_PLAYERS,
     DRAWS_PER_PLAYER,
     PALAVRAS,
