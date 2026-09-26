@@ -1114,6 +1114,9 @@
   border-radius: var(--r-sm);
   box-shadow: inset 0 0 0 1px var(--line);
 }
+/* No showdown, as cartas fora das maos vencedoras apagam. */
+.mj-poquer.is-showdown .mj-pq-board .mj-carta:not(.is-destaque),
+.mj-poquer.is-showdown .mj-pq-cartas .mj-carta:not(.is-destaque):not(.is-verso) { opacity: 0.45; }
 .mj-pq-resultado { display: flex; flex-direction: column; gap: 2px; }
 .mj-pq-resultado p {
   margin: 0;
@@ -1167,7 +1170,7 @@
 .mj-pq-pilha { font-variant-numeric: tabular-nums; color: var(--tx2); }
 .mj-pq-estado {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: var(--fs-micro); color: var(--tx3);
+  font-size: var(--fs-micro); line-height: 1.1; color: var(--tx3);
 }
 .mj-pq-lugar.is-vencedor .mj-pq-estado { color: var(--tx); font-weight: 600; }
 .mj-pq-cartas { display: inline-flex; gap: 2px; margin-left: auto; }

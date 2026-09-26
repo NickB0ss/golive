@@ -189,7 +189,8 @@
       const relogio = el('span', { class: 'mj-pq-relogio', attrs: { 'aria-hidden': 'true' } }, el('span'));
       const caixa = el('div', { class: 'mj-pq-lugar' },
         el('div', { class: 'mj-pq-linha' }, dot, nome, botaoD, tag),
-        el('div', { class: 'mj-pq-linha' }, pilha, estado, cartas),
+        el('div', { class: 'mj-pq-linha' }, pilha, cartas),
+        estado,
         relogio, sentar);
       b.clique(sentar, caixa, () => b.acao(caixa, { kind: 'sit', seat }));
       const aposta = el('span', { class: 'mj-pq-aposta' });
@@ -248,7 +249,9 @@
       else b.acao(acoes, { kind: pode('bet') ? 'bet' : 'raise', to: valor });
     });
     b.ouvir(slider, 'input', () => porValor(slider.value));
+    b.ouvir(campo, 'input', () => porValor(campo.value));
     b.ouvir(campo, 'change', () => porValor(campo.value));
+    b.ouvir(campo, 'blur', () => { campo.value = String(valor); });
     b.ouvir(campo, 'keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -455,6 +458,7 @@
       const minhaVez = !!m.myTurn;
       b.raiz.classList.toggle('is-minha-vez', minhaVez);
       b.raiz.classList.toggle('is-fim', !!(h && h.result));
+      b.raiz.classList.toggle('is-showdown', !!(h && h.result && !h.result.byFold));
       const focoNasAcoes = acoes.contains(root.document.activeElement);
       acoes.hidden = !minhaVez;
       if (focoNasAcoes && !minhaVez) status.focus({ preventScroll: true });
