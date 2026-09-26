@@ -33,6 +33,18 @@
     }
     return pool.slice(0, RODADAS);
   }
+  function embaralharAlternativas(random) {
+    const ordem = [0, 1, 2, 3];
+    for (let i = ordem.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd(random) * (i + 1));
+      [ordem[i], ordem[j]] = [ordem[j], ordem[i]];
+    }
+    return ordem;
+  }
+  function sortearPartida(random) {
+    const questions = sortear(random);
+    return { questions, ordens: questions.map(() => embaralharAlternativas(random)) };
+  }
   function agora(ctx) { return Number.isFinite(ctx && ctx.now) ? ctx.now : 0; }
   function pergunta(state) {
     return PERGUNTAS[state.questions[state.round]] || null;
@@ -42,22 +54,28 @@
   function todosResponderam(state) {
     return state.players.length > 0 && state.players.every((id) => resposta(state, id));
   }
-  function pontuacao(answer, q) {
-    if (!answer || answer.option !== q.certa) return 0;
+  function certa(state, q) {
+    const ordem = state.ordens && state.ordens[state.round];
+    return Array.isArray(ordem) ? ordem.indexOf(q.certa) : -1;
+  }
+  function pontuacao(answer, indiceCerto) {
+    if (!answer || answer.option !== indiceCerto) return 0;
     return Math.max(500, 1000 - Math.min(500, Math.max(0, Number(answer.seconds) || 0)));
   }
   function placar(state, q) {
+    const indiceCerto = certa(state, q);
     return state.players.map((by) => {
       const a = resposta(state, by);
       return {
-        by, option: a ? a.option : null, correct: !!a && a.option === q.certa,
-        points: pontuacao(a, q),
+        by, option: a ? a.option : null, correct: !!a && a.option === indiceCerto,
+        points: pontuacao(a, indiceCerto),
       };
     });
   }
   function init(ctx) {
+    const partida = sortearPartida(ctx && ctx.random);
     return {
-      questions: sortear(ctx && ctx.random),
+      ...partida,
       round: 0,
       players: ids(ctx),
       scores: ids(ctx).map((by) => ({ by, points: 0 })),
@@ -93,8 +111,9 @@
     }
     if (action.kind === 'timeout') return { kind: 'timeout' };
     if (action.kind === 'reset') {
+      const partida = sortearPartida(ctx && ctx.random);
       return {
-        kind: 'reset', questions: sortear(ctx && ctx.random), players: ids(ctx), at: agora(ctx),
+        kind: 'reset', ...partida, players: ids(ctx), at: agora(ctx),
       };
     }
     return { kind: action.kind };
@@ -105,7 +124,7 @@
   function avancar(state, at) {
     const q = pergunta(state);
     const rodada = {
-      round: state.round, question: q.id, results: placar(state, q),
+      round: state.round, question: q.id, certa: certa(state, q), results: placar(state, q),
     };
     let scores = state.scores;
     for (const r of rodada.results) scores = soma(scores, r.by, r.points);
@@ -125,7 +144,7 @@
     if (action.kind === 'reset') {
       return {
         ...init({ peers: (action.players || []).map((id) => ({ id })), random: null, now: action.at }),
-        questions: action.questions, players: action.players,
+        questions: action.questions, ordens: action.ordens, players: action.players,
       };
     }
     if (action.kind === 'answer') {
@@ -139,6 +158,7 @@
   }
   function view(state, peerId, ctx) {
     const q = pergunta(state);
+    const ordem = state.ordens && state.ordens[state.round];
     const revealed = state.history[state.history.length - 1];
     const me = resposta(state, peerId);
     const players = state.players.map((by) => ({
@@ -149,12 +169,14 @@
     return {
       round: state.round,
       total: RODADAS,
-      question: q ? { pergunta: q.pergunta, alternativas: q.alternativas.slice() } : null,
+      question: q && Array.isArray(ordem) ? {
+        pergunta: q.pergunta, alternativas: ordem.map((indice) => q.alternativas[indice]),
+      } : null,
       deadline: state.deadline,
       finished: state.finished,
       players,
       history: state.history.map((h) => ({
-        round: h.round, question: h.question, results: h.results.map((r) => ({ ...r })),
+        round: h.round, question: h.question, certa: h.certa, results: h.results.map((r) => ({ ...r })),
       })),
       me: {
         answer: me ? me.option : null, answered: !!me,
@@ -173,7 +195,8 @@
     return todosResponderam(next) ? avancar(next, state.deadline || 0) : next;
   }
   function migrate(state) {
-    return { ...state, players: [], scores: [], answers: [], deadline: null, finished: true };
+    const { ordens, ...publico } = state;
+    return { ...publico, players: [], scores: [], answers: [], deadline: null, finished: true };
   }
   function summary(state) {
     return state.finished ? `Quiz terminado (${state.history.length}/${RODADAS})`

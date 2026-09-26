@@ -35,6 +35,9 @@ test('banco exibe acentuacao e as perguntas revisadas', () => {
 test('init sorteia dez perguntas e registra todos os participantes', () => {
   const s = estado();
   assert.equal(s.questions.length, 10);
+  assert.equal(s.ordens.length, 10);
+  assert.ok(s.ordens.every((ordem) => ordem.length === 4 && new Set(ordem).size === 4));
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= 16 * 1024);
   assert.deepEqual(s.players, ['ana', 'bia', 'caio']);
   assert.equal(s.round, 0);
   assert.equal(s.deadline, 21000);
@@ -81,10 +84,11 @@ test('a view revela a resposta de cada um quando todos responderam', () => {
 test('resposta certa vale mil menos o tempo, com desconto maximo de quinhentos', () => {
   const s = estado();
   const q = banco.perguntas[s.questions[0]];
+  const certa = s.ordens[0].indexOf(q.certa);
   let n = s;
   for (const [i, by] of ['ana', 'bia', 'caio'].entries()) {
     n = quiz.reduce(n, {
-      kind: 'answer', by, option: i === 0 ? q.certa : 1, seconds: i === 0 ? 12 : 700,
+      kind: 'answer', by, option: i === 0 ? certa : (certa + 1) % 4, seconds: i === 0 ? 12 : 700,
     }, contexto(by));
   }
   const r = n.history[0].results;
@@ -95,7 +99,8 @@ test('resposta certa vale mil menos o tempo, com desconto maximo de quinhentos',
 test('timeout aceita a pergunta incompleta e pontua apenas quem acertou', () => {
   const s = estado();
   const q = banco.perguntas[s.questions[0]];
-  const n = quiz.reduce(s, { kind: 'answer', by: 'ana', option: q.certa, seconds: 3 }, contexto('ana'));
+  const certa = s.ordens[0].indexOf(q.certa);
+  const n = quiz.reduce(s, { kind: 'answer', by: 'ana', option: certa, seconds: 3 }, contexto('ana'));
   const fim = quiz.reduce(n, { kind: 'timeout' }, { now: 21000, peers: PEERS });
   assert.equal(fim.history.length, 1);
   assert.equal(fim.history[0].results.find((x) => x.by === 'bia').points, 0);
@@ -152,6 +157,7 @@ test('migrate remove respostas e participantes da sala antiga', () => {
   assert.deepEqual(n.answers, []);
   assert.equal(n.deadline, null);
   assert.equal(n.finished, true);
+  assert.equal(Object.hasOwn(n, 'ordens'), false);
 });
 
 test('view filtra a resposta de cada pessoa', () => {
@@ -165,7 +171,48 @@ test('view mostra placar publico e pergunta sem o indice certo', () => {
   const v = quiz.view(s, 'caio', contexto('caio'));
   assert.equal(v.question.alternativas.length, 4);
   assert.equal(Object.hasOwn(v.question, 'certa'), false);
+  assert.equal(Object.hasOwn(v.question, 'ordem'), false);
+  assert.equal(JSON.stringify(v).includes('"ordens"'), false);
   assert.equal(v.players.length, 3);
+});
+
+test('sorteia posicoes diferentes para a alternativa certa com aleatorio controlado', () => {
+  let chamadas = 0;
+  const random = () => {
+    chamadas += 1;
+    if (chamadas <= banco.perguntas.length - 1) return 0.5;
+    return chamadas <= banco.perguntas.length + 2 ? 0 : 0.999;
+  };
+  const s = quiz.init({ now: 1000, peers: PEERS, random });
+  const posicoes = s.questions.map((id, rodada) => s.ordens[rodada].indexOf(banco.perguntas[id].certa));
+  assert.deepEqual(posicoes.slice(0, 2), [3, 0]);
+  const q = banco.perguntas[s.questions[0]];
+  const view = quiz.view(s, 'ana', contexto('ana'));
+  assert.deepEqual(view.question.alternativas, [q.alternativas[1], q.alternativas[2], q.alternativas[3], q.alternativas[0]]);
+});
+
+test('a view revela o indice certo apenas depois de a rodada terminar', () => {
+  let s = estado();
+  const antes = quiz.view(s, 'ana', contexto('ana'));
+  assert.equal(JSON.stringify(antes).includes('"certa"'), false);
+  for (const by of ['ana', 'bia', 'caio']) {
+    s = quiz.reduce(s, { kind: 'answer', by, option: 0, seconds: 1 }, contexto(by));
+  }
+  const depois = quiz.view(s, 'ana', contexto('ana'));
+  assert.equal(Number.isInteger(depois.history[0].certa), true);
+  assert.ok(depois.history[0].certa >= 0 && depois.history[0].certa < 4);
+});
+
+test('a posicao certa se distribui entre as quatro alternativas', () => {
+  const contagens = [0, 0, 0, 0];
+  for (let partida = 0; partida < 1000; partida++) {
+    const s = quiz.init({ now: 0, peers: PEERS, random: Math.random });
+    for (let rodada = 0; rodada < s.questions.length; rodada++) {
+      const q = banco.perguntas[s.questions[rodada]];
+      contagens[s.ordens[rodada].indexOf(q.certa)] += 1;
+    }
+  }
+  for (const quantidade of contagens) assert.ok(quantidade >= 2000 && quantidade <= 3000);
 });
 
 test('reset so pode ser pedido pelo lider e sorteia nova partida', () => {

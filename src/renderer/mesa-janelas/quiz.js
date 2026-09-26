@@ -86,9 +86,14 @@
       }
       reiniciar.hidden = !s.can?.reset;
       desenharPlacar(s);
-      if (s.finished) status.textContent = 'Partida encerrada.';
+      const ultimaRodada = s.history?.[s.history.length - 1];
+      const letraCerta = Number.isInteger(ultimaRodada?.certa)
+        ? String.fromCharCode(65 + ultimaRodada.certa) : null;
+      const respostaCerta = letraCerta ? ` A resposta certa da pergunta anterior foi ${letraCerta}.` : '';
+      if (s.finished) status.textContent = letraCerta
+        ? `Partida encerrada. A resposta certa da ultima pergunta foi ${letraCerta}.` : 'Partida encerrada.';
       else if (enviado) status.textContent = 'Resposta registrada. Aguarde a revelacao.';
-      else status.textContent = 'Escolha uma alternativa.';
+      else status.textContent = `Escolha uma alternativa.${respostaCerta}`;
       atualizarPrazo();
     }
     const timer = setInterval(atualizarPrazo, 500);
