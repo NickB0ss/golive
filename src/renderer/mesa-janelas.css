@@ -1691,7 +1691,11 @@
 .mj-oito-topo, .mj-oito-acoes, .mj-oito-pessoas { display: flex; align-items: center; gap: var(--s-1); }
 .mj-oito-topo { justify-content: space-between; min-height: 26px; }
 .mj-oito-titulo { font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
-.mj-oito-status { color: var(--tx2); font-size: var(--fs-small); text-align: right; }
+.mj-oito-status {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--tx2); font-size: var(--fs-small); text-align: left;
+}
 .mj-oito-relogio { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
 .mj-oito-pessoas { flex-wrap: wrap; min-height: 26px; }
 .mj-oito-pessoa { padding: 2px var(--s-1); border-radius: var(--r-full); background: var(--s2); color: var(--tx2); font-size: var(--fs-micro); }

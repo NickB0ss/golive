@@ -191,6 +191,15 @@ async function conferirGeometria(page, rotulo) {
       }
       const caixaConteudo = conteudo.getBoundingClientRect();
       const escala = conteudo.clientWidth > 0 ? caixaConteudo.width / conteudo.clientWidth : 1;
+      // So a faixa do topo (a alca, 28 px de verdade cobrindo a largura
+      // toda -- o "respiro de 30 px" que poquer/blackjack ja garantem).
+      // NAO o aglomerado do canto (avatar/tela-cheia/tirar): esse tem
+      // tamanho FIXO na tela (`transform: scale(var(--mesa-inv))`,
+      // mesa-real.js ja documenta isso pro poquer/blackjack) e, com a
+      // mesa bem afastada no "Ver tudo" pra caber 2 janelas na tela do
+      // navegador da bancada, aparenta colidir mesmo quando no tamanho
+      // de verdade (1:1) ha folga -- e o mesmo zoom que faz a propria
+      // Vista recomendar tela cheia antes de clicar perto da borda.
       for (const b of mj.querySelectorAll('button, input, select, textarea')) {
         if (b.offsetParent === null) continue;
         const nome = b.getAttribute('aria-label') || (b.textContent && b.textContent.trim()) || b.getAttribute('title') || b.getAttribute('placeholder');
@@ -206,7 +215,7 @@ async function conferirGeometria(page, rotulo) {
   });
   conferir(r.vaza.length === 0, `${rotulo}: conteudo sai da janela (${r.vaza.join('; ')})`);
   conferir(r.semNome === 0, `${rotulo}: ${r.semNome} controle(s) sem rotulo`);
-  conferir(r.sobAlca.length === 0, `${rotulo}: controle sob a alca/mesa-ctrls -- sem respiro no topo (${r.sobAlca.join('; ')})`);
+  conferir(r.sobAlca.length === 0, `${rotulo}: controle sob a alca -- sem respiro no topo (${r.sobAlca.join('; ')})`);
 }
 
 /** Nenhum dos textos de `proibidos` (cartas/pecas/palavra da pessoa `dono`)
