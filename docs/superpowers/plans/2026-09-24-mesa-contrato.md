@@ -285,6 +285,7 @@ dos `<script>` é: `vendor/chess.js`, `mesa-modules/cadeiras.js`, os módulos,
 | lig4 | 420×360 (7/6) | `sit`, `stand`, `reset`, `move {col: 0..6}` |
 | damas | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {path: [[l,c],...]}`; `legalMoves(state)` |
 | xadrez | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {from, to, promotion?}` |
+| batalha (secret, seção 8) | 720×460 (livre) | `sit`, `stand`, `shuffle`, `ready`, `fire {cell: 0..99}`, `timeout`, `resign`, `reset` |
 
 Todos exportam `dropPeer(state, peerId)` e `summary(state, peers?)`; o estado
 guarda `names` junto de `seats`.
@@ -358,6 +359,70 @@ ele, por `view(state, null)`): o servidor novo não pode receber segredo
 é cancelada e as apostas voltam** para quem apostou; as fichas e as
 cadeiras ficam.
 
+### Como o time Segredo implementou (2026-09-26)
+
+O que mudou em relação ao texto acima, e o que os times de cartas usam:
+
+- **Assinatura**: `view(state, peerId, ctx)`, com `ctx = { peers: [{ id, name }] }`
+  (quem está na sala agora). `peerId` é o id de quem recebe (sentado ou só
+  assistindo); `null` só na migração sem `migrate`. `init`/`prepare`
+  continuam com `ctx.peers` como na seção 1. O registro confere: `secret`
+  booleano, `secret: true` exige `view`; `migrate`, `timeoutAt` e
+  `dropPeer`, se existirem, são funções. O módulo conferido ganha
+  `secret: false|true`.
+- **Eco de `add` de janela secret**: continua `op: 'add'` (o cliente precisa
+  de `id`, `type` e retângulo), mas `win.state` é a `view` de quem recebe.
+  O de `act` é, para cada pessoa na Mesa, com o mesmo `seq`:
+  `{ type: 'mesa', op: 'state', id, seq, by, isLeader, state }` — **sem**
+  `action` (o `prepare` pode ter posto carta dada nela). `mesa-ack` não
+  muda.
+- **`timeout`**: o servidor confere **antes** do `validate` do módulo, para
+  qualquer módulo: sem `timeoutAt` ou prazo `null` → `invalid` com
+  `detail: 'Sem prazo'`; `Date.now()` do servidor menor que o prazo →
+  `mesa-denied` com **`reason: 'early', at: <prazo>`**. Depois passa pelo
+  `validate` e pelo `prepare` como toda ação (o `prepare` recebe
+  `ctx.now` e `ctx.random`: é onde o jogo decide o que o tempo esgotado
+  faz). O conteúdo **não mostra** a recusa `early` (outra pessoa mandou
+  antes, ou o relógio dela está adiantado): a batalha filtra no
+  `onDenied`, e manda de novo 2 s depois se o prazo não mudou. Para não
+  chover `timeout`, a batalha manda na hora só pelo adversário de quem
+  estourou; os outros esperam 3 s a mais.
+- **Quem sai de vez**: vale para **todo** módulo com `dropPeer`. O servidor
+  chama no único caminho de saída (`removePeer`: close limpo, fim da janela
+  de retomada, expulsão, fantasma do mesmo `clientId`), depois do
+  `peer-left`. Quem cai (1006) e volta dentro da janela de retomada
+  continua sentado. Estado igual (JSON) não manda nada. Não secret:
+  `{ type: 'mesa', op: 'drop', id, seq, by: peer, peer }`, e o
+  `applyMessage` chama o mesmo `dropPeer(state, peer)` (sem `dropPeer`, ou
+  se ele lançar, o cliente pede sync). Secret: `op: 'state'` com a `view`
+  de cada um e também `peer`.
+- **`mesa-sync`**: cada janela secret vai com a `view` de quem pediu.
+- **Migração**: `room-migrating.mesa` passa cada janela secret por
+  `migrate(state)` (sem ele, `view(state, null, { peers: [] })`); se lançar,
+  a janela **não migra**. O resultado tem de ser um estado inteiro válido
+  para o `reduce` do servidor novo (ele é a semente). Os ids das pessoas
+  mudam na migração: trate cadeira de quem não está em `ctx.peers` como
+  livre no `validate` e na `view` (a batalha faz assim).
+- **Teto**: `maxStateBytes` confere o estado inteiro do servidor (depois do
+  `init`, do `reduce` e do `dropPeer`), não a `view`.
+- **Cliente**: `applyMessage` aplica `op: 'state'` (troca o estado, sem
+  `reduce`) e `op: 'drop'`; a Vista chama `update(state, { by, isLeader })`
+  nos dois, igual ao `act`. `api.validate` de janela secret devolve
+  `true`; a interface liga os botões pelo que veio pronto na `view`.
+  A moldura dos tabuleiros (`tabuleiro.js`) aceita `opts.pode(action)`
+  para isso.
+- **Prova**: `batalha` ("Batalha naval", grupo `jogos`, 720×460, aspecto
+  livre). Estado inteiro com `fleets` (5 navios: 5, 4, 3, 3, 2, retos, sem
+  se encostar, sorteados no `prepare` ao sentar, em "Sortear de novo" e em
+  "Nova partida"), `ready`, `shots`, `turn`, `deadline` (60 s por tiro;
+  estourou, o tiro sai numa casa sorteada), `result`. A `view` tem
+  `boards[i] = { shots: [[casa, acertou]], ships (os do dono; os
+  afundados; todos no fim), left, hasFleet }` e `me = { seat, can: { sit:
+  [a, b], stand, shuffle, ready, fire, resign, reset } }`. O teste
+  `server/signaling-mesa-segredo-e2e.test.js` confere, mensagem por
+  mensagem, que o socket de quem não é dono nunca recebe um navio que não
+  afundou (ecos, `mesa-sync`, `room-migrating`).
+
 ## 9. Regras clássicas dos jogos de cartas (decididas em 2026-09-25)
 
 Pedido do Nicolas: "decida as regras utilizando padrão clássico". Sempre
@@ -409,3 +474,71 @@ Pedido do Nicolas: "decida as regras utilizando padrão clássico". Sempre
   banca joga → pagamento → próxima rodada. Tempo de **30 s** por decisão;
   estourou, para (e sem aposta, fica fora da rodada).
 - Recompra (volta a 1 000) com zero fichas, entre rodadas.
+
+## 10. Regras clássicas da leva seguinte (decididas em 2026-09-26)
+
+### Truco paulista (`truco`, "Truco")
+- Baralho limpo de 40 cartas (o francês sem 8, 9 e 10). Força, da menor
+  para a maior: 4, 5, 6, 7, Q, J, K, A, 2, 3.
+- **Vira**: uma carta virada depois de dar; as **manilhas** são o valor
+  seguinte ao da vira (depois do 3 volta ao 4). Entre manilhas: ouros (pica-
+  fumo) < espadas (espadilha) < copas (copas) < paus (zap).
+- 2 jogadores (um contra um) ou 4 (duplas, parceiros de frente). 3 cartas
+  para cada um. A mão é melhor de 3 rodadas e vale 1 ponto.
+- Empates: empatou a 1ª, quem ganhar a 2ª leva; empatou a 2ª (ou a 3ª)
+  depois de alguém ganhar a 1ª, leva quem ganhou a 1ª; empatou tudo,
+  ninguém pontua. Carta igual de valor (sem ser manilha) empata.
+- **Truco**: pedir sobe a mão para 3; quem recebe o pedido aceita, corre
+  (o outro lado leva o valor anterior) ou aumenta (6, 9, 12). Só pode pedir
+  de novo quem não pediu por último.
+- Da 2ª rodada em diante pode jogar a carta **encoberta** (virada; perde para
+  qualquer carta).
+- **Mão de onze**: a dupla com 11 vê as cartas do parceiro e decide jogar
+  (a mão vale 3) ou correr (o outro lado ganha 1); ninguém pede truco.
+  **Mão de ferro** (11 a 11): todos jogam sem ver as próprias cartas.
+- O jogo vai a **12 pontos**. Tempo de 30 s por decisão; estourou, joga a
+  carta mais fraca (ou corre, se for resposta a truco).
+
+### Oito maluco (`oito`, "Oito maluco")
+- Baralho de 52. 2 a 8 jogadores; 7 cartas cada com 2 jogadores, 5 com mais.
+- Joga carta do mesmo naipe ou do mesmo valor da carta de cima. O **8** vale
+  sempre e quem joga escolhe o naipe.
+- Sem jogada, **compra até poder jogar** (ou até acabar o monte; aí passa).
+- Acabou a mão de alguém, ele marca os pontos das cartas que ficaram com os
+  outros: 8 = 50, K/Q/J = 10, A = 1, as outras pelo número. O jogo vai a
+  **100 pontos**. 30 s por jogada; estourou, compra e passa.
+
+### Stop / Adedonha (`stop`, "Stop")
+- Letra sorteada pelo servidor (A a Z sem K, W, X, Y). Categorias padrão:
+  Nome, Animal, Cor, Fruta, Cidade/Estado/País, Objeto, Profissão, Marca;
+  quem criou a janela pode trocar (até 10, entre rodadas).
+- Todos escrevem **escondido** (segredo). Quem preencher tudo pode apertar
+  **STOP**; aí todos param. Teto de 3 min por rodada.
+- Correção: as respostas aparecem; cada resposta pode ser **anulada por
+  votação** (maioria de quem está na rodada). Válida e única: 10; repetida
+  (sem acento e sem caixa): 5; vazia ou anulada: 0. Tem de começar com a
+  letra.
+
+### Desenha e adivinha (`desenha`, "Desenha e adivinha")
+- Vez de desenhar gira entre quem entrou na rodada. Quem desenha escolhe 1
+  entre 3 palavras sorteadas (lista em português embutida); só ele vê a
+  palavra (segredo). 80 s para desenhar.
+- Quem adivinha escreve o palpite **na janela** (não no chat); o servidor
+  compara sem acento e sem caixa. Acertou: pontos pelo tempo que sobrou
+  (100 a 10), e quem desenha ganha 10 por acerto. Palpite "quase" (uma letra
+  de diferença) avisa só quem chutou.
+- Acaba quando todos acertam ou o tempo acaba; depois de todos desenharem
+  duas vezes, fim do jogo com o placar.
+
+### Quiz (`quiz`, "Quiz")
+- Banco de perguntas em português escritas para o app (conhecimentos gerais,
+  jogos, Brasil), 4 alternativas. 10 perguntas por partida, 20 s cada.
+- A resposta de cada um fica escondida até todos responderem ou o tempo
+  acabar. Acertou: 1 000 pontos, menos o tempo gasto (até 500 de desconto).
+
+### Quadro (`quadro`, "Quadro") — ferramenta da fase 2 que faltava
+- Folha em branco onde todos rabiscam, com as ferramentas e as cores do
+  rabisco (`annotate.js`: caneta, texto, desfazer os seus, cor de cada um), e
+  o líder ou quem pôs pode limpar. Os traços vão pelo canal do rabisco (não
+  pelo estado da janela, que tem teto de bytes), com `annotate-sync` para
+  quem chega depois.

@@ -249,7 +249,12 @@
    *   estado (janela que nao existe, id repetido, modulo desconhecido)
    *   tambem pede sync: o retrato do servidor e a verdade.
    *
-   * `opts.getModule(type)` acha o modulo do tipo para o `act`; o padrao le
+   * - `state` (janela `secret`): troca o estado da janela pelo que veio,
+   *   sem reduce -- o servidor manda a cada pessoa so o que ela pode ver.
+   * - `drop` (alguem saiu de vez): aplica o `dropPeer(state, peer)` do
+   *   modulo, o mesmo que o servidor aplicou.
+   *
+   * `opts.getModule(type)` acha o modulo do tipo para `act`/`drop`; o padrao le
    * `GoLive.mesaModules`, onde cada modulo se registra. */
   function applyMessage(state, msg, { getModule = defaultGetModule } = {}) {
     const same = { state, needSync: false };
@@ -299,6 +304,36 @@
           // Mesmo contexto no servidor e nos clientes: so quem agiu e se era
           // o lider. Hora e sorte ja vieram dentro da acao (prepare).
           nextState = cloneJson(mod.reduce(windows[i].state, msg.action, { from: msg.by ?? null, isLeader: msg.isLeader === true }));
+        } catch {
+          return null;
+        }
+        if (nextState === undefined) return null;
+        const out = windows.slice();
+        out[i] = { ...windows[i], state: nextState };
+        return { ...mesa, windows: out };
+      }
+      case 'state': {
+        // Janela com informacao escondida (contrato, secao 8): o servidor
+        // nao manda a acao, manda o estado ja filtrado para esta pessoa.
+        // Troca sem reduce.
+        const i = windows.findIndex((w) => w.id === msg.id);
+        if (i < 0 || msg.state === undefined) return null;
+        const nextState = cloneJson(msg.state);
+        if (nextState === undefined) return null;
+        const out = windows.slice();
+        out[i] = { ...windows[i], state: nextState };
+        return { ...mesa, windows: out };
+      }
+      case 'drop': {
+        // Alguem saiu da sala de vez: o servidor chamou `dropPeer` do modulo
+        // e manda so quem saiu; cada cliente chama o mesmo `dropPeer`.
+        const i = windows.findIndex((w) => w.id === msg.id);
+        if (i < 0 || typeof msg.peer !== 'string' || !msg.peer) return null;
+        const mod = typeof getModule === 'function' ? getModule(windows[i].type) : null;
+        if (!mod || typeof mod.dropPeer !== 'function') return null;
+        let nextState;
+        try {
+          nextState = cloneJson(mod.dropPeer(windows[i].state, msg.peer));
         } catch {
           return null;
         }
