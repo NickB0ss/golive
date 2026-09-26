@@ -76,7 +76,9 @@
     palco.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     const campoPalpite = el('input', { class: 'mj-campo mj-ds-campo', attrs: { type: 'text', placeholder: 'seu palpite...', maxlength: '40' } });
-    const btPalpite = C.botao({ text: 'Enviar', class: 'mj-pri' });
+    // C.botao() poe type="button" por padrao (o objeto do meio, sem isto o
+    // clique nao confirma o form nenhum -- so o Enter no campo submetia).
+    const btPalpite = C.botao({ text: 'Enviar', class: 'mj-pri', attrs: { type: 'submit' } });
     const formPalpite = el('form', { class: 'mj-form mj-ds-palpite' }, campoPalpite, btPalpite);
     const secDesenhando = el('div', { class: 'mj-ds-desenhando' }, palavraLinha, palco, formPalpite);
     b.raiz.append(secDesenhando);

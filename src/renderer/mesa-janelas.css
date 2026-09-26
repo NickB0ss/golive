@@ -1691,11 +1691,16 @@
 .mj-oito-topo, .mj-oito-acoes, .mj-oito-pessoas { display: flex; align-items: center; gap: var(--s-1); }
 .mj-oito-topo { justify-content: space-between; min-height: 26px; }
 .mj-oito-titulo { font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
-.mj-oito-status { color: var(--tx2); font-size: var(--fs-small); text-align: right; }
+.mj-oito-status {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--tx2); font-size: var(--fs-small); text-align: left;
+}
 .mj-oito-relogio { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
 .mj-oito-pessoas { flex-wrap: wrap; min-height: 26px; }
 .mj-oito-pessoa { padding: 2px var(--s-1); border-radius: var(--r-full); background: var(--s2); color: var(--tx2); font-size: var(--fs-micro); }
 .mj-oito-pessoa.is-vez { box-shadow: inset 0 0 0 1px var(--act); color: var(--tx); }
+.mj .mj-oito-sentar { min-height: 22px; padding: 0 var(--s-2); border-radius: var(--r-full); font-size: var(--fs-micro); }
 .mj-oito-mesa { flex: 1; min-height: 76px; display: flex; align-items: center; justify-content: center; gap: var(--s-3); border-radius: var(--r-md); background: var(--s2); }
 .mj-oito-descarte { min-width: 54px; min-height: 76px; display: grid; place-items: center; }
 .mj-oito-naipe { color: var(--tx2); font-size: var(--fs-small); }
@@ -1704,7 +1709,19 @@
 .mj-oito-carta:not([disabled]):hover { transform: translateY(-4px); }
 .mj-oito-acoes { flex-wrap: wrap; justify-content: center; }
 .mj-oito-selecao { min-height: 30px; max-width: 110px; }
-@container mj (max-height: 300px) { .mj-oito-pessoas { display: none; } .mj-oito-mesa { min-height: 58px; } .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; } .mj-oito-minha .mj-carta { --mj-carta-w: 32px; } }
+/* .mj-oito-pessoas NUNCA some por @container: e onde moram os botoes
+   "Sentar" dos lugares livres (a janela nao tem outro jeito de sentar) --
+   no tamanho minimo do modulo (420x280) isto escondia a unica forma de
+   entrar no jogo. */
+@container mj (max-height: 300px) {
+  .mj-oito { gap: var(--s-1); }
+  .mj-oito-topo, .mj-oito-pessoas { min-height: 22px; }
+  .mj-oito-mesa { min-height: 40px; }
+  .mj-oito-descarte { min-height: 40px; }
+  .mj-oito-minha { min-height: 44px; }
+  .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; }
+  .mj-oito-minha .mj-carta { --mj-carta-w: 32px; }
+}
 
 /* === domino ===
    Linha de pedras quebra dentro da mesa; não há imagens externas. */
@@ -1810,11 +1827,28 @@
   }
 }
 @container mj (max-height: 350px) {
+  /* .mj-do-lugares NUNCA some por @container: e onde moram os botoes
+     "Sentar no lugar N" -- a janela nao tem outro jeito de sentar. No
+     tamanho minimo do modulo (420x300) isto escondia a unica forma de
+     entrar no jogo. */
+  .mj.mj-domino {
+    gap: var(--s-1);
+  }
   .mj-do-lugares {
-    display: none;
+    gap: 2px;
+  }
+  .mj-do-lugar {
+    padding: 2px var(--s-1);
+  }
+  .mj-do-topo .mj-btn,
+  .mj-do-acoes .mj-btn {
+    min-height: 30px;
   }
   .mj-do-mesa {
-    min-height: 55px;
+    min-height: 50px;
+  }
+  .mj-do-mao {
+    min-height: 34px;
   }
   .mj-do-pedra {
     width: 42px;

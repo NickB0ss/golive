@@ -57,11 +57,14 @@
       const form = el('form', { class: 'mj-stop-categories' });
       const title = el('p', { class: 'mj-dica', text: 'Categorias da próxima rodada' });
       const list = el('div', { class: 'mj-stop-category-list' });
-      for (const value of state.categories) {
-        const input = el('input', { class: 'mj-campo', attrs: { maxlength: '32', type: 'text' } });
+      state.categories.forEach((value, i) => {
+        const input = el('input', {
+          class: 'mj-campo',
+          attrs: { maxlength: '32', type: 'text', 'aria-label': `Categoria ${i + 1}` },
+        });
         input.value = value;
         list.append(input);
-      }
+      });
       const start = el('button', { class: 'mj-btn mj-pri', text: 'Começar rodada', attrs: { type: 'submit' } });
       form.append(title, list, start);
       form.addEventListener('submit', (event) => {
@@ -73,7 +76,7 @@
       });
       body.replaceChildren(form);
       footer.replaceChildren();
-      C.ligado(start, state.me?.canManage || api.isLeader(), 'Só quem gere a janela começa');
+      C.ligado(start, state.me?.canManage || api.isLeader() ? true : 'Só quem gere a janela começa');
     }
 
     function drawWriting() {
@@ -102,7 +105,7 @@
         stop,
       );
       C.ligado(stop, Array.isArray(state.myAnswers) && state.myAnswers.length === state.categories.length
-        && state.myAnswers.every(Boolean), 'Preencha todas as respostas');
+        && state.myAnswers.every(Boolean) ? true : 'Preencha todas as respostas');
     }
 
     function drawReview() {
@@ -133,9 +136,9 @@
       next.addEventListener('click', () => { page = Math.min(pages - 1, page + 1); drawReview(); });
       footer.replaceChildren(previous, el('span', { class: 'mj-dica', text: `${page + 1}/${pages}` }), next,
         el('span', { class: 'mj-mola' }), finish);
-      C.ligado(previous, page > 0, 'Primeira página');
-      C.ligado(next, page < pages - 1, 'Última página');
-      C.ligado(finish, state.me?.canManage || api.isLeader(), 'Só quem gere a janela encerra a correção');
+      C.ligado(previous, page > 0 ? true : 'Primeira página');
+      C.ligado(next, page < pages - 1 ? true : 'Última página');
+      C.ligado(finish, state.me?.canManage || api.isLeader() ? true : 'Só quem gere a janela encerra a correção');
     }
 
     function render() {
