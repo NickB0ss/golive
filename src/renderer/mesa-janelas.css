@@ -198,6 +198,58 @@
   .mj-nota .mj-nota-rodape:not(:has(.is-passou)) { display: none; }
 }
 
+/* ---------- Imagem (do chat) ---------- */
+
+.mj-imagem { gap: var(--s-1); padding-left: var(--s-15); padding-right: var(--s-15); padding-bottom: var(--s-15); }
+.mj-img-quadro {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--video-bg);
+  overflow: hidden;
+}
+.mj-img-foto { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; }
+.mj-img-falta { margin: 0; padding: var(--s-3); max-width: 32em; text-align: center; color: var(--tx2); font-size: var(--fs-small); }
+.mj-img-legenda {
+  margin: 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--tx3); font-size: var(--fs-micro);
+}
+@container mj (max-height: 160px) {
+  .mj-imagem .mj-img-legenda { display: none; }
+}
+
+/* ---------- Galeria (imagens do chat) ---------- */
+
+.mj-gal-conta { color: var(--tx3); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.mj-gal-grade {
+  flex: 1;
+  margin: 0; padding: 0; list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-auto-rows: max-content;
+  gap: var(--s-2);
+}
+.mj-gal-item {
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+}
+.mj-gal-foto {
+  width: 100%; aspect-ratio: 4 / 3;
+  object-fit: cover; display: block;
+  border-radius: var(--r-xs);
+  background: var(--video-bg);
+  user-select: none;
+}
+.mj .mj-gal-por { min-height: 28px; justify-content: center; font-size: var(--fs-small); }
+.mj-gal-vazio { flex: 1; display: grid; place-items: center; text-align: center; }
+@container mj (max-height: 220px) {
+  .mj-galeria .mj-gal-dica { display: none; }
+}
+
 /* ---------- Segmentado (modo, duracoes) ---------- */
 
 .mj-segs {

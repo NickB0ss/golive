@@ -2039,6 +2039,16 @@
       return w ? S.widths.get(w.id) ?? null : null;
     }
 
+    /** Onde uma janela nova do tipo nasce: no lugar livre mais perto do
+     * meio da minha vista ("Pôr na mesa" do chat). null sem o retrato. */
+    function spot(type) {
+      const mod = modOf(type);
+      if (!S?.state || !mod) return null;
+      const c = V.viewCenter(S.view, S.vw, S.vh);
+      const { w, h } = mod.size;
+      return M.nearestFree(windows(), { x: Math.round(c.x - w / 2), y: Math.round(c.y - h / 2), w, h }, { gap: M.GAP });
+    }
+
     // ------------------------------------------------------------------
     // Relogio do servidor (mensagem `time`)
     // ------------------------------------------------------------------
@@ -2131,6 +2141,7 @@
       openAddMenu,
       wants,
       widthFor,
+      spot,
       serverNow,
     };
   }

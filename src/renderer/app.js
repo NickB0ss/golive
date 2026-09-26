@@ -79,6 +79,12 @@
   // `mesaCount` quantas janelas a mesa tem -- as duas coisas chegam mesmo a
   // quem esta na Transmissao (welcome, mesa-viewers, mesa-count).
   let mesaView = null;
+  let mesaPor = null; // "Pôr na mesa" do chat e da Galeria (mesa-por.js)
+  // As imagens que o historico do chat ainda guarda (espelho das regras do
+  // servidor), por id: e onde as janelas `imagem` e `galeria` da Mesa acham
+  // a imagem, que nunca vai no estado da janela.
+  const chatImagens = window.GoLive.chatImagensLib.createStore({ isImage: window.GoLive.chatmedia.isImageDataUrl });
+  window.GoLive.chatImagens = chatImagens;
   let mesaViewers = [];
   let mesaCount = 0;
   let joinedAtMs = null;
@@ -2604,6 +2610,11 @@
         showToast('Não consegui preparar essa imagem.');
       }
     },
+    // "Pôr na mesa" num link do YouTube ou numa imagem do chat.
+    onPut: (what) => {
+      if (what?.type === 'youtube') mesaPor?.put('youtube', { kind: 'load', url: what.url });
+      else if (what?.type === 'imagem') mesaPor?.put('imagem', { kind: 'set', msgId: what.msgId });
+    },
     getEmojiRecents: () => cfg.emojiRecents,
     onEmojiUsed: (char) => {
       cfg = { ...cfg, emojiRecents: emoji.pushRecent(cfg.emojiRecents, char) };
@@ -3441,6 +3452,7 @@
             ? entry
             : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) }));
           ui.chat.setHistory(chatHistory);
+          chatImagens.setHistory(msg.chat || []);
           localChatTail = chatHistory.slice(-50);
         }
         if (msg.owner) {
@@ -3734,6 +3746,9 @@
       case 'mesa-ack':
       case 'cursor':
       case 'time': {
+        // O "Pôr na mesa" do chat fica com o que e dele (o id da janela que
+        // pediu, a recusa do `add`); o resto segue para a vista.
+        if (mesaPor?.handle(msg)) break;
         mesaView?.handle(msg);
         break;
       }
@@ -3800,6 +3815,7 @@
           // 'moderated' (abaixo) -- esta linha de sistema e so o registro
           // visivel pra sala inteira, sem acao adicional aqui.
           ui.chat.append(msg);
+          chatImagens.push(msg);
           localChatTail.push(msg);
           if (localChatTail.length > 50) localChatTail.shift();
           break;
@@ -3810,6 +3826,7 @@
         const chatPeer = isMine ? null : mesh.peers.get(msg.from);
         const chatEntry = { ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) };
         ui.chat.append(chatEntry, { received: !isMine });
+        chatImagens.push(msg);
         localChatTail.push(chatEntry);
         if (localChatTail.length > 50) localChatTail.shift();
         playSoundEvent('chat', { isMine });
@@ -5602,6 +5619,22 @@
   ui.grid.onTileShown((id) => mesaView.onTile(id));
   window.golive.onFullScreenChange((on) => mesaView.onFullScreenChange(on));
 
+  // "Pôr na mesa" (link do YouTube ou imagem do chat, imagem da Galeria):
+  // funciona nas duas vistas; na Transmissao a janela nasce no meio da mesa.
+  mesaPor = window.GoLive.mesaPorLib.create({
+    send: (msg) => {
+      const session = currentSession;
+      if (!session?.sig?.isOpen()) return false;
+      session.sig.send(msg);
+      return true;
+    },
+    me: () => myId,
+    view: { isOpen: () => mesaView.isOpen(), spot: (type) => mesaView.spot(type) },
+    toast: (text) => showToast(text),
+    registry: () => window.GoLive.mesaRegistry,
+  });
+  window.GoLive.mesaPor = { put: (type, action) => mesaPor.put(type, action) };
+
   const viewButtons = [$('view-tx'), $('view-mesa')];
 
   function setRoomView(view) {
@@ -5700,6 +5733,8 @@
   // Mesa desmonta sem avisar ninguem e a proxima sala abre na Transmissao.
   document.addEventListener('golive:room-hidden', () => {
     mesaView.close({ silent: true });
+    mesaPor.reset();
+    chatImagens.clear();
     mesaViewers = [];
     mesaCount = 0;
     setRoomMoreOpen(false);
