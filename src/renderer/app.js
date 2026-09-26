@@ -3887,6 +3887,11 @@
       // servidor: e dele que sai a cor do pincel, entao nao da pra desenhar
       // com a cor de outra pessoa.
       case 'annotate': {
+        // Rabisco em janela da Mesa (contrato, secao 10, "Quadro"):
+        // superficie 'mesa:<id>', tratada inteiramente pela vista (ela nao
+        // tem tela real pra empurrar pro overlay, nem lousa no annotStore
+        // global de tela/camera).
+        if (mesaView?.handleAnnotate(msg)) break;
         ui.annotations.applyOp(msg.surface, msg.from, msg);
         pushToAnnotOverlay(msg.surface, msg.from, msg);
         break;
@@ -3912,6 +3917,8 @@
       // (`from === surface`): sem esta checagem, qualquer um podia
       // reescrever a lousa inteira de qualquer tela com um sync forjado.
       case 'annotate-sync': {
+        // Janela da Mesa: ver o comentario do caso 'annotate' acima.
+        if (mesaView?.handleAnnotateSync(msg)) break;
         // O dono sai da chave COMPOSTA ('7:screen'), nao da chave inteira --
         // senao um sync legitimo seria descartado. parseSurface aceita
         // tambem a chave sem kind, que e o que um cliente antigo manda.

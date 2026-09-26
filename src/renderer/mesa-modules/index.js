@@ -30,11 +30,11 @@
     // Assistir junto
     'youtube', 'radio', 'aovivo',
     // Ferramentas
-    'nota', 'lista', 'enquete', 'imagem', 'galeria',
+    'nota', 'lista', 'enquete', 'imagem', 'galeria', 'quadro',
     // Noite de jogo
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
-    'velha', 'lig4', 'damas', 'xadrez', 'batalha', 'poquer', 'blackjack', 'truco', 'oito', 'domino',
+    'velha', 'lig4', 'damas', 'xadrez', 'batalha', 'poquer', 'blackjack', 'truco', 'oito', 'domino', 'desenha',
     // Festa: Spotify Jam (assistir), sons (noite), link (ferramentas)
     'jam', 'sons', 'link',
   ]);
