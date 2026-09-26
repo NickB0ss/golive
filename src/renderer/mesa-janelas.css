@@ -1075,6 +1075,8 @@
   font-weight: 600;
 }
 .mj-bj.is-minha-vez .mj-bj-status { color: var(--on-text); }
+.mj-bj-status:focus { outline: none; }
+.mj-bj-status:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; border-radius: var(--r-xs); }
 .mj-bj-prazo {
   flex: none;
   min-width: 40px;
@@ -1181,6 +1183,9 @@
   .mj-bj-lugar { padding: var(--s-1); }
   .mj .mj-bj-ficha { min-width: 36px; padding: 0 var(--s-15); }
   .mj .mj-bj-campo { width: 64px; }
+  /* Lugar estreito: o total vai para baixo das cartas. */
+  .mj-bj-mao { grid-template-columns: minmax(0, 1fr); }
+  .mj-bj-mao > .mj-mao { grid-row: auto; }
 }
 @container mj (max-height: 360px) {
   .mj-bj-banca { min-height: 0; padding: var(--s-1); }

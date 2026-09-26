@@ -40,7 +40,7 @@
   /** O total da banca: so a aberta enquanto a fechada nao vira. */
   function textoBanca(d) {
     if (!d || !Array.isArray(d.cards) || !d.cards.length) return '';
-    if (!d.revealed) return `Mostra ${d.total}`;
+    if (!d.revealed) return typeof d.cards[0] === 'string' && d.cards[0][0] === 'A' ? 'Mostra ás' : `Mostra ${d.total}`;
     return textoTotal(d);
   }
 
@@ -158,7 +158,9 @@
     let ultimoAnuncio = '';
 
     // Cabecalho: situacao, prazo e o sapato.
-    const status = el('p', { class: 'mj-bj-status' });
+    // A situacao recebe o foco quando nao sobra controle nenhum (a vez
+    // passou): quem esta no teclado nao cai no <body>.
+    const status = el('p', { class: 'mj-bj-status', attrs: { tabindex: '-1' } });
     const prazo = el('span', { class: 'mj-bj-prazo', attrs: { 'aria-hidden': 'true' } });
     const sapato = el('span', { class: 'mj-bj-sapato' });
     const falado = el('p', { class: 'visually-hidden', attrs: { role: 'status', 'aria-live': 'polite' } });
@@ -305,9 +307,9 @@
         const mao = el('div', { class: `mj-bj-mao${k === v.turn && vez ? ' is-vez' : ''}${h.result ? ` is-${h.result === 'push' ? 'empate' : h.win > 0 ? 'ganhou' : 'perdeu'}` : ''}` },
           K.mao(h.cards, { tamanho: 'p' }),
           el('span', { class: 'mj-bj-total', text: textoTotal(h) }),
-          el('span', { class: 'mj-bj-mao-aposta', text: `${milhar(h.bet)}${h.doubled ? ' (dobrou)' : ''}` }));
+          el('span', { class: 'mj-bj-mao-aposta', text: milhar(h.bet), attrs: { title: h.doubled ? 'Aposta dobrada' : 'Aposta' } }));
         if (res) mao.append(el('span', { class: 'mj-bj-res', text: res }));
-        mao.setAttribute('aria-label', `${maos.length > 1 ? `Mão ${maos.findIndex((x) => x.k === k) + 1}: ` : ''}${K.rotuloMao(h.cards)}; ${textoTotal(h)}; aposta ${h.bet}${res ? `; ${res}` : ''}`);
+        mao.setAttribute('aria-label', `${maos.length > 1 ? `Mão ${maos.findIndex((x) => x.k === k) + 1}: ` : ''}${K.rotuloMao(h.cards)}; ${textoTotal(h)}; aposta ${h.bet}${h.doubled ? ', dobrada' : ''}${res ? `; ${res}` : ''}`);
         mao.setAttribute('role', 'group');
         lista.append(mao);
       }
@@ -423,8 +425,9 @@
 
     function focus() {
       const alvo = [...zona.querySelectorAll('button, input')].find((x) => x.offsetParent !== null)
-        || [...lugaresEl.querySelectorAll('button')].find((x) => x.offsetParent !== null);
-      if (alvo) alvo.focus();
+        || [...lugaresEl.querySelectorAll('button')].find((x) => x.offsetParent !== null)
+        || status;
+      alvo.focus();
     }
 
     return { update, destroy: b.destruir, focus };

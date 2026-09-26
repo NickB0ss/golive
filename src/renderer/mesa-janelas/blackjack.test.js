@@ -16,6 +16,7 @@ test('textoTotal: macio, blackjack, estourou', () => {
 
 test('textoBanca: so a aberta ate virar', () => {
   assert.equal(J.textoBanca({ cards: ['Ts', null], total: 10, revealed: false }), 'Mostra 10');
+  assert.equal(J.textoBanca({ cards: ['As', null], total: 11, revealed: false }), 'Mostra ás');
   assert.equal(J.textoBanca({ cards: ['Ts', '6d', 'Kc'], total: 26, bust: true, revealed: true }), 'Estourou');
   assert.equal(J.textoBanca({ cards: [] }), '');
 });

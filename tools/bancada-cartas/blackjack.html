@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Bancada do Blackjack</title>
+<!-- Bancada de desenvolvimento, nao e pagina do app. Ver bancada-blackjack.js. -->
+<link rel="stylesheet" href="../../src/renderer/style.css">
+<link rel="stylesheet" href="../../src/renderer/mesa-janelas.css">
+<style>
+  body { overflow: auto; user-select: auto; padding: var(--s-4); }
+  #titulo { margin: 0 0 var(--s-3); font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif; color: var(--tx2); }
+  #palco { display: flex; gap: var(--s-4); align-items: flex-start; }
+  .pessoa h2 { margin: 0 0 var(--s-2); font-size: var(--fs-small); font-weight: 600; color: var(--tx2); }
+  .janela { position: relative; background: var(--s1); border-radius: var(--r-lg); box-shadow: 0 0 0 1px var(--line2); overflow: hidden; }
+  .conteudo { position: absolute; inset: 0; container-type: size; overflow: hidden; }
+  /* A alca da Vista: 28 px por cima do conteudo. */
+  .alca { position: absolute; left: 0; right: 0; top: 0; height: 28px; z-index: 4; display: grid; place-items: center; pointer-events: none; }
+  .alca::after { content: ""; width: 36px; height: 4px; border-radius: 2px; background: var(--tx3); opacity: 0.5; }
+</style>
+</head>
+<body>
+<h1 id="titulo"></h1>
+<div id="palco"></div>
+
+<script src="../../src/renderer/annotate.js"></script>
+<script src="../../src/renderer/mesa-modules/baralho.js"></script>
+<script src="../../src/renderer/mesa-modules/blackjack.js"></script>
+<script src="../../src/renderer/mesa-janelas/comum.js"></script>
+<script src="../../src/renderer/mesa-janelas/cartas.js"></script>
+<script src="../../src/renderer/mesa-janelas/blackjack.js"></script>
+
+<script src="bancada-blackjack.js"></script>
+</body>
+</html>
