@@ -531,6 +531,10 @@ async function cenaStop(browser) {
       const campos = w.locator('.mj-stop-answers input');
       const n = await campos.count();
       for (let i = 0; i < n; i++) await campos.nth(i).fill(`${letra}-${pessoa}-${i}`);
+      // As respostas so vao pra sala ao apertar "Guardar respostas" (nao
+      // ha envio a cada tecla nem ao sair do campo, diferente da Nota).
+      await w.getByRole('button', { name: 'Guardar respostas' }).click();
+      await espera(80);
     }
     await espera(150);
 
