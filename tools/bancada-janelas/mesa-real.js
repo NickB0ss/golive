@@ -27,7 +27,7 @@ const PAGINA = `file://${path.join(RAIZ, 'src', 'renderer', 'index.html')}`;
 const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-24-janelas');
 // Os tabuleiros primeiro: no "Ver tudo" eles ficam em cima, longe do mapa
 // (canto de baixo a esquerda), onde o arraste de peca e conferido.
-const TIPOS = ['damas', 'xadrez', 'velha', 'lig4', 'placar', 'cronometro', 'nota', 'lista', 'enquete', 'sorteio', 'dados', 'roleta'];
+const TIPOS = ['damas', 'xadrez', 'velha', 'lig4', 'batalha', 'placar', 'cronometro', 'nota', 'lista', 'enquete', 'sorteio', 'dados', 'roleta'];
 
 const espera = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const falhas = [];
@@ -163,6 +163,41 @@ async function main() {
     if (process.env.DEPURAR) console.log(JSON.stringify({ antes, depois, a, b, lance, seats: bia.caixa.filter((m) => m.id === ids.damas).map((m) => m.action) }));
     conferir(Math.abs(antes.x - depois.x) < 1 && Math.abs(antes.y - depois.y) < 1, 'damas: arrastar a pedra nao move a janela');
     conferir(!bia.caixa.some((m) => m.type === 'mesa-grab' && m.id === ids.damas), 'damas: arrastar a pedra nao pede a vez da janela');
+
+    // Batalha naval (secret): Ana (a pagina) senta e ve a propria frota; a
+    // Bia nunca recebe um navio da Ana que nao afundou; Ana atira clicando
+    // no mar da Bia.
+    const bn = win('batalha');
+    await bn.getByRole('button', { name: /^Sentar/ }).first().click();
+    const sentouAna = await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.batalha && m.state.seats[0]).catch(() => null);
+    conferir(!!sentouAna && sentouAna.action === undefined, 'batalha: sentar vira op state, sem a acao');
+    await espera(200);
+    conferir(await bn.locator('.mj-bn-casa[data-m="navio"]').count() === 17, 'batalha: Ana ve os 17 quadrados da propria frota');
+    bia.envia({ type: 'mesa', op: 'act', id: ids.batalha, action: { kind: 'sit', seat: 1 } });
+    await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.batalha && m.state.seats[1] === bia.id);
+    bia.envia({ type: 'mesa', op: 'act', id: ids.batalha, action: { kind: 'ready' } });
+    await bn.getByRole('button', { name: 'Pronto' }).click();
+    await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.batalha && m.state.phase === 'play');
+    await espera(200);
+    conferir(await bn.locator('.mj-bn-mar.is-alvo').count() === 1, 'batalha: o mar da Bia vira alvo para a Ana');
+    conferir(await bn.locator('.mj-bn-mar.is-alvo .mj-bn-casa[data-m="navio"]').count() === 0, 'batalha: Ana nao ve os navios da Bia');
+    await bn.locator('.mj-bn-mar.is-alvo .mj-bn-casa').nth(44).click();
+    const tiro = await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.batalha && m.state.last).catch(() => null);
+    conferir(tiro && tiro.state.last.seat === 0 && tiro.state.last.cell === 44, 'batalha: clicar no mar da Bia atira');
+    const vazou = bia.caixa.some((m) => {
+      const st = m.type === 'mesa' && m.op === 'state' ? m.state : m.type === 'mesa' && m.op === 'add' ? m.win.state : null;
+      return st && st.boards && st.boards[0].ships.some((n) => !n.sunk);
+    });
+    conferir(!vazou, 'batalha: nenhum navio da Ana chegou ao socket da Bia');
+    if (process.env.PRINT_BATALHA) {
+      // A janela em tela cheia, no tamanho de verdade: para olhar o desenho.
+      await bn.hover();
+      await bn.locator('.mesa-ctrl[data-act="full"]').click();
+      await espera(500);
+      await page.screenshot({ path: process.env.PRINT_BATALHA });
+      await page.keyboard.press('Escape');
+      await espera(300);
+    }
 
     await page.mouse.move(5, 5);
     await espera(400);

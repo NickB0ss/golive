@@ -243,6 +243,42 @@ test('applyMessage: reduce que lanca pede sync em vez de derrubar', () => {
   assert.equal(r.needSync, true);
 });
 
+test('applyMessage aplica op state (janela secret): troca o estado sem reduce', () => {
+  const s = createState({ mesa: { seq: 4, windows: [{ ...win('a', 0, 0), type: 'segredo', state: { minhas: ['As'] } }] } });
+  const mod = { reduce() { throw new Error('secret nao roda reduce no cliente'); } };
+  const r = applyMessage(s, { type: 'mesa', op: 'state', seq: 5, id: 'a', by: '2', state: { minhas: ['Kd'], resto: 40 } }, { getModule: () => mod });
+  assert.equal(r.needSync, false);
+  assert.equal(r.state.mesa.seq, 5);
+  assert.deepEqual(r.state.mesa.windows[0].state, { minhas: ['Kd'], resto: 40 });
+  assert.deepEqual(s.mesa.windows[0].state, { minhas: ['As'] }, 'o anterior fica como estava');
+  assert.equal(applyMessage(s, { type: 'mesa', op: 'state', seq: 5, id: 'nao-tem', state: {} }).needSync, true);
+  assert.equal(applyMessage(s, { type: 'mesa', op: 'state', seq: 5, id: 'a' }).needSync, true, 'sem state pede sync');
+  assert.equal(applyMessage(s, { type: 'mesa', op: 'state', seq: 5, id: 'a', state: null }).state.mesa.windows[0].state, null);
+});
+
+test('applyMessage aplica op drop pelo dropPeer do modulo', () => {
+  const vistos = [];
+  const mod = {
+    reduce: (st) => st,
+    dropPeer(state, peer) {
+      vistos.push(peer);
+      return { seats: state.seats.map((x) => (x === peer ? null : x)) };
+    },
+  };
+  const s = createState({ mesa: { seq: 0, windows: [{ ...win('a', 0, 0), type: 'velha', state: { seats: ['3', '4'] } }] } });
+  const r = applyMessage(s, { type: 'mesa', op: 'drop', seq: 1, id: 'a', by: '3', peer: '3' }, { getModule: () => mod });
+  assert.equal(r.needSync, false);
+  assert.deepEqual(r.state.mesa.windows[0].state, { seats: [null, '4'] });
+  assert.deepEqual(vistos, ['3']);
+  assert.deepEqual(s.mesa.windows[0].state, { seats: ['3', '4'] });
+  // Sem dropPeer, sem quem saiu ou dropPeer que lanca: pede sync.
+  assert.equal(applyMessage(s, { type: 'mesa', op: 'drop', seq: 1, id: 'a', peer: '3' }, { getModule: () => ({ reduce: (x) => x }) }).needSync, true);
+  assert.equal(applyMessage(s, { type: 'mesa', op: 'drop', seq: 1, id: 'a' }, { getModule: () => mod }).needSync, true);
+  assert.equal(applyMessage(s, { type: 'mesa', op: 'drop', seq: 1, id: 'a', peer: '3' }, {
+    getModule: () => ({ dropPeer() { throw new Error('bug'); } }),
+  }).needSync, true);
+});
+
 test('applyMessage aceita o retrato do mesa-sync e ignora o que nao e da mesa', () => {
   const s = createState();
   assert.equal(applyMessage(s, { type: 'room-mode', mode: 'mesa' }).state, s, 'room-mode nao existe mais');

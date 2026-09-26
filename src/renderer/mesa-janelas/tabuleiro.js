@@ -220,12 +220,17 @@
     };
   }
 
-  /** Moldura comum: cadeiras, Nova partida, Desistir e a situacao. */
+  /** Moldura comum: cadeiras, Nova partida, Desistir e a situacao.
+   * `opts.pode(action)` (opcional) troca o `validate` da api na hora de
+   * ligar os botoes -- o jogo secret usa o `me` da view. */
   function moldura(b, api, opts) {
     const C = root.GoLive.mesaJanelasComum;
     const { el } = C;
     let state = null;
     let confirmando = null;
+    // Jogo secret (contrato, secao 8): o `validate` da api diz sempre sim, e
+    // quem liga e desliga os botoes e o `me` que veio na view do servidor.
+    const pode = typeof opts.pode === 'function' ? opts.pode : (action) => C.podeFazer(api, action);
 
     const topo = el('div', { class: 'mj-jogo-topo' });
     const placa = el('div', { class: 'mj-jogo-placa' });
@@ -297,13 +302,13 @@
         const cor = ocupada ? C.corDe(api, id) : null;
         if (cor) cd.caixa.style.setProperty('--mj-cor', cor);
         else cd.caixa.style.removeProperty('--mj-cor');
-        if (!ocupada && eu < 0) C.ligado(cd.sentar, C.podeFazer(api, { kind: 'sit', seat: i }), `Sentar: ${opts.labels[i]}`);
+        if (!ocupada && eu < 0) C.ligado(cd.sentar, pode({ kind: 'sit', seat: i }), `Sentar: ${opts.labels[i]}`);
       });
-      C.ligado(nova, C.podeFazer(api, { kind: 'reset' }), 'Nova partida');
-      nova.hidden = C.podeFazer(api, { kind: 'reset' }) !== true;
+      C.ligado(nova, pode({ kind: 'reset' }), 'Nova partida');
+      nova.hidden = pode({ kind: 'reset' }) !== true;
       if (desistir) {
         desistir.hidden = eu < 0 || !!state.result;
-        C.ligado(desistir, C.podeFazer(api, { kind: 'resign' }), 'Desistir');
+        C.ligado(desistir, pode({ kind: 'resign' }), 'Desistir');
       }
       const st = textoStatus(state, me, opts.labels, nameOf, opts.empate);
       if (status.textContent !== st) status.textContent = st;
