@@ -441,13 +441,16 @@ async function cenaDomino(browser) {
     await wBia.locator('.mj-do-lugar').nth(1).getByRole('button', { name: 'Sentar' }).click();
     await esperaMsg(ana.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id && m.state.seats.filter(Boolean).length === 2);
     await espera(200);
-    await wAna.getByRole('button', { name: 'Nova mão' }).click();
+    await wAna.locator('.mj-do-topo button', { hasText: 'Nova mão' }).click();
     await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id && m.state.phase === 'play');
     await espera(200);
 
     const pedrasDe = async (w) => w.locator('.mj-do-mao .mj-do-pedra').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
     await semVazamento(bia, await pedrasDe(wAna), `${rotulo}: pedras da Ana`);
     await semVazamento(ana, await pedrasDe(wBia), `${rotulo}: pedras da Bia`);
+
+    await telaCheia(wAna);
+    await telaCheia(wBia);
 
     let acabou = false;
     for (let i = 0; i < 150 && !acabou; i++) {
@@ -475,6 +478,8 @@ async function cenaDomino(browser) {
       await espera(60);
     }
     conferir(acabou, `${rotulo}: a mao terminou (bateu ou trancou)`);
+    await sairTelaCheia(ana);
+    await sairTelaCheia(bia);
 
     await verTudo(ana);
     await janela(ana.page, idMin).locator('.mj-do-lugar').nth(0).getByRole('button', { name: 'Sentar' }).click();

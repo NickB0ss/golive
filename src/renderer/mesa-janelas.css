@@ -1823,11 +1823,28 @@
   }
 }
 @container mj (max-height: 350px) {
+  /* .mj-do-lugares NUNCA some por @container: e onde moram os botoes
+     "Sentar no lugar N" -- a janela nao tem outro jeito de sentar. No
+     tamanho minimo do modulo (420x300) isto escondia a unica forma de
+     entrar no jogo. */
+  .mj.mj-domino {
+    gap: var(--s-1);
+  }
   .mj-do-lugares {
-    display: none;
+    gap: 2px;
+  }
+  .mj-do-lugar {
+    padding: 2px var(--s-1);
+  }
+  .mj-do-topo .mj-btn,
+  .mj-do-acoes .mj-btn {
+    min-height: 30px;
   }
   .mj-do-mesa {
-    min-height: 55px;
+    min-height: 50px;
+  }
+  .mj-do-mao {
+    min-height: 34px;
   }
   .mj-do-pedra {
     width: 42px;
