@@ -154,7 +154,36 @@
     return best;
   }
 
-  const api = { initialState, next, isBad, normViewWidth, capForWidth, LIMITS };
+  // Piso do bitrate da camera com teto de largura: 320x180 a 30 qps ainda
+  // precisa disto para um rosto nao virar bloco.
+  const CAMERA_MIN_BPS = 150_000;
+
+  /** Encode da CAMERA para UM espectador, pelo tamanho da janela dela na
+   * Mesa dele (o mesmo `maxWidth` do `view-state` que a tela ja usa).
+   *
+   * A camera nao tem escada de presets como a tela: a captura e uma so
+   * (cfg.camera) e cada conexao tem o proprio sender. Entao o teto vira
+   * `scaleResolutionDownBy` naquele sender -- potencia de 2 pelo
+   * `scaleFactorFor` do config, que nunca desce abaixo da largura pedida --
+   * e o bitrate cai junto com a area (sem isso o encoder gastaria o mesmo
+   * orcamento numa imagem 4x menor).
+   *
+   * Sem largura (quem esta na Transmissao, versao antiga, relay com gente
+   * assistindo atras dele): fator 1 e o bitrate de sempre -- a camera no
+   * palco nunca perde nada. */
+  function cameraEncodingFor(quality, captureWidth, viewWidth, scaleFactorFor) {
+    const bitrate = quality && Number(quality.bitrate) > 0 ? Number(quality.bitrate) : 0;
+    const w = normViewWidth(viewWidth);
+    const cap = Number(captureWidth) > 0 ? Number(captureWidth) : Number(quality && quality.width) || 0;
+    const scale = w == null || !cap || typeof scaleFactorFor !== 'function' ? 1 : scaleFactorFor(cap, w);
+    const s = Number(scale) >= 1 ? Number(scale) : 1;
+    return {
+      scaleDownBy: s,
+      bitrate: s > 1 ? Math.max(Math.min(CAMERA_MIN_BPS, bitrate), Math.round(bitrate / (s * s))) : bitrate,
+    };
+  }
+
+  const api = { initialState, next, isBad, normViewWidth, capForWidth, cameraEncodingFor, CAMERA_MIN_BPS, LIMITS };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.peerquality = api;

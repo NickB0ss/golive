@@ -733,7 +733,30 @@
       }
     }
 
-    if (cameraStream) mesh.applyEncoding(qualityFor('camera'), 'camera');
+    if (cameraStream) {
+      for (const peerId of mesh.peers.keys()) applyCameraEncoding(mesh, peerId);
+    }
+  }
+
+  /** Encode da minha camera para UM espectador: o de sempre, ou com teto
+   * pela largura da janela dela na Mesa dele (peerquality.cameraEncodingFor).
+   * Um sender por conexao, entao o teto de um nao muda o dos outros. */
+  function cameraEncodingForPeer(peerId) {
+    const quality = qualityFor('camera');
+    const width = currentSession?.mesh?.peers.get(peerId)?.viewWidth?.camera ?? null;
+    const settings = cameraStream?.getVideoTracks?.()[0]?.getSettings?.() || {};
+    const e = peerquality.cameraEncodingFor(quality, Number(settings.width) || quality.width, width, config.scaleFactorFor);
+    return { quality: { ...quality, bitrate: e.bitrate }, scaleDownBy: e.scaleDownBy };
+  }
+
+  // Fator que cada sender de camera recebeu por ultimo. Sender novo (offerTo)
+  // nasce em 1: startCamera e a re-oferta do welcome reaplicam logo depois.
+  const cameraScaleApplied = new Map(); // peerId -> scaleDownBy
+
+  function applyCameraEncoding(mesh, peerId) {
+    const e = cameraEncodingForPeer(peerId);
+    cameraScaleApplied.set(peerId, e.scaleDownBy);
+    mesh.applyEncodingToPeer(peerId, e.quality, 'camera', e.scaleDownBy);
   }
 
   /** Liga/desliga o modo malha degradada de um kind. So faz algo na
@@ -3497,6 +3520,8 @@
               console.error(`[reconexao] re-oferta de camera para ${p.id} falhou:`, err);
             }
           }
+          // Senders novos nascem em fator 1; o teto da Mesa (se houver) volta.
+          for (const p of welcomePeers) if (offerPeerIds.has(String(p.id))) applyCameraEncoding(mesh, String(p.id));
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
@@ -3563,6 +3588,7 @@
         }
         if (cameraStream) {
           try {
+            cameraScaleApplied.delete(msg.id); // sender novo nasce em fator 1
             await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
           } catch (err) {
             console.error(`[peer-joined] oferta de camera para ${msg.id} falhou:`, err);
@@ -4014,6 +4040,14 @@
             const antes = qualityForPeer(msg.from, msg.kind).preset;
             (vsPeer.viewWidth ||= {}).screen = peerquality.normViewWidth(msg.maxWidth);
             if (qualityForPeer(msg.from, msg.kind).preset !== antes) reapplyAudienceQuality();
+          } else if (msg.kind === 'camera') {
+            // A minha camera, direto para ele (repasse de camera fica com o
+            // encode que o relayTo escolheu): so mexe no sender dele, e so
+            // quando o fator de escala muda.
+            (vsPeer.viewWidth ||= {}).camera = peerquality.normViewWidth(msg.maxWidth);
+            if (cameraStream && cameraEncodingForPeer(msg.from).scaleDownBy !== (cameraScaleApplied.get(msg.from) ?? 1)) {
+              applyCameraEncoding(mesh, msg.from);
+            }
           }
           const rh = normalizeReceiveHealth(msg.receiveHealth);
           (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
@@ -5241,6 +5275,8 @@
         for (const peerId of currentSession.mesh.peers.keys()) {
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera', { waitForStable: true });
         }
+        // Quem ja esta com a minha camera numa janela pequena da Mesa: teto.
+        for (const peerId of currentSession?.mesh?.peers.keys() || []) applyCameraEncoding(currentSession.mesh, peerId);
         broadcastWatchers('camera'); // lista inicial: todo mundo conta como assistindo
         recomputeTree('camera');
       }
@@ -5800,10 +5836,13 @@
         lastViewStateSent.set(vsChave, vsValor);
         console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${looking}`);
       }
-      // Mesa: a largura da janela desta tela na minha vista vira teto de
-      // qualidade do lado de quem manda (peerquality.capForWidth). Fora da
-      // Mesa (ou relay com filhos atras de mim), sem teto.
-      const maxWidth = baseKind === 'screen' && !anyFolhaWatching ? mesaView?.widthFor('screen', origem) ?? null : null;
+      // Mesa: a largura da janela desta tela (ou camera) na minha vista vira
+      // teto de qualidade do lado de quem manda (peerquality.capForWidth e
+      // cameraEncodingFor). Fora da Mesa (ou relay com filhos atras de mim),
+      // sem teto.
+      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
+        ? mesaView?.widthFor(baseKind, origem) ?? null
+        : null;
       session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, maxWidth, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
     }
   }
