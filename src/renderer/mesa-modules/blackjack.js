@@ -275,9 +275,33 @@
 
   // ---------- validate ----------
 
+  /** Lugares de quem nao esta na sala (`ctx.peers`): depois de uma
+   * migracao os ids mudam, e o lugar do id antigo conta como livre
+   * (contrato, secao 5). Sem a lista, confia no que esta no lugar. */
+  function ghostSeats(state, ctx) {
+    const peers = isObj(ctx) ? ctx.peers : null;
+    if (!Array.isArray(peers) || !peers.length) return [];
+    const ids = new Set(peers.filter(isObj).map((p) => p.id));
+    const out = [];
+    state.seats.forEach((id, i) => { if (id !== null && !ids.has(id)) out.push(i); });
+    return out;
+  }
+
+  /** O estado com esses lugares liberados, como se cada um tivesse saido. */
+  function withoutGhosts(state, seats) {
+    let s = state;
+    for (const i of seats) {
+      const id = Number.isInteger(i) && i >= 0 && i < SEATS ? s.seats[i] : null;
+      if (typeof id === 'string') s = dropPeer(s, id);
+    }
+    return s;
+  }
+
   function validate(state, action, ctx) {
     return safe(() => {
       if (!isObj(action) || !KINDS.includes(action.kind)) return 'Ação desconhecida';
+      const ghosts = ghostSeats(state, ctx);
+      if (ghosts.length) state = withoutGhosts(state, ghosts);
       const from = fromOf(ctx);
       if (!from) return 'Quem mandou?';
       const seat = seatOf(state, from);
@@ -360,6 +384,8 @@
       if (action.kind === 'bet' || action.kind === 'insurance') out.amount = action.amount;
       const now = isObj(ctx) && typeof ctx.now === 'number' && Number.isFinite(ctx.now) ? ctx.now : 0;
       out.at = now;
+      const ghosts = ghostSeats(state, ctx);
+      if (ghosts.length) out.ghosts = ghosts;
       if (isObj(ctx) && typeof ctx.random === 'function' && needsFresh(state)) out.fresh = newShoe(ctx.random);
       return out;
     }, action);
@@ -549,8 +575,11 @@
   function reduce(state, action, ctx) {
     return safe(() => {
       const at = isObj(action) && typeof action.at === 'number' && Number.isFinite(action.at) ? action.at : 0;
-      if (validate(state, action, Object.assign({}, ctx, { now: at })) !== true) return state;
-      const s = clone(state);
+      // Os lugares de quem ja nao esta na sala (o prepare viu `ctx.peers`)
+      // saem antes da acao.
+      const base = isObj(action) && Array.isArray(action.ghosts) ? withoutGhosts(state, action.ghosts) : state;
+      if (validate(base, action, Object.assign({}, ctx, { now: at, peers: null })) !== true) return state;
+      const s = clone(base);
       const from = fromOf(ctx);
       const seat = seatOf(s, from);
       switch (action.kind) {
@@ -560,6 +589,8 @@
           s.names[action.seat] = name;
           s.chips[action.seat] = START_CHIPS;
           s.bets[action.seat] = 0;
+          s.insurance[action.seat] = null;
+          s.insuranceNet[action.seat] = null;
           break;
         }
         case 'leave':
@@ -697,9 +728,11 @@
   }
 
   /** O que `peerId` pode ver (null = quem so assiste). A carta fechada da
-   * banca e `null` ate a vez dela; do sapato so a contagem. */
-  function view(state, peerId) {
+   * banca e `null` ate a vez dela; do sapato so a contagem. `ctx.peers`
+   * (do servidor) faz o lugar de quem nao esta na sala aparecer livre. */
+  function view(state, peerId, ctx) {
     return safe(() => {
+      state = withoutGhosts(state, ghostSeats(state, ctx));
       const shown = state.dealer.revealed ? state.dealer.cards.slice() : state.dealer.cards.map((c, i) => (i === 1 ? null : c));
       const visible = shown.filter((c) => c !== null);
       const dv = handValue(visible);
