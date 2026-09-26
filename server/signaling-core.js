@@ -1157,7 +1157,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           // vale; o reduce empurra o prazo e o segundo ja chega cedo.
           if (action.kind === 'timeout') {
             if (typeof mod.timeoutAt !== 'function') return deny('invalid', { detail: 'Sem prazo' });
-            const at = guard('timeoutAt', mod.type, () => mod.timeoutAt(win.state));
+            const at = guard('timeoutAt', mod.type, () => mod.timeoutAt(win.state, c));
             if (!at.ok) return deny('error');
             if (typeof at.value !== 'number' || !Number.isFinite(at.value)) return deny('invalid', { detail: 'Sem prazo' });
             if (now < at.value) return deny('early', { at: at.value });
