@@ -28,7 +28,7 @@ const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-25-festa');
 
 const args = process.argv.slice(2);
 const semPrints = args.includes('--sem-prints');
-const TIPOS_TODOS = ['jam'];
+const TIPOS_TODOS = ['jam', 'link'];
 const pedidos = args.filter((a) => !a.startsWith('--'));
 const TAMANHOS = ['min', 'grande'];
 
@@ -126,6 +126,44 @@ const ROTEIROS = {
     conferir((await c.estado('1')).link === null, `jam/${tam}: Tirar limpa a janela`);
     conferir(await c.ana.locator('input[aria-label="Link do Jam"]').isVisible(), `jam/${tam}: volta o campo`);
   },
+
+  async link(c, tam) {
+    const url = c.ana.locator('input[aria-label="Endereço (https://)"]');
+    await url.fill('http://example.com/');
+    await url.press('Enter');
+    await espera(40);
+    conferir(await c.ana.locator('.mj-aviso.is-on').isVisible(), `link/${tam}: http e recusado com motivo`);
+    await url.fill('https://example.com/regras?v=2');
+    await c.ana.locator('input[aria-label="Título do link (opcional)"]').fill('Regras do jogo');
+    await c.ana.getByRole('button', { name: 'Pôr' }).click();
+    await espera(50);
+    const s = await c.estado('2');
+    conferir(s.url === 'https://example.com/regras?v=2' && s.title === 'Regras do jogo' && s.host === 'example.com', `link/${tam}: Ana poe o link (${JSON.stringify(s)})`);
+    conferir((await c.bia.locator('.mj-link-titulo').textContent()) === 'Regras do jogo', `link/${tam}: Bia ve o titulo`);
+    // Abrir pergunta antes, com o dominio; Cancelar nao abre.
+    await c.bia.getByRole('button', { name: 'Abrir no navegador' }).click();
+    const perg = c.bia.locator('.mj-link-pergunta');
+    conferir((await perg.textContent()) === 'Abrir example.com no seu navegador?', `link/${tam}: pergunta com o dominio`);
+    await c.bia.locator('.mj-link-confirma').getByRole('button', { name: 'Cancelar' }).click();
+    conferir((await c.page.evaluate(() => window.linksAbertos.length)) === 0, `link/${tam}: Cancelar nao abre`);
+    // Esc tambem desiste.
+    await c.bia.getByRole('button', { name: 'Abrir no navegador' }).click();
+    await c.page.keyboard.press('Escape');
+    conferir(!(await perg.isVisible()), `link/${tam}: Esc fecha a pergunta`);
+    // Link trocado com a pergunta aberta: a pergunta some.
+    await c.bia.getByRole('button', { name: 'Abrir no navegador' }).click();
+    await c.act('1', { kind: 'set', url: 'https://outro.example.org/' });
+    await espera(40);
+    conferir(!(await perg.isVisible()), `link/${tam}: link novo fecha a pergunta aberta`);
+    await c.bia.getByRole('button', { name: 'Abrir no navegador' }).click();
+    await c.bia.locator('.mj-link-confirma').getByRole('button', { name: 'Abrir', exact: true }).click();
+    await espera(40);
+    const abertos = await c.page.evaluate(() => window.linksAbertos);
+    conferir(abertos.length === 1 && abertos[0][0] === 'link' && abertos[0][1] === 'https://outro.example.org/', `link/${tam}: Abrir manda pela ponte (${JSON.stringify(abertos)})`);
+    await c.bia.getByRole('button', { name: 'Tirar o link da janela' }).click();
+    await espera(40);
+    conferir((await c.estado('1')).url === null, `link/${tam}: Tirar limpa`);
+  },
 };
 
 // Cenas dos prints: o estado mais cheio de cada tipo.
@@ -133,6 +171,7 @@ const CENAS = {
   jam: [
     { kind: 'set', url: JAM, de: '1' }, { kind: 'join', de: '2' }, { kind: 'join', de: '3' }, { kind: 'join', de: '4' },
   ],
+  link: [{ kind: 'set', url: 'https://pt.wikipedia.org/wiki/Jogo_de_tabuleiro', title: 'Jogos de tabuleiro (Wikipédia)', de: '2' }],
 };
 
 async function montarCena(c, tipo) {
@@ -150,6 +189,7 @@ async function prints(browser, tipos) {
       for (const tema of ['marca', 'paper']) {
         const c = await abrir(browser, tipo, tam, { reducedMotion: 'reduce', tema: tema === 'marca' ? '' : tema });
         await montarCena(c, tipo);
+        if (tipo === 'link') await c.bia.getByRole('button', { name: 'Abrir no navegador' }).click();
         await c.page.mouse.move(0, 0);
         await c.page.locator('#palco').screenshot({ path: path.join(PRINTS, `${tipo}-${tam}-${tema === 'paper' ? 'papel' : 'padrao'}.png`) });
         await c.page.close();

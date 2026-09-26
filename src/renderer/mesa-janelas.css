@@ -1087,3 +1087,45 @@
 @container mj (max-height: 230px) {
   .mj-jam .mj-jam-meta, .mj-jam .mj-dica { display: none; }
 }
+
+/* ---------- Link ---------- */
+
+.mj-link-vazio, .mj-link-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-link-vazio { justify-content: center; }
+.mj-link-form { display: flex; flex-direction: column; gap: var(--s-15); min-width: 0; }
+.mj-link-cheio { justify-content: space-between; }
+.mj-link-cabeca { min-width: 0; display: flex; flex-direction: column; gap: var(--s-05); }
+.mj-link-titulo {
+  margin: 0;
+  font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mj-link-titulo.is-dominio { font-variant-numeric: tabular-nums; }
+.mj-link-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-link-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-link-dominio { color: var(--tx); font-weight: 600; }
+.mj-link-resto {
+  margin: 0;
+  color: var(--tx3); font-size: var(--fs-small);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mj-link-acoes .mj-fantasma { min-height: 28px; font-size: var(--fs-small); }
+.mj-link-confirma {
+  display: flex; flex-direction: column; gap: var(--s-15);
+  padding: var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+}
+.mj-link-pergunta { margin: 0; font-size: var(--fs-body); overflow-wrap: anywhere; }
+.mj-link-pergunta strong { font-weight: 700; }
+
+/* Alturas do container sao da caixa de conteudo (sem o respiro da alca). */
+@container mj (max-height: 130px) {
+  .mj-link .mj-sec { display: none; }
+  .mj-link-cheio.is-confirmando .mj-link-cabeca { display: none; }
+}
+@container mj (max-width: 330px) {
+  .mj-link-acoes .mj-fantasma > span { display: none; }
+  .mj-link-acoes .mj-fantasma { width: 28px; padding: 0; }
+}
