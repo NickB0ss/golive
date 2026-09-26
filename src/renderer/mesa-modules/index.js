@@ -34,15 +34,16 @@
     // Noite de jogo
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
-    'velha', 'lig4', 'damas', 'xadrez', 'batalha',
+    'velha', 'lig4', 'damas', 'xadrez', 'batalha', 'poquer',
     // Festa: Spotify Jam (assistir), sons (noite), link (ferramentas)
     'jam', 'sons', 'link',
   ]);
 
   // Arquivos de apoio da pasta que NAO sao tipo de janela: os modulos que
   // os usam os carregam sozinhos (no renderer, por <script> antes deles):
-  // `cadeiras` (jogos) e `midialinks` (youtube, radio, aovivo).
-  const HELPER_NAMES = Object.freeze(['cadeiras', 'midialinks', 'baralho']);
+  // `cadeiras` (jogos), `midialinks` (youtube, radio, aovivo), `baralho`
+  // (jogos de cartas) e `poquer-maos` (o avaliador de maos do pôquer).
+  const HELPER_NAMES = Object.freeze(['cadeiras', 'midialinks', 'baralho', 'poquer-maos']);
 
   const GROUPS = Object.freeze(['assistir', 'jogos', 'noite', 'ferramentas']);
   const TYPE_RE = /^[a-z][a-z0-9]{0,23}$/;

@@ -1288,4 +1288,191 @@
 @container mj (max-width: 330px) {
   .mj-link-acoes .mj-fantasma > span { display: none; }
   .mj-link-acoes .mj-fantasma { width: 28px; padding: 0; }
+/* ---------- Pôquer (mesa-janelas/poquer.js) ----------
+   Mesa oval com 8 lugares (a de quem ve fica embaixo, no meio), as cartas
+   da mesa e o pote no meio, e embaixo as suas cartas e a barra de acoes.
+   A vez e o vencedor tem contorno no --act; o relogio fica no --warn quando
+   falta pouco. A cor da pessoa so na bolinha. */
+
+.mj-poquer {
+  --pq-lugar-w: 116px;
+  --pq-carta-lugar: 22px;
+  gap: var(--s-1);
+}
+.mj-pq-topo { min-height: 30px; }
+.mj-pq-titulo {
+  font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  color: var(--tx2);
+  font-variant-numeric: tabular-nums;
+}
+.mj-poquer .mj-pq-topo .mj-btn { min-height: 30px; }
+.mj-poquer .mj-pq-blinds { min-height: 30px; font-size: var(--fs-small); }
+
+/* A mesa: o feltro (oval) por tras, os lugares e as apostas por cima. */
+.mj-pq-mesa { position: relative; flex: 1; min-height: 0; }
+.mj-pq-feltro {
+  position: absolute;
+  inset: 14% 13%;
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2), inset 0 0 0 7px var(--s1), inset 0 0 0 8px var(--line);
+}
+.mj-pq-centro {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
+  max-width: 62%;
+  text-align: center;
+}
+.mj-pq-pote {
+  font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  color: var(--tx);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mj-pq-board { display: flex; gap: var(--s-1); }
+.mj-pq-slot { display: inline-flex; }
+.mj-pq-slot .mj-carta { --mj-carta-w: 38px; }
+.mj-pq-slot.is-vazio {
+  width: 38px; aspect-ratio: 5 / 7;
+  border-radius: var(--r-sm);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+/* No showdown, as cartas fora das maos vencedoras apagam. */
+.mj-poquer.is-showdown .mj-pq-board .mj-carta:not(.is-destaque),
+.mj-poquer.is-showdown .mj-pq-cartas .mj-carta:not(.is-destaque):not(.is-verso) { opacity: 0.45; }
+.mj-pq-resultado { display: flex; flex-direction: column; gap: 2px; }
+.mj-pq-resultado p {
+  font-size: var(--fs-small);
+  line-height: 1.25;
+  color: var(--tx);
+}
+.mj-pq-resultado p:first-child { font-weight: 600; }
+
+/* Lugar: plaquinha centrada no ponto da oval. */
+.mj-pq-lugar {
+  position: absolute;
+  width: var(--pq-lugar-w);
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s-05) var(--s-15);
+  border-radius: var(--r-md);
+  background: var(--s3);
+  font-size: var(--fs-small);
+  line-height: 1.2;
+}
+.mj-pq-lugar.is-livre {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  align-items: center;
+  color: var(--tx3);
+}
+.mj-pq-lugar.is-eu .mj-pq-nome { font-weight: 600; }
+.mj-pq-lugar.is-fora { opacity: 0.55; }
+.mj-pq-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-pq-lugar.is-vencedor { box-shadow: inset 0 0 0 2px var(--act); background: var(--s4); }
+.mj-pq-linha { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.mj-pq-lugar.is-livre .mj-pq-linha + .mj-pq-linha { display: none; }
+.mj-pq-nome { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-pq-lugar.is-livre .mj-pq-nome { flex: none; }
+.mj-pq-d {
+  display: inline-grid; place-items: center; flex: none;
+  width: 16px; height: 16px;
+  border-radius: var(--r-full);
+  background: var(--on-act);
+  color: var(--video-bg);
+  font: 700 10px/1 'Outfit', system-ui, sans-serif;
+}
+.mj-pq-tag {
+  font: 600 var(--fs-micro) 'Outfit', system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--tx3);
+}
+.mj-pq-pilha { font-variant-numeric: tabular-nums; color: var(--tx2); }
+.mj-pq-estado {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-micro); line-height: 1.1; color: var(--tx3);
+}
+.mj-pq-lugar.is-vencedor .mj-pq-estado { color: var(--tx); font-weight: 600; }
+.mj-pq-cartas { display: inline-flex; gap: 2px; margin-left: auto; }
+.mj-pq-cartas .mj-carta { --mj-carta-w: var(--pq-carta-lugar); border-radius: var(--r-xs); }
+.mj-pq-cartas .mj-carta-canto { top: 2px; left: 2px; font-size: 9px; }
+.mj-pq-cartas .mj-carta-naipe { display: none; }
+.mj-pq-cartas .mj-carta.is-verso { box-shadow: inset 0 0 0 1px var(--s2), inset 0 0 0 2px var(--line2); }
+.mj .mj-pq-lugar .mj-cadeira-sentar { min-height: 26px; }
+
+/* O relogio de quem esta na vez: um fio que encolhe. */
+.mj-pq-relogio {
+  position: absolute; left: var(--s-15); right: var(--s-15); bottom: 2px;
+  height: 2px; border-radius: var(--r-full);
+  background: var(--line);
+  overflow: hidden;
+}
+.mj-pq-lugar:not(.is-vez) .mj-pq-relogio { display: none; }
+.mj-pq-relogio > span {
+  display: block; height: 100%;
+  background: var(--act);
+  transform-origin: left center;
+  transition: transform 250ms linear;
+}
+.mj-pq-relogio.is-pouco > span { background: var(--warn); }
+
+/* Aposta da rodada: ficha + valor, entre o lugar e o meio. */
+.mj-pq-aposta {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex; align-items: center; gap: var(--s-05);
+  padding: 1px var(--s-15) 1px var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  font: 600 var(--fs-micro) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mj-pq-aposta::before {
+  content: ""; width: 10px; height: 10px; flex: none;
+  border-radius: var(--r-full);
+  background: var(--on-act);
+  box-shadow: inset 0 0 0 2px var(--tx3);
+}
+
+/* Embaixo: suas cartas (grandes) a esquerda; estado e acoes a direita. */
+.mj-pq-baixo {
+  flex: none;
+  display: flex; align-items: flex-end; gap: var(--s-3);
+  min-height: 84px;
+}
+.mj-pq-eu { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: none; }
+.mj-pq-minhas { display: inline-flex; gap: var(--s-1); }
+.mj-pq-minhas .mj-carta { --mj-carta-w: 50px; }
+.mj-pq-jogo { margin: 0; font-size: var(--fs-micro); color: var(--tx2); white-space: nowrap; }
+.mj-pq-direita {
+  flex: 1; min-width: 0; min-height: 84px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: var(--s-1);
+}
+.mj-poquer .mj-pq-status { text-align: left; font-variant-numeric: tabular-nums; outline: none; }
+.mj-poquer.is-pouco .mj-pq-status { color: var(--warn); }
+.mj-pq-acoes { display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-pq-valores, .mj-pq-botoes { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.mj-pq-botoes { justify-content: flex-end; }
+.mj-poquer .mj-pq-botoes .mj-btn { min-height: 32px; }
+.mj-poquer .mj-pq-atalho { min-height: 28px; padding: 0 var(--s-2); font-size: var(--fs-small); }
+.mj-pq-slider { flex: 1; min-width: 60px; accent-color: var(--act); }
+.mj .mj-pq-valor { width: 76px; min-height: 28px; flex: none; font-variant-numeric: tabular-nums; }
+.mj-pq-anuncio {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.mj-poquer .mj-aviso { justify-content: flex-start; }
+
+@container mj (max-width: 640px) {
+  .mj-poquer { --pq-lugar-w: 100px; --pq-carta-lugar: 18px; }
+  .mj-pq-slot .mj-carta { --mj-carta-w: 32px; }
+  .mj-pq-slot.is-vazio { width: 32px; }
+  .mj-pq-minhas .mj-carta { --mj-carta-w: 42px; }
+  .mj-poquer .mj-pq-atalho[aria-label="Meio pote"] { display: none; }
+}
+@container mj (max-height: 400px) {
+  .mj-pq-jogo { display: none; }
+  .mj-pq-lugar .mj-pq-tag { display: none; }
 }
