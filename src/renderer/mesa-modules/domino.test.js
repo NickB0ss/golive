@@ -56,9 +56,13 @@ test('sem duplo abre a pedra de maior soma', () => {
   assert.deepEqual(s.table[0].stone, [5, 6]);
 });
 
-test('a mão seguinte abre com qualquer pedra de quem ganhou', () => {
+test('a mao seguinte espera o vencedor escolher a pedra de abertura', () => {
   const s = start([[[6, 6]], [[0, 1]], [], []], [], 1);
-  assert.deepEqual(s.table[0].stone, [0, 1]);
+  assert.equal(s.phase, 'opening');
+  assert.deepEqual(s.table, []);
+  assert.equal(domino.validate(s, { kind: 'open', stone: 0 }, ctx('b')), true);
+  const aberta = domino.reduce(s, { kind: 'open', stone: 0, at: 1000 }, ctx('b'));
+  assert.deepEqual(aberta.table[0].stone, [0, 1]);
 });
 
 test('encaixa pela ponta esquerda e gira a pedra', () => {
@@ -176,4 +180,12 @@ test('lugar fantasma fica livre e dropPeer libera a cadeira', () => {
   const peers = [{ id: 'new', name: 'Novo' }, { id: 'b', name: 'B' }];
   assert.equal(domino.validate(s, { kind: 'sit', seat: 0 }, ctx('new', 0, peers)), true);
   assert.equal(domino.dropPeer(s, 'b').seats[1], null);
+});
+
+test('saida de quem esta na vez avanca imediatamente para o proximo vivo', () => {
+  const s = state({ turn: 0, hands: [[[6, 6]], [[1, 2]], [], []] });
+  const next = domino.dropPeer(s, 'a');
+  assert.equal(next.seats[0], null);
+  assert.deepEqual(next.hands[0], []);
+  assert.equal(next.turn, 1);
 });

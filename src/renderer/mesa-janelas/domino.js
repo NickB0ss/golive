@@ -22,7 +22,9 @@
   }
 
   function podeJogar(state, pedra) {
-    if (!state || state.phase !== 'play' || state.me?.seat !== state.turn || !state.ends) return false;
+    if (!state || state.me?.seat !== state.turn) return false;
+    if (state.phase === 'opening') return true;
+    if (state.phase !== 'play' || !state.ends) return false;
     return pedra.includes(state.ends[0]) || pedra.includes(state.ends[1]);
   }
 
@@ -108,8 +110,11 @@
         botaoPedra.innerHTML = pedraSvg(pedra);
         C.ligado(botaoPedra, podeJogar(state, pedra) ? true : 'Não encaixa ou não é sua vez');
         b.clique(botaoPedra, mao, () => {
-          const ponta = esquerda ? 'left' : direita ? 'right' : null;
-          if (ponta) b.acao(mao, { kind: 'play', stone: indice, end: ponta });
+          if (state.phase === 'opening') b.acao(mao, { kind: 'open', stone: indice });
+          else {
+            const ponta = esquerda ? 'left' : direita ? 'right' : null;
+            if (ponta) b.acao(mao, { kind: 'play', stone: indice, end: ponta });
+          }
         });
         return botaoPedra;
       }));
@@ -118,6 +123,7 @@
     function textoStatus() {
       if (state.result?.winner === null) return 'Mão trancada';
       if (state.result) return `${state.names?.[state.result.winner] || 'Alguém'} venceu`;
+      if (state.phase === 'opening') return `Vez de ${state.names?.[state.turn] || 'jogador'} abrir com a pedra que escolher`;
       if (state.phase !== 'play') return 'Sente 2 a 4 pessoas e dê as pedras';
       return `Vez de ${state.names?.[state.turn] || 'jogador'} · monte: ${state.stock}`;
     }

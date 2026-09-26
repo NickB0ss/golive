@@ -223,3 +223,10 @@ test('migracao cancela rodada e nunca leva respostas ou votos secretos', () => {
   assert.equal(JSON.stringify(migrated).includes('SegredoA'), false);
   assert.deepEqual(migrated.scores, state.scores);
 });
+
+test('lider sobrevivente gere a janela depois da saida ou migracao do criador', () => {
+  const abandoned = stop.dropPeer(stop.init(ctx('ana')), 'ana');
+  assert.equal(stop.validate(abandoned, { kind: 'start' }, { ...ctx('bia'), isLeader: true }), true);
+  const migrated = stop.migrate(stop.init(ctx('ana')));
+  assert.equal(stop.validate(migrated, { kind: 'categories', categories: ['Nome'] }, { ...ctx('bia'), isLeader: true }), true);
+});

@@ -238,7 +238,7 @@
       return true;
     }
     if (entrada.type === 'stand') return lugar >= 0 ? true : 'Você não está sentado.';
-    if (entrada.type === 'reset') return lugar >= 0 || entrada.leader ? true : 'Só quem está na mesa reinicia.';
+    if (entrada.type === 'reset') return lugar >= 0 || objeto(contexto).isLeader === true ? true : 'Só quem está na mesa reinicia.';
     if (entrada.type === 'deal') {
       if (lugar < 0 || !podeComecar(estado, contexto) || maoValida(estado)) return 'Não é possível dar agora.';
       return true;
@@ -257,6 +257,7 @@
       return true;
     }
     if (entrada.type === 'call') {
+      if (lugar < 0) return 'Canto indisponível';
       if (estado.phase !== 'play') return 'A mão não está jogando';
       if (mao.pending || mao.noCall || mao.value >= 12) return 'Canto indisponível';
       if (duplaDaMao(mao, lugar) === mao.lastCaller) return 'Canto indisponível';
@@ -476,7 +477,7 @@
       stand: lugar >= 0,
       play: estado.phase === 'play' && !mao.pending && mao.turn === lugar,
       cover: estado.phase === 'play' && !mao.pending && mao.turn === lugar && mao.rounds.length > 0,
-      call: estado.phase === 'play' && !mao.pending && !mao.noCall && mao.value < 12
+      call: lugar >= 0 && estado.phase === 'play' && !mao.pending && !mao.noCall && mao.value < 12
         && minhaDupla !== mao.lastCaller,
       answer: Boolean(mao.pending && mao.pending.toTeam === minhaDupla),
       eleven: estado.phase === 'eleven' && souDaDecisao

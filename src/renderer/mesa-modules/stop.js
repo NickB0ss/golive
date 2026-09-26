@@ -131,7 +131,12 @@
   }
 
   function canManage(state, ctx) {
-    return !!(ctx && peerId(ctx.from) && ctx.from === state.createdBy);
+    const from = ctx && peerId(ctx.from) ? ctx.from : null;
+    if (!from) return false;
+    if (from === state.createdBy) return true;
+    const creatorActive = peersOf(ctx).some((peer) => peer.id === state.createdBy);
+    if (creatorActive) return false;
+    return ctx && ctx.isLeader === true || state.players.includes(from);
   }
 
   function allAnswered(state, id) {
@@ -306,13 +311,13 @@
       .filter((v) => v.player !== id)
       .map((v) => ({ ...v, yes: v.yes.filter((p) => p !== id), no: v.no.filter((p) => p !== id) }))
       .filter((v) => v.yes.length || v.no.length);
-    if (players.length === state.players.length && !(id in names) && !(id in scores)) return state;
-    return { ...state, players, names, answers, votes, scores };
+    if (players.length === state.players.length && !(id in names) && !(id in scores) && state.createdBy !== id) return state;
+    return { ...state, createdBy: state.createdBy === id ? null : state.createdBy, players, names, answers, votes, scores };
   }
 
   function migrate(state) {
     return {
-      ...init({ by: state.createdBy }),
+      ...init({}),
       categories: state.categories.slice(),
       scores: { ...state.scores },
     };
@@ -344,8 +349,9 @@
       votes,
       points: writing ? null : points({ ...state, players }),
       me: {
-        canStart: state.phase === 'setup' && peer === state.createdBy,
-        canFinish: state.phase === 'review' && peer === state.createdBy,
+        canManage: canManage(state, { ...ctx, from: peer }),
+        canStart: state.phase === 'setup' && canManage(state, { ...ctx, from: peer }),
+        canFinish: state.phase === 'review' && canManage(state, { ...ctx, from: peer }),
         inRound: peerId(peer) && players.includes(peer),
       },
     };

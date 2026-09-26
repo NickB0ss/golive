@@ -281,3 +281,11 @@ test('cada lugar ve so a propria mao e nunca o monte', () => {
   assert.equal(JSON.stringify(bia).includes('As'), false);
   assert.equal(JSON.stringify(ana).includes('deck'), false);
 });
+
+test('espectador nao pode falsificar reinicio de lider nem cantar truco', () => {
+  const s = mao(sentados(2), [['4s'], ['5s']]);
+  assert.equal(truco.validate(s, { kind: 'reset', leader: true }, ctx('caio')), 'Só quem está na mesa reinicia.');
+  assert.equal(truco.validate(s, { kind: 'reset' }, { from: 'caio', peers: PEERS, isLeader: true }), true);
+  assert.equal(truco.validate(s, { kind: 'call' }, ctx('caio')), 'Canto indisponível');
+  assert.equal(truco.view(s, 'caio', { peers: PEERS }).me.can.call, false);
+});

@@ -66,14 +66,14 @@
       form.append(title, list, start);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
-        if (api.me() === state.createdBy) {
+        if (state.me?.canManage || api.isLeader()) {
           action(form, { kind: 'categories', categories: [...list.querySelectorAll('input')].map((i) => i.value) });
           action(form, { kind: 'start' });
         }
       });
       body.replaceChildren(form);
       footer.replaceChildren();
-      C.ligado(start, api.me() === state.createdBy, 'Só quem criou a janela começa');
+      C.ligado(start, state.me?.canManage || api.isLeader(), 'Só quem gere a janela começa');
     }
 
     function drawWriting() {
@@ -135,7 +135,7 @@
         el('span', { class: 'mj-mola' }), finish);
       C.ligado(previous, page > 0, 'Primeira página');
       C.ligado(next, page < pages - 1, 'Última página');
-      C.ligado(finish, api.me() === state.createdBy, 'Só quem criou a janela encerra a correção');
+      C.ligado(finish, state.me?.canManage || api.isLeader(), 'Só quem gere a janela encerra a correção');
     }
 
     function render() {

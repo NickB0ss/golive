@@ -105,6 +105,12 @@
   function validarJogada(state, action, ctx) {
     const meu = meuLugar(state, ctx);
     if (meu < 0) return 'Sente-se para jogar';
+    if (state.phase === 'opening') {
+      if (meu !== state.turn) return 'Não é a sua vez';
+      if (action.kind !== 'open') return 'Escolha a pedra de abertura';
+      return Number.isInteger(action.stone) && state.hands[meu][action.stone]
+        ? true : 'Pedra inválida';
+    }
     if (state.phase !== 'play') return 'Comece uma nova mão';
     if (meu !== state.turn) return 'Não é a sua vez';
     return action.kind === 'play' ? validarPedra(state, action, meu) : validarCompraOuPasse(state, action, meu);
@@ -197,20 +203,40 @@
 
   function iniciarMao(state, action) {
     const hands = action.hands.map((mao) => mao.filter(P.valid).map((pedra) => pedra.slice()));
-    const abre = abertura(state, hands);
-    const indice = hands[abre.lugar].findIndex((pedra) => pedra === abre.pedra);
-    hands[abre.lugar].splice(indice, 1);
     const base = Object.assign({}, state, {
       hands,
       stock: action.stock.filter(P.valid).map((pedra) => pedra.slice()),
+      table: [],
+      ends: null,
+      passes: 0,
+      result: null,
+    });
+    if (Number.isInteger(state.winner) && hands[state.winner].length) {
+      return Object.assign({}, base, {
+        phase: 'opening', turn: state.winner, deadline: numeroDaHora(action) + TEMPO_DA_VEZ,
+      });
+    }
+    const abre = abertura(state, hands);
+    const indice = hands[abre.lugar].findIndex((pedra) => pedra === abre.pedra);
+    hands[abre.lugar].splice(indice, 1);
+    const iniciada = Object.assign({}, base, {
       table: [{ stone: abre.pedra.slice(), end: 'right' }],
       ends: abre.pedra.slice(),
       phase: 'play',
-      passes: 0,
-      result: null,
       winner: null,
     });
-    return comProximaVez(base, abre.lugar, numeroDaHora(action));
+    return comProximaVez(iniciada, abre.lugar, numeroDaHora(action));
+  }
+
+  function abrir(state, lugar, indice, at) {
+    const hands = state.hands.map((mao) => mao.slice());
+    const pedra = hands[lugar][indice];
+    if (!P.valid(pedra)) return state;
+    hands[lugar].splice(indice, 1);
+    const iniciada = Object.assign({}, state, {
+      hands, table: [{ stone: pedra.slice(), end: 'right' }], ends: pedra.slice(), phase: 'play', winner: null,
+    });
+    return comProximaVez(iniciada, lugar, at);
   }
 
   function numeroDaHora(action) {
@@ -298,6 +324,7 @@
 
   function timeout(state, at) {
     const lugar = state.turn;
+    if (state.phase === 'opening') return abrir(state, lugar, 0, at);
     const indice = state.hands[lugar].findIndex((pedra) => encaixaNaPonta(state, pedra));
     if (indice >= 0) {
       const pedra = state.hands[lugar][indice];
@@ -324,6 +351,7 @@
         case 'sit': return sentar(state, action, ctx);
         case 'stand': return dropPeer(state, state.seats[lugar]);
         case 'start': return iniciarMao(state, action);
+        case 'open': return abrir(state, lugar, action.stone, at);
         case 'play': return jogar(state, lugar, action.stone, action.end, at);
         case 'draw': return comprar(state, lugar, at);
         case 'pass': return passar(state, lugar, at);
@@ -343,7 +371,9 @@
     seats[lugar] = null;
     names[lugar] = null;
     hands[lugar] = [];
-    return Object.assign({}, state, { seats, names, hands });
+    const next = Object.assign({}, state, { seats, names, hands });
+    if (state.phase === 'play' && state.turn === lugar) return Object.assign({}, next, { turn: proximoLugar(next, lugar) });
+    return next;
   }
 
   function view(state, peerId, ctx) {
@@ -372,6 +402,7 @@
             sit: Array.from({ length: LUGARES }, (_, indice) => validar({ kind: 'sit', seat: indice })),
             stand: validar({ kind: 'stand' }),
             start: validar({ kind: 'start' }),
+            open: validar({ kind: 'open', stone: 0 }),
             draw: validar({ kind: 'draw' }),
             pass: validar({ kind: 'pass' }),
             reset: validar({ kind: 'reset' }),
@@ -390,7 +421,7 @@
   }
 
   function timeoutAt(state) {
-    return state.phase === 'play' && Number.isFinite(state.deadline) ? state.deadline : null;
+    return ['play', 'opening'].includes(state.phase) && Number.isFinite(state.deadline) ? state.deadline : null;
   }
 
   function summary(state) {
