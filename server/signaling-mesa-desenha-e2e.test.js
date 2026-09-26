@@ -292,3 +292,33 @@ test('so o desenhista da vez pode rabiscar na janela; os outros sao ignorados em
 test('lista de palavras embutida tem 150+ palavras (contrato, secao 10)', () => {
   assert.ok(desenha.PALAVRAS.length >= 150);
 });
+
+test('timeout da escolha usa a primeira palavra, recusa cedo e nao a vaza', async (t) => {
+  const p = palco(t);
+  const { ana, bia, caio, id, opcoes } = await cena(p);
+
+  const cedo = await bia.joga(id, { kind: 'timeout' });
+  assert.equal(cedo.type, 'mesa-denied');
+  assert.equal(cedo.reason, 'early');
+  assert.ok(cedo.at > Date.now());
+
+  const realAgora = Date.now;
+  Date.now = () => realAgora() + desenha.CHOOSE_MS + 1000;
+  try {
+    const escolhido = await caio.joga(id, { kind: 'timeout' });
+    assert.equal(escolhido.state.phase, 'drawing');
+    assert.equal(escolhido.state.options, null);
+
+    const doMesmoSeq = (m) => m.type === 'mesa'
+      && m.op === 'state'
+      && m.id === id
+      && m.seq === escolhido.seq;
+    const vistaAna = await ana.esperaMsg(doMesmoSeq, 'estado da Ana apos timeout');
+    const vistaBia = await bia.esperaMsg(doMesmoSeq, 'estado da Bia apos timeout');
+    assert.equal(vistaAna.state.word, opcoes[0]);
+    assert.equal(vistaBia.state.word, null);
+    assert.equal(vistaBia.state.options, null);
+  } finally {
+    Date.now = realAgora;
+  }
+});
