@@ -769,8 +769,10 @@ async function cenaDesenha(browser) {
     await bia.page.mouse.move(caixaBia.x + 60, caixaBia.y + 60);
     await bia.page.mouse.up();
     await espera(200);
-    const mandouTraco = (await bia.page.evaluate(() => window.__caixa.length)) > antesQtd
-      && (await bia.page.evaluate(() => window.__caixa.some((m) => m.type === 'annotate')));
+    // So as mensagens DEPOIS de antesQtd: Ana ja mandou 'annotate' antes
+    // (o traco que acabou de chegar ao canvas de Bia), entao olhar a
+    // caixa inteira sempre acharia um -- nao provaria nada do clique dela.
+    const mandouTraco = await bia.page.evaluate((corte) => window.__caixa.slice(corte).some((m) => m.type === 'annotate'), antesQtd);
     conferir(!mandouTraco, `${rotulo}: Bia (nao desenha) nao consegue rabiscar`);
 
     // Bia chuta (errado de proposito -- nao sabe a palavra) e ve o evento.
