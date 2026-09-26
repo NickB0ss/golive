@@ -2595,6 +2595,26 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 .chat-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .chat-image:hover { border-color: var(--line2); }
 
+/* "Pôr na mesa": link do YouTube ou imagem do chat vira janela da Mesa.
+   Discreto (fantasma) para nao disputar com o texto da conversa. */
+.chat-put-row { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
+.chat-put {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 24px;
+  padding: 0 var(--s-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+  line-height: 1;
+}
+.chat-put svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-put:hover { background: var(--s3); border-color: var(--line2); color: var(--tx); }
+.chat-put:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+
 .chat-attachment {
   display: flex;
   align-items: center;
@@ -3416,7 +3436,7 @@ body.mesa-open #grid { display: none; }
   transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 .mesa-win:focus-visible { box-shadow: 0 0 0 2px var(--on-text); }
-.mesa-win.is-media { cursor: grab; }
+.mesa-win.is-media { cursor: grab; container: mesawin / size; }
 .mesa-win.is-dragging { box-shadow: 0 0 0 1px var(--on-text); opacity: .92; will-change: transform; cursor: grabbing; }
 .mesa-win.is-settling { transition: transform 260ms var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
 .mesa-win.is-remote-drag { transition: transform 60ms linear, width 60ms linear, height 60ms linear; }
@@ -3442,9 +3462,35 @@ body.mesa-open #grid { display: none; }
 .mesa-win .tile-label,
 .mesa-win .tile-avatar,
 .mesa-win .tile-kind-badge,
-.mesa-win .pip-strip,
-.mesa-win .tile-react-bar,
-.mesa-win .tile-annot-bar { display: none; }
+.mesa-win .pip-strip { display: none; }
+
+/* Rabisco e reacoes do tile valem tambem na janela da Mesa. Aparecem com o
+   mouse em cima ou o foco dentro (como os controles da janela), no mesmo
+   tamanho na tela com qualquer zoom (--mesa-inv), e nao arrastam a janela
+   (mesa-view.js pula .tile-annot-bar e .tile-react-bar no pointerdown).
+   Com o rabisco ligado a barra fica, para dar para desligar. */
+.mesa-win .tile-annot-bar,
+.mesa-win .tile-react-bar {
+  bottom: var(--s-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.mesa-win .tile-annot-bar { transform: translateX(-50%) scale(var(--mesa-inv, 1)); transform-origin: 50% 100%; }
+.mesa-win .tile-react-bar { right: var(--s-2); transform: scale(var(--mesa-inv, 1)); transform-origin: 100% 100%; }
+.mesa-win:hover .tile-annot-bar,
+.mesa-win:focus-within .tile-annot-bar,
+.mesa-win .tile.annot-on .tile-annot-bar,
+.mesa-win:hover .tile-react-bar,
+.mesa-win:focus-within .tile-react-bar { opacity: 1; pointer-events: auto; }
+/* Com a barra de rabisco a vista, o nome embaixo sai da frente (o avatar
+   de quem e continua nos controles de cima; com zoom baixo as barras
+   crescem na mesa e encostariam nele). Janela bem estreita: so o rabisco. */
+.mesa-win:hover:has(.tile.annotatable) .mesa-win-label,
+.mesa-win:focus-within:has(.tile.annotatable) .mesa-win-label { opacity: 0; }
+@container mesawin (max-width: 280px) {
+  .mesa-win .tile-react-bar { display: none; }
+}
 
 /* Nome sempre visivel embaixo, AO VIVO na tela de quem transmite. */
 .mesa-win-label {
@@ -3731,7 +3777,7 @@ body.mesa-open #grid { display: none; }
 
 /* Tela cheia de uma janela: so ela, a janela toda do app (sem transformacao
    da mesa por cima, para o fixed valer para a tela inteira). */
-.mesa-win.is-full { position: fixed; inset: 0; z-index: var(--z-popover); width: auto; height: auto; border-radius: 0; box-shadow: none; transform: none; }
+.mesa-win.is-full { --mesa-inv: 1; position: fixed; inset: 0; z-index: var(--z-popover); width: auto; height: auto; border-radius: 0; box-shadow: none; transform: none; }
 .mesa.has-full .mesa-win:not(.is-full),
 .mesa.has-full .mesa-nav,
 .mesa.has-full .mesa-people,

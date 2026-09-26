@@ -17,7 +17,7 @@
  * Nao entra no `npm test` (precisa de navegador).
  */
 
-/* global window, document, requestAnimationFrame -- o codigo
+/* global window, document, requestAnimationFrame, getComputedStyle -- o codigo
    dentro de page.evaluate/addInitScript roda no navegador */
 
 const path = require('node:path');
@@ -31,6 +31,7 @@ const { chromium } = require(PW);
 const RAIZ = path.join(__dirname, '..', '..');
 const PAGINA = `file://${path.join(RAIZ, 'src', 'renderer', 'index.html')}`;
 const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-24-mesa');
+const PRINTS_ACABAMENTO = path.join(RAIZ, 'docs', 'prints', '2026-09-25-acabamento');
 
 const espera = (ms) => new Promise((r) => {
   setTimeout(r, ms);
@@ -484,6 +485,183 @@ async function checar(browser, port, s) {
   await page.close();
 }
 
+/** Uma imagem de verdade (PNG por canvas) para o chat: um "print" de mapa. */
+const IMAGEM_DE_TESTE = () => {
+  const c = document.createElement('canvas');
+  c.width = 640;
+  c.height = 400;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 640, 400);
+  grad.addColorStop(0, '#2B4A3A');
+  grad.addColorStop(1, '#1D2F45');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 640, 400);
+  g.strokeStyle = 'rgba(255,255,255,.35)';
+  g.lineWidth = 2;
+  for (let i = 0; i < 640; i += 40) {
+    g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 400); g.stroke();
+  }
+  for (let j = 0; j < 400; j += 40) {
+    g.beginPath(); g.moveTo(0, j); g.lineTo(640, j); g.stroke();
+  }
+  g.fillStyle = '#E8B04B';
+  g.beginPath(); g.arc(420, 170, 26, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.9)';
+  g.font = '600 34px sans-serif';
+  g.fillText('Mirage — bomb A', 36, 60);
+  return c.toDataURL('image/jpeg', 0.82);
+};
+
+/** O acabamento de 2026-09-25: "Pôr na mesa" do chat (link do YouTube e
+ * imagem), as janelas Imagem e Galeria, os controles do tile dentro da
+ * janela da Mesa, as travas vistas da Transmissao e o cartao "Assistir"
+ * na tira de miniaturas. `comPrints` tira os prints em PRINTS_ACABAMENTO. */
+async function acabamento(browser, port, s, { comPrints = false } = {}) {
+  if (comPrints) fs.mkdirSync(PRINTS_ACABAMENTO, { recursive: true });
+  const foto = async (page, nome) => {
+    if (comPrints) await page.screenshot({ path: path.join(PRINTS_ACABAMENTO, nome) });
+  };
+  const { page, erros } = await abrirSala(browser, port);
+  const ok = {};
+  const bia = await pessoa(port, 'Bia');
+  bia.envia({ type: 'mesa-view', on: true });
+  await bia.espera((m) => m.type === 'mesa-sync');
+  const png = await page.evaluate(IMAGEM_DE_TESTE);
+  bia.envia({ type: 'chat', text: 'olha esse clipe https://youtu.be/dQw4w9WgXcQ?t=42' });
+  bia.envia({ type: 'chat', text: 'o bomb A é aqui', image: png, w: 640, h: 400 });
+  const msgImg = await bia.espera((m) => m.type === 'chat' && m.image);
+  await page.waitForSelector('.chat-line .chat-image');
+  ok.botoesPorNaMesa = await page.evaluate(() => [...document.querySelectorAll('.chat-put')].map((b) => b.dataset.put));
+  await foto(page, '01-chat-por-na-mesa.png');
+
+  // 1. Da Transmissao: a imagem do chat vai para o meio da mesa.
+  await page.click('.chat-put[data-put="imagem"]');
+  const addImg = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'imagem');
+  const actImg = await bia.espera((m) => m.type === 'mesa' && m.op === 'act' && m.id === addImg.win.id);
+  ok.imagemPelaTransmissao = actImg.action.msgId === msgImg.id && !JSON.stringify(addImg).includes('base64');
+  ok.avisoNaTransmissao = await page.evaluate(() => document.querySelector('#toast-text')?.textContent);
+
+  // 2. Na Mesa: a imagem aparece ajustada a janela.
+  await page.click('#view-mesa');
+  await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  await page.waitForSelector(`.mesa-win[data-id="${addImg.win.id}"] img.mj-img-foto[src^="data:image/jpeg"]`);
+  ok.imagemNaMesa = await page.evaluate((i) => {
+    const img = document.querySelector(`.mesa-win[data-id="${i}"] img.mj-img-foto`);
+    return img.complete && img.naturalWidth === 640 && getComputedStyle(img).objectFit === 'contain';
+  }, addImg.win.id);
+
+  // 3. O link do YouTube, com a Mesa aberta: nasce no meio da vista.
+  await page.click('.chat-put[data-put="youtube"]');
+  const addYt = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'youtube');
+  const actYt = await bia.espera((m) => m.type === 'mesa' && m.op === 'act' && m.id === addYt.win.id);
+  ok.youtubePelaMesa = actYt.action.kind === 'load' && actYt.action.videoId === 'dQw4w9WgXcQ' && actYt.action.start === 42;
+
+  // 4. Galeria: as imagens do chat, com "Pôr na mesa" em cada uma.
+  await page.click('#btn-mesa-add');
+  await page.click('.mesa-menu [data-add="galeria"]');
+  const addGal = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'galeria');
+  await page.waitForSelector(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item img[src^="data:image/jpeg"]`);
+  ok.galeriaMostra = await page.$$eval(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item`, (l) => l.length);
+  await page.click('.mesa-zoom-btn[data-zoom="fit"]');
+  await espera(700);
+  await foto(page, '02-imagem-e-galeria-na-mesa.png');
+  await page.click(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-por`);
+  const addImg2 = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'imagem' && m.win.id !== addImg.win.id);
+  const actImg2 = await bia.espera((m) => m.type === 'mesa' && m.op === 'act' && m.id === addImg2.win.id);
+  ok.galeriaPoeNaMesa = actImg2.action.msgId === msgImg.id;
+
+  // 5. Imagem que saiu do historico: a janela diz isso. O servidor aceita
+  // 3 imagens a cada 5 s por pessoa (e recusa o resto calado).
+  await espera(5200);
+  for (let i = 0; i < 8; i += 1) {
+    bia.envia({ type: 'chat', text: '', image: png, w: 640, h: 400 });
+    await espera(i % 3 === 2 ? 5200 : 50); // 3 imagens / 5 s por pessoa
+  }
+  await page.waitForFunction((i) => /saiu do histórico/.test(document.querySelector(`.mesa-win[data-id="${i}"] .mj-img-falta`)?.textContent || ''), addImg.win.id, { timeout: 10000 });
+  ok.imagemSaiuDoHistorico = true;
+  ok.galeriaNoTeto = await page.$$eval(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item`, (l) => l.length);
+  await foto(page, '03-imagem-que-saiu-do-historico.png');
+
+  ok.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND|ytimg|youtube|net::/.test(e));
+  (s.acabamento ||= {}).porNaMesa = ok;
+  s.acabamento.tileNaMesa = await tileNaMesa(page, bia, erros, foto);
+  bia.fecha();
+  await page.close();
+}
+
+/** Volume, rabisco e reacoes do tile dentro da janela da Mesa, com a mesa
+ * fora do zoom 100% (o transform do mundo nao pode entortar o rabisco). */
+async function tileNaMesa(page, bia, erros, foto) {
+  const ok = {};
+  // Tira as janelas de antes do caminho: so a tela da Bia fica.
+  const retrato = await (async () => {
+    const r = bia.espera((m) => m.type === 'mesa-sync' && m !== bia.caixa.find((x) => x.type === 'mesa-sync'));
+    bia.envia({ type: 'mesa-sync' });
+    return (await r).mesa;
+  })();
+  for (const w of retrato.windows) bia.envia({ type: 'mesa', op: 'remove', id: w.id });
+  bia.envia({ type: 'broadcast-state', live: true, annotate: true });
+  const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'tela');
+  await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');
+  const sel = `.mesa-win[data-id="${add.win.id}"]`;
+  await page.waitForSelector(`${sel} .tile video`);
+  await page.waitForSelector(`${sel} .tile.annotatable`);
+  // Fora dos 100%: "Ver tudo" e depois dois passos de afastar.
+  await page.click('.mesa-zoom-btn[data-zoom="fit"]');
+  await espera(700);
+  await page.click('.mesa-zoom-btn[data-zoom="out"]');
+  await page.click('.mesa-zoom-btn[data-zoom="out"]');
+  await espera(300);
+  ok.zoom = await page.$eval('.mesa-zoom-val', (el) => el.textContent);
+  const caixa = await page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  await page.mouse.move(caixa.x + caixa.w * 0.3, caixa.y + caixa.h * 0.3);
+  await espera(250);
+  ok.barrasVisiveis = await page.$eval(sel, (el) => ['.tile-annot-bar', '.tile-react-bar'].map((s) => {
+    const b = el.querySelector(s);
+    const cs = getComputedStyle(b);
+    return cs.display !== 'none' && cs.opacity === '1' && cs.pointerEvents !== 'none';
+  }));
+  // Reagir: abre a lista, manda a reacao, e nada disso pega a janela.
+  const antesGrab = bia.caixa.filter((m) => m.type === 'mesa-grab').length;
+  await page.click(`${sel} .tile-react-toggle`);
+  ok.listaDeReacoesAbre = await page.$eval(`${sel} .tile-react-bar`, (el) => el.classList.contains('is-open'));
+  await page.click(`${sel} .tile-react-btn >> nth=0`);
+  ok.reacaoChega = Boolean(await bia.espera((m) => m.type === 'reaction'));
+  // Rabisco: liga pela barra e risca do meio para a direita.
+  await page.click(`${sel} .annot-toggle`);
+  const v = await page.$eval(`${sel} .tile`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const p0 = { x: v.x + v.w * 0.25, y: v.y + v.h * 0.5 };
+  await page.mouse.move(p0.x, p0.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i += 1) {
+    await page.mouse.move(p0.x + (v.w * 0.5 * i) / 10, p0.y - (v.h * 0.25 * i) / 10);
+    await espera(20);
+  }
+  await page.mouse.up();
+  const begin = await bia.espera((m) => m.type === 'annotate' && m.op === 'begin');
+  await bia.espera((m) => m.type === 'annotate' && m.op === 'end');
+  const pts = bia.caixa.filter((m) => m.type === 'annotate' && m.op === 'points').flatMap((m) => m.points);
+  const fim = pts[pts.length - 1];
+  const perto = (a, b) => Math.abs(a - b) < 0.02;
+  ok.rabiscoNormalizado = perto(begin.x, 0.25) && perto(begin.y, 0.5) && perto(fim[0], 0.75) && perto(fim[1], 0.25);
+  ok.rabiscoPontos = { comeco: [begin.x, begin.y], fim };
+  await espera(100);
+  ok.rabiscoNaoPegaAJanela = bia.caixa.filter((m) => m.type === 'mesa-grab').length === antesGrab;
+  await foto(page, '04-tile-com-controles-na-mesa.png');
+  // Volume: pelo menu da janela (o botao direito da Mesa).
+  await page.click(`${sel} .annot-toggle`);
+  await page.mouse.click(caixa.x + caixa.w * 0.5, caixa.y + caixa.h * 0.3, { button: 'right' });
+  await page.waitForSelector('.mesa-menu [data-act="volume"]');
+  await page.click('.mesa-menu [data-act="volume"]');
+  await page.waitForSelector('.tile-menu .tile-menu-volume input');
+  ok.menuDeVolume = await page.$eval('.tile-menu .tile-menu-name', (el) => el.textContent);
+  await foto(page, '05-volume-da-tela-na-mesa.png');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(5, 450);
+  ok.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND|ytimg|youtube|net::/.test(e));
+  return ok;
+}
+
 (async () => {
   const modo = process.argv[2] || 'tudo';
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'banco-de-prova', log: () => {} });
@@ -492,6 +670,9 @@ async function checar(browser, port, s) {
   try {
     if (modo === 'prints' || modo === 'tudo') await prints(browser, servidor.port, s);
     if (modo === 'checar' || modo === 'tudo') await checar(browser, servidor.port, s);
+    if (modo === 'checar' || modo === 'prints' || modo === 'tudo' || modo === 'acabamento') {
+      await acabamento(browser, servidor.port, s, { comPrints: modo !== 'checar' });
+    }
     if (modo === 'desempenho' || modo === 'tudo') await desempenho(browser, servidor.port, s);
   } finally {
     await browser.close();

@@ -1671,8 +1671,14 @@
     input.className = 'annot-text-input';
     input.maxLength = annotate.MAX_TEXT;
     input.placeholder = 'escreva e dê Enter';
-    input.style.left = `${event.clientX - box.left}px`;
-    input.style.top = `${event.clientY - box.top}px`;
+    // Na janela da Mesa o tile esta dentro do mundo com zoom (transform no
+    // conteiner): o retangulo da tela e o de layout vezes a escala, e o
+    // campo e posicionado em px de layout. No palco a escala e 1. (Os pontos
+    // do rabisco nao precisam disto: sao normalizados pela caixa do video,
+    // e a escala some na divisao.)
+    const escala = tile.offsetWidth ? box.width / tile.offsetWidth : 1;
+    input.style.left = `${(event.clientX - box.left) / escala}px`;
+    input.style.top = `${(event.clientY - box.top) / escala}px`;
     input.style.color = annotate.colorFor(annotSelfId);
     tile.appendChild(input);
     // Focar no quadro seguinte, nao dentro do pointerdown: o preventDefault
@@ -1965,7 +1971,7 @@
    * do membro (2026-09-04, secao 3.2) e este virou o unico lugar onde se
    * silencia alguem. Sem dizer de QUEM e o menu, a resposta pra "silenciar
    * quem?" so viria depois do clique. */
-  function openTileMenu(id, x, y) {
+  function openTileMenu(id, x, y, { mesa = false } = {}) {
     closeTileMenu();
     const state = getOrCreateAudioState(id);
     const entry = tileRegistry.get(id);
@@ -1983,7 +1989,9 @@
       watchItem = watched
         ? '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta câmera</button>'
         : '<button type="button" class="tile-menu-watch" data-watch="only">Assistir câmera</button>';
-    } else if (watched && ws) {
+    } else if (watched && ws && !mesa) {
+      // Na Mesa quem decide se a tela chega e a janela estar a vista
+      // (mesa-view `wants`): "parar de assistir" ali nao faria nada.
       watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
     }
     const spyItem = watched ? '<button type="button" class="tile-menu-spy">Espiar</button>' : '';
@@ -2527,6 +2535,7 @@
   const chatOfflineBarEl = $('chat-offline-bar');
   let lastChatAuthorId = null; // pra saber quando agrupar (mesmo autor em sequencia)
   let onChatSend = null;
+  let onChatPut = null; // "Pôr na mesa" de um link do YouTube ou de uma imagem
 
   const SYSTEM_ICONS = {
     join: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
@@ -2602,6 +2611,39 @@
     return `<button class="chat-image" type="button" title="Ver em tela cheia"${dims}><img src="${escapeHtml(entry.image)}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
   }
 
+  const PUT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M12 8v6M9 11h6"/></svg>';
+
+  /** Os botoes "Pôr na mesa" de uma linha do chat: um por link do YouTube
+   * (no maximo 3) e um para a imagem (so com id, que e o que a janela
+   * `imagem` guarda). Vazio se nao ha o que pôr, ou se o app nao pediu. */
+  function chatPutHtml(entry) {
+    if (!onChatPut) return '';
+    const L = root.GoLive.mesaMidiaLinks;
+    const lib = root.GoLive.chatImagensLib;
+    const links = lib && L ? lib.youtubeLinks(entry.text, L.parseYouTube) : [];
+    const out = links.map((l, i) => `<button type="button" class="chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na mesa"${links.length > 1 ? ` aria-label="Pôr na mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
+    if (chatmedia.isImageDataUrl(entry.image) && lib?.isMsgId(entry.id)) {
+      out.push(`<button type="button" class="chat-put" data-put="imagem" title="Pôr esta imagem na mesa">${PUT_ICON}<span>Pôr na mesa</span></button>`);
+    }
+    return out.length ? `<span class="chat-put-row">${out.join('')}</span>` : '';
+  }
+
+  function wireChatPut(div, entry) {
+    const btns = div.querySelectorAll('.chat-put');
+    if (!btns.length) return;
+    const L = root.GoLive.mesaMidiaLinks;
+    const links = root.GoLive.chatImagensLib.youtubeLinks(entry.text, L?.parseYouTube);
+    for (const b of btns) {
+      b.addEventListener('click', () => {
+        if (b.dataset.put === 'imagem') onChatPut?.({ type: 'imagem', msgId: entry.id });
+        else {
+          const link = links[Number(b.dataset.i)];
+          if (link) onChatPut?.({ type: 'youtube', url: link.url });
+        }
+      });
+    }
+  }
+
   function appendMessage(entry) {
     const grouped = lastChatAuthorId === entry.from;
     lastChatAuthorId = entry.from;
@@ -2615,10 +2657,12 @@
         ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
         ${entry.text ? `<span class="chat-text">${escapeHtml(entry.text)}</span>` : ''}
         ${chatImageHtml(entry)}
+        ${chatPutHtml(entry)}
       </span>
     `;
     const imgBtn = div.querySelector('.chat-image');
     if (imgBtn) imgBtn.addEventListener('click', () => openImageLightbox(entry.image));
+    wireChatPut(div, entry);
     chatMessagesEl.appendChild(div);
   }
 
@@ -2770,8 +2814,9 @@
     if (file) onChatPickImage?.(file);
   }
 
-  function render({ onSend, onPickImage, getEmojiRecents, onEmojiUsed }) {
+  function render({ onSend, onPickImage, getEmojiRecents, onEmojiUsed, onPut }) {
     onChatSend = onSend;
+    onChatPut = typeof onPut === 'function' ? onPut : null;
     onChatPickImage = onPickImage;
     initEmojiPanel({ getEmojiRecents, onEmojiUsed });
     $('chat-jump-new').addEventListener('click', descerParaOFim);
@@ -4394,6 +4439,7 @@
       element: () => gridEl,
       tileEl: (id) => document.getElementById(`tile-${id}`),
       returnTile,
+      openTileMenu,
       resync: resyncGrid,
       onTileShown: (fn) => { onTileShown = fn; },
     },

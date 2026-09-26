@@ -130,6 +130,7 @@
    *   tileIdFor(kind, id), tileFor(kind, id) -- o `.tile` do palco dessa
    *                        tela/camera (id e elemento), ou null
    *   returnTile(tile)   -- devolve um tile ao palco
+   *   openTileMenu(tileId, x, y) -- o menu de volume/silenciar do tile
    *   resyncGrid()       -- o palco se arruma depois que os tiles voltam
    *   onWatchChange()    -- a Mesa mudou o que quer assistir (view-state)
    *   onOpenChange(on), onLocksChange({ leaderOnly, lockSize })
@@ -1631,15 +1632,19 @@
     function openMenuAt(x, y, winId, { at = null, keyboard = false } = {}) {
       closeMenu();
       const returnFocus = document.activeElement;
-      S.menu = { winId, at, returnFocus };
+      S.menu = { winId, at, returnFocus, x, y };
       const m = S.menuEl;
       if (winId) {
         const win = findWin(winId);
         if (!win) return;
         const removable = canRemove(win);
+        // Tela/camera de outra pessoa: o volume e o silenciar do tile (o
+        // botao direito do palco, que aqui e o menu da janela).
+        const volume = isMedia(win) && deps.openTileMenu && String(win.state?.peerId) !== String(deps.me());
         m.innerHTML = [
           row('Tela cheia', { act: 'full', kbd: 'F' }),
           row('Centralizar na tela', { act: 'center' }),
+          volume ? row('Volume e silenciar…', { act: 'volume' }) : '',
           '<hr class="mesa-menu-sep">',
           row('Tirar da mesa', { act: 'remove', kbd: 'Del', danger: true, disabled: !removable, reason: removable ? '' : (!canEdit() ? 'Só o líder mexe na mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela.') }),
         ].join('');
@@ -1729,9 +1734,13 @@
 
     function menuAction(act) {
       const winId = S.menu?.winId;
+      const { x = 0, y = 0 } = S.menu || {};
       closeMenu();
       if (act === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh));
-      else if (act === 'full' && winId) toggleFull(winId);
+      else if (act === 'volume' && winId) {
+        const win = findWin(winId);
+        if (win) deps.openTileMenu(deps.tileIdFor(tileKind(win), String(win.state?.peerId)), x, y);
+      } else if (act === 'full' && winId) toggleFull(winId);
       else if (act === 'center' && winId) centerWin(winId);
       else if (act === 'remove' && winId) removeFromMesa(winId);
     }
@@ -2047,6 +2056,16 @@
       return w ? S.widths.get(w.id) ?? null : null;
     }
 
+    /** Onde uma janela nova do tipo nasce: no lugar livre mais perto do
+     * meio da minha vista ("Pôr na mesa" do chat). null sem o retrato. */
+    function spot(type) {
+      const mod = modOf(type);
+      if (!S?.state || !mod) return null;
+      const c = V.viewCenter(S.view, S.vw, S.vh);
+      const { w, h } = mod.size;
+      return M.nearestFree(windows(), { x: Math.round(c.x - w / 2), y: Math.round(c.y - h / 2), w, h }, { gap: M.GAP });
+    }
+
     // ------------------------------------------------------------------
     // Relogio do servidor (mensagem `time`)
     // ------------------------------------------------------------------
@@ -2139,6 +2158,7 @@
       openAddMenu,
       wants,
       widthFor,
+      spot,
       serverNow,
     };
   }

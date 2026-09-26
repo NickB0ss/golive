@@ -579,6 +579,27 @@ test('quem esta na Transmissao recebe mesa-ack do proprio pedido aceito; quem es
   assert.equal(caio.msgs('mesa-ack').length, 2, 'o pedido dos outros nao gera ack para ninguem');
 });
 
+test('"Pôr na mesa" de uma imagem do chat pela Transmissao: add, mesa-ack e act com so o id da mensagem', async (t) => {
+  const p = palco(t);
+  const { s, ana } = await salaNaMesa(p);
+  const caio = await p.cliente(s, 'caio');
+  await caio.entra('Caio');
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  caio.envia({ type: 'chat', text: '', image: png, w: 1, h: 1 });
+  const chat = await caio.esperaMsg((m) => m.type === 'chat' && m.image, 'a imagem no chat');
+
+  const ack = caio.esperaNova((m) => m.type === 'mesa-ack' && m.op === 'add', 'mesa-ack do add');
+  caio.envia({ type: 'mesa', op: 'add', win: { type: 'imagem', x: 2160, y: 1320, w: 480, h: 360 } });
+  const { id } = await ack;
+  const eco = ana.esperaNova((m) => m.type === 'mesa' && m.op === 'act' && m.id === id, 'eco do act');
+  caio.envia({ type: 'mesa', op: 'act', id, action: { kind: 'set', msgId: chat.id } });
+  assert.deepEqual((await eco).action, { kind: 'set', msgId: chat.id });
+  const retrato = await ana.abreMesa();
+  const win = retrato.windows.find((w) => w.id === id);
+  assert.deepEqual(win.state, { msgId: chat.id, by: caio.id, rev: 1 });
+  assert.ok(!JSON.stringify(retrato).includes('base64'), 'a imagem nao vai para o estado da mesa');
+});
+
 // ---------------------------------------------------------------------------
 // Tela e camera: o servidor poe e tira
 // ---------------------------------------------------------------------------

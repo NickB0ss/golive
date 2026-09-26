@@ -79,6 +79,12 @@
   // `mesaCount` quantas janelas a mesa tem -- as duas coisas chegam mesmo a
   // quem esta na Transmissao (welcome, mesa-viewers, mesa-count).
   let mesaView = null;
+  let mesaPor = null; // "Pôr na mesa" do chat e da Galeria (mesa-por.js)
+  // As imagens que o historico do chat ainda guarda (espelho das regras do
+  // servidor), por id: e onde as janelas `imagem` e `galeria` da Mesa acham
+  // a imagem, que nunca vai no estado da janela.
+  const chatImagens = window.GoLive.chatImagensLib.createStore({ isImage: window.GoLive.chatmedia.isImageDataUrl });
+  window.GoLive.chatImagens = chatImagens;
   let mesaViewers = [];
   let mesaCount = 0;
   let joinedAtMs = null;
@@ -727,7 +733,30 @@
       }
     }
 
-    if (cameraStream) mesh.applyEncoding(qualityFor('camera'), 'camera');
+    if (cameraStream) {
+      for (const peerId of mesh.peers.keys()) applyCameraEncoding(mesh, peerId);
+    }
+  }
+
+  /** Encode da minha camera para UM espectador: o de sempre, ou com teto
+   * pela largura da janela dela na Mesa dele (peerquality.cameraEncodingFor).
+   * Um sender por conexao, entao o teto de um nao muda o dos outros. */
+  function cameraEncodingForPeer(peerId) {
+    const quality = qualityFor('camera');
+    const width = currentSession?.mesh?.peers.get(peerId)?.viewWidth?.camera ?? null;
+    const settings = cameraStream?.getVideoTracks?.()[0]?.getSettings?.() || {};
+    const e = peerquality.cameraEncodingFor(quality, Number(settings.width) || quality.width, width, config.scaleFactorFor);
+    return { quality: { ...quality, bitrate: e.bitrate }, scaleDownBy: e.scaleDownBy };
+  }
+
+  // Fator que cada sender de camera recebeu por ultimo. Sender novo (offerTo)
+  // nasce em 1: startCamera e a re-oferta do welcome reaplicam logo depois.
+  const cameraScaleApplied = new Map(); // peerId -> scaleDownBy
+
+  function applyCameraEncoding(mesh, peerId) {
+    const e = cameraEncodingForPeer(peerId);
+    cameraScaleApplied.set(peerId, e.scaleDownBy);
+    mesh.applyEncodingToPeer(peerId, e.quality, 'camera', e.scaleDownBy);
   }
 
   /** Liga/desliga o modo malha degradada de um kind. So faz algo na
@@ -2604,6 +2633,11 @@
         showToast('Não consegui preparar essa imagem.');
       }
     },
+    // "Pôr na mesa" num link do YouTube ou numa imagem do chat.
+    onPut: (what) => {
+      if (what?.type === 'youtube') mesaPor?.put('youtube', { kind: 'load', url: what.url });
+      else if (what?.type === 'imagem') mesaPor?.put('imagem', { kind: 'set', msgId: what.msgId });
+    },
     getEmojiRecents: () => cfg.emojiRecents,
     onEmojiUsed: (char) => {
       cfg = { ...cfg, emojiRecents: emoji.pushRecent(cfg.emojiRecents, char) };
@@ -3441,6 +3475,7 @@
             ? entry
             : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) }));
           ui.chat.setHistory(chatHistory);
+          chatImagens.setHistory(msg.chat || []);
           localChatTail = chatHistory.slice(-50);
         }
         if (msg.owner) {
@@ -3485,6 +3520,8 @@
               console.error(`[reconexao] re-oferta de camera para ${p.id} falhou:`, err);
             }
           }
+          // Senders novos nascem em fator 1; o teto da Mesa (se houver) volta.
+          for (const p of welcomePeers) if (offerPeerIds.has(String(p.id))) applyCameraEncoding(mesh, String(p.id));
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
@@ -3551,6 +3588,7 @@
         }
         if (cameraStream) {
           try {
+            cameraScaleApplied.delete(msg.id); // sender novo nasce em fator 1
             await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
           } catch (err) {
             console.error(`[peer-joined] oferta de camera para ${msg.id} falhou:`, err);
@@ -3734,6 +3772,9 @@
       case 'mesa-ack':
       case 'cursor':
       case 'time': {
+        // O "Pôr na mesa" do chat fica com o que e dele (o id da janela que
+        // pediu, a recusa do `add`); o resto segue para a vista.
+        if (mesaPor?.handle(msg)) break;
         mesaView?.handle(msg);
         break;
       }
@@ -3800,6 +3841,7 @@
           // 'moderated' (abaixo) -- esta linha de sistema e so o registro
           // visivel pra sala inteira, sem acao adicional aqui.
           ui.chat.append(msg);
+          chatImagens.push(msg);
           localChatTail.push(msg);
           if (localChatTail.length > 50) localChatTail.shift();
           break;
@@ -3810,6 +3852,7 @@
         const chatPeer = isMine ? null : mesh.peers.get(msg.from);
         const chatEntry = { ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) };
         ui.chat.append(chatEntry, { received: !isMine });
+        chatImagens.push(msg);
         localChatTail.push(chatEntry);
         if (localChatTail.length > 50) localChatTail.shift();
         playSoundEvent('chat', { isMine });
@@ -3997,6 +4040,14 @@
             const antes = qualityForPeer(msg.from, msg.kind).preset;
             (vsPeer.viewWidth ||= {}).screen = peerquality.normViewWidth(msg.maxWidth);
             if (qualityForPeer(msg.from, msg.kind).preset !== antes) reapplyAudienceQuality();
+          } else if (msg.kind === 'camera') {
+            // A minha camera, direto para ele (repasse de camera fica com o
+            // encode que o relayTo escolheu): so mexe no sender dele, e so
+            // quando o fator de escala muda.
+            (vsPeer.viewWidth ||= {}).camera = peerquality.normViewWidth(msg.maxWidth);
+            if (cameraStream && cameraEncodingForPeer(msg.from).scaleDownBy !== (cameraScaleApplied.get(msg.from) ?? 1)) {
+              applyCameraEncoding(mesh, msg.from);
+            }
           }
           const rh = normalizeReceiveHealth(msg.receiveHealth);
           (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
@@ -5224,6 +5275,8 @@
         for (const peerId of currentSession.mesh.peers.keys()) {
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera', { waitForStable: true });
         }
+        // Quem ja esta com a minha camera numa janela pequena da Mesa: teto.
+        for (const peerId of currentSession?.mesh?.peers.keys() || []) applyCameraEncoding(currentSession.mesh, peerId);
         broadcastWatchers('camera'); // lista inicial: todo mundo conta como assistindo
         recomputeTree('camera');
       }
@@ -5588,6 +5641,7 @@
     tileIdFor: mesaTileId,
     tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
     returnTile: ui.grid.returnTile,
+    openTileMenu: (id, x, y) => ui.grid.openTileMenu(id, x, y, { mesa: true }),
     resyncGrid: ui.grid.resync,
     onWatchChange: () => broadcastViewState(),
     onOpenChange: (on) => {
@@ -5601,6 +5655,22 @@
   });
   ui.grid.onTileShown((id) => mesaView.onTile(id));
   window.golive.onFullScreenChange((on) => mesaView.onFullScreenChange(on));
+
+  // "Pôr na mesa" (link do YouTube ou imagem do chat, imagem da Galeria):
+  // funciona nas duas vistas; na Transmissao a janela nasce no meio da mesa.
+  mesaPor = window.GoLive.mesaPorLib.create({
+    send: (msg) => {
+      const session = currentSession;
+      if (!session?.sig?.isOpen()) return false;
+      session.sig.send(msg);
+      return true;
+    },
+    me: () => myId,
+    view: { isOpen: () => mesaView.isOpen(), spot: (type) => mesaView.spot(type) },
+    toast: (text) => showToast(text),
+    registry: () => window.GoLive.mesaRegistry,
+  });
+  window.GoLive.mesaPor = { put: (type, action) => mesaPor.put(type, action) };
 
   const viewButtons = [$('view-tx'), $('view-mesa')];
 
@@ -5700,6 +5770,8 @@
   // Mesa desmonta sem avisar ninguem e a proxima sala abre na Transmissao.
   document.addEventListener('golive:room-hidden', () => {
     mesaView.close({ silent: true });
+    mesaPor.reset();
+    chatImagens.clear();
     mesaViewers = [];
     mesaCount = 0;
     setRoomMoreOpen(false);
@@ -5764,10 +5836,13 @@
         lastViewStateSent.set(vsChave, vsValor);
         console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${looking}`);
       }
-      // Mesa: a largura da janela desta tela na minha vista vira teto de
-      // qualidade do lado de quem manda (peerquality.capForWidth). Fora da
-      // Mesa (ou relay com filhos atras de mim), sem teto.
-      const maxWidth = baseKind === 'screen' && !anyFolhaWatching ? mesaView?.widthFor('screen', origem) ?? null : null;
+      // Mesa: a largura da janela desta tela (ou camera) na minha vista vira
+      // teto de qualidade do lado de quem manda (peerquality.capForWidth e
+      // cameraEncodingFor). Fora da Mesa (ou relay com filhos atras de mim),
+      // sem teto.
+      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
+        ? mesaView?.widthFor(baseKind, origem) ?? null
+        : null;
       session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, maxWidth, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
     }
   }
