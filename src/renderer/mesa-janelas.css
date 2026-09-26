@@ -1841,6 +1841,8 @@
 }
 @container mj (max-width: 420px) {
   .mj .mj-ds-opcao { min-width: 0; flex: 1 1 100%; }
+}
+
 /* === stop === */
 .mj-stop-head,
 .mj-stop-footer {
