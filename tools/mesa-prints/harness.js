@@ -25,7 +25,7 @@ const fs = require('node:fs');
 const WebSocket = require('ws');
 const { createSignalingServer } = require('../../server/signaling-core');
 
-const PW = process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright';
+const PW = process.env.PLAYWRIGHT_DIR || process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright';
 const { chromium } = require(PW);
 
 const RAIZ = path.join(__dirname, '..', '..');

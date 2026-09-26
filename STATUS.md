@@ -294,6 +294,7 @@ mediu:
 
 - **a Mesa está implementada, sem release** (branch
   `claude/project-planning-analysis-5e9lub`; ver "A Mesa" logo abaixo).
+  **Onde parou e o que falta: `docs/superpowers/plans/2026-09-26-passagem-mesa.md`.**
   Falta o teste com 2+ PCs reais (`docs/testes/2026-09-25-roteiro-mesa.md`)
   e o YouTube de verdade (`docs/testes/2026-09-24-roteiro-youtube-na-mesa.md`)
   antes de virar versão;
@@ -343,11 +344,14 @@ integrada nesta branch.
   `mesa-sync`).
 - **O líder tem duas travas**: "Só o líder mexe na mesa" e "Travar tamanho".
   Jogar e dar play continuam livres.
-- **Janelas**: 15 tipos. Ferramentas (nota, lista, enquete, placar,
-  cronômetro, sorteio de times, dados e moeda, roleta), jogos com cadeiras
-  (jogo da velha, Lig 4, damas na regra brasileira, xadrez pelo `chess.js`
-  1.4.0 vendorizado) e mídia (Vídeo do YouTube que toca junto, Rádio da
-  sala, Ao vivo da Twitch). Regra de cada tipo num módulo puro que roda no
+- **Janelas**: 23 tipos, mais tela e câmera. Ferramentas (nota, lista,
+  imagem e galeria do chat, link), noite de jogo (enquete, placar,
+  cronômetro, sorteio de times, dados e moeda, roleta, sons), jogos com
+  cadeiras (jogo da velha, Lig 4, damas na regra brasileira, xadrez pelo
+  `chess.js` 1.4.0 vendorizado), jogos com informação escondida (batalha
+  naval, pôquer Texas Hold'em, blackjack de cassino, fichas de mentira) e
+  mídia (Vídeo do YouTube que toca junto, Rádio da sala, Ao vivo da Twitch,
+  Spotify Jam). Regra de cada tipo num módulo puro que roda no
   servidor e nos clientes (`src/renderer/mesa-modules/`); desenho em
   `src/renderer/mesa-janelas/`.
 - **Telas e câmeras viram janelas** postas pelo servidor; o mesmo `<video>`
@@ -371,10 +375,11 @@ desempenho com GPU (no Chromium sem GPU a Mesa parada custa o mesmo que a
 Transmissão; zoom e "Ver tudo" pesam mais: `docs/2026-09-24-spike-desempenho-mesa.md`)
 e a mesa sobrevivendo à queda do líder.
 
-**Ficou de fora:** "Pôr na mesa" num link do chat; volume, rabisco e reações
-do tile dentro da janela da Mesa; teto de qualidade da câmera pela largura;
-travas visíveis para o líder que está na Transmissão; jogos de cartas
-(precisam de `view` por pessoa); Kick; Spotify (ver a pesquisa).
+**Ficou de fora** (lista completa e ordem na passagem de 2026-09-26): pôquer
+e blackjack ainda não cabem na janela em todo tamanho; travas visíveis para o
+líder que está na Transmissão; Truco, Oito maluco, Quadro, Desenha e
+adivinha, Stop, Quiz e Dominó (regras no contrato, seção 10); Kick; Spotify
+tocando no app (ver a pesquisa).
 
 **Defeito antigo visto nos prints (já na 0.21.0):** o cartão "Assistir" da
 tela não escolhida corta o texto em cima quando fica na tira de miniaturas.
