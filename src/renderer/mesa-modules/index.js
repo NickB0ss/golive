@@ -34,7 +34,7 @@
     // Noite de jogo
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
-    'velha', 'lig4', 'damas', 'xadrez', 'batalha', 'poquer', 'blackjack',
+    'velha', 'lig4', 'damas', 'xadrez', 'batalha', 'poquer', 'blackjack', 'desenha',
     // Festa: Spotify Jam (assistir), sons (noite), link (ferramentas)
     'jam', 'sons', 'link',
   ]);

@@ -1685,3 +1685,81 @@
   font: inherit;
   font-size: var(--fs-body);
 }
+
+/* === desenha === */
+/* Desenha e adivinha (contrato, secao 10), por cima do Quadro: topo com
+   fase/relogio, placar horizontal, e o corpo troca de secao pela fase
+   (lobby | escolhendo | desenhando | fim). So uma secao visivel por vez. */
+.mj-desenha { padding: var(--s-2); gap: var(--s-15); }
+.mj-ds-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-height: 22px; }
+/* O aviso (quem acertou, "quase", a revelacao da rodada) mora na barra do
+   topo -- nunca dentro de uma secao que pode estar escondida pra quem
+   desenha (ver mostrarEvento/mostrarRevelacao em desenha.js). */
+.mj-ds-topo .mj-aviso { flex-basis: 100%; }
+.mj-ds-status { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mj-desenha.is-minha-vez .mj-ds-status { color: var(--on-text); }
+.mj-ds-relogio { flex: none; color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-ds-relogio.is-pouco { color: var(--warn); font-weight: 600; }
+.mj-ds-relogio[hidden] { display: none; }
+
+.mj-ds-placar {
+  flex: none;
+  display: flex; flex-wrap: wrap; gap: var(--s-1);
+  list-style: none; margin: 0; padding: 0;
+}
+.mj-ds-jogador {
+  display: flex; align-items: center; gap: var(--s-05);
+  padding: 2px var(--s-15) 2px var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  font-size: var(--fs-micro);
+}
+.mj-ds-jogador.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-ds-jogador.is-fora { opacity: 0.55; }
+.mj-ds-nome { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-ds-pontos { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tx2); }
+
+.mj-ds-lobby, .mj-ds-escolhendo, .mj-ds-desenhando, .mj-ds-fim { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-ds-lobby { justify-content: center; }
+.mj-ds-fim { align-items: center; justify-content: center; }
+
+.mj-ds-escolhendo { align-items: center; justify-content: center; }
+.mj-ds-opcoes { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.mj .mj-ds-opcao {
+  min-width: 140px; min-height: 44px;
+  padding: 0 var(--s-3);
+  background: var(--s3);
+  border-color: var(--line2);
+  color: var(--tx);
+  font-weight: 600;
+}
+.mj .mj-ds-opcao:hover:not([aria-disabled="true"]) { background: var(--act); border-color: var(--act); color: var(--on-act); }
+
+.mj-ds-palavra {
+  margin: 0;
+  min-height: 1.4em;
+  text-align: center;
+  font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+  letter-spacing: 0.2em;
+}
+.mj-ds-palco {
+  position: relative;
+  flex: 1; min-height: 0;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  touch-action: none;
+}
+.mj-ds-canvas { display: block; width: 100%; height: 100%; }
+.mj-desenha.is-minha-vez .mj-ds-canvas { cursor: crosshair; }
+.mj-ds-palpite { flex: none; }
+.mj-ds-palpite[hidden] { display: none; }
+
+@container mj (max-height: 320px) {
+  .mj-ds-placar { display: none; }
+}
+@container mj (max-width: 420px) {
+  .mj .mj-ds-opcao { min-width: 0; flex: 1 1 100%; }
+}
