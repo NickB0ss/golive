@@ -505,7 +505,7 @@ test('quem sai da sala ou fecha a Mesa solta a vez', async (t) => {
 // O que quem esta na Transmissao ainda precisa saber (time Vista, 2026-09-24)
 // ---------------------------------------------------------------------------
 
-test('mesa-count vai para a sala inteira so quando a quantidade de janelas muda', async (t) => {
+test('mesa-count leva contagem e travas para a sala inteira quando a quantidade muda', async (t) => {
   const p = palco(t);
   const { s, ana } = await salaNaMesa(p);
   const caio = await p.cliente(s, 'caio');
@@ -513,7 +513,7 @@ test('mesa-count vai para a sala inteira so quando a quantidade de janelas muda'
 
   const um = caio.esperaNova((m) => m.type === 'mesa-count', 'mesa-count 1');
   const n = await ana.op({ op: 'add', win: nota(0, 0) });
-  assert.deepEqual(await um, { type: 'mesa-count', count: 1 });
+  assert.deepEqual(await um, { type: 'mesa-count', count: 1, leaderOnly: false, lockSize: false });
 
   // Mover, redimensionar e agir nao mudam a conta: nada de mesa-count.
   await ana.op({ op: 'place', id: n.win.id, x: 900, y: 0, w: 400, h: 300 });
@@ -524,9 +524,38 @@ test('mesa-count vai para a sala inteira so quando a quantidade de janelas muda'
 
   const zero = caio.esperaNova((m) => m.type === 'mesa-count', 'mesa-count 0');
   await ana.op({ op: 'remove', id: n.win.id });
-  assert.deepEqual(await zero, { type: 'mesa-count', count: 0 });
+  assert.deepEqual(await zero, { type: 'mesa-count', count: 0, leaderOnly: false, lockSize: false });
   // Quem esta na Mesa tambem recebe (barato, e o seletor dele usa o mesmo).
   assert.equal(ana.msgs('mesa-count').length, 2);
+});
+
+test('lider na Transmissao muda as travas para a sala inteira', async (t) => {
+  const p = palco(t);
+  const { s, ana, bia } = await salaNaMesa(p);
+  const caio = await p.cliente(s, 'caio');
+  const welcome = await caio.entra('Caio');
+  assert.deepEqual(welcome.mesaLocks, { leaderOnly: false, lockSize: false });
+
+  // Ana sai para a Transmissao; Bia fica na Mesa e Caio nunca a abre.
+  ana.envia({ type: 'mesa-view', on: false });
+  await bia.esperaMsg((m) => m.type === 'mesa-viewers' && !m.peers.includes(ana.id), 'Ana fora da Mesa');
+
+  const paraAna = ana.esperaNova((m) => m.type === 'mesa-count' && m.leaderOnly === true, 'trava para lider fora da Mesa');
+  const paraBia = bia.esperaNova((m) => m.type === 'mesa-count' && m.leaderOnly === true, 'trava para quem esta na Mesa');
+  const paraCaio = caio.esperaNova((m) => m.type === 'mesa-count' && m.leaderOnly === true, 'trava para quem esta na Transmissao');
+  ana.envia({ type: 'mesa', op: 'lock', leaderOnly: true });
+
+  for (const msg of await Promise.all([paraAna, paraBia, paraCaio])) {
+    assert.deepEqual(msg, { type: 'mesa-count', count: 0, leaderOnly: true, lockSize: false });
+  }
+
+  const dora = await p.cliente(s, 'dora');
+  const welcomeDora = await dora.entra('Dora');
+  assert.deepEqual(welcomeDora.mesaLocks, { leaderOnly: true, lockSize: false });
+
+  const recusada = caio.esperaNova((m) => m.type === 'mesa-denied' && m.op === 'lock', 'trava recusada para nao lider');
+  caio.envia({ type: 'mesa', op: 'lock', lockSize: true });
+  assert.equal((await recusada).reason, 'leader-only');
 });
 
 test('mesa-sync leva as vezes em andamento', async (t) => {

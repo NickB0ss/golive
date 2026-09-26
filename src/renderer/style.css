@@ -1890,7 +1890,9 @@ button.busy { cursor: default; }
    cortam o mesmo pedaco. */
 .grid[data-count="5"] .tile-gate-sub,
 .grid[data-count="6"] .tile-gate-sub,
-.grid[data-count="many"] .tile-gate-sub { display: none; }
+.grid[data-count="many"] .tile-gate-sub,
+/* A tira tem miniaturas baixas mesmo com poucos tiles: a explicacao nao cabe. */
+.grid-strip .tile-gate-sub { display: none; }
 @media (max-height: 720px) {
   .tile-gate-sub { display: none; }
   .tile-gate-avatar { width: 34px; height: 34px; font-size: var(--fs-ui); }

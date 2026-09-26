@@ -989,8 +989,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
      *
      * Quem esta na Transmissao nao recebe a mesa, mas o seletor de vista dele
      * mostra se a mesa tem janelas: quando a QUANTIDADE muda (add/remove),
-     * vai um `mesa-count` para a sala inteira -- uma mensagem de 30 bytes,
-     * so quando a conta muda (mover, redimensionar e agir nao mandam nada).
+     * vai um `mesa-count` para a sala inteira, junto das duas travas -- uma
+     * mensagem pequena, so quando a conta muda (mover, redimensionar e agir
+     * nao mandam nada). A mudanca de trava tambem a repete para atualizar a
+     * Transmissao, que nao recebe o eco completo da Mesa.
      *
      * `author` (opcional): quem pediu. Se ele esta na Transmissao nao ve o
      * eco, entao ganha um `mesa-ack` so para ele (o "Por na mesa" do chat
@@ -1011,7 +1013,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
         broadcastToMesa(room, null, f0);
       }
       const count = mesaState.mesa.windows.length;
-      if (count !== before) broadcastToRoom(room, null, { type: 'mesa-count', count });
+      if (count !== before || f0.op === 'lock') {
+        broadcastToRoom(room, null, {
+          type: 'mesa-count', count,
+          leaderOnly: mesaState.mesa.leaderOnly,
+          lockSize: mesaState.mesa.lockSize,
+        });
+      }
       const who = author ? peers.get(author) : null;
       if (who && !who.mesaView) {
         const f = cand.full;
@@ -1567,6 +1575,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                   roomId: stableRoomId, hostId: findHostPeerId(room), roomName: effectiveRoomName(room),
                   migrationSecret: resumedSecret, peerAddresses: peerAddressesOf(room),
                   mesaCount: mesaState.mesa.windows.length, mesaViewers: mesaViewerIds(room),
+                  mesaLocks: { leaderOnly: mesaState.mesa.leaderOnly, lockSize: mesaState.mesa.lockSize },
                 });
                 if (wasOnMesa) {
                   releaseMesaGrabsOf(room, resumedId);
@@ -1603,6 +1612,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 // por ela. So quantas janelas ha (o seletor mostra que a mesa
                 // nao esta vazia) e quem esta la (avatares).
                 mesaCount: mesaState.mesa.windows.length, mesaViewers: mesaViewerIds(room),
+                mesaLocks: { leaderOnly: mesaState.mesa.leaderOnly, lockSize: mesaState.mesa.lockSize },
               });
               announceMigrationInfo(room, joinSecret, id);
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
