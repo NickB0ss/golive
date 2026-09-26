@@ -161,6 +161,12 @@ contextBridge.exposeInMainWorld('golive', {
   /** Versao desta instalacao (ex: '0.1.6'). */
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  /** Janelas "Spotify Jam" e "Link" da Mesa: abre o link no navegador
+   * padrao. `tipo` e 'jam' ou 'link'; o processo principal confere o formato
+   * (src/main/linksexternos.js, linkDaMesa). Devolve { ok } ou
+   * { ok: false, reason: 'recusado' | 'rapido' | 'falhou' | 'origem' }. */
+  abrirLinkDaMesa: (tipo, url) => ipcRenderer.invoke('mesa:abrir-link', { tipo, url }),
+
   /** Abre a pasta de logs desta instalacao no explorador de arquivos, pra
    * mandar pra quem for investigar um bug depois. */
   openLogsFolder: () => ipcRenderer.invoke('logs:openFolder'),

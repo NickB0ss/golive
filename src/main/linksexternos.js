@@ -43,4 +43,60 @@ function linkParaNavegador(details) {
   return u.href;
 }
 
-module.exports = { linkParaNavegador, DESTINOS, ORIGENS_DOS_PLAYERS };
+/*
+ * Links que a PAGINA do app pede para abrir, pelas janelas da Mesa (IPC
+ * 'mesa:abrir-link', so do quadro principal da janela do app). Sempre um
+ * clique da propria pessoa; o conteudo da janela confere antes e confirma o
+ * dominio com ela. Aqui e a ultima palavra:
+ *
+ * - 'jam' (janela Spotify Jam): so os links de Jam do Spotify --
+ *   https://spotify.link/<codigo> ou
+ *   https://open.spotify.com/socialsession/<id> (o mesmo formato estrito de
+ *   mesa-modules/jam.js), abertos na forma canonica, sem query;
+ * - 'link' (janela Link): qualquer site https, sem usuario/senha, sem
+ *   porta, com nome de dominio (nada de IP, localhost ou nome sem ponto).
+ *
+ * Devolve a URL para abrir ou `null`.
+ */
+const DESTINOS_JAM = new Set(['spotify.link', 'open.spotify.com']);
+const CODIGO_JAM = /^\/([A-Za-z0-9]{5,32})\/?$/;
+const SESSAO_JAM = /^\/(?:intl-[a-z]{2}(?:-[A-Za-z]{2})?\/)?socialsession\/([A-Za-z0-9-]{8,64})\/?$/;
+const ROTULO = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
+
+function urlHttpsLimpa(url) {
+  if (typeof url !== 'string' || url.length > MAX_URL || !/^https:\/\//i.test(url) || /[\s\p{Cc}\\]/u.test(url)) return null;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return null;
+  return u;
+}
+
+/** Nome de dominio de verdade: rotulos DNS, pelo menos um ponto, e o ultimo
+ * com letra (fora IPv4, IPv6 entre colchetes, localhost e nomes da rede). */
+function dominioPublico(host) {
+  if (!host || host.length > 253 || host.endsWith('.')) return false;
+  const partes = host.split('.');
+  if (partes.length < 2 || !partes.every((p) => ROTULO.test(p))) return false;
+  const tld = partes[partes.length - 1];
+  if (!/[a-z]/.test(tld)) return false;
+  return !['localhost', 'local', 'internal', 'lan', 'home', 'arpa'].includes(tld);
+}
+
+function linkDaMesa(tipo, url) {
+  const u = urlHttpsLimpa(url);
+  if (!u) return null;
+  if (tipo === 'jam') {
+    if (!DESTINOS_JAM.has(u.hostname)) return null;
+    const m = u.hostname === 'spotify.link' ? CODIGO_JAM.exec(u.pathname) : SESSAO_JAM.exec(u.pathname);
+    if (!m) return null;
+    return u.hostname === 'spotify.link' ? `https://spotify.link/${m[1]}` : `https://open.spotify.com/socialsession/${m[1]}`;
+  }
+  if (tipo === 'link') return dominioPublico(u.hostname) ? u.href : null;
+  return null;
+}
+
+module.exports = { linkParaNavegador, linkDaMesa, dominioPublico, DESTINOS, DESTINOS_JAM, ORIGENS_DOS_PLAYERS };

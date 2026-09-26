@@ -1060,3 +1060,30 @@
 }
 .mj-carta-naipe { font-size: calc(var(--mj-carta-w) * 0.5); }
 .mj-mao { display: inline-flex; gap: var(--s-1); flex-wrap: wrap; }
+
+/* ======================================================================
+   Festa (time Festa, 2026-09-25): Spotify Jam, Sons e Link.
+   ====================================================================== */
+
+/* ---------- Spotify Jam ---------- */
+
+.mj-jam-vazio, .mj-jam-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-jam-vazio { justify-content: center; }
+.mj-jam-titulo { margin: 0; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-jam-cabeca { display: flex; flex-direction: column; gap: var(--s-05); min-width: 0; }
+.mj-jam-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-jam-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-jam-acoes { flex-wrap: wrap; }
+.mj-jam-acoes .mj-jam-entrar { flex: 1 1 auto; }
+.mj .mj-btn.is-on { border-color: var(--act); }
+.mj-jam-lista {
+  flex: 1;
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--s-1) var(--s-3);
+}
+.mj-jam-lista li { display: inline-flex; align-items: center; gap: var(--s-15); font-size: var(--fs-small); }
+.mj-jam-rodape .mj-btn { min-height: 28px; font-size: var(--fs-small); }
+
+@container mj (max-height: 230px) {
+  .mj-jam .mj-jam-meta, .mj-jam .mj-dica { display: none; }
+}

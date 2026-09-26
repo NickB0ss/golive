@@ -224,7 +224,7 @@ const { friendlySourceNames } = require('./main/sourcename');
 const { pickDisplayMediaStreams, replyOnce } = require('./main/displaymedia');
 const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
-const { linkParaNavegador } = require('./main/linksexternos');
+const { linkParaNavegador, linkDaMesa } = require('./main/linksexternos');
 const origemLocal = require('./main/origem');
 
 // A janela principal (e a Espiar, que ela abre) vem de http://localhost,
@@ -1403,6 +1403,29 @@ ipcMain.handle('overlay:fx', (_event, payload) => sendToOverlay('overlay:fx', pa
 
 // Abre a pasta de logs no explorador de arquivos -- pra mandar pra quem for
 // investigar um bug depois (ver golive #12).
+// Janelas "Spotify Jam" e "Link" da Mesa: abre no navegador padrao o link
+// que a pessoa clicou (e confirmou). So a pagina principal do app pede (nem
+// iframe, nem Espiar, nem overlay), so os formatos de linkDaMesa, e no
+// maximo um por segundo -- uma pagina travada em laco nao abre abas sem fim.
+let ultimoLinkDaMesa = 0;
+ipcMain.handle('mesa:abrir-link', async (event, { tipo, url } = {}) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
+    return { ok: false, reason: 'origem' };
+  }
+  const destino = linkDaMesa(tipo, url);
+  if (!destino) return { ok: false, reason: 'recusado' };
+  const agora = Date.now();
+  if (agora - ultimoLinkDaMesa < 1000) return { ok: false, reason: 'rapido' };
+  ultimoLinkDaMesa = agora;
+  try {
+    await shell.openExternal(destino);
+    return { ok: true };
+  } catch (err) {
+    logger.error('link da mesa nao abriu:', err?.message || err);
+    return { ok: false, reason: 'falhou' };
+  }
+});
+
 ipcMain.handle('logs:openFolder', () => {
   shell.openPath(logger.dir);
   return true;
