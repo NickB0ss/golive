@@ -34,7 +34,7 @@
     // Noite de jogo
     'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
     // Jogos
-    'velha', 'lig4', 'damas', 'xadrez',
+    'velha', 'lig4', 'damas', 'xadrez', 'poquer',
   ]);
 
   // Arquivos de apoio da pasta que NAO sao tipo de janela: os modulos que
