@@ -1645,3 +1645,44 @@
   .mj-bj .mj-bj-mao .mj-carta-p { --mj-carta-w: 40px; }
   .mj-bj-banca .mj-carta-m { --mj-carta-w: 60px; }
 }
+/* === truco === */
+.mj-truco {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
+  gap: var(--s-1);
+  padding: 30px var(--s-2) var(--s-2);
+  container-type: size;
+  overflow: hidden;
+}
+.mj-tr-topo,
+.mj-tr-lugares,
+.mj-tr-mesa,
+.mj-tr-minhas,
+.mj-tr-acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.mj-tr-titulo { margin: 0; font-size: var(--fs-body); }
+.mj-tr-placar { margin: 0 auto; font-weight: 700; }
+.mj-tr-resumo { margin: 0; color: var(--tx2); font-size: var(--fs-micro); }
+.mj-tr-vira { display: flex; align-items: center; gap: var(--s-05); font-size: var(--fs-small); }
+.mj-tr-lugares { justify-content: space-between; }
+.mj-tr-lugar { display: flex; align-items: center; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-tr-lugar.is-vez { color: var(--tx); font-weight: 700; }
+.mj-tr-mesa { justify-content: center; align-content: center; flex-wrap: wrap; min-height: 0; }
+.mj-tr-jogada { display: grid; justify-items: center; gap: var(--s-05); color: var(--tx2); font-size: var(--fs-micro); }
+.mj-tr-minhas { justify-content: center; flex-wrap: wrap; min-height: 0; }
+.mj-tr-carta { display: grid; justify-items: center; gap: var(--s-05); }
+.mj-tr-acoes { justify-content: center; flex-wrap: wrap; }
+.mj-tr-parceiro { flex-basis: 100%; margin: 0; color: var(--tx2); font-size: var(--fs-micro); text-align: center; }
+@container (max-width: 560px) {
+  .mj-tr-lugares { gap: var(--s-05); }
+  .mj-tr-lugar { font-size: var(--fs-micro); }
+  .mj-tr-carta .mj-carta-g { --mj-carta-w: 40px; }
+}
+@container (max-height: 360px) {
+  .mj-tr-minhas .mj-carta-g { --mj-carta-w: 38px; }
+  .mj-tr-lugar .mj-btn { min-height: 28px; }
+}
