@@ -93,43 +93,43 @@
 
   function validate(s, action, ctx) {
     try {
-      if (!obj(s) || !obj(action) || !KINDS.includes(action.kind)) return 'Acao invalida';
+      if (!obj(s) || !obj(action) || !KINDS.includes(action.kind)) return 'Ação inválida';
       const from = fromOf(ctx);
       if (!from) return 'Quem mandou?';
       const me = seatOf(s, from);
       if (action.kind === 'sit') {
         if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= N) {
-          return 'Lugar invalido';
+          return 'Lugar inválido';
         }
-        if (me >= 0 && occupied(s, me, ctx)) return 'Voce ja esta jogando';
+        if (me >= 0 && occupied(s, me, ctx)) return 'Você já está jogando';
         return occupied(s, action.seat, ctx) ? 'Lugar ocupado' : true;
       }
-      if (action.kind === 'stand') return me >= 0 && occupied(s, me, ctx) ? true : 'Voce nao esta jogando';
+      if (action.kind === 'stand') return me >= 0 && occupied(s, me, ctx) ? true : 'Você não está jogando';
       if (action.kind === 'reset') {
         return ctx && ctx.isLeader === true
           ? true
-          : (me >= 0 ? true : 'So quem joga ou o lider reinicia');
+          : (me >= 0 ? true : 'Só quem joga ou o líder reinicia');
       }
       if (action.kind === 'start') {
-        if (s.phase === 'play') return 'A rodada ainda esta correndo';
+        if (s.phase === 'play') return 'A rodada ainda está correndo';
         return players(s, ctx).length >= 2 ? true : 'Precisa de 2 pessoas';
       }
-      if (s.phase !== 'play') return 'A rodada nao esta correndo';
+      if (s.phase !== 'play') return 'A rodada não está correndo';
       if (action.kind === 'timeout') return true;
-      if (me !== s.turn || !occupied(s, me, ctx)) return 'Nao e a sua vez';
+      if (me !== s.turn || !occupied(s, me, ctx)) return 'Não é a sua vez';
       if (action.kind === 'play') {
-        if (!B.isCard(action.card) || !s.hands[me].includes(action.card)) return 'Carta invalida';
-        if (!canPlay(action.card, s.suit, s.discard.at(-1))) return 'Essa carta nao combina';
+        if (!B.isCard(action.card) || !s.hands[me].includes(action.card)) return 'Carta inválida';
+        if (!canPlay(action.card, s.suit, s.discard.at(-1))) return 'Essa carta não combina';
         if (action.card[0] === '8' && !SUITS.includes(action.suit)) return 'Escolha um naipe';
         return true;
       }
       if (action.kind === 'draw') {
         return s.hands[me].some((c) => canPlay(c, s.suit, s.discard.at(-1)))
-          ? 'Voce ja pode jogar'
+          ? 'Você já pode jogar'
           : true;
       }
-      return 'Acao invalida';
-    } catch { return 'Acao invalida'; }
+      return 'Ação inválida';
+    } catch { return 'Ação inválida'; }
   }
 
   function prepare(s, action, ctx) {

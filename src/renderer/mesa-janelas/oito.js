@@ -89,7 +89,7 @@
           && (card[0] === '8'
             || card[1] === state.suit
             || (state.discard && card[0] === state.discard[0]));
-        C.ligado(bt, ok ? true : 'Nao pode jogar esta carta agora');
+        C.ligado(bt, ok ? true : 'Não pode jogar esta carta agora');
         b.clique(bt, b.raiz, () => b.acao(b.raiz, {
           kind: 'play',
           card,
@@ -108,9 +108,9 @@
       descarte.replaceChildren(K.carta(s.discard, { tamanho: 'g' }));
       naipe.textContent = s.suit ? `Naipe: ${NAIPES.find((n) => n[0] === s.suit)?.[1] || ''}` : '';
       renderHand();
-      C.ligado(comprar, s.me?.can.draw ? true : 'Comprar so quando nao houver jogada');
+      C.ligado(comprar, s.me?.can.draw ? true : 'Comprar só quando não houver jogada');
       C.ligado(iniciar, s.me?.can.start ? true : 'Precisa de duas pessoas e rodada parada');
-      C.ligado(levantar, s.me?.can.stand ? true : 'Voce nao esta jogando');
+      C.ligado(levantar, s.me?.can.stand ? true : 'Você não está jogando');
       C.ligado(resetar, s.me?.can.reset ? true : 'Sente-se para recomeçar');
       selecao.disabled = !(s.me?.can.play || s.me?.can.draw);
       tick();

@@ -127,7 +127,7 @@ test('carta do mesmo valor vale', () => {
 
 test('carta que nao combina e recusada', () => {
   const s = { ...pronto(), hands: [['2s'], ['3s']], discard: ['Kh'], suit: 'h', turn: 0 };
-  assert.equal(oito.validate(s, { kind: 'play', card: '2s' }, ctx('ana')), 'Essa carta nao combina');
+  assert.equal(oito.validate(s, { kind: 'play', card: '2s' }, ctx('ana')), 'Essa carta não combina');
 });
 
 test('oito vale sobre qualquer carta e exige naipe', () => {
@@ -171,5 +171,5 @@ test('aceita oito jogadores', () => {
 
 test('acao fora da vez e recusada', () => {
   const s = pronto();
-  assert.equal(oito.validate(s, { kind: 'draw' }, ctx('bia')), 'Nao e a sua vez');
+  assert.equal(oito.validate(s, { kind: 'draw' }, ctx('bia')), 'Não é a sua vez');
 });
