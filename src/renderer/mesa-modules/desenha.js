@@ -205,6 +205,7 @@
       }
       case 'guess': {
         if (state.phase !== 'drawing') return 'Ninguém está desenhando agora';
+        if (!state.players.some((p) => p.id === from)) return 'Você não entrou';
         if (from === drawerIdOf(state)) return 'Quem desenha não chuta';
         if (state.guessedBy.includes(from)) return 'Você já acertou';
         if (typeof action.text !== 'string' || !action.text.trim()) return 'Escreva um palpite';
@@ -371,7 +372,9 @@
     if (idx < drawerIdx) drawerIdx -= 1;
     else if (idx === drawerIdx) drawerIdx %= players.length;
     if (eraDesenhista) return endRound({ ...state, players, drawCounts, guessedBy, drawerIdx }, null, 0);
-    return { ...state, players, drawCounts, guessedBy, drawerIdx };
+    const next = { ...state, players, drawCounts, guessedBy, drawerIdx };
+    if (next.phase === 'drawing' && next.guessedBy.length >= next.players.length - 1) return endRound(next, null, 0);
+    return next;
   }
 
   function timeoutAt(state) {
@@ -429,15 +432,10 @@
 
   /** Migracao (contrato, secao 8): o retrato vai pra TODOS, entao a rodada
    * em andamento e cancelada -- a palavra fica no servidor que caiu. Os
-   * jogadores e os pontos ficam; ids de pessoa mudam no servidor novo
-   * (cadeira/vez de quem nao esta em ctx.peers conta como livre em
-   * `drawerIdOf`/`view`, que so leem `players`). */
-  function migrate(state) {
-    return {
-      ...init(),
-      players: state.players.map((p) => ({ ...p })),
-      drawCounts: { ...state.drawCounts },
-    };
+   * ids de pessoa mudam no servidor novo, entao os participantes tambem
+   * voltam ao lobby para entrar de novo, sem jogadores-fantasma. */
+  function migrate() {
+    return init();
   }
 
   /** So o desenhista rabisca, e so durante a fase de desenho (contrato,

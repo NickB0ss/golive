@@ -178,6 +178,17 @@ test('quem ja acertou nao pode chutar de novo', () => {
   assert.notEqual(desenha.validate(s, { kind: 'guess', text: palavra }, ctx('2')), true);
 });
 
+test('guess: quem nao entrou na rodada nao pode acertar', () => {
+  let s = desenha.init();
+  s = passo(s, { kind: 'join' }, '1');
+  s = passo(s, { kind: 'join' }, '2');
+  s = passo(s, { kind: 'start' }, '1');
+  const palavra = s.options[0];
+  s = passo(s, { kind: 'choose', index: 0 }, '1');
+
+  assert.notEqual(desenha.validate(s, { kind: 'guess', text: palavra }, ctx('3')), true);
+});
+
 test('timeout: fecha a rodada sem ninguem acertar, revela a palavra em lastRound', () => {
   let s = entramTodos(desenha.init());
   s = passo(s, { kind: 'start' }, '1');
@@ -263,6 +274,23 @@ test('dropPeer: o desenhista sai no meio -- a rodada fecha, os pontos ficam, o j
   assert.equal(s.players.length, 2);
 });
 
+test('dropPeer: a saida do ultimo adivinhador pendente fecha a rodada', () => {
+  let s = desenha.init();
+  s = passo(s, { kind: 'join' }, '1');
+  s = passo(s, { kind: 'join' }, '2');
+  s = passo(s, { kind: 'join' }, '3');
+  s = passo(s, { kind: 'start' }, '1');
+  const palavra = s.options[0];
+  s = passo(s, { kind: 'choose', index: 0 }, '1');
+  s = passo(s, { kind: 'guess', text: palavra }, '2', { now: 1000 });
+
+  s = desenha.dropPeer(s, '3');
+
+  assert.equal(s.phase, 'choosing');
+  assert.equal(s.lastRound.word, palavra);
+  assert.equal(s.drawCounts['1'], 1);
+});
+
 test('dropPeer: sai gente ate sobrar so 1 -- volta pro lobby, sem travar', () => {
   let s = entramTodos(desenha.init());
   s = passo(s, { kind: 'start' }, '1');
@@ -272,7 +300,7 @@ test('dropPeer: sai gente ate sobrar so 1 -- volta pro lobby, sem travar', () =>
   assert.equal(s.players.length, 1);
 });
 
-test('migrate: nao leva segredo nenhum, so jogadores e pontos; jogo cancelado (volta ao lobby)', () => {
+test('migrate: nao leva segredo nem participantes com IDs antigos; jogo volta ao lobby', () => {
   let s = entramTodos(desenha.init());
   s = passo(s, { kind: 'start' }, '1');
   s = passo(s, { kind: 'choose', index: 0 }, '1');
@@ -280,7 +308,8 @@ test('migrate: nao leva segredo nenhum, so jogadores e pontos; jogo cancelado (v
   assert.equal(m.phase, 'lobby');
   assert.equal(m.word, null);
   assert.equal(m.options, null);
-  assert.deepEqual(m.players.map((p) => p.id), ['1', '2']);
+  assert.deepEqual(m.players, []);
+  assert.deepEqual(m.drawCounts, {});
   assert.equal(JSON.stringify(m).includes(JSON.stringify(s.word)), false);
 });
 

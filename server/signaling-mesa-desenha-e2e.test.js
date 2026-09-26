@@ -74,6 +74,17 @@ function criarCliente(port, rotulo) {
     esperaNova(filtro, oque) {
       return cliente.esperaMsg(filtro, oque, entrada.length);
     },
+    /** Nunca chega uma mensagem que bate `filtro` dentro de `ms`. */
+    naoChega(filtro, oque, ms = 200) {
+      const desde = entrada.length;
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          const achou = entrada.slice(desde).find(filtro);
+          if (achou) reject(new Error(`${rotulo}: ${oque} nao devia ter chegado: ${JSON.stringify(achou)}`));
+          else resolve();
+        }, ms);
+      });
+    },
     async entra(name, extra = {}) {
       cliente.envia({ type: 'join', room: 'geral', name, ...extra });
       const welcome = await cliente.esperaMsg((m) => m.type === 'welcome', 'welcome');
@@ -287,6 +298,28 @@ test('so o desenhista da vez pode rabiscar na janela; os outros sao ignorados em
   bia.envia({ type: 'annotate', surface: `mesa:${id}`, op: 'begin', id: 't2', x: 0.1, y: 0.1 });
   await new Promise((r) => { setTimeout(r, 200); });
   assert.equal(caio.entrada.slice(desde).some((m) => m.type === 'annotate' && m.id === 't2'), false, 'traco de quem nao desenha nao devia chegar');
+});
+
+test('snapshot de rabisco do adivinhador ou espectador nao chega a ninguem', async (t) => {
+  const p = palco(t);
+  const { s, bia, caio, id } = await cena(p);
+
+  const naoChegaDaBia = caio.naoChega((m) => m.type === 'annotate-sync' && m.from === bia.id, 'sync forjado da adivinhadora');
+  bia.envia({
+    type: 'annotate-sync', to: caio.id, surface: `mesa:${id}`,
+    items: [{ kind: 'stroke', id: 'forjado-bia', from: bia.id, width: 4, points: [[0, 0]] }],
+  });
+  await naoChegaDaBia;
+
+  const davi = await p.cliente(s, 'davi');
+  await davi.entra('Davi', { clientId: 'cli-davi' });
+  await davi.abreMesa();
+  const naoChegaDoDavi = caio.naoChega((m) => m.type === 'annotate-sync' && m.from === davi.id, 'sync forjado do espectador');
+  davi.envia({
+    type: 'annotate-sync', to: caio.id, surface: `mesa:${id}`,
+    items: [{ kind: 'stroke', id: 'forjado-davi', from: davi.id, width: 4, points: [[0, 0]] }],
+  });
+  await naoChegaDoDavi;
 });
 
 test('lista de palavras embutida tem 150+ palavras (contrato, secao 10)', () => {

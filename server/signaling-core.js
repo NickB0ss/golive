@@ -1913,7 +1913,15 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               if (wid !== null) {
                 // Janela da Mesa: o snapshot so faz sentido entre quem esta
                 // na vista Mesa, e so enquanto a janela existir.
-                if (!me.mesaView || !target.mesaView || !annotateMesaWindow(wid)) return;
+                if (!me.mesaView || !target.mesaView) return;
+                const win = annotateMesaWindow(wid);
+                if (!win) return;
+                const mod = mesaRegistry.get(win.type);
+                const ctx = { isLeader: me.owner === true, peers: mesaPeersCtx(me.room) };
+                if (typeof mod.canAnnotateDraw === 'function'
+                  && !safeAnnotateCheck(mod, 'canAnnotateDraw', () => mod.canAnnotateDraw(win.state, peerId, ctx))) {
+                  return;
+                }
                 surfaceOut = String(msg.surface);
               } else {
                 const surface = parseSurface(msg.surface);
