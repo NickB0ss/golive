@@ -1,5 +1,5 @@
 'use strict';
-/* global document, window, getComputedStyle */
+/* global document, window, getComputedStyle, OfflineAudioContext */
 
 /*
  * Roteiro da bancada das janelas da Festa (jam, sons, link): o mesmo jeito de
@@ -28,7 +28,7 @@ const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-25-festa');
 
 const args = process.argv.slice(2);
 const semPrints = args.includes('--sem-prints');
-const TIPOS_TODOS = ['jam', 'link'];
+const TIPOS_TODOS = ['jam', 'sons', 'link'];
 const pedidos = args.filter((a) => !a.startsWith('--'));
 const TAMANHOS = ['min', 'grande'];
 
@@ -127,6 +127,49 @@ const ROTEIROS = {
     conferir(await c.ana.locator('input[aria-label="Link do Jam"]').isVisible(), `jam/${tam}: volta o campo`);
   },
 
+  async sons(c, tam) {
+    const tocados = () => c.page.evaluate(() => window.sonsTocados);
+    await c.page.evaluate(() => { try { localStorage.removeItem('golive-mesa-sons'); } catch { /* sem */ } });
+    // Retrato com um som de agora ha pouco: nao toca (so `act` novo toca).
+    await c.page.evaluate(() => window.bancada.impor({ n: 3, last: { n: 3, sound: 'sino', at: Date.now(), by: '2' }, recent: {} }));
+    await espera(60);
+    conferir((await tocados()) === 0, `sons/${tam}: retrato nao toca som antigo`);
+    await c.ana.getByRole('button', { name: 'Tocar Buzina para todos' }).click();
+    await espera(80);
+    let s = await c.estado('2');
+    conferir(s.last && s.last.sound === 'buzina' && s.last.by === '1' && s.n === 4, `sons/${tam}: Ana toca a buzina (${JSON.stringify(s.last)})`);
+    conferir((await tocados()) === 2, `sons/${tam}: tocou nos dois PCs (${await tocados()})`);
+    // Espera de 3 s: os botoes de Ana desligam, os de Bia nao.
+    const sino = c.ana.getByRole('button', { name: 'Tocar Sino para todos' });
+    conferir((await sino.getAttribute('aria-disabled')) === 'true', `sons/${tam}: Ana espera 3 s`);
+    conferir((await c.bia.getByRole('button', { name: 'Tocar Sino para todos' }).getAttribute('aria-disabled')) === null, `sons/${tam}: Bia nao espera`);
+    conferir(await c.ana.locator('.mj-sons-espera.is-on').isVisible(), `sons/${tam}: barrinha da espera aparece`);
+    await sino.focus();
+    await sino.press('Enter');
+    conferir(await c.ana.locator('.mj-aviso.is-on').isVisible(), `sons/${tam}: clique na espera mostra o motivo`);
+    // Mesmo mandando direto (sem o botao), o servidor recusa.
+    await c.act('1', { kind: 'play', sound: 'apito' });
+    await espera(40);
+    conferir((await c.page.evaluate(() => window.bancada.negados().length)) === 1, `sons/${tam}: o servidor recusa o segundo som em 3 s`);
+    // Bia silencia e toca: so Ana ouve.
+    const mudo = c.bia.getByRole('button', { name: 'Silenciar os sons neste PC' });
+    await mudo.click();
+    conferir((await c.bia.getByRole('button', { name: 'Ligar os sons neste PC' }).getAttribute('aria-pressed')) === 'true', `sons/${tam}: mudo fica marcado`);
+    const salvo = await c.page.evaluate(() => localStorage.getItem('golive-mesa-sons'));
+    conferir(/"muted":true/.test(salvo || ''), `sons/${tam}: mudo guardado neste PC (${salvo})`);
+    await c.bia.getByRole('button', { name: 'Tocar Palmas para todos' }).click();
+    await espera(80);
+    conferir((await tocados()) === 3, `sons/${tam}: com Bia muda, so Ana ouve (${await tocados()})`);
+    conferir((await c.ana.locator('.mj-sons-tocou').textContent()).includes('Bia tocou Palmas'), `sons/${tam}: rodape diz quem tocou`);
+    // Depois de 3 s Ana toca de novo.
+    await espera(3000);
+    conferir((await sino.getAttribute('aria-disabled')) === null, `sons/${tam}: a espera acaba e o botao volta`);
+    await sino.click();
+    await espera(80);
+    conferir((await c.estado('2')).last.sound === 'sino', `sons/${tam}: Ana toca o sino depois de 3 s`);
+    await c.page.evaluate(() => { try { localStorage.removeItem('golive-mesa-sons'); } catch { /* sem */ } });
+  },
+
   async link(c, tam) {
     const url = c.ana.locator('input[aria-label="Endereço (https://)"]');
     await url.fill('http://example.com/');
@@ -171,6 +214,7 @@ const CENAS = {
   jam: [
     { kind: 'set', url: JAM, de: '1' }, { kind: 'join', de: '2' }, { kind: 'join', de: '3' }, { kind: 'join', de: '4' },
   ],
+  sons: [{ kind: 'play', sound: 'badumtss', de: '2' }],
   link: [{ kind: 'set', url: 'https://pt.wikipedia.org/wiki/Jogo_de_tabuleiro', title: 'Jogos de tabuleiro (Wikipédia)', de: '2' }],
 };
 
@@ -221,6 +265,53 @@ async function main() {
       conferir(erros.length === 0, `${tipo}/${tam}: erros na pagina: ${erros.join(' | ')}`);
       await c.page.close();
     }
+  }
+  // Cada som renderizado de verdade (OfflineAudioContext do Chromium): tem
+  // som, nao estoura e acaba ate 1,5 s.
+  if (tipos.includes('sons')) {
+    const page = await browser.newPage();
+    await page.goto(`${PAGINA}?tipo=sons&tam=padrao`);
+    await page.waitForSelector('body[data-pronto="1"]', { timeout: 5000 });
+    const medidas = await page.evaluate(async () => {
+      const J = window.GoLive.mesaJanelas.sons;
+      const out = {};
+      for (const som of window.GoLive.mesaModules.sons.SOUNDS) {
+        const taxa = 44100;
+        const ac = new OfflineAudioContext(1, Math.ceil(taxa * 1.8), taxa);
+        J.tocar(ac, J.partitura(som), 1);
+        const buf = await ac.startRendering();
+        const d = buf.getChannelData(0);
+        let pico = 0;
+        let soma = 0;
+        let ultimo = 0;
+        for (let i = 0; i < d.length; i++) {
+          const a = Math.abs(d[i]);
+          if (a > pico) pico = a;
+          soma += d[i] * d[i];
+          if (a > 0.001) ultimo = i;
+        }
+        out[som] = { pico: Number(pico.toFixed(3)), rms: Number(Math.sqrt(soma / d.length).toFixed(4)), fim: Number((ultimo / taxa).toFixed(3)) };
+      }
+      return out;
+    });
+    for (const [som, r] of Object.entries(medidas)) {
+      conferir(r.rms > 0.005 && r.pico > 0.05, `sons/render: ${som} quase mudo (${JSON.stringify(r)})`);
+      conferir(r.pico <= 1, `sons/render: ${som} estoura (${JSON.stringify(r)})`);
+      conferir(r.fim <= 1.55, `sons/render: ${som} passa de 1,5 s (${JSON.stringify(r)})`);
+    }
+    console.log('sons (pico, rms, fim em s):', JSON.stringify(medidas));
+    await page.close();
+  }
+  // Som que chega com mais de 2 s de atraso nao toca.
+  if (tipos.includes('sons')) {
+    const page = await browser.newPage();
+    await page.goto(`${PAGINA}?tipo=sons&tam=padrao&atraso=2300`);
+    await page.waitForSelector('body[data-pronto="1"]', { timeout: 5000 });
+    await page.evaluate(() => window.bancada.act('1', { kind: 'play', sound: 'apito' }));
+    await espera(2600);
+    const r = await page.evaluate(() => ({ n: window.bancada.estado('2').n, tocados: window.sonsTocados }));
+    conferir(r.n === 1 && r.tocados === 0, `sons/atraso: play de 2,3 s atras chega mas nao toca (${JSON.stringify(r)})`);
+    await page.close();
   }
   if (!semPrints) await prints(browser, tipos);
   await browser.close();

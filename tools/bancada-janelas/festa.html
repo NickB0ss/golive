@@ -28,6 +28,16 @@
       return { ok: true };
     },
   };
+  // Sons: cada som tocado monta um compressor (mesa-janelas/sons.js,
+  // `tocar`); contar os compressores e contar os sons que tocaram.
+  window.sonsTocados = 0;
+  if (window.AudioContext) {
+    const criar = AudioContext.prototype.createDynamicsCompressor;
+    AudioContext.prototype.createDynamicsCompressor = function () {
+      window.sonsTocados++;
+      return criar.call(this);
+    };
+  }
 </script>
 </head>
 <body>
@@ -36,10 +46,12 @@
 
 <script src="../../src/renderer/annotate.js"></script>
 <script src="../../src/renderer/mesa-modules/jam.js"></script>
+<script src="../../src/renderer/mesa-modules/sons.js"></script>
 <script src="../../src/renderer/mesa-modules/link.js"></script>
 
 <script src="../../src/renderer/mesa-janelas/comum.js"></script>
 <script src="../../src/renderer/mesa-janelas/jam.js"></script>
+<script src="../../src/renderer/mesa-janelas/sons.js"></script>
 <script src="../../src/renderer/mesa-janelas/link.js"></script>
 
 <script src="bancada.js"></script>
