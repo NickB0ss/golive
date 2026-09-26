@@ -285,6 +285,7 @@ dos `<script>` é: `vendor/chess.js`, `mesa-modules/cadeiras.js`, os módulos,
 | lig4 | 420×360 (7/6) | `sit`, `stand`, `reset`, `move {col: 0..6}` |
 | damas | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {path: [[l,c],...]}`; `legalMoves(state)` |
 | xadrez | 480×480 (1) | `sit`, `stand`, `reset`, `resign`, `move {from, to, promotion?}` |
+| batalha (secret, seção 8) | 720×460 (livre) | `sit`, `stand`, `shuffle`, `ready`, `fire {cell: 0..99}`, `timeout`, `resign`, `reset` |
 
 Todos exportam `dropPeer(state, peerId)` e `summary(state, peers?)`; o estado
 guarda `names` junto de `seats`.
