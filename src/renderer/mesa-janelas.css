@@ -1475,4 +1475,96 @@
 @container mj (max-height: 400px) {
   .mj-pq-jogo { display: none; }
   .mj-pq-lugar .mj-pq-tag { display: none; }
+/* ---------- Blackjack (mesa-janelas/blackjack.js) ----------
+   A banca em cima, os 5 lugares embaixo, a barra da pessoa no pe. Cartas
+   de cada mao se sobrepoem pela metade (maos longas cabem no lugar). A cor
+   da pessoa so na bolinha; a vez e o --act (contorno). */
+.mj.mj-bj { padding-top: 30px; gap: var(--s-2); }
+.mj-bj-topo { display: flex; align-items: center; gap: var(--s-2); min-height: 22px; }
+.mj-bj-status {
+  font-weight: 600;
+.mj-bj.is-minha-vez .mj-bj-status { color: var(--on-text); }
+.mj-bj-status:focus { outline: none; }
+.mj-bj-status:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; border-radius: var(--r-xs); }
+.mj-bj-prazo {
+  min-width: 40px;
+  padding: 1px var(--s-2);
+.mj-bj-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
+.mj-bj-sapato { flex: none; color: var(--tx3); font-size: var(--fs-micro); }
+/* Banca */
+.mj-bj-banca {
+  display: flex; align-items: center; justify-content: center; gap: var(--s-3);
+  min-height: 80px;
+.mj-bj-banca-mao { display: flex; min-height: 62px; align-items: center; }
+.mj-bj-banca .mj-bj-total { min-width: 72px; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-bj-banca.is-estourou .mj-bj-total { color: var(--tx3); }
+/* Cartas de uma mao: sobrepostas, sem quebrar linha. */
+.mj-bj .mj-mao { flex-wrap: nowrap; gap: 0; }
+.mj-bj .mj-mao > .mj-carta + .mj-carta { margin-left: calc(var(--mj-carta-w) * -0.45); }
+.mj-bj .mj-carta { box-shadow: inset 0 0 0 1px var(--line2), -2px 0 3px var(--scrim-1); }
+.mj-bj .mj-carta.is-verso { box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2), -2px 0 3px var(--scrim-1); }
+/* Lugares */
+.mj-bj-lugares {
+  flex: 1; min-height: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+.mj-bj-lugar {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-15);
+.mj-bj-lugar.is-vazio { align-items: center; justify-content: center; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); }
+.mj-bj-lugar.is-meu { box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-bj-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-bj-lugar .mj-btn { min-height: 32px; }
+.mj-bj-livre { color: var(--tx3); font-size: var(--fs-small); }
+.mj-bj-quem { display: flex; align-items: center; gap: var(--s-15); min-width: 0; }
+.mj-bj-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--fs-small); }
+.mj-bj-saldo { display: flex; flex-wrap: wrap; column-gap: var(--s-15); font-size: var(--fs-micro); color: var(--tx2); }
+.mj-bj-aposta { color: var(--tx); font-weight: 600; }
+.mj-bj-seguro { color: var(--tx2); }
+.mj-bj-maos { display: flex; flex-direction: column; gap: var(--s-1); }
+.mj-bj-mao {
+  grid-template-columns: auto 1fr;
+  column-gap: var(--s-15);
+  padding: var(--s-05);
+  border-radius: var(--r-xs);
+.mj-bj-mao > .mj-mao { grid-row: span 2; }
+.mj-bj-mao.is-vez { box-shadow: 0 0 0 2px var(--act); }
+.mj-bj-mao .mj-bj-total { font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif; white-space: nowrap; }
+.mj-bj-mao-aposta { font-size: var(--fs-micro); color: var(--tx3); white-space: nowrap; }
+.mj-bj-res {
+  grid-column: 1 / -1;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis;
+.mj-bj-mao.is-ganhou .mj-bj-res { color: var(--on-text); }
+.mj-bj-mao.is-perdeu .mj-bj-res { color: var(--tx3); }
+.mj-bj-mao.is-empate .mj-bj-res { color: var(--tx2); }
+/* Nas apostas, as maos que ficaram sao da rodada anterior: apagadas. */
+.mj-bj-lugar.is-anterior .mj-bj-mao { opacity: 0.7; }
+/* Barra da pessoa */
+.mj-bj-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-15); min-height: 36px; }
+.mj-bj-grupo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-15); }
+.mj-bj-rot { font-size: var(--fs-small); color: var(--tx2); }
+.mj .mj-bj-campo { width: 76px; }
+.mj .mj-bj-ficha {
+  min-width: 44px;
+  padding: 0 var(--s-2);
+.mj-bj-dica { flex: 1; min-width: 0; }
+.mj-bj-barra .mj-aviso { flex-basis: 100%; }
+@container mj (max-width: 560px) {
+  .mj-bj-sapato, .mj-bj-rot, .mj-bj-mao-aposta { display: none; }
+  .mj-bj-lugares { gap: var(--s-1); }
+  .mj-bj-lugar { padding: var(--s-1); }
+  .mj .mj-bj-ficha { min-width: 36px; padding: 0 var(--s-15); }
+  .mj .mj-bj-campo { width: 64px; }
+  /* Lugar estreito: o total vai para baixo das cartas. */
+  .mj-bj-mao { grid-template-columns: minmax(0, 1fr); }
+  .mj-bj-mao > .mj-mao { grid-row: auto; }
+@container mj (max-height: 360px) {
+  .mj-bj-banca { min-height: 0; padding: var(--s-1); }
+  .mj-bj-banca-mao { min-height: 0; }
+  .mj-bj-banca .mj-carta-m { --mj-carta-w: 32px; }
+@container mj (min-width: 900px) and (min-height: 560px) {
+  .mj-bj .mj-bj-mao .mj-carta-p { --mj-carta-w: 40px; }
+  .mj-bj-banca .mj-carta-m { --mj-carta-w: 60px; }
 }
