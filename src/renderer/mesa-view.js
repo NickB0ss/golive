@@ -130,6 +130,7 @@
    *   tileIdFor(kind, id), tileFor(kind, id) -- o `.tile` do palco dessa
    *                        tela/camera (id e elemento), ou null
    *   returnTile(tile)   -- devolve um tile ao palco
+   *   openTileMenu(tileId, x, y) -- o menu de volume/silenciar do tile
    *   resyncGrid()       -- o palco se arruma depois que os tiles voltam
    *   onWatchChange()    -- a Mesa mudou o que quer assistir (view-state)
    *   onOpenChange(on), onLocksChange({ leaderOnly, lockSize })
@@ -1623,15 +1624,19 @@
     function openMenuAt(x, y, winId, { at = null, keyboard = false } = {}) {
       closeMenu();
       const returnFocus = document.activeElement;
-      S.menu = { winId, at, returnFocus };
+      S.menu = { winId, at, returnFocus, x, y };
       const m = S.menuEl;
       if (winId) {
         const win = findWin(winId);
         if (!win) return;
         const removable = canRemove(win);
+        // Tela/camera de outra pessoa: o volume e o silenciar do tile (o
+        // botao direito do palco, que aqui e o menu da janela).
+        const volume = isMedia(win) && deps.openTileMenu && String(win.state?.peerId) !== String(deps.me());
         m.innerHTML = [
           row('Tela cheia', { act: 'full', kbd: 'F' }),
           row('Centralizar na tela', { act: 'center' }),
+          volume ? row('Volume e silenciar…', { act: 'volume' }) : '',
           '<hr class="mesa-menu-sep">',
           row('Tirar da mesa', { act: 'remove', kbd: 'Del', danger: true, disabled: !removable, reason: removable ? '' : (!canEdit() ? 'Só o líder mexe na mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela.') }),
         ].join('');
@@ -1721,9 +1726,13 @@
 
     function menuAction(act) {
       const winId = S.menu?.winId;
+      const { x = 0, y = 0 } = S.menu || {};
       closeMenu();
       if (act === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh));
-      else if (act === 'full' && winId) toggleFull(winId);
+      else if (act === 'volume' && winId) {
+        const win = findWin(winId);
+        if (win) deps.openTileMenu(deps.tileIdFor(tileKind(win), String(win.state?.peerId)), x, y);
+      } else if (act === 'full' && winId) toggleFull(winId);
       else if (act === 'center' && winId) centerWin(winId);
       else if (act === 'remove' && winId) removeFromMesa(winId);
     }

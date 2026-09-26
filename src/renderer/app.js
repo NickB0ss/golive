@@ -5605,6 +5605,7 @@
     tileIdFor: mesaTileId,
     tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
     returnTile: ui.grid.returnTile,
+    openTileMenu: (id, x, y) => ui.grid.openTileMenu(id, x, y, { mesa: true }),
     resyncGrid: ui.grid.resync,
     onWatchChange: () => broadcastViewState(),
     onOpenChange: (on) => {

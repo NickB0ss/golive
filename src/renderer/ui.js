@@ -1671,8 +1671,14 @@
     input.className = 'annot-text-input';
     input.maxLength = annotate.MAX_TEXT;
     input.placeholder = 'escreva e dê Enter';
-    input.style.left = `${event.clientX - box.left}px`;
-    input.style.top = `${event.clientY - box.top}px`;
+    // Na janela da Mesa o tile esta dentro do mundo com zoom (transform no
+    // conteiner): o retangulo da tela e o de layout vezes a escala, e o
+    // campo e posicionado em px de layout. No palco a escala e 1. (Os pontos
+    // do rabisco nao precisam disto: sao normalizados pela caixa do video,
+    // e a escala some na divisao.)
+    const escala = tile.offsetWidth ? box.width / tile.offsetWidth : 1;
+    input.style.left = `${(event.clientX - box.left) / escala}px`;
+    input.style.top = `${(event.clientY - box.top) / escala}px`;
     input.style.color = annotate.colorFor(annotSelfId);
     tile.appendChild(input);
     // Focar no quadro seguinte, nao dentro do pointerdown: o preventDefault
@@ -1965,7 +1971,7 @@
    * do membro (2026-09-04, secao 3.2) e este virou o unico lugar onde se
    * silencia alguem. Sem dizer de QUEM e o menu, a resposta pra "silenciar
    * quem?" so viria depois do clique. */
-  function openTileMenu(id, x, y) {
+  function openTileMenu(id, x, y, { mesa = false } = {}) {
     closeTileMenu();
     const state = getOrCreateAudioState(id);
     const entry = tileRegistry.get(id);
@@ -1983,7 +1989,9 @@
       watchItem = watched
         ? '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta câmera</button>'
         : '<button type="button" class="tile-menu-watch" data-watch="only">Assistir câmera</button>';
-    } else if (watched && ws) {
+    } else if (watched && ws && !mesa) {
+      // Na Mesa quem decide se a tela chega e a janela estar a vista
+      // (mesa-view `wants`): "parar de assistir" ali nao faria nada.
       watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
     }
     const spyItem = watched ? '<button type="button" class="tile-menu-spy">Espiar</button>' : '';
@@ -4431,6 +4439,7 @@
       element: () => gridEl,
       tileEl: (id) => document.getElementById(`tile-${id}`),
       returnTile,
+      openTileMenu,
       resync: resyncGrid,
       onTileShown: (fn) => { onTileShown = fn; },
     },

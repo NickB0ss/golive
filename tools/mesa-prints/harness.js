@@ -584,8 +584,82 @@ async function acabamento(browser, port, s, { comPrints = false } = {}) {
 
   ok.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND|ytimg|youtube|net::/.test(e));
   (s.acabamento ||= {}).porNaMesa = ok;
+  s.acabamento.tileNaMesa = await tileNaMesa(page, bia, erros, foto);
   bia.fecha();
   await page.close();
+}
+
+/** Volume, rabisco e reacoes do tile dentro da janela da Mesa, com a mesa
+ * fora do zoom 100% (o transform do mundo nao pode entortar o rabisco). */
+async function tileNaMesa(page, bia, erros, foto) {
+  const ok = {};
+  // Tira as janelas de antes do caminho: so a tela da Bia fica.
+  const retrato = await (async () => {
+    const r = bia.espera((m) => m.type === 'mesa-sync' && m !== bia.caixa.find((x) => x.type === 'mesa-sync'));
+    bia.envia({ type: 'mesa-sync' });
+    return (await r).mesa;
+  })();
+  for (const w of retrato.windows) bia.envia({ type: 'mesa', op: 'remove', id: w.id });
+  bia.envia({ type: 'broadcast-state', live: true, annotate: true });
+  const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'tela');
+  await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');
+  const sel = `.mesa-win[data-id="${add.win.id}"]`;
+  await page.waitForSelector(`${sel} .tile video`);
+  await page.waitForSelector(`${sel} .tile.annotatable`);
+  // Fora dos 100%: "Ver tudo" e depois dois passos de afastar.
+  await page.click('.mesa-zoom-btn[data-zoom="fit"]');
+  await espera(700);
+  await page.click('.mesa-zoom-btn[data-zoom="out"]');
+  await page.click('.mesa-zoom-btn[data-zoom="out"]');
+  await espera(300);
+  ok.zoom = await page.$eval('.mesa-zoom-val', (el) => el.textContent);
+  const caixa = await page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  await page.mouse.move(caixa.x + caixa.w * 0.3, caixa.y + caixa.h * 0.3);
+  await espera(250);
+  ok.barrasVisiveis = await page.$eval(sel, (el) => ['.tile-annot-bar', '.tile-react-bar'].map((s) => {
+    const b = el.querySelector(s);
+    const cs = getComputedStyle(b);
+    return cs.display !== 'none' && cs.opacity === '1' && cs.pointerEvents !== 'none';
+  }));
+  // Reagir: abre a lista, manda a reacao, e nada disso pega a janela.
+  const antesGrab = bia.caixa.filter((m) => m.type === 'mesa-grab').length;
+  await page.click(`${sel} .tile-react-toggle`);
+  ok.listaDeReacoesAbre = await page.$eval(`${sel} .tile-react-bar`, (el) => el.classList.contains('is-open'));
+  await page.click(`${sel} .tile-react-btn >> nth=0`);
+  ok.reacaoChega = Boolean(await bia.espera((m) => m.type === 'reaction'));
+  // Rabisco: liga pela barra e risca do meio para a direita.
+  await page.click(`${sel} .annot-toggle`);
+  const v = await page.$eval(`${sel} .tile`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const p0 = { x: v.x + v.w * 0.25, y: v.y + v.h * 0.5 };
+  await page.mouse.move(p0.x, p0.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i += 1) {
+    await page.mouse.move(p0.x + (v.w * 0.5 * i) / 10, p0.y - (v.h * 0.25 * i) / 10);
+    await espera(20);
+  }
+  await page.mouse.up();
+  const begin = await bia.espera((m) => m.type === 'annotate' && m.op === 'begin');
+  await bia.espera((m) => m.type === 'annotate' && m.op === 'end');
+  const pts = bia.caixa.filter((m) => m.type === 'annotate' && m.op === 'points').flatMap((m) => m.points);
+  const fim = pts[pts.length - 1];
+  const perto = (a, b) => Math.abs(a - b) < 0.02;
+  ok.rabiscoNormalizado = perto(begin.x, 0.25) && perto(begin.y, 0.5) && perto(fim[0], 0.75) && perto(fim[1], 0.25);
+  ok.rabiscoPontos = { comeco: [begin.x, begin.y], fim };
+  await espera(100);
+  ok.rabiscoNaoPegaAJanela = bia.caixa.filter((m) => m.type === 'mesa-grab').length === antesGrab;
+  await foto(page, '04-tile-com-controles-na-mesa.png');
+  // Volume: pelo menu da janela (o botao direito da Mesa).
+  await page.click(`${sel} .annot-toggle`);
+  await page.mouse.click(caixa.x + caixa.w * 0.5, caixa.y + caixa.h * 0.3, { button: 'right' });
+  await page.waitForSelector('.mesa-menu [data-act="volume"]');
+  await page.click('.mesa-menu [data-act="volume"]');
+  await page.waitForSelector('.tile-menu .tile-menu-volume input');
+  ok.menuDeVolume = await page.$eval('.tile-menu .tile-menu-name', (el) => el.textContent);
+  await foto(page, '05-volume-da-tela-na-mesa.png');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(5, 450);
+  ok.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND|ytimg|youtube|net::/.test(e));
+  return ok;
 }
 
 (async () => {
