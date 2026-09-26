@@ -292,8 +292,9 @@ mediu:
 
 ## Próximos passos
 
-- **a Mesa está implementada, sem release** (branch
-  `claude/project-planning-analysis-5e9lub`; ver "A Mesa" logo abaixo).
+- **a Mesa está implementada, sem release** (PR #83 já está no `main`; este
+  acabamento saiu de `origin/main` na branch `feat/mesa-acabamento`, ainda sem
+  PR; ver "A Mesa" logo abaixo). A versão continua 0.21.0.
   **Onde parou e o que falta: `docs/superpowers/plans/2026-09-26-passagem-mesa.md`.**
   Falta o teste com 2+ PCs reais (`docs/testes/2026-09-25-roteiro-mesa.md`)
   e o YouTube de verdade (`docs/testes/2026-09-24-roteiro-youtube-na-mesa.md`)
@@ -344,12 +345,13 @@ integrada nesta branch.
   `mesa-sync`).
 - **O líder tem duas travas**: "Só o líder mexe na mesa" e "Travar tamanho".
   Jogar e dar play continuam livres.
-- **Janelas**: 23 tipos, mais tela e câmera. Ferramentas (nota, lista,
+- **Janelas**: 32 tipos, mais tela e câmera. Ferramentas (nota, lista,
   imagem e galeria do chat, link), noite de jogo (enquete, placar,
   cronômetro, sorteio de times, dados e moeda, roleta, sons), jogos com
   cadeiras (jogo da velha, Lig 4, damas na regra brasileira, xadrez pelo
   `chess.js` 1.4.0 vendorizado), jogos com informação escondida (batalha
-  naval, pôquer Texas Hold'em, blackjack de cassino, fichas de mentira) e
+  naval, pôquer Texas Hold'em, blackjack de cassino, truco, oito, dominó,
+  stop, quiz e Desenha, fichas de mentira) e
   mídia (Vídeo do YouTube que toca junto, Rádio da sala, Ao vivo da Twitch,
   Spotify Jam). Regra de cada tipo num módulo puro que roda no
   servidor e nos clientes (`src/renderer/mesa-modules/`); desenho em
@@ -363,9 +365,36 @@ integrada nesta branch.
   aceitar o embed (erro 153) e a Twitch o `parent`. O `localStorage` é
   copiado uma vez do `file://`; `GOLIVE_ORIGEM=file` volta ao de antes.
 - **Bancos de prova** (rodam aqui, sem PC real): `tools/mesa-prints/harness.js
-  checar|prints|desempenho`, `tools/bancada-janelas/rodar.js` e
-  `mesa-real.js`, `xvfb-run -a npx electron tools/midia/main.js` (YouTube e
-  Twitch falsos).
+  checar|prints|desempenho`, `tools/bancada-janelas/rodar.js`,
+  `mesa-real.js` e `leva2-real.js`, além de `xvfb-run -a npx electron
+  tools/midia/main.js` (YouTube e Twitch falsos).
+
+**Sessão local de 2026-09-26.** A seção 3.1 da passagem foi concluída:
+pôquer e blackjack cabem na janela; foram corrigidas as 25 chaves `}`
+perdidas em `mesa-janelas.css` e criada a regra de teste que fecha cada chave
+do CSS do renderer. Também entraram lugar fantasma do pôquer, e2e de segredo
+das duas cartas, travas no `mesa-count`/`welcome`, o líder muda as travas pelo `⋯` na
+Transmissão, cartão "Assistir" curto e `timeoutAt(state, ctx)` compatível.
+
+A seção 3.2 também foi concluída: `truco`, `oito`, `domino`, `stop`, `quiz`,
+`quadro` e `desenha`; todas secretas menos o Quadro, cada uma com e2e de
+segredo. O dominó segue o clássico de 28 peças; `pedras` e `quiz-perguntas`
+são apoios novos. A revisão final corrigiu permissões do Desenha, migração e
+saída de jogadores, troca de gestão no Stop, reset e trava do Truco e vez/
+abertura do Dominó. Nenhum vazamento de carta, peça ou palavra foi encontrado.
+
+Resultados: `npm test` 1845 passando; lint com 0 erros e 9 avisos antigos;
+`leva2-real.js` 97/0, `mesa-real.js` 31/0, `festa-real.js` 14/0,
+`rodar.js` 350/0, `poquer-rodar.js` 47/0, `rodar-blackjack.js` 131/0 e
+`harness.js checar` sem falhas. Boot do Electron real sem erro de console,
+com 32 módulos. A bancada visual gerou prints em
+`docs/prints/2026-09-26-leva2/`; usou Playwright 1.62.1 já instalado no PC do
+Nicolas.
+
+Riscos novos: a suíte falha cerca de 1 em 5 vezes sob carga (quiz e migração
+de cartas), mas passa isolada; em "Ver tudo", `.mesa-ctrls` cobre controles do
+topo de pôquer, blackjack, oito e dominó; a bancada visual ainda não cobriu
+truco e dominó com 4, oito com 3+ nem o fim do Desenha pelo relógio.
 
 **O que só o PC real prova:** YouTube e Twitch de verdade (o proxy daqui
 bloqueia os dois; contra os falsos, 23/23), a migração do `localStorage` numa
@@ -375,11 +404,11 @@ desempenho com GPU (no Chromium sem GPU a Mesa parada custa o mesmo que a
 Transmissão; zoom e "Ver tudo" pesam mais: `docs/2026-09-24-spike-desempenho-mesa.md`)
 e a mesa sobrevivendo à queda do líder.
 
-**Ficou de fora** (lista completa e ordem na passagem de 2026-09-26): pôquer
-e blackjack ainda não cabem na janela em todo tamanho; travas visíveis para o
-líder que está na Transmissão; Truco, Oito maluco, Quadro, Desenha e
-adivinha, Stop, Quiz e Dominó (regras no contrato, seção 10); Kick; Spotify
-tocando no app (ver a pesquisa).
+**Ficou de fora** (lista completa e ordem na passagem de 2026-09-26): a seção
+3.3 da pesquisa; PC real com as sete janelas novas (truco e dominó em duplas,
+oito com 3+, stop com votação, Desenha até o fim e Quiz completo); Kick;
+Spotify tocando no app (ver a pesquisa). Também falta decidir o conserto
+global dos controles cobertos em "Ver tudo".
 
 **Defeito antigo visto nos prints (já na 0.21.0):** o cartão "Assistir" da
 tela não escolhida corta o texto em cima quando fica na tira de miniaturas.
