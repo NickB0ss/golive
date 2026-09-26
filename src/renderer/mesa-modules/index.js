@@ -32,7 +32,7 @@
     // Ferramentas
     'nota', 'lista', 'enquete', 'imagem', 'galeria',
     // Noite de jogo
-    'placar', 'cronometro', 'sorteio', 'dados', 'roleta',
+    'placar', 'cronometro', 'sorteio', 'dados', 'roleta', 'stop',
     // Jogos
     'velha', 'lig4', 'damas', 'xadrez', 'batalha', 'poquer', 'blackjack',
     // Festa: Spotify Jam (assistir), sons (noite), link (ferramentas)
