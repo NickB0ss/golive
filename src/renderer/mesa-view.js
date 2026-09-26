@@ -819,8 +819,10 @@
     }
 
     /** Liga/desliga uma trava (so o lider; o servidor confere). */
+    // Vale tambem na Transmissao (S null): o lider muda as travas pelo `...`
+    // sem abrir a Mesa, e o servidor aceita `lock` do lider em qualquer vista.
     function setLock(name, value) {
-      if (!S || !['leaderOnly', 'lockSize'].includes(name)) return;
+      if (!['leaderOnly', 'lockSize'].includes(name)) return;
       deps.send({ type: 'mesa', op: 'lock', [name]: Boolean(value) });
     }
 
