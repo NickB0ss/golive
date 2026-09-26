@@ -95,9 +95,13 @@ function criarCliente(port, rotulo) {
     },
     /** Poe a batalha na mesa e devolve o eco do add (para este cliente). */
     async poeBatalha(x = 100, y = 100) {
+      return cliente.poeJogo('batalha', 720, 460, x, y);
+    },
+    /** Poe um jogo secreto e devolve o eco do add para quem o criou. */
+    async poeJogo(type, w, h, x = 100, y = 100) {
       const r = cliente.esperaNova((m) => (m.type === 'mesa' && m.op === 'add' && m.by === cliente.id)
         || (m.type === 'mesa-denied' && m.op === 'add'), 'resposta do add');
-      cliente.envia({ type: 'mesa', op: 'add', win: { type: 'batalha', x, y, w: 720, h: 460 } });
+      cliente.envia({ type: 'mesa', op: 'add', win: { type, x, y, w, h } });
       return r;
     },
     /** Uma jogada: espera o `op: 'state'` dela (quem esta na Mesa) ou a recusa. */
@@ -183,6 +187,71 @@ function estadosDeBatalha(cliente) {
     }
   }
   return out;
+}
+
+/** Todos os retratos de uma janela secreta que chegaram a este socket. */
+function estadosDoJogo(cliente, id) {
+  const out = [];
+  for (const m of cliente.entrada) {
+    if (m.type === 'mesa' && m.op === 'add' && m.win?.id === id) out.push(m.win.state);
+    if (m.type === 'mesa' && m.op === 'state' && m.id === id) out.push(m.state);
+    if ((m.type === 'mesa-sync' || m.type === 'room-migrating') && m.mesa) {
+      const w = m.mesa.windows.find((win) => win.id === id);
+      if (w) out.push(w.state);
+    }
+  }
+  return out;
+}
+
+function cartasNoEstado(valor, out = []) {
+  if (typeof valor === 'string' && /^(?:[2-9TJQKA][shdc])$/.test(valor)) out.push(valor);
+  else if (Array.isArray(valor)) for (const x of valor) cartasNoEstado(x, out);
+  else if (valor && typeof valor === 'object') for (const x of Object.values(valor)) cartasNoEstado(x, out);
+  return out;
+}
+
+/** Em cada mensagem do pôquer, só há cartas públicas, do próprio lugar ou
+ * as que o showdown mandou revelar. Nenhum baralho pode cruzar o fio. */
+function semSegredoPoquer(cliente, id) {
+  const estados = estadosDoJogo(cliente, id);
+  assert.ok(estados.length > 0, `${cliente.rotulo}: nenhum estado de pôquer`);
+  for (const st of estados) {
+    const texto = JSON.stringify(st);
+    assert.equal(texto.includes('"deck"'), false, `${cliente.rotulo}: baralho do pôquer no fio`);
+    const h = st.hand;
+    if (!h) continue;
+    const permitidas = new Set(h.board || []);
+    const meu = h.ids?.indexOf(cliente.id) ?? -1;
+    for (let i = 0; i < (h.holes || []).length; i += 1) {
+      const podeVer = i === meu || h.result?.shown?.includes(i);
+      if (podeVer) for (const c of h.holes[i] || []) permitidas.add(c);
+      else assert.equal(h.holes[i], null, `${cliente.rotulo}: cartas fechadas da cadeira ${i}`);
+    }
+    for (const r of Object.values(h.result?.hands || {})) for (const c of r.cards || []) permitidas.add(c);
+    for (const c of cartasNoEstado(st)) assert.ok(permitidas.has(c), `${cliente.rotulo}: carta ${c} fora da regra`);
+  }
+}
+
+/** No blackjack, a carta fechada só aparece com `revealed`; o sapato não
+ * aparece nem por outro campo escondido. */
+function semSegredoBlackjack(cliente, id) {
+  const estados = estadosDoJogo(cliente, id);
+  assert.ok(estados.length > 0, `${cliente.rotulo}: nenhum estado de blackjack`);
+  for (const st of estados) {
+    const texto = JSON.stringify(st);
+    assert.equal(/"shoe"\s*:/.test(texto), false, `${cliente.rotulo}: sapato no fio`);
+    const dealer = st.dealer || { cards: [] };
+    if (!dealer.revealed) assert.equal(dealer.cards?.[1] ?? null, null, `${cliente.rotulo}: fechada da banca antes da hora`);
+    const permitidas = new Set((dealer.cards || []).filter(Boolean));
+    for (const h of st.hands || []) for (const c of h.cards || []) permitidas.add(c);
+    for (const c of cartasNoEstado(st)) assert.ok(permitidas.has(c), `${cliente.rotulo}: carta ${c} fora da mesa`);
+  }
+}
+
+function pessoaPorId(pessoas, id) {
+  const pessoa = pessoas.find((p) => p.id === id);
+  assert.ok(pessoa, `pessoa da cadeira ${id}`);
+  return pessoa;
 }
 
 /** O socket nunca viu um navio da frota da cadeira `seat` que ainda nao
@@ -363,4 +432,110 @@ test('fleet mandada pelo cliente e ignorada: a frota e sempre a que o servidor s
   const trapaca = [[0, 1, 2, 3, 4], [20, 21, 22, 23], [40, 41, 42], [60, 61, 62], [80, 81]];
   const st = await ana.joga(id, { kind: 'sit', seat: 0, fleet: trapaca });
   assert.notDeepEqual(st.state.boards[0].ships.map((n) => n.cells), trapaca);
+});
+
+test('pôquer: três sockets jogam até o showdown sem receber cartas alheias ou o baralho', async (t) => {
+  const p = palco(t);
+  const s = await p.servidor({ ownerToken: 'cartas-poquer' });
+  const ana = await p.cliente(s, 'ana');
+  const bia = await p.cliente(s, 'bia');
+  const caio = await p.cliente(s, 'caio');
+  const pessoas = [ana, bia, caio];
+  await ana.entra('Ana', { ownerToken: 'cartas-poquer' });
+  await bia.entra('Bia');
+  await caio.entra('Caio');
+  await Promise.all(pessoas.map((x) => x.abreMesa()));
+  const id = (await ana.poeJogo('poquer', 720, 460)).win.id;
+  await ana.joga(id, { kind: 'sit', seat: 0 });
+  await bia.joga(id, { kind: 'sit', seat: 1 });
+  await caio.joga(id, { kind: 'sit', seat: 2 });
+  const inicial = await ana.joga(id, { kind: 'deal' });
+  assert.equal(inicial.type, 'mesa', JSON.stringify(inicial));
+  assert.ok(inicial.state?.hand, JSON.stringify(inicial));
+  async function jogarAteShowdown(estado, passos = 0) {
+    if (estado.state.hand.result || passos >= 30) return estado;
+    const h = estado.state.hand;
+    const quem = pessoaPorId(pessoas, h.ids[h.toAct]);
+    const vista = await quem.esperaMsg((m) => m.type === 'mesa' && m.op === 'state' && m.id === id && m.seq === estado.seq,
+      `estado do pôquer ${estado.seq}`);
+    const proximo = await quem.joga(id, { kind: vista.state.me.canCheck ? 'check' : 'call' });
+    assert.ok(proximo.state, JSON.stringify(proximo));
+    return jogarAteShowdown(proximo, passos + 1);
+  }
+  const estado = await jogarAteShowdown(inicial);
+  assert.ok(estado.state.hand.result, 'o showdown terminou');
+  assert.equal(estado.state.hand.result.byFold, false);
+  assert.deepEqual(estado.state.hand.result.shown.slice().sort(), [0, 1, 2]);
+  await Promise.all(pessoas.map((x) => x.barreira()));
+  for (const pessoa of pessoas) semSegredoPoquer(pessoa, id);
+});
+
+test('blackjack: três sockets jogam até a banca revelar sem receber fechada ou sapato', async (t) => {
+  const p = palco(t);
+  const s = await p.servidor({ ownerToken: 'cartas-blackjack' });
+  const ana = await p.cliente(s, 'ana');
+  const bia = await p.cliente(s, 'bia');
+  const caio = await p.cliente(s, 'caio');
+  const pessoas = [ana, bia, caio];
+  await ana.entra('Ana', { ownerToken: 'cartas-blackjack' });
+  await bia.entra('Bia');
+  await caio.entra('Caio');
+  await Promise.all(pessoas.map((x) => x.abreMesa()));
+  const id = (await ana.poeJogo('blackjack', 680, 440)).win.id;
+  await ana.joga(id, { kind: 'sit', seat: 0 });
+  await bia.joga(id, { kind: 'sit', seat: 1 });
+  let estado = await caio.joga(id, { kind: 'sit', seat: 2 });
+  for (const pessoa of pessoas) estado = await pessoa.joga(id, { kind: 'bet', amount: 10 });
+  let passos = 0;
+  while (!(estado.state.phase === 'bets' && estado.state.round > 0 && estado.state.dealer.revealed) && passos < 20) {
+    if (estado.state.phase === 'insurance') {
+      const seat = estado.state.insurance.findIndex((v) => v === null);
+      estado = await pessoaPorId(pessoas, estado.state.seats[seat]).joga(id, { kind: 'insurance', amount: 0 });
+    } else if (estado.state.phase === 'play') {
+      const mao = estado.state.hands[estado.state.turn];
+      estado = await pessoaPorId(pessoas, estado.state.seats[mao.seat]).joga(id, { kind: 'stand' });
+    } else {
+      assert.fail(`fase inesperada: ${estado.state.phase}`);
+    }
+    passos += 1;
+  }
+  assert.equal(estado.state.phase, 'bets');
+  assert.equal(estado.state.dealer.revealed, true, 'a banca revelou antes do pagamento');
+  assert.ok(estado.state.hands.every((h) => h.result), 'todas as mãos receberam resultado');
+  await Promise.all(pessoas.map((x) => x.barreira()));
+  for (const pessoa of pessoas) semSegredoBlackjack(pessoa, id);
+});
+
+test('migração de pôquer e blackjack envia só sementes sem segredo', async (t) => {
+  const p = palco(t);
+  const s = await p.servidor({ ownerToken: 'migrar-cartas', roomId: 'cartas-migracao' });
+  const ana = await p.cliente(s, 'ana');
+  const bia = await p.cliente(s, 'bia');
+  await ana.entra('Ana', { ownerToken: 'migrar-cartas' });
+  await bia.entra('Bia');
+  await ana.abreMesa();
+  await bia.abreMesa();
+  const poquer = (await ana.poeJogo('poquer', 720, 460)).win.id;
+  const blackjack = (await ana.poeJogo('blackjack', 680, 440, 1000)).win.id;
+  for (const id of [poquer, blackjack]) {
+    await ana.joga(id, { kind: 'sit', seat: 0 });
+    await bia.joga(id, { kind: 'sit', seat: 1 });
+  }
+  await ana.joga(poquer, { kind: 'deal' });
+  await ana.joga(blackjack, { kind: 'bet', amount: 10 });
+  await bia.joga(blackjack, { kind: 'bet', amount: 10 });
+  const migrando = bia.esperaNova((m) => m.type === 'room-migrating', 'room-migrating das cartas');
+  s.fechado = true;
+  await s.close({ migrate: true });
+  const msg = await migrando;
+  const pokerSeed = msg.mesa.windows.find((w) => w.id === poquer).state;
+  const blackjackSeed = msg.mesa.windows.find((w) => w.id === blackjack).state;
+  assert.equal(pokerSeed.hand, null);
+  assert.deepEqual(blackjackSeed.shoe, []);
+  assert.deepEqual(blackjackSeed.hands, []);
+  assert.deepEqual(blackjackSeed.dealer.cards, []);
+  const texto = JSON.stringify(msg);
+  assert.equal(texto.includes('"deck"'), false);
+  assert.equal(/"shoe"\s*:\s*\[\s*"/.test(texto), false);
+  assert.deepEqual(cartasNoEstado(msg), [], 'nenhuma carta migra');
 });

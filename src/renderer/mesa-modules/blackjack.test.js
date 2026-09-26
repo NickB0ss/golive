@@ -148,6 +148,13 @@ function refuse(state, action, from, now = clock) {
   return r;
 }
 
+function actComPeers(state, action, from, peers, now = clock) {
+  const c = { from, isLeader: false, now, peers, random: luck };
+  assert.equal(bj.validate(deepFreeze(state), action, c), true, `${from} ${JSON.stringify(action)}`);
+  const preparada = bj.prepare(state, action, c);
+  return { preparada, state: deepFreeze(bj.reduce(state, preparada, { from, isLeader: false })) };
+}
+
 /** Mesa com `who` sentados (lugares 0, 1...) e o sapato comecando por `top`. */
 function table(who, top) {
   let s = deepFreeze(bj.init({ random: seeded(1), now: clock }));
@@ -630,6 +637,36 @@ test('quem sai no seguro: se era o ultimo a decidir, o prazo vence', () => {
   const d = deepFreeze(bj.dropPeer(s, 'leo'));
   assert.equal(bj.timeoutAt(d), 0);
   assert.equal(act(d, { kind: 'timeout' }, 'bia').phase, 'play');
+});
+
+test('id fantasma no meio da rodada sai das maos e a rodada continua', () => {
+  let s = table(['bia', 'leo', 'ana'], ['Ts', '9h', '8c', '5c', '7s', '9d', '8d', 'Kd']);
+  s = betAll(s, ['bia', 'leo', 'ana']);
+  const vivos = PEERS.filter((p) => p.id !== 'leo');
+  const r = actComPeers(s, { kind: 'stand' }, 'bia', vivos);
+  assert.deepEqual(r.preparada.ghosts, [1]);
+  assert.equal(r.state.seats[1], null);
+  assert.equal(r.state.hands.some((h) => h.seat === 1), false);
+  assert.equal(r.state.phase, 'play');
+  assert.equal(r.state.hands[r.state.turn].seat, 2);
+});
+
+test('id fantasma entre rodadas aparece como lugar livre na view', () => {
+  const s = table(['bia', 'leo'], []);
+  const vivos = PEERS.filter((p) => p.id !== 'leo');
+  const v = bj.view(s, 'bia', { peers: vivos });
+  assert.equal(v.seats[1], null);
+  assert.equal(v.chips[1], null);
+  assert.ok(v.me.actions.includes('bet'));
+});
+
+test('pessoa nova senta no lugar liberado pelo id fantasma', () => {
+  const s = table(['bia', 'leo'], []);
+  const vivos = PEERS.filter((p) => p.id !== 'leo');
+  const r = actComPeers(s, { kind: 'sit', seat: 1 }, 'ana', vivos);
+  assert.deepEqual(r.preparada.ghosts, [1]);
+  assert.equal(r.state.seats[1], 'ana');
+  assert.equal(r.state.chips[1], 1000);
 });
 
 test('migrate cancela a rodada, devolve as apostas (divisoes inclusive) e tira o sapato', () => {

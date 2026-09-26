@@ -476,6 +476,36 @@ test('quem sai deixa a rodada acabar se so ele faltava responder', () => {
   assert.equal(s.stacks[0] + s.stacks[1], 200 + 1000 + 20, "o blind de caio fica no pote");
 });
 
+test('id fantasma na migracao desiste da mao, libera a cadeira e nao aparece na view', () => {
+  let s = table({ 0: 'ana', 1: 'bia', 2: 'caio' });
+  s = act(s, { kind: 'deal' }, 'ana');
+  assert.equal(P.timeoutAt(s, { peers: PEERS.filter((p) => p.id !== 'ana'), now: T0 + 123 }), T0 + 30123,
+    'o timeout tambem pula quem ficou no id antigo e entrega a vez');
+  const peersDepois = PEERS.filter((p) => p.id !== 'caio');
+  const ctxAna = { from: 'ana', now: T0, peers: peersDepois, random: lcg(3) };
+
+  // A cadeira do id antigo ja pode ser escolhida antes da primeira acao.
+  assert.equal(P.validate(s, { kind: 'sit', seat: 2 }, { from: 'duda', now: T0, peers: peersDepois }), true);
+  const antes = P.view(s, 'ana', { peers: peersDepois });
+  assert.equal(antes.seats[2], null);
+  assert.equal(antes.hand.status[2], 'folded');
+  assert.equal(antes.hand.holes[2], null);
+
+  // A proxima jogada limpa o fantasma e a mao segue para a Bia, sem esperá-lo.
+  const preparada = P.prepare(s, { kind: 'call' }, ctxAna);
+  assert.deepEqual(preparada.ghosts, [2]);
+  s = deepFreeze(P.reduce(s, preparada, { from: 'ana' }));
+  assert.equal(s.seats[2], null);
+  assert.equal(s.hand.status[2], 'folded');
+  assert.equal(turn(s), 'bia');
+
+  s = act(s, { kind: 'sit', seat: 2 }, 'duda');
+  assert.equal(s.seats[2], 'duda');
+  assert.equal(s.hand.ids[2], 'caio', 'quem entrou espera a proxima mao');
+  const vista = P.view(s, 'ana', { peers: PEERS });
+  assert.equal(vista.hand.holes[2], null);
+});
+
 // ---------- Migracao ----------
 
 test('migrate cancela a mao e devolve as apostas; fichas e cadeiras ficam; sem segredo', () => {
