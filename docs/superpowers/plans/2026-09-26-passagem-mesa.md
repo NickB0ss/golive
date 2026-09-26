@@ -1,9 +1,10 @@
 # Passagem: a Mesa, onde a sessão parou (2026-09-26)
 
 Para abrir numa sessão nova, local, e continuar sem reler a conversa.
-Branch: **`claude/project-planning-analysis-5e9lub`** (no GitHub, ponta desta
-nota). **Nada disso está no `main` nem em release**: a versão do
-`package.json` continua `0.21.0`. Sem PR aberto.
+Branch: **`claude/project-planning-analysis-5e9lub`**, no **PR #83**
+(https://github.com/NickB0ss/golive/pull/83); novos commits nesta branch
+atualizam o PR. **Nada disso está no `main` nem em release**: a versão do
+`package.json` continua `0.21.0`.
 
 Leia nesta ordem (15 min):
 
@@ -191,7 +192,7 @@ Akinator, Stockfish, co-browsing (motivos na pesquisa, seção 6).
   como 20 no total (10 de cada). Se for 20 de cada, é a constante
   `KING_ONLY_DRAW` em `mesa-modules/damas.js`.
 - **Versão e PR**: número da versão (sugestão 0.22.0), notas de lançamento,
-  e quando abrir o PR para o `main` (antes ou depois do teste real).
+  e quando fazer o merge do PR #83 no `main` (antes ou depois do teste real).
 - **Dominó**: qual variante (ver 3.2).
 
 ---
