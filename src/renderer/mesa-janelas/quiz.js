@@ -4,9 +4,13 @@
  * local ate a revelacao; o servidor e a unica fonte de verdade do placar. */
 
 (function (root) {
-  const C = root.GoLive.mesaJanelasComum;
-
   function montar(elRoot, api) {
+    // Lido dentro do mount (nao no topo do arquivo): a Vista carrega
+    // `<tipo>.js` por MODULE_NAMES sem tag no index.html (contrato, secao
+    // 6) e a ordem entre eles e `comum.js` nao e garantida -- `registrar`,
+    // mais abaixo, so chama isto depois que `comum.js` (que nao tem tag
+    // propria) certamente carregou.
+    const C = root.GoLive.mesaJanelasComum;
     const b = C.base(elRoot, api, 'quiz');
     const T = C.el;
     const topo = T('div', { class: 'mj-quiz-topo' });
@@ -96,9 +100,65 @@
     return { update: atualizar, destroy: b.destruir, focus() { botoes.find((x) => !x.botao.hidden)?.botao.focus(); } };
   }
 
+  // Mesmo molde de truco.js/oito.js: garante que `comum.js` (sem tag
+  // propria no index.html) esteja carregado antes do primeiro `mount` --
+  // sem isto, o Quiz sendo o PRIMEIRO tipo de conteudo aberto numa mesa
+  // (nenhum outro modulo pediu `comum.js` ainda) quebrava com
+  // "Cannot read properties of undefined (reading 'base')".
+  function registrar(api, arquivos) {
+    const G = root.GoLive = root.GoLive || {};
+    G.mesaJanelas = G.mesaJanelas || {};
+    const GLOBAIS = { 'comum.js': 'mesaJanelasComum' };
+    const doc = root.document;
+    const falta = () => arquivos.filter((a) => !G[GLOBAIS[a]]);
+    const esperas = [];
+    if (doc && falta().length) {
+      const base = (doc.currentScript && doc.currentScript.src) || doc.baseURI;
+      G.mesaJanelasApoio = G.mesaJanelasApoio || {};
+      for (const a of falta()) {
+        if (G.mesaJanelasApoio[a]) continue;
+        const script = doc.createElement('script');
+        script.src = new root.URL(a, base).href;
+        script.async = false;
+        G.mesaJanelasApoio[a] = script;
+        doc.head.appendChild(script);
+      }
+      for (const a of falta()) {
+        esperas.push(new Promise((ok) => {
+          G.mesaJanelasApoio[a].addEventListener('load', ok, { once: true });
+        }));
+      }
+    }
+    const montarOriginal = api.mount;
+    const pronto = esperas.length ? Promise.all(esperas) : null;
+    api.mount = function montarComApoio(el, vistaApi) {
+      if (!falta().length) return montarOriginal(el, vistaApi);
+      let instancia = null;
+      let ultimo = null;
+      let destruida = false;
+      pronto.then(() => {
+        if (destruida) return;
+        instancia = montarOriginal(el, vistaApi);
+        if (ultimo) instancia.update(ultimo[0], ultimo[1]);
+      }, () => {});
+      return {
+        update(estado, meta) {
+          if (instancia) instancia.update(estado, meta);
+          else ultimo = [estado, meta];
+        },
+        destroy() {
+          destruida = true;
+          if (instancia) instancia.destroy();
+        },
+        focus() {
+          if (instancia && instancia.focus) instancia.focus();
+        },
+      };
+    };
+    G.mesaJanelas[api.type] = api;
+  }
+
   const api = { type: 'quiz', mount: montar };
-  root.GoLive = root.GoLive || {};
-  root.GoLive.mesaJanelas = root.GoLive.mesaJanelas || {};
-  root.GoLive.mesaJanelas.quiz = api;
+  registrar(api, ['comum.js']);
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
