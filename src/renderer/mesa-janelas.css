@@ -1323,6 +1323,7 @@
 .mj-poquer {
   --pq-lugar-w: 116px;
   --pq-carta-lugar: 22px;
+  padding-top: 30px;
   gap: var(--s-1);
 }
 .mj-pq-topo { min-height: 30px; }
