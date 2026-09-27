@@ -7,18 +7,28 @@
 <title>Espiar</title>
 <style>
   @font-face {
-    font-family: 'Instrument Sans';
-    font-style: normal;
-    font-weight: 400 700;
+    font-family: 'Atkinson Hyperlegible Next';
+    font-weight: 400;
     font-display: swap;
-    src: url('assets/fonts/instrumentsans-latin.woff2') format('woff2');
+    src: url('assets/fonts/atkinson-next-400-latin.woff2') format('woff2');
   }
   @font-face {
-    font-family: 'IBM Plex Mono';
-    font-style: normal;
-    font-weight: 500 700;
+    font-family: 'Atkinson Hyperlegible Next';
+    font-weight: 700;
     font-display: swap;
-    src: url('assets/fonts/plexmono-500-latin.woff2') format('woff2');
+    src: url('assets/fonts/atkinson-next-700-latin.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Sora';
+    font-weight: 600;
+    font-display: swap;
+    src: url('assets/fonts/sora-600-latin.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Geist Mono';
+    font-weight: 500;
+    font-display: swap;
+    src: url('assets/fonts/geistmono-500-latin.woff2') format('woff2');
   }
   /* Padrao = tema GoLive. O tema escolhido chega da janela principal
      (espiar.js, SPY_THEME_VARS) e sobrescreve estes valores inline. */
@@ -30,11 +40,11 @@
     --spy-s3: #262632;
     --spy-act: #EDEDF2;
     --spy-on-act: #0E0E14;
-    --font-body: 'Instrument Sans', system-ui, sans-serif;
-    --font-display: 'Instrument Sans', system-ui, sans-serif;
-    --font-mono: 'IBM Plex Mono', monospace;
+    --font-body: 'Atkinson Hyperlegible Next', 'Segoe UI', system-ui, sans-serif;
+    --font-display: 'Sora', 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'Geist Mono', 'Cascadia Mono', Consolas, monospace;
     --spy-live: #FF4D4F;
-    --spy-on-live: #FFFFFF;
+    --spy-on-live: #0E0E14; /* tinta sobre o vermelho (5,9:1), como no app */
     --z-tile-bar: 2;
   }
   * { box-sizing: border-box; }

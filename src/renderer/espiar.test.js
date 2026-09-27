@@ -40,9 +40,9 @@ function readerFor(tokens) {
     '--bg': tokens.surfaces.bg, '--tx': tokens.surfaces.tx, '--tx2': tokens.surfaces.tx2,
     '--s2': tokens.surfaces.s2, '--s3': tokens.surfaces.s3, '--act': tokens.act,
     '--on-act': tokens.onAct || '#FFFFFF',
-    '--font-body': tokens.fontBody || "'Instrument Sans', system-ui, sans-serif",
-    '--font-display': tokens.fontDisplay || "'Instrument Sans', system-ui, sans-serif",
-    '--font-mono': tokens.fontMono || "'IBM Plex Mono', monospace",
+    '--font-body': tokens.fontBody || "'Atkinson Hyperlegible Next', 'Segoe UI', system-ui, sans-serif",
+    '--font-display': tokens.fontDisplay || "'Sora', 'Segoe UI', system-ui, sans-serif",
+    '--font-data': tokens.fontMono || "'Geist Mono', 'Cascadia Mono', Consolas, monospace",
   };
   return (name) => ` ${vars[name] ?? ''}`;
 }
@@ -66,16 +66,21 @@ test('espiar segue o acento trocado por cima da predefinicao', () => {
 });
 
 test('espiar leva as fontes do tema para a janela auxiliar', () => {
-  const fonts = {
+  // Na janela principal a fonte de dados e --font-data; no Espiar ela chega como --font-mono.
+  const principal = {
     '--font-body': "'Work Sans', system-ui, sans-serif",
     '--font-display': "'Outfit', system-ui, sans-serif",
-    '--font-mono': "'IBM Plex Mono', monospace",
+    '--font-data': "'IBM Plex Mono', monospace",
   };
-  const vars = spyThemeVars((name) => fonts[name] || '#123456');
+  const vars = spyThemeVars((name) => principal[name] || '#123456');
   const fontesTransportadas = Object.fromEntries(
     Object.entries(vars).filter(([name]) => name.startsWith('--font-'))
   );
-  assert.deepEqual(fontesTransportadas, fonts);
+  assert.deepEqual(fontesTransportadas, {
+    '--font-body': principal['--font-body'],
+    '--font-display': principal['--font-display'],
+    '--font-mono': principal['--font-data'],
+  });
   assert.deepEqual(sanitizeSpyTheme({
     '--font-body': "'Work Sans', system-ui, sans-serif",
     '--font-display': "'Outfit', system-ui, sans-serif",

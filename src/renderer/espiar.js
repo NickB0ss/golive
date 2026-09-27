@@ -37,7 +37,8 @@
     '--spy-on-act': '--on-act',
     '--font-body': '--font-body',
     '--font-display': '--font-display',
-    '--font-mono': '--font-mono',
+    // O Sinal chama a fonte de dados de --font-data; no Espiar ela segue --font-mono.
+    '--font-mono': '--font-data',
   });
 
   // So cor: `#rgb`..`#rrggbbaa` ou rgb()/rgba() com numeros. A janela nao
