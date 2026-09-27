@@ -481,8 +481,8 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .src__text { display: grid; gap: 1px; min-width: 0; }
 .src__name { font: var(--t-label); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .src__sub { font: var(--t-meta); color: var(--tx2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.src[aria-current='true'], .src[data-watching] { background: var(--wire-soft); --cluster-bg: color-mix(in srgb, var(--wire) 16%, var(--bg)); }
-.src[aria-current='true']::after, .src[data-watching]::after {
+.src[data-current], .src[data-watching] { background: var(--wire-soft); --cluster-bg: color-mix(in srgb, var(--wire) 16%, var(--bg)); }
+.src[data-current]::after, .src[data-watching]::after {
   content: '';
   position: absolute;
   left: var(--s-2);
@@ -526,7 +526,7 @@ body.room-idle .tile.fullscreen { cursor: none; }
   border-radius: 2px;
   transform: rotate(45deg);
 }
-.src--mesa[aria-current='true'] .src__glyph::before { border-color: var(--wire); background: var(--wire-soft); }
+.src--mesa[data-current] .src__glyph::before { border-color: var(--wire); background: var(--wire-soft); }
 
 /* A sua fonte. */
 /* A sua fonte: sem transmitir e so o botao Transmitir; ao vivo vira o bloco
