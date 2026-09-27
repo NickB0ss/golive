@@ -3581,8 +3581,8 @@
       offerFiles(files);
     });
 
-    // Arrastar em cima da coluna do chat.
-    const dropZone = chatMessagesEl.closest('.chat-section') || chatMessagesEl;
+    // Arrastar em cima da conversa inteira.
+    const dropZone = chatMessagesEl.closest('.conv') || chatMessagesEl;
     dropZone.addEventListener('dragover', (e) => {
       if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
       e.preventDefault();
@@ -4182,7 +4182,7 @@
     if (result.nearestAct) {
       const fixBtn = document.createElement('button');
       fixBtn.type = 'button';
-      fixBtn.className = 'theme-warning-fix';
+      fixBtn.className = 'btn btn--secondary btn--sm theme-warning-fix';
       fixBtn.textContent = `usar ${result.nearestAct}`;
       fixBtn.addEventListener('click', () => {
         $('theme-act').value = result.nearestAct;
