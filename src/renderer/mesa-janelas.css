@@ -805,7 +805,10 @@
 .mj .mj-casa.is-destino.is-tem-peca::after { width: 88%; height: 88%; background: transparent; box-shadow: inset 0 0 0 3px var(--on-line); }
 .mj .mj-casa.is-mexe, .mj .mj-casa.is-sel { cursor: grab; }
 .mj-peca { position: relative; z-index: 1; display: block; pointer-events: none; }
-.mj-peca.is-arrastando { z-index: 5; opacity: 0.9; }
+.mj-peca.is-arrastando {
+  z-index: 2;
+  opacity: 0.9;
+}
 
 /* ---------- Damas ---------- */
 
@@ -832,9 +835,14 @@
 .mj-xadrez .mj-peca.is-preta, .mj-xadrez .mj-amostra.is-preta { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong), 0 0 2px var(--veil); }
 .mj-xadrez .mj-amostra { font-size: var(--fs-lead); }
 .mj-xadrez.is-posso .mj-casa.is-mexe:hover::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--on-line); }
-.mj-jogo-placa { position: relative; }
+.mj-jogo-placa {
+  position: relative;
+  /* Promocao e pecas ficam na escala local da placa. */
+  isolation: isolate;
+}
 .mj-xadrez-promo {
-  position: absolute; z-index: 6;
+  position: absolute;
+  z-index: 2;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
   display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-1);
@@ -927,7 +935,7 @@
   top: 32px;
   left: var(--s-2);
   right: var(--s-2);
-  z-index: 3;
+  z-index: 2;
   min-height: 0;
   padding: var(--s-1) var(--s-2);
   background: var(--s2);
@@ -952,7 +960,12 @@
   padding: 30px var(--s-4) var(--s-4);
 }
 .mjm-yt .mjm-empty,
-.mjm-live .mjm-empty { position: absolute; inset: 0; background: var(--s2); z-index: 2; }
+.mjm-live .mjm-empty {
+  position: absolute;
+  inset: 0;
+  background: var(--s2);
+  z-index: 1;
+}
 
 .mjm-stage { position: absolute; inset: 0; background: var(--video-bg); }
 .mjm-player,

@@ -245,6 +245,41 @@ test('cada bloco CSS declara z-index uma unica vez', () => {
   assert.deepEqual(duplicates, [], `z-index duplicado no mesmo bloco: ${duplicates.map((rule) => `${rule.line}: ${rule.stack.at(-1)}`).join(', ')}`);
 });
 
+test('z-index so por token da escala, ou 0 a 2 local', () => {
+  for (const arquivo of ['style.css', 'mesa-janelas.css']) {
+    const css = fs.readFileSync(path.join(__dirname, arquivo), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(/z-index\s*:\s*([^;}]+)/g)) {
+      const valor = m[1].trim();
+      const ok = /^var\(--z-[a-z-]+\)$/.test(valor) || /^-?[0-2]$/.test(valor);
+      assert.ok(ok, `${arquivo}: z-index "${valor}" fora da escala`);
+    }
+  }
+});
+
+test('a escala de camadas esta em ordem e todo --z-* usado existe', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const ordem = [
+    'canvas',
+    'win',
+    'win-drag',
+    'mesa-hud',
+    'dock',
+    'mesa-toast',
+    'titlebar',
+    'popover',
+    'modal',
+    'modal-popover',
+    'dialog',
+    'toast',
+  ];
+  const valor = (n) => Number((css.match(new RegExp(`--z-${n}:\\s*(\\d+)`)) || [])[1]);
+  for (let i = 1; i < ordem.length; i += 1) {
+    assert.ok(valor(ordem[i]) > valor(ordem[i - 1]), `--z-${ordem[i]} tem de ficar acima de --z-${ordem[i - 1]}`);
+  }
+  const usados = new Set([...css.matchAll(/var\(--z-([a-z-]+)\)/g)].map((m) => m[1]));
+  for (const n of usados) assert.ok(ordem.includes(n) || n === 'stage', `--z-${n} usado sem estar na escala`);
+});
+
 test('a casca da sala fica escondida com um tile em tela cheia', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   // visibility (e nao display): mata pintura e clique de TODOS os

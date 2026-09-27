@@ -110,14 +110,20 @@
   --r-lg: 18px;
   --r-full: 999px;
 
-  /* Camadas com nomes mantem popovers, dialogos e avisos em ordem. */
+  /* Camadas: fora de componentes isolados, só estes tokens. */
   --z-stage: 1;
+  --z-canvas: 1;
+  --z-win: 2;
+  --z-win-drag: 3;
+  --z-mesa-hud: 10;
+  --z-dock: 20;
+  --z-mesa-toast: 30; /* avisos da Mesa, acima do dock e abaixo de menus */
+  --z-titlebar: 40; /* a modal precisa cobrir tambem o painel de avisos */
   --z-popover: 50;
   --z-modal: 1000;
   --z-modal-popover: 1001; /* menu aberto a partir de dentro de um modal */
   --z-dialog: 1002; /* confirmacoes e campos acima do menu do modal */
-  --z-toast: 10000; /* aviso transitório acima de todas as camadas */
-  --z-titlebar: 50; /* a modal precisa cobrir tambem o painel de avisos */
+  --z-toast: 10000; /* aviso do app: aparece mesmo com Configuracoes aberta */
 
   /* Escala tipografica -- todo font-size do arquivo passa por aqui (teste
      em css-rules.test.js). Os meios-pixels que existiam (11.5, 12.5, 13.5,
@@ -149,6 +155,9 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.30), 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-3: 0 1px 3px rgba(0, 0, 0, 0.40), 0 16px 48px rgba(0, 0, 0, 0.50);
+  --elev-1: inset 0 1px 0 rgb(255 255 255 / .05), 0 2px 8px rgb(0 0 0 / .35);
+  --elev-2: inset 0 1px 0 rgb(255 255 255 / .06), 0 10px 24px rgb(0 0 0 / .45);
+  --elev-3: inset 0 1px 0 rgb(255 255 255 / .08), 0 18px 40px rgb(0 0 0 / .55);
 
   /* Veus escuros -- scrims sobre video/imagem (rotulo do tile, botoes
      flutuantes, menus, modal). Nomeados do mais sutil ao mais opaco; mesma
@@ -289,6 +298,9 @@
   --line: rgba(30,25,15,.10); --line2: rgba(30,25,15,.18);
   --grid: rgba(30,25,15,.06); --grid2: rgba(30,25,15,.11);
   --act:#4338CA; --act-hover:#3730A3;
+  --elev-1: 0 0 0 1px var(--line2), 0 1px 3px rgb(20 20 40 / .08);
+  --elev-2: 0 0 0 1px var(--line2), 0 6px 16px rgb(20 20 40 / .10);
+  --elev-3: 0 0 0 1px var(--line2), 0 12px 28px rgb(20 20 40 / .14);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1396,6 +1408,8 @@ button.busy { cursor: default; }
 
 .tile {
   position: relative;
+  /* Sobreposicoes do tile nao escapam para a casca da sala. */
+  isolation: isolate;
   min-width: 0;
   background: var(--video-bg);
   border-radius: var(--r-md);
@@ -1448,7 +1462,13 @@ button.busy { cursor: default; }
    abaixo) -- resolve "o rotulo sempre visivel tapa o video" sem voltar a
    depender so de hover. */
 .room-idle .tile-label { opacity: 0; transition-duration: var(--dur-slow); }
-.tile.fullscreen { position: fixed; inset: 0; z-index: 50; border-radius: 0; aspect-ratio: auto; }
+.tile.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-popover);
+  border-radius: 0;
+  aspect-ratio: auto;
+}
 /* Em fullscreen o fade deixa de ser por hover e passa a ser por
    ociosidade do mouse -- ver .tile.fullscreen.idle mais abaixo e o timer
    em ui.js (scheduleFullscreenIdle). */
@@ -1589,10 +1609,10 @@ button.busy { cursor: default; }
   position: absolute;
   top: 10px; left: 10px;
   max-width: calc(100% - 20px);
-  /* Acima do card de "esta ao vivo" (`.tile-gate`, z-index 6) de proposito:
+  /* Acima do card de "esta ao vivo" (camada local 1), de proposito:
      saber que TRES pessoas ja estao vendo aquela tela e parte do que decide
      se voce vai clicar em "Assistir". */
-  z-index: 7;
+  z-index: 2;
 }
 /* Estado vazio com nome PROPRIO (`is-empty`, nao `empty`): a classe `empty`
    crua e a do cartao de "sala vazia" da grade, e um `querySelector('.empty')`
@@ -1787,7 +1807,7 @@ button.busy { cursor: default; }
 
 .pip-picker {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-popover);
   transform: translateY(-100%);
   margin-top: -8px;
   background: var(--bg-panel);
@@ -1850,7 +1870,7 @@ button.busy { cursor: default; }
 .tile-gate {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1928,7 +1948,7 @@ button.busy { cursor: default; }
 
 .tile-menu {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-popover);
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -2476,7 +2496,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 3;
+  z-index: 1;
 }
 .tile.annot-on .tile-annot-canvas { pointer-events: auto; cursor: crosshair; }
 
@@ -2493,7 +2513,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   background: var(--scrim-tint-2);
   border: 1px solid var(--line2);
   box-shadow: var(--shadow-2);
-  z-index: 5;
+  z-index: 2;
 }
 /* Superficie anotavel sem nenhum botao pra este papel: a barra existe no
    DOM mas nao tem o que mostrar, e uma pilula vazia flutuando sobre o video
@@ -2568,7 +2588,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 
 .annot-text-input {
   position: absolute;
-  z-index: 6;
+  z-index: 2;
   /* `width: auto` derruba o `width: 100%` da regra base de input -- aqui o
      campo flutua no ponto clicado, nao ocupa a largura do tile. */
   width: auto;
@@ -2675,7 +2695,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 
 .emoji-panel {
   position: fixed;
-  z-index: 70;
+  z-index: var(--z-popover);
   width: 292px;
   height: 320px;
   display: flex;
@@ -3033,11 +3053,8 @@ body.has-titlebar #room-view {
 /* Tile em tela cheia (win.setFullScreen): a faixa some. */
 body:has(.tile.fullscreen) .titlebar { display: none; }
 
-/* O tile em tela cheia tem z-index 50 -- empatado com --z-popover (os
-   rotulos do dock, que vem depois no DOM e ganham o empate) e abaixo do
-   painel de emoji (70) e do toast (1001). Subir o tile so moveria a fila:
-   o proximo elemento de camada alta voltaria a vazar. A casca some de
-   verdade. Ver spec 2026-09-15, decisoes 4 e 5. */
+/* O tile em tela cheia usa --z-popover. A casca some para nao concorrer
+   com o conteudo. */
 body:has(.tile.fullscreen) .stage-header,
 body:has(.tile.fullscreen) .control-bar,
 body:has(.tile.fullscreen) .room-side { visibility: hidden; }
@@ -3157,7 +3174,7 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
      48px..68px); fullscreen desloca selo/avatar 6px para a esquerda. */
   right: 76px;
   bottom: 12px;
-  z-index: 5;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: var(--s-05);
@@ -3208,7 +3225,7 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 .tile-react-pops {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
 }
@@ -3428,6 +3445,9 @@ body.mesa-open #grid { display: none; }
 /* Janela: plana, sem sombra, contorno de 1 px. */
 .mesa-win {
   position: absolute;
+  z-index: var(--z-win);
+  /* Controles da janela usam a escala local sem vazar para a Mesa. */
+  isolation: isolate;
   left: 0;
   top: 0;
   border-radius: var(--r-lg);
@@ -3439,7 +3459,13 @@ body.mesa-open #grid { display: none; }
 }
 .mesa-win:focus-visible { box-shadow: 0 0 0 2px var(--on-text); }
 .mesa-win.is-media { cursor: grab; container: mesawin / size; }
-.mesa-win.is-dragging { box-shadow: 0 0 0 1px var(--on-text); opacity: .92; will-change: transform; cursor: grabbing; }
+.mesa-win.is-dragging {
+  z-index: var(--z-win-drag);
+  box-shadow: 0 0 0 1px var(--on-text);
+  opacity: .92;
+  will-change: transform;
+  cursor: grabbing;
+}
 .mesa-win.is-settling { transition: transform 260ms var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
 .mesa-win.is-remote-drag { transition: transform 60ms linear, width 60ms linear, height 60ms linear; }
 .mesa-win.is-held { box-shadow: 0 0 0 2px var(--who); }
@@ -3499,7 +3525,7 @@ body.mesa-open #grid { display: none; }
   position: absolute;
   left: var(--s-2);
   bottom: var(--s-2);
-  z-index: 3;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--s-15);
@@ -3527,7 +3553,17 @@ body.mesa-open #grid { display: none; }
 }
 
 /* Alca de 36 x 4 no topo das janelas com conteudo: aparece com o mouse. */
-.mesa-handle { position: absolute; left: 0; right: 0; top: 0; z-index: 4; height: 28px; display: grid; place-items: center; cursor: grab; }
+.mesa-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 2;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
 .mesa-handle::after { content: ''; width: 36px; height: 4px; border-radius: 2px; background: var(--tx3); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 
 /* Controles so com o mouse em cima (ou foco). */
@@ -3535,7 +3571,7 @@ body.mesa-open #grid { display: none; }
   position: absolute;
   top: var(--s-2);
   right: var(--s-2);
-  z-index: 5;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: var(--s-05);
@@ -3591,7 +3627,7 @@ body.mesa-open #grid { display: none; }
   position: absolute;
   left: var(--s-2);
   top: var(--s-2);
-  z-index: 5;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: var(--s-15);
@@ -3609,7 +3645,10 @@ body.mesa-open #grid { display: none; }
 .mesa-moving[hidden] { display: none; }
 
 /* Redimensionar pelas bordas e cantos de baixo. */
-.mesa-resize { position: absolute; z-index: 6; }
+.mesa-resize {
+  position: absolute;
+  z-index: 2;
+}
 .mesa-resize[data-edge="l"] { left: 0; top: 14px; bottom: 14px; width: 10px; cursor: ew-resize; }
 .mesa-resize[data-edge="r"] { right: 0; top: 14px; bottom: 14px; width: 10px; cursor: ew-resize; }
 .mesa-resize[data-edge="b"] { left: 14px; right: 14px; bottom: 0; height: 10px; cursor: ns-resize; }
@@ -3676,11 +3715,27 @@ body.mesa-open #grid { display: none; }
 .mesa-empty[hidden], .mesa-loading[hidden] { display: none; }
 
 /* Quem esta na Mesa (avatares que levam ate a pessoa). */
-.mesa-people { position: absolute; top: var(--s-3); right: var(--s-3); z-index: 8; display: flex; gap: var(--s-15); }
+.mesa-people {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  z-index: var(--z-mesa-hud);
+  display: flex;
+  gap: var(--s-15);
+}
 .mesa-person { width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; }
 
 /* Mapa e zoom no canto de baixo a esquerda. */
-.mesa-nav { position: absolute; left: var(--s-3); bottom: var(--s-3); z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.mesa-nav {
+  position: absolute;
+  left: var(--s-3);
+  bottom: var(--s-3);
+  z-index: var(--z-mesa-hud);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
 .mesa-map {
   position: relative;
   width: 192px;
@@ -3708,7 +3763,7 @@ body.mesa-open #grid { display: none; }
   position: absolute;
   left: 50%;
   top: var(--s-3);
-  z-index: 9;
+  z-index: var(--z-mesa-hud);
   display: flex;
   align-items: center;
   gap: var(--s-2);
