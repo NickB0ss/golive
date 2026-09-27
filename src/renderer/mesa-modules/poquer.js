@@ -393,6 +393,8 @@
   function validate(state, action, ctx) {
     return safe(() => {
       if (!isObj(action) || !KINDS.includes(action.kind)) return 'Ação inválida';
+      const ghosts = ghostSeats(state, ctx);
+      if (ghosts.length) state = withoutGhosts(state, ghosts, Number(ctx && ctx.now));
       const from = fromOf(ctx);
       if (!from) return 'Quem mandou?';
       const seat = seatOf(state, from);
@@ -451,6 +453,8 @@
       } else if (action.kind === 'blinds') {
         out.level = action.level;
       }
+      const ghosts = ghostSeats(state, ctx);
+      if (ghosts.length) out.ghosts = ghosts;
       return out;
     }, action);
   }
@@ -499,8 +503,10 @@
     return safe(() => {
       // O servidor ja conferiu o prazo do `timeout` com a hora dele antes do
       // `prepare`; aqui so as outras regras (o `ctx` do reduce nao tem hora).
-      if (validate(state, action, Object.assign({}, ctx, { now: Number.MAX_SAFE_INTEGER })) !== true) return state;
-      const s = clone(state);
+      const base = isObj(action) && Array.isArray(action.ghosts)
+        ? withoutGhosts(state, action.ghosts, Number(action.at)) : state;
+      if (validate(base, action, Object.assign({}, ctx, { now: Number.MAX_SAFE_INTEGER, peers: null })) !== true) return state;
+      const s = clone(base);
       const from = fromOf(ctx);
       const seat = seatOf(s, from);
       const at = Number.isFinite(action.at) ? action.at : 0;
@@ -550,8 +556,9 @@
 
   /** O que `peerId` pode ver (null = quem so assiste). Nunca leva o
    * baralho nem cartas alheias antes do showdown. */
-  function view(state, peerId) {
+  function view(state, peerId, ctx) {
     return safe(() => {
+      state = withoutGhosts(state, ghostSeats(state, ctx), Number(ctx && ctx.now));
       const h = state.hand;
       const seat = seatOf(state, peerId);
       const [sb, bb] = LEVELS[state.level];
@@ -651,7 +658,8 @@
     }, init());
   }
 
-  function timeoutAt(state) {
+  function timeoutAt(state, ctx) {
+    state = withoutGhosts(state, ghostSeats(state, ctx), Number(ctx && ctx.now));
     const h = state && state.hand;
     return active(h) && h.toAct >= 0 && Number.isFinite(h.deadline) ? h.deadline : null;
   }
@@ -672,6 +680,27 @@
       s.stacks[seat] = 0;
       return s;
     }, state);
+  }
+
+  /** IDs anteriores a uma migração não voltam a ocupar cadeira. A limpeza
+   * usa a mesma saída normal: na mão atual, o lugar desiste e suas fichas
+   * deixam a mesa. Sem `ctx.peers`, conserva o retrato que já chegou. */
+  function ghostSeats(state, ctx) {
+    const peers = isObj(ctx) ? ctx.peers : null;
+    if (!state || !Array.isArray(state.seats) || !Array.isArray(peers) || !peers.length) return [];
+    const ids = new Set(peers.filter(isObj).map((p) => p.id));
+    const out = [];
+    state.seats.forEach((id, i) => { if (id !== null && !ids.has(id)) out.push(i); });
+    return out;
+  }
+
+  function withoutGhosts(state, seats, now) {
+    let s = state;
+    for (const seat of seats || []) {
+      const id = Number.isInteger(seat) && s && Array.isArray(s.seats) ? s.seats[seat] : null;
+      if (typeof id === 'string') s = dropPeer(s, id, now);
+    }
+    return s;
   }
 
   function summary(state) {

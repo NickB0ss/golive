@@ -383,3 +383,24 @@ test('a tela da sala tem um h1 com o nome da sala, sem a margem do navegador (A1
   const margem = declarations(css).filter(({ property, stack }) => property === 'margin' && selectorParts(stack.at(-1) || '').includes('.stage-room-name'));
   assert.ok(margem.some(({ value }) => value === '0'), 'o h1 da sala precisa zerar a margem padrao do navegador');
 });
+
+test('todo CSS do renderer fecha cada chave que abre', () => {
+  // Com CSS Nesting, um `}` perdido nao quebra o parser: o resto do arquivo
+  // vira aninhado sob um seletor que nao existe e deixa de valer, calado.
+  // Foi assim que a juncao da Festa tirou o estilo de Jam, Sons, Link,
+  // poquer e blackjack (25 chaves faltando no mesa-janelas.css).
+  for (const nome of fs.readdirSync(__dirname).filter((f) => f.endsWith('.css'))) {
+    const fonte = fs.readFileSync(path.join(__dirname, nome), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+    let nivel = 0;
+    let linha = 1;
+    for (const c of fonte) {
+      if (c === '\n') linha++;
+      if (c === '{') nivel++;
+      if (c === '}') nivel--;
+      assert.ok(nivel >= 0, `${nome}: "}" sem par na linha ${linha}`);
+    }
+    assert.equal(nivel, 0, `${nome}: ${nivel} chave(s) aberta(s) sem fechar`);
+  }
+});

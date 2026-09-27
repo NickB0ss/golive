@@ -75,6 +75,10 @@
   const TIME_EVERY_MS = 60000;
   const TOAST_MS = 2600;
 
+  // Espelho do MESMO regex do servidor (server/signaling-core.js,
+  // MESA_SURFACE_RE): a superficie do rabisco de uma janela da Mesa.
+  const MESA_SURFACE_RE = /^mesa:([A-Za-z0-9_-]{1,32})$/;
+
   function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   }
@@ -143,6 +147,11 @@
 
     let S = null; // estado da vista aberta; null na Transmissao
     let showCursors = true;
+    // Rabisco em janela da Mesa (contrato, secao 10, "Quadro"): quem ja
+    // esta com uma janela montada manda o proprio retrato ('annotate-sync')
+    // pra quem ACABA de entrar na vista Mesa -- so pra ids novos, senao toda
+    // mudanca na lista (alguem saiu) reenviaria o retrato para todo mundo.
+    let lastAnnotateViewers = new Set();
 
     // ------------------------------------------------------------------
     // Abrir e fechar
@@ -227,6 +236,7 @@
       for (const rec of s.wins.values()) unmountWin(rec, { returnTile: true });
       s.section.remove();
       S = null;
+      lastAnnotateViewers = new Set();
       deps.resyncGrid?.();
       deps.onOpenChange?.(false);
       deps.onWatchChange?.();
@@ -513,6 +523,42 @@
         case 'mesa-ack': return true; // a vista so manda operacoes estando na Mesa
         default: return false;
       }
+    }
+
+    // Rabisco em janela da Mesa (contrato, secao 10, "Quadro"). 'annotate' e
+    // 'annotate-sync' tambem existem para o rabisco sobre TELA/CAMERA (fora
+    // da Mesa, app.js/ui.js cuidam); a chave que separa os dois mundos e o
+    // formato da superficie ('mesa:<id>'). `false` aqui devolve a mensagem
+    // pro caminho de tela/camera de sempre; `true` diz "era da Mesa, ja
+    // tratei" mesmo quando a janela em questao nao esta (mais) montada aqui
+    // (ex.: 'mesa-view' desligada, ou a janela fechou entre o envio e a
+    // chegada) -- o ponto e nunca deixar sobrar pro lado da tela.
+    function handleAnnotate(msg) {
+      const m = typeof msg?.surface === 'string' ? MESA_SURFACE_RE.exec(msg.surface) : null;
+      if (!m) return false;
+      const rec = S && S.wins.get(m[1]);
+      if (rec?.inst && typeof rec.inst.annotateOp === 'function') {
+        try {
+          rec.inst.annotateOp(msg);
+        } catch (err) {
+          console.error('[mesa] annotateOp do conteudo falhou:', err);
+        }
+      }
+      return true;
+    }
+
+    function handleAnnotateSync(msg) {
+      const m = typeof msg?.surface === 'string' ? MESA_SURFACE_RE.exec(msg.surface) : null;
+      if (!m) return false;
+      const rec = S && S.wins.get(m[1]);
+      if (rec?.inst && typeof rec.inst.annotateSync === 'function') {
+        try {
+          rec.inst.annotateSync(Array.isArray(msg.items) ? msg.items : []);
+        } catch (err) {
+          console.error('[mesa] annotateSync do conteudo falhou:', err);
+        }
+      }
+      return true;
     }
 
     function requestSync() {
@@ -819,8 +865,10 @@
     }
 
     /** Liga/desliga uma trava (so o lider; o servidor confere). */
+    // Vale tambem na Transmissao (S null): o lider muda as travas pelo `...`
+    // sem abrir a Mesa, e o servidor aceita `lock` do lider em qualquer vista.
     function setLock(name, value) {
-      if (!S || !['leaderOnly', 'lockSize'].includes(name)) return;
+      if (!['leaderOnly', 'lockSize'].includes(name)) return;
       deps.send({ type: 'mesa', op: 'lock', [name]: Boolean(value) });
     }
 
@@ -1165,6 +1213,17 @@
           if (typeof fn !== 'function') return () => {};
           rec.denied.add(fn);
           return () => rec.denied.delete(fn);
+        },
+        // Canal do rabisco endereçado a ESTA janela (contrato, secao 10,
+        // "Quadro"): superficie 'mesa:<id>'. `sendAnnotate` so manda -- o
+        // conteudo aplica o proprio traco local (otimista) do mesmo jeito
+        // que o rabisco sobre a tela ja faz; o servidor nunca ecoa pra quem
+        // mandou. `handleAnnotate`/`handleAnnotateSync`, mais abaixo, e
+        // quem entrega o que chega da rede de volta pro conteudo.
+        annotateSurface: () => `mesa:${rec.id}`,
+        sendAnnotate(op) {
+          if (!S || !findWin(rec.id)) return false;
+          return deps.send({ type: 'annotate', surface: `mesa:${rec.id}`, ...op });
         },
       };
     }
@@ -2134,6 +2193,36 @@
 
     function onViewers() {
       renderPeople();
+      syncAnnotateToNewViewers();
+    }
+
+    /** Quem ja tem uma janela de rabisco montada manda o proprio retrato
+     * pra quem ACABOU de entrar na vista Mesa (contrato, secao 10,
+     * "Quadro") -- o mesmo papel que 'peer-joined' tem pro rabisco sobre
+     * tela (app.js), so que aqui o gatilho e 'mesa-viewers' (so quem esta
+     * na Mesa importa). So para ids NOVOS na lista, senao toda saida de
+     * outra pessoa reenviaria o retrato de novo pra todo mundo. */
+    function syncAnnotateToNewViewers() {
+      if (!S) {
+        lastAnnotateViewers = new Set();
+        return;
+      }
+      const me = String(deps.me());
+      const ids = (deps.viewers?.() || []).map(String);
+      const novos = ids.filter((id) => id !== me && !lastAnnotateViewers.has(id));
+      lastAnnotateViewers = new Set(ids);
+      if (!novos.length) return;
+      for (const [wid, rec] of S.wins) {
+        if (rec.kind !== 'janela' || !rec.inst || typeof rec.inst.annotateSnapshot !== 'function') continue;
+        let items;
+        try {
+          items = rec.inst.annotateSnapshot();
+        } catch {
+          items = null;
+        }
+        if (!Array.isArray(items) || !items.length) continue;
+        for (const id of novos) deps.send({ type: 'annotate-sync', to: id, surface: `mesa:${wid}`, items });
+      }
     }
 
     return {
@@ -2142,6 +2231,8 @@
       isOpen,
       afterWelcome,
       handle,
+      handleAnnotate,
+      handleAnnotateSync,
       onFullScreenChange,
       onTile,
       onPeersChange,

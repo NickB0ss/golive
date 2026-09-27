@@ -1190,10 +1190,14 @@
 
 @container mj (max-width: 480px) {
   .mj-bn-acoes .mj-btn span { display: none; }
+}
+
 /* ======================================================================
    Festa (time Festa, 2026-09-25): Spotify Jam, Sons e Link.
    ====================================================================== */
+
 /* ---------- Spotify Jam ---------- */
+
 .mj-jam-vazio, .mj-jam-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .mj-jam-vazio { justify-content: center; }
 .mj-jam-titulo { margin: 0; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
@@ -1207,11 +1211,16 @@
   flex: 1;
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--s-1) var(--s-3);
+}
 .mj-jam-lista li { display: inline-flex; align-items: center; gap: var(--s-15); font-size: var(--fs-small); }
 .mj-jam-rodape .mj-btn { min-height: 28px; font-size: var(--fs-small); }
+
 @container mj (max-height: 230px) {
   .mj-jam .mj-jam-meta, .mj-jam .mj-dica { display: none; }
+}
+
 /* ---------- Sons ---------- */
+
 .mj-sons-grade {
   flex: 1;
   min-height: 0;
@@ -1222,6 +1231,7 @@
   grid-auto-rows: minmax(36px, 56px);
   align-content: start;
   gap: var(--s-15);
+}
 .mj .mj-sons-btn { min-height: 0; height: 100%; padding: 0 var(--s-2); justify-content: center; }
 .mj .mj-sons-btn > span { overflow: hidden; text-overflow: ellipsis; }
 .mj .mj-sons-btn.is-toca { animation: mj-sons-toca 360ms var(--ease-out); }
@@ -1229,6 +1239,7 @@
   0% { transform: scale(1); }
   35% { transform: scale(1.07); }
   100% { transform: scale(1); }
+}
 /* A espera de 3 s de quem tocou: uma linha que encolhe ate sumir. */
 .mj-sons-espera { height: 3px; flex: none; border-radius: var(--r-full); background: var(--s3); opacity: 0; transition: opacity var(--dur-fast); overflow: hidden; }
 .mj-sons-espera.is-on { opacity: 1; }
@@ -1237,26 +1248,33 @@
 @keyframes mj-sons-espera {
   from { transform: scaleX(var(--mj-falta, 1)); }
   to { transform: scaleX(0); }
+}
 .mj-sons-rodape { flex: none; }
 .mj-sons-tocou {
   margin: 0; min-width: 0;
   display: inline-flex; align-items: center; gap: var(--s-15);
   color: var(--tx2); font-size: var(--fs-small);
   white-space: nowrap; overflow: hidden;
+}
 .mj-sons-tocou > em { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
 .mj-sons-tocou > span:not(.mj-dot) { flex: none; }
 .mj .mj-sons-rodape .mj-ic { width: 28px; min-height: 28px; }
 .mj .mj-sons-vol { width: 88px; flex: none; accent-color: var(--act); }
 .mj-sons-vol:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
 .mj-sons.is-mudo .mj-sons-vol { opacity: 0.5; }
+
 @container mj (max-width: 300px) {
   .mj-sons-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-1); }
   .mj .mj-sons-btn { padding: 0 var(--s-1); font-size: var(--fs-small); }
   .mj .mj-sons-vol { width: 64px; }
+}
 @container mj (max-height: 200px) {
   .mj-sons-grade { grid-auto-rows: 28px; gap: var(--s-1); }
   .mj .mj-sons-btn { font-size: var(--fs-small); }
+}
+
 /* ---------- Link ---------- */
+
 .mj-link-vazio, .mj-link-cheio { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .mj-link-vazio { justify-content: center; }
 .mj-link-form { display: flex; flex-direction: column; gap: var(--s-15); min-width: 0; }
@@ -1266,6 +1284,7 @@
   margin: 0;
   font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .mj-link-titulo.is-dominio { font-variant-numeric: tabular-nums; }
 .mj-link-meta { display: flex; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
 .mj-link-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1274,20 +1293,27 @@
   margin: 0;
   color: var(--tx3); font-size: var(--fs-small);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .mj-link-acoes .mj-fantasma { min-height: 28px; font-size: var(--fs-small); }
 .mj-link-confirma {
   display: flex; flex-direction: column; gap: var(--s-15);
   padding: var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
   box-shadow: inset 0 0 0 1px var(--line2);
+}
 .mj-link-pergunta { margin: 0; font-size: var(--fs-body); overflow-wrap: anywhere; }
 .mj-link-pergunta strong { font-weight: 700; }
+
 /* Alturas do container sao da caixa de conteudo (sem o respiro da alca). */
 @container mj (max-height: 130px) {
   .mj-link .mj-sec { display: none; }
   .mj-link-cheio.is-confirmando .mj-link-cabeca { display: none; }
+}
 @container mj (max-width: 330px) {
   .mj-link-acoes .mj-fantasma > span { display: none; }
   .mj-link-acoes .mj-fantasma { width: 28px; padding: 0; }
+}
 /* ---------- Pôquer (mesa-janelas/poquer.js) ----------
    Mesa oval com 8 lugares (a de quem ve fica embaixo, no meio), as cartas
    da mesa e o pote no meio, e embaixo as suas cartas e a barra de acoes.
@@ -1297,10 +1323,13 @@
 .mj-poquer {
   --pq-lugar-w: 116px;
   --pq-carta-lugar: 22px;
+  padding-top: 30px;
   gap: var(--s-1);
 }
 .mj-pq-topo { min-height: 30px; }
 .mj-pq-titulo {
+  margin: 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
   color: var(--tx2);
   font-variant-numeric: tabular-nums;
@@ -1325,6 +1354,7 @@
   text-align: center;
 }
 .mj-pq-pote {
+  margin: 0;
   font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
   color: var(--tx);
   font-variant-numeric: tabular-nums;
@@ -1343,6 +1373,7 @@
 .mj-poquer.is-showdown .mj-pq-cartas .mj-carta:not(.is-destaque):not(.is-verso) { opacity: 0.45; }
 .mj-pq-resultado { display: flex; flex-direction: column; gap: 2px; }
 .mj-pq-resultado p {
+  margin: 0;
   font-size: var(--fs-small);
   line-height: 1.25;
   color: var(--tx);
@@ -1358,6 +1389,7 @@
   padding: var(--s-05) var(--s-15);
   border-radius: var(--r-md);
   background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--line2);
   font-size: var(--fs-small);
   line-height: 1.2;
 }
@@ -1381,6 +1413,7 @@
   border-radius: var(--r-full);
   background: var(--on-act);
   color: var(--video-bg);
+  box-shadow: inset 0 0 0 1px var(--line2);
   font: 700 10px/1 'Outfit', system-ui, sans-serif;
 }
 .mj-pq-tag {
@@ -1425,6 +1458,7 @@
   padding: 1px var(--s-15) 1px var(--s-05);
   border-radius: var(--r-full);
   background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--line2);
   font: 600 var(--fs-micro) 'Outfit', system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1475,42 +1509,73 @@
 @container mj (max-height: 400px) {
   .mj-pq-jogo { display: none; }
   .mj-pq-lugar .mj-pq-tag { display: none; }
+}
 /* ---------- Blackjack (mesa-janelas/blackjack.js) ----------
    A banca em cima, os 5 lugares embaixo, a barra da pessoa no pe. Cartas
    de cada mao se sobrepoem pela metade (maos longas cabem no lugar). A cor
    da pessoa so na bolinha; a vez e o --act (contorno). */
+
 .mj.mj-bj { padding-top: 30px; gap: var(--s-2); }
+
 .mj-bj-topo { display: flex; align-items: center; gap: var(--s-2); min-height: 22px; }
 .mj-bj-status {
+  margin: 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: 600;
+}
 .mj-bj.is-minha-vez .mj-bj-status { color: var(--on-text); }
 .mj-bj-status:focus { outline: none; }
 .mj-bj-status:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; border-radius: var(--r-xs); }
 .mj-bj-prazo {
+  flex: none;
   min-width: 40px;
   padding: 1px var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s3);
+  color: var(--tx2);
+  font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
 .mj-bj-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
 .mj-bj-sapato { flex: none; color: var(--tx3); font-size: var(--fs-micro); }
+
 /* Banca */
 .mj-bj-banca {
   display: flex; align-items: center; justify-content: center; gap: var(--s-3);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
   min-height: 80px;
+}
 .mj-bj-banca-mao { display: flex; min-height: 62px; align-items: center; }
 .mj-bj-banca .mj-bj-total { min-width: 72px; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
 .mj-bj-banca.is-estourou .mj-bj-total { color: var(--tx3); }
+
 /* Cartas de uma mao: sobrepostas, sem quebrar linha. */
 .mj-bj .mj-mao { flex-wrap: nowrap; gap: 0; }
 .mj-bj .mj-mao > .mj-carta + .mj-carta { margin-left: calc(var(--mj-carta-w) * -0.45); }
 .mj-bj .mj-carta { box-shadow: inset 0 0 0 1px var(--line2), -2px 0 3px var(--scrim-1); }
 .mj-bj .mj-carta.is-verso { box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2), -2px 0 3px var(--scrim-1); }
+
 /* Lugares */
 .mj-bj-lugares {
   flex: 1; min-height: 0;
+  display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-15);
+}
 .mj-bj-lugar {
   min-width: 0; min-height: 0;
   display: flex; flex-direction: column; gap: var(--s-1);
   padding: var(--s-15);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .mj-bj-lugar.is-vazio { align-items: center; justify-content: center; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); }
 .mj-bj-lugar.is-meu { box-shadow: inset 0 0 0 1px var(--on-line); }
 .mj-bj-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
@@ -1523,10 +1588,13 @@
 .mj-bj-seguro { color: var(--tx2); }
 .mj-bj-maos { display: flex; flex-direction: column; gap: var(--s-1); }
 .mj-bj-mao {
+  display: grid;
   grid-template-columns: auto 1fr;
+  align-items: center;
   column-gap: var(--s-15);
   padding: var(--s-05);
   border-radius: var(--r-xs);
+}
 .mj-bj-mao > .mj-mao { grid-row: span 2; }
 .mj-bj-mao.is-vez { box-shadow: 0 0 0 2px var(--act); }
 .mj-bj-mao .mj-bj-total { font: 600 var(--fs-small) 'Outfit', system-ui, sans-serif; white-space: nowrap; }
@@ -1535,12 +1603,15 @@
   grid-column: 1 / -1;
   font-size: var(--fs-micro);
   font-weight: 600;
+  white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
+}
 .mj-bj-mao.is-ganhou .mj-bj-res { color: var(--on-text); }
 .mj-bj-mao.is-perdeu .mj-bj-res { color: var(--tx3); }
 .mj-bj-mao.is-empate .mj-bj-res { color: var(--tx2); }
 /* Nas apostas, as maos que ficaram sao da rodada anterior: apagadas. */
 .mj-bj-lugar.is-anterior .mj-bj-mao { opacity: 0.7; }
+
 /* Barra da pessoa */
 .mj-bj-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-15); min-height: 36px; }
 .mj-bj-grupo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-15); }
@@ -1549,8 +1620,12 @@
 .mj .mj-bj-ficha {
   min-width: 44px;
   padding: 0 var(--s-2);
+  border-radius: var(--r-full);
+  font-variant-numeric: tabular-nums;
+}
 .mj-bj-dica { flex: 1; min-width: 0; }
 .mj-bj-barra .mj-aviso { flex-basis: 100%; }
+
 @container mj (max-width: 560px) {
   .mj-bj-sapato, .mj-bj-rot, .mj-bj-mao-aposta { display: none; }
   .mj-bj-lugares { gap: var(--s-1); }
@@ -1560,11 +1635,465 @@
   /* Lugar estreito: o total vai para baixo das cartas. */
   .mj-bj-mao { grid-template-columns: minmax(0, 1fr); }
   .mj-bj-mao > .mj-mao { grid-row: auto; }
+}
 @container mj (max-height: 360px) {
   .mj-bj-banca { min-height: 0; padding: var(--s-1); }
   .mj-bj-banca-mao { min-height: 0; }
   .mj-bj-banca .mj-carta-m { --mj-carta-w: 32px; }
+}
 @container mj (min-width: 900px) and (min-height: 560px) {
   .mj-bj .mj-bj-mao .mj-carta-p { --mj-carta-w: 40px; }
   .mj-bj-banca .mj-carta-m { --mj-carta-w: 60px; }
+}
+/* === truco === */
+.mj-truco {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
+  gap: var(--s-1);
+  padding: 30px var(--s-2) var(--s-2);
+  container-type: size;
+  overflow: hidden;
+}
+.mj-tr-topo,
+.mj-tr-lugares,
+.mj-tr-mesa,
+.mj-tr-minhas,
+.mj-tr-acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.mj-tr-titulo { margin: 0; font-size: var(--fs-body); }
+.mj-tr-placar { margin: 0 auto; font-weight: 700; }
+.mj-tr-resumo { margin: 0; color: var(--tx2); font-size: var(--fs-micro); }
+.mj-tr-vira { display: flex; align-items: center; gap: var(--s-05); font-size: var(--fs-small); }
+.mj-tr-lugares { justify-content: space-between; }
+.mj-tr-lugar { display: flex; align-items: center; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-tr-lugar.is-vez { color: var(--tx); font-weight: 700; }
+.mj-tr-mesa { justify-content: center; align-content: center; flex-wrap: wrap; min-height: 0; }
+.mj-tr-jogada { display: grid; justify-items: center; gap: var(--s-05); color: var(--tx2); font-size: var(--fs-micro); }
+.mj-tr-minhas { justify-content: center; flex-wrap: wrap; min-height: 0; }
+.mj-tr-carta { display: grid; justify-items: center; gap: var(--s-05); }
+.mj-tr-acoes { justify-content: center; flex-wrap: wrap; }
+.mj-tr-parceiro { flex-basis: 100%; margin: 0; color: var(--tx2); font-size: var(--fs-micro); text-align: center; }
+@container (max-width: 560px) {
+  .mj-tr-lugares { gap: var(--s-05); }
+  .mj-tr-lugar { font-size: var(--fs-micro); }
+  .mj-tr-carta .mj-carta-g { --mj-carta-w: 40px; }
+}
+@container (max-height: 360px) {
+  .mj-tr-minhas .mj-carta-g { --mj-carta-w: 38px; }
+  .mj-tr-lugar .mj-btn { min-height: 28px; }
+}
+/* === oito === */
+.mj-oito { display: flex; flex-direction: column; gap: var(--s-2); padding-top: 30px; }
+.mj-oito-topo, .mj-oito-acoes, .mj-oito-pessoas { display: flex; align-items: center; gap: var(--s-1); }
+.mj-oito-topo { justify-content: space-between; min-height: 26px; }
+.mj-oito-titulo { font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-oito-status {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--tx2); font-size: var(--fs-small); text-align: left;
+}
+.mj-oito-relogio { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-oito-pessoas { flex-wrap: wrap; min-height: 26px; }
+.mj-oito-pessoa { padding: 2px var(--s-1); border-radius: var(--r-full); background: var(--s2); color: var(--tx2); font-size: var(--fs-micro); }
+.mj-oito-pessoa.is-vez { box-shadow: inset 0 0 0 1px var(--act); color: var(--tx); }
+.mj .mj-oito-sentar { min-height: 22px; padding: 0 var(--s-2); border-radius: var(--r-full); font-size: var(--fs-micro); }
+.mj-oito-mesa { flex: 1; min-height: 76px; display: flex; align-items: center; justify-content: center; gap: var(--s-3); border-radius: var(--r-md); background: var(--s2); }
+.mj-oito-descarte { min-width: 54px; min-height: 76px; display: grid; place-items: center; }
+.mj-oito-naipe { color: var(--tx2); font-size: var(--fs-small); }
+.mj-oito-minha { min-height: 70px; display: flex; justify-content: center; align-items: end; gap: var(--s-1); overflow: hidden; }
+.mj .mj-oito-carta { min-height: 0; padding: 0; border: 0; background: transparent; }
+.mj-oito-carta:not([disabled]):hover { transform: translateY(-4px); }
+.mj-oito-acoes { flex-wrap: wrap; justify-content: center; }
+.mj-oito-selecao { min-height: 30px; max-width: 110px; }
+/* .mj-oito-pessoas NUNCA some por @container: e onde moram os botoes
+   "Sentar" dos lugares livres (a janela nao tem outro jeito de sentar) --
+   no tamanho minimo do modulo (420x280) isto escondia a unica forma de
+   entrar no jogo. */
+@container mj (max-height: 300px) {
+  .mj-oito { gap: var(--s-1); }
+  .mj-oito-topo, .mj-oito-pessoas { min-height: 22px; }
+  .mj-oito-mesa { min-height: 40px; }
+  .mj-oito-descarte { min-height: 40px; }
+  .mj-oito-minha { min-height: 44px; }
+  .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; }
+  .mj-oito-minha .mj-carta { --mj-carta-w: 32px; }
+}
+
+/* === domino ===
+   Linha de pedras quebra dentro da mesa; não há imagens externas. */
+.mj.mj-domino {
+  padding-top: 30px;
+  gap: var(--s-2);
+}
+.mj-do-topo,
+.mj-do-acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.mj-do-status {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.mj-do-mesa {
+  flex: 1;
+  min-height: 92px;
+  display: grid;
+  place-items: center;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.mj-do-linha {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+  gap: 2px;
+  max-width: 100%;
+}
+.mj-do-pedra {
+  flex: none;
+  width: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+}
+.mj-do-pedra svg {
+  display: block;
+  width: 100%;
+  fill: var(--tx);
+  stroke: var(--line2);
+  stroke-width: 2;
+}
+.mj-do-pedra circle {
+  fill: var(--s4);
+  stroke: none;
+}
+.mj-do-mesa-pedra {
+  width: 44px;
+}
+.mj-do-lugares {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-1);
+}
+.mj-do-lugar {
+  min-width: 0;
+  padding: var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+}
+.mj-do-lugar.is-eu {
+  box-shadow: inset 0 0 0 1px var(--on-line);
+}
+.mj-do-lugar.is-vez {
+  box-shadow: inset 0 0 0 2px var(--act);
+}
+.mj-do-mao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  min-height: 42px;
+}
+@container mj (max-width: 520px) {
+  .mj-do-pedra {
+    width: 48px;
+  }
+  .mj-do-mesa-pedra {
+    width: 34px;
+  }
+  .mj-do-lugares {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container mj (max-height: 350px) {
+  /* .mj-do-lugares NUNCA some por @container: e onde moram os botoes
+     "Sentar no lugar N" -- a janela nao tem outro jeito de sentar. No
+     tamanho minimo do modulo (420x300) isto escondia a unica forma de
+     entrar no jogo. */
+  .mj.mj-domino {
+    gap: var(--s-1);
+  }
+  .mj-do-lugares {
+    gap: 2px;
+  }
+  .mj-do-lugar {
+    padding: 2px var(--s-1);
+  }
+  .mj-do-topo .mj-btn,
+  .mj-do-acoes .mj-btn {
+    min-height: 30px;
+  }
+  .mj-do-mesa {
+    min-height: 50px;
+  }
+  .mj-do-mao {
+    min-height: 34px;
+  }
+  .mj-do-pedra {
+    width: 42px;
+  }
+  .mj-do-mesa-pedra {
+    width: 30px;
+  }
+}
+
+/* === quadro === */
+/* Folha em branco (contrato, secao 10): barra de ferramentas fixa em cima,
+   o canvas ocupa o resto. Sem @container aqui -- nada de secundario pra
+   esconder num tamanho pequeno; a propria barra encolhe (texto some antes
+   dos botoes na largura minima da janela). */
+.mj-quadro { padding: var(--s-2); gap: var(--s-2); }
+.mj-qd-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+.mj .mj-qd-ferr, .mj .mj-qd-acao { min-height: 32px; padding: 0 var(--s-2); font-size: var(--fs-small); }
+.mj .mj-qd-ferr.is-on { background: var(--act); border-color: var(--act); color: var(--on-act); }
+.mj-qd-paleta { display: flex; align-items: center; gap: var(--s-05); padding: 0 var(--s-1); }
+.mj-qd-cor {
+  width: 18px; height: 18px; flex: none;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--r-full);
+  background: var(--mj-cor);
+  box-shadow: inset 0 0 0 1px var(--scrim-1);
+  cursor: pointer;
+}
+.mj-qd-cor.is-on { border-color: var(--tx); }
+.mj-qd-palco {
+  position: relative;
+  flex: 1; min-height: 0;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  touch-action: none;
+}
+.mj-qd-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.mj-qd-texto-input {
+  position: absolute;
+  min-width: 120px;
+  padding: 2px var(--s-1);
+  background: var(--s2);
+  border: 1px dashed var(--line2);
+  border-radius: var(--r-xs);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+/* === desenha === */
+/* Desenha e adivinha (contrato, secao 10), por cima do Quadro: topo com
+   fase/relogio, placar horizontal, e o corpo troca de secao pela fase
+   (lobby | escolhendo | desenhando | fim). So uma secao visivel por vez. */
+.mj-desenha { padding: var(--s-2); gap: var(--s-15); }
+.mj-ds-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-height: 22px; }
+/* O aviso (quem acertou, "quase", a revelacao da rodada) mora na barra do
+   topo -- nunca dentro de uma secao que pode estar escondida pra quem
+   desenha (ver mostrarEvento/mostrarRevelacao em desenha.js). */
+.mj-ds-topo .mj-aviso { flex-basis: 100%; }
+.mj-ds-status { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mj-desenha.is-minha-vez .mj-ds-status { color: var(--on-text); }
+.mj-ds-relogio { flex: none; color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-ds-relogio.is-pouco { color: var(--warn); font-weight: 600; }
+.mj-ds-relogio[hidden] { display: none; }
+
+.mj-ds-placar {
+  flex: none;
+  display: flex; flex-wrap: wrap; gap: var(--s-1);
+  list-style: none; margin: 0; padding: 0;
+}
+.mj-ds-jogador {
+  display: flex; align-items: center; gap: var(--s-05);
+  padding: 2px var(--s-15) 2px var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  font-size: var(--fs-micro);
+}
+.mj-ds-jogador.is-vez { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-ds-jogador.is-fora { opacity: 0.55; }
+.mj-ds-nome { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-ds-pontos { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tx2); }
+
+.mj-ds-lobby, .mj-ds-escolhendo, .mj-ds-desenhando, .mj-ds-fim { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-ds-lobby { justify-content: center; }
+.mj-ds-fim { align-items: center; justify-content: center; }
+
+.mj-ds-escolhendo { align-items: center; justify-content: center; }
+.mj-ds-opcoes { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.mj .mj-ds-opcao {
+  min-width: 140px; min-height: 44px;
+  padding: 0 var(--s-3);
+  background: var(--s3);
+  border-color: var(--line2);
+  color: var(--tx);
+  font-weight: 600;
+}
+.mj .mj-ds-opcao:hover:not([aria-disabled="true"]) { background: var(--act); border-color: var(--act); color: var(--on-act); }
+
+.mj-ds-palavra {
+  margin: 0;
+  min-height: 1.4em;
+  text-align: center;
+  font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+  letter-spacing: 0.2em;
+}
+.mj-ds-palco {
+  position: relative;
+  flex: 1; min-height: 0;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  touch-action: none;
+}
+.mj-ds-canvas { display: block; width: 100%; height: 100%; }
+.mj-desenha.is-minha-vez .mj-ds-canvas { cursor: crosshair; }
+.mj-ds-palpite { flex: none; }
+.mj-ds-palpite[hidden] { display: none; }
+
+@container mj (max-height: 320px) {
+  .mj-ds-placar { display: none; }
+}
+@container mj (max-width: 420px) {
+  .mj .mj-ds-opcao { min-width: 0; flex: 1 1 100%; }
+}
+
+/* === stop === */
+.mj-stop-head,
+.mj-stop-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mj-stop-letter {
+  color: var(--text);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.mj-stop-clock {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-stop-body {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mj-stop-categories,
+.mj-stop-answers,
+.mj-stop-review,
+.mj-stop-category-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mj-stop-category-list,
+.mj-stop-answers {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mj-stop-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(80px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mj-stop-name {
+  color: var(--muted);
+}
+
+.mj-stop-answer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container (max-width: 580px) {
+  .mj-stop-row {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .mj-stop-name,
+  .mj-stop-answer {
+    grid-column: span 3;
+  }
+}
+
+/* === quiz === */
+.mj.mj-quiz { padding-top: 30px; gap: var(--s-2); }
+.mj-quiz-topo {
+  display: flex; align-items: center; gap: var(--s-2); min-width: 0;
+}
+.mj-quiz-titulo { font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif; }
+.mj-quiz-rodada { color: var(--tx2); font-size: var(--fs-small); }
+.mj-quiz-prazo {
+  min-width: 42px; padding: 1px var(--s-2); border-radius: var(--r-full);
+  background: var(--s3); color: var(--tx2); text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.mj-quiz-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
+.mj-quiz-pergunta {
+  margin: 0; min-height: 48px; font: 600 var(--fs-lead) 'Outfit', system-ui, sans-serif;
+}
+.mj-quiz-alternativas {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2);
+}
+.mj-quiz-opcao {
+  min-width: 0; min-height: 48px; justify-content: flex-start;
+  text-align: left; white-space: normal;
+}
+.mj-quiz-opcao-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mj-quiz-opcao.is-escolhida { box-shadow: inset 0 0 0 2px var(--act); }
+.mj-quiz-placar {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1);
+  min-height: 0; overflow: hidden;
+}
+.mj-quiz-jogador {
+  display: flex; align-items: center; gap: var(--s-1); min-width: 0;
+  padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--s2);
+}
+.mj-quiz-jogador.is-eu { box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-quiz-nome {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 600;
+}
+.mj-quiz-respondeu { color: var(--tx3); font-size: var(--fs-micro); }
+.mj-quiz-pontos { margin-left: auto; white-space: nowrap; font-size: var(--fs-small); }
+.mj-quiz-status { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-quiz-status:empty { display: none; }
+@container mj (max-width: 430px) {
+  .mj-quiz-alternativas { grid-template-columns: 1fr; gap: var(--s-1); }
+  .mj-quiz-opcao { min-height: 40px; }
+  .mj-quiz-placar { grid-template-columns: 1fr; }
+  .mj-quiz-pergunta { font-size: var(--fs-body); }
+}
+@container mj (max-height: 380px) {
+  .mj-quiz-placar { display: none; }
+  .mj-quiz-pergunta { min-height: 36px; }
 }

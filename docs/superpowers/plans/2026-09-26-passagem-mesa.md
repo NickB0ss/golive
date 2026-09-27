@@ -1,10 +1,40 @@
 # Passagem: a Mesa, onde a sessão parou (2026-09-26)
 
+## Atualização — sessão local de 2026-09-26 (noite)
+
+Feitos: toda a seção 3.1 e toda a seção 3.2. Pôquer e blackjack agora cabem
+na janela; as 25 chaves perdidas de `mesa-janelas.css` foram restauradas e há
+teste para fechar cada chave do CSS do renderer. Entraram os testes de lugar
+fantasma, e2e de segredo e bancada das cartas, travas no `mesa-count` e no
+`welcome`, líder pelo `⋯` na Transmissão, cartão "Assistir" curto e
+`timeoutAt(state, ctx)` compatível. As sete janelas novas são `truco`, `oito`,
+`domino`, `stop`, `quiz`, `quadro` e `desenha`; todas secretas menos o Quadro,
+com e2e próprio de segredo. O dominó é clássico, com 28 peças. Apoios novos:
+`pedras` e `quiz-perguntas`.
+
+A revisão final corrigiu permissões do Desenha, migração e saída de jogadores,
+troca de gestão no Stop, reset e trava do Truco e vez/abertura do Dominó.
+Nenhum vazamento de carta, peça ou palavra foi encontrado. Resultados:
+`npm test` 1845 passando; lint 0 erros e 9 avisos antigos; `leva2-real.js`
+97/0, `mesa-real.js` 31/0, `festa-real.js` 14/0, `rodar.js` 350/0,
+`poquer-rodar.js` 47/0, `rodar-blackjack.js` 131/0 e `harness.js checar` sem
+falhas. Prints: `docs/prints/2026-09-26-leva2/`. Playwright 1.62.1 já estava
+instalado no PC do Nicolas.
+
+Continuam pendentes a seção 3.3 e a seção 3.4. A seção 3.4 deve incluir as
+sete janelas novas com pessoas de verdade: truco e dominó em duplas, oito com
+3+, stop com votação, Desenha até o fim e Quiz completo.
+
+Riscos novos: a suíte falha cerca de 1 em 5 vezes sob carga, nos testes com
+espera de tempo do Quiz e da migração de cartas; isolada passa sempre. Em
+"Ver tudo", `.mesa-ctrls` cobre controles do topo de pôquer, blackjack, oito e
+dominó. A bancada ainda não cobriu truco e dominó com 4, oito com 3+ nem o fim
+do Desenha pelo relógio. Vale decidir um conserto global para os controles.
+
 Para abrir numa sessão nova, local, e continuar sem reler a conversa.
-Branch: **`claude/project-planning-analysis-5e9lub`**, no **PR #83**
-(https://github.com/NickB0ss/golive/pull/83); novos commits nesta branch
-atualizam o PR. **Nada disso está no `main` nem em release**: a versão do
-`package.json` continua `0.21.0`.
+O PR #83 já está no `main`. Este trabalho saiu de `origin/main` na branch
+**`feat/mesa-acabamento`**, ainda sem PR e sem merge. A versão do `package.json`
+continua `0.21.0`.
 
 Leia nesta ordem (15 min):
 
@@ -25,7 +55,7 @@ Leia nesta ordem (15 min):
 
 ```bash
 git fetch origin
-git checkout claude/project-planning-analysis-5e9lub
+git checkout feat/mesa-acabamento
 git pull
 npm ci                 # no container usamos --ignore-scripts; no Windows,
                        # o addon nativo precisa do build de sempre (npm run build:native)
@@ -51,10 +81,11 @@ npx playwright install chromium
 | `node tools/mesa-prints/harness.js checar` | a vista da Mesa num navegador de verdade (arrastar com vez, travas, teclado, tela cheia, voltar à Transmissão sem sobrar DOM) | 0 falhas em 3 rodadas |
 | `node tools/mesa-prints/harness.js prints` | refaz `docs/prints/2026-09-24-mesa/` | ok |
 | `node tools/bancada-janelas/rodar.js` | as 12 janelas de ferramentas/jogos com duas pessoas | 350 conferências, 0 falhas (na última vez que rodou) |
-| `node tools/bancada-janelas/mesa-real.js` | janelas montadas pela Mesa com o servidor de verdade, inclusive a batalha secreta | 26 conferências, 0 falhas |
+| `node tools/bancada-janelas/mesa-real.js` | janelas montadas pela Mesa com o servidor de verdade, inclusive a batalha secreta | 31 conferências, 0 falhas |
 | `node tools/bancada-janelas/festa-real.js` | Jam, Sons e Link no servidor de verdade | 14 conferências, 0 falhas |
-| `node tools/bancada-cartas/poquer-rodar.js` | pôquer com três pessoas | **falha**: conteúdo sai da janela (ver 3.1) |
-| `node tools/bancada-cartas/rodar-blackjack.js` | blackjack com três pessoas | **falha**: conteúdo sai da janela (ver 3.1) |
+| `node tools/bancada-janelas/leva2-real.js` | sete janelas novas, servidor real e pessoas em páginas separadas | 97 conferências, 0 falhas |
+| `node tools/bancada-cartas/poquer-rodar.js` | pôquer com três pessoas | 47 conferências, 0 falhas |
+| `node tools/bancada-cartas/rodar-blackjack.js` | blackjack com três pessoas | 131 conferências, 0 falhas |
 | `xvfb-run -a npx electron --no-sandbox tools/midia/main.js` (Linux) / `npx electron tools/midia/main.js` (Windows) | YouTube e Twitch **falsos** + Electron real: sincronia e deriva | 23/23 |
 | `npx electron tools/spike-youtube/main.js` | YouTube e Twitch **reais** pela origem nova | **nunca rodou** (o proxy do container bloqueia) |
 
@@ -112,6 +143,12 @@ principal, um por segundo, conferido de novo no main por
 
 ### 3.1 Consertar antes de lançar (código, dá para fazer local)
 
+**FEITO.** Pôquer e blackjack cabem na janela. A causa real era `mesa-janelas.css`
+com 25 chaves `}` perdidas desde a junção da Festa; o CSS depois de
+`.mj-jam-lista` ficava aninhado e sem efeito. O teste
+`src/renderer/css-rules.test.js` agora fecha todas as chaves. Os itens abaixo
+foram implementados, testados e conferidos nas bancadas.
+
 1. **Pôquer e blackjack: o conteúdo não cabe na janela.** Os roteiros
    acusam, já nos worktrees dos próprios times (não foi a junção):
    - `poquer-rodar.js`: tamanho mínimo (540×345) com conteúdo de 540×619 a
@@ -145,8 +182,12 @@ principal, um por segundo, conferido de novo no main por
 
 ### 3.2 Próxima leva de janelas (regras já decididas no contrato, seção 10)
 
-Nenhum código escrito ainda (os dois times caíram por limite de uso antes
-do primeiro commit):
+**FEITO.** Foram implementadas as sete janelas abaixo, com 32 tipos em
+`MODULE_NAMES`. Todas são secretas menos o Quadro; cada uma tem e2e de segredo
+próprio. `pedras` e `quiz-perguntas` entraram em `HELPER_NAMES`.
+
+Texto anterior, agora superado: nenhum código escrito ainda (os dois times
+caíram por limite de uso antes do primeiro commit):
 
 - **Cartas BR**: `truco` (paulista, 2 ou 4, vira/manilhas, truco-seis-nove-
   doze, encoberta, mão de onze e de ferro, a 12) e `oito` (Oito maluco, a
@@ -171,6 +212,10 @@ Akinator, Stockfish, co-browsing (motivos na pesquisa, seção 6).
 
 ### 3.4 Só no PC real (bloqueia versão)
 
+Além dos itens abaixo, falta testar com pessoas de verdade as sete janelas
+novas: truco e dominó em duplas, oito com 3+, stop com votação, Desenha até o
+fim e Quiz completo.
+
 - **Roteiro da Mesa com 2+ PCs**: `docs/testes/2026-09-25-roteiro-mesa.md`
   (vistas de cada um, mexer juntos, travas, jogos, fora da vista para de
   receber — log `[assistir] view-state ... watching=false` —, queda do líder
@@ -186,18 +231,37 @@ Akinator, Stockfish, co-browsing (motivos na pesquisa, seção 6).
 - A noite de teste antiga que já estava pendente (queda do líder, fanout 2
   com 5-6 PCs) — ver "Próximos passos" do `STATUS.md`.
 
-### 3.5 Decisões do Nicolas em aberto
+### 3.5 Decisões do Nicolas
+
+**Decidido.** O dominó é o clássico de 28 peças. Damas continua com 20 lances
+no total; `KING_ONLY_DRAW` não muda. O PR #83 já foi mesclado no `main`; este
+acabamento está na branch `feat/mesa-acabamento`, ainda sem PR, e a versão
+continua 0.21.0.
 
 - **Damas**: empate por "20 lances só com damas, sem captura" foi contado
   como 20 no total (10 de cada). Se for 20 de cada, é a constante
   `KING_ONLY_DRAW` em `mesa-modules/damas.js`.
 - **Versão e PR**: número da versão (sugestão 0.22.0), notas de lançamento,
   e quando fazer o merge do PR #83 no `main` (antes ou depois do teste real).
-- **Dominó**: qual variante (ver 3.2).
+- **Dominó**: decidido como o clássico de 28 peças (ver 3.2).
+
+Atualização das decisões: Damas continua com 20 lances no total
+(`KING_ONLY_DRAW` não muda). O PR #83 já está no `main`; esta branch é o
+acabamento, ainda sem PR e sem merge. A versão continua 0.21.0.
 
 ---
 
 ## 4. Como a sessão trabalhou (para repetir ou não)
+
+Na sessão local: integração na sessão principal; jobs do Codex (terra high
+para segredo/revisão, terra medium para janelas e correções, luna medium para
+conteúdo/formatação), no máximo dois ao mesmo tempo, e um ou dois subagentes
+Claude Sonnet para o que precisava de navegador. A sandbox do Codex não grava
+no `.git` de um worktree; quem integra faz o commit. Terra precisa de padrão
+explícito de qualidade no prompt (linhas com no máximo 120 colunas, um teste
+por regra e janela com todas as ações). Luna acentuou o Quiz com regex em
+tempo de execução; foi trocado por texto estático. A cota do Codex acabou uma
+vez; `codex exec resume` retomou sem perda.
 
 - **Integrador + times em worktrees.** A sessão principal escreveu o
   contrato antes de cada leva, lançou agentes com `isolation: "worktree"`
@@ -226,7 +290,7 @@ Akinator, Stockfish, co-browsing (motivos na pesquisa, seção 6).
 
 > Leia `docs/superpowers/plans/2026-09-26-passagem-mesa.md` e o contrato
 > `docs/superpowers/plans/2026-09-24-mesa-contrato.md`. Estou na branch
-> `claude/project-planning-analysis-5e9lub`. Comece pela seção 3.1 da
+> `feat/mesa-acabamento`. Comece pela seção 3.1 da
 > passagem (pôquer/blackjack cabendo na janela, pôquer depois da migração,
 > e2e de segredo das cartas, os dois itens do acabamento), junte, rode
 > `npm test`, lint e os bancos, e depois lance a leva da seção 3.2.

@@ -522,7 +522,8 @@ Pedido do Nicolas: "decida as regras utilizando padrão clássico". Sempre
 ### Desenha e adivinha (`desenha`, "Desenha e adivinha")
 - Vez de desenhar gira entre quem entrou na rodada. Quem desenha escolhe 1
   entre 3 palavras sorteadas (lista em português embutida); só ele vê a
-  palavra (segredo). 80 s para desenhar.
+  palavra (segredo). **15 s para escolher; estourou, vai a primeira**. Depois,
+  há 80 s para desenhar.
 - Quem adivinha escreve o palpite **na janela** (não no chat); o servidor
   compara sem acento e sem caixa. Acertou: pontos pelo tempo que sobrou
   (100 a 10), e quem desenha ganha 10 por acerto. Palpite "quase" (uma letra
@@ -542,3 +543,22 @@ Pedido do Nicolas: "decida as regras utilizando padrão clássico". Sempre
   o líder ou quem pôs pode limpar. Os traços vão pelo canal do rabisco (não
   pelo estado da janela, que tem teto de bytes), com `annotate-sync` para
   quem chega depois.
+
+### Dominó (`domino`, "Dominó") — decidido em 2026-09-26
+- Clássico de **28 peças** (duplo-seis). 2, 3 ou 4 jogadores; com 4, em
+  **duplas** (parceiros de frente). **7 peças** para cada um; com 2 ou 3, o
+  que sobra fica no **monte** (segredo, como o baralho).
+- Quem tem o **duplo-seis** abre a primeira mão (se ninguém tiver, o maior
+  duplo; sem duplo, a peça de maior soma). Nas mãos seguintes abre quem
+  ganhou a anterior, com qualquer peça.
+- Joga-se encaixando a peça numa das **duas pontas** pelo número igual. Sem
+  peça que encaixe: com monte, **compra até poder jogar**; sem monte (ou com
+  4 jogadores), **passa**.
+- A mão acaba quando alguém **bate** (fica sem peças) ou quando o jogo
+  **tranca** (ninguém pode jogar). Batida: quem bateu (ou a dupla) marca a
+  soma dos pontos das peças que ficaram na mão dos adversários. Trancado:
+  vence quem (ou a dupla) tiver menos pontos na mão e marca a soma dos
+  adversários; empate na tranca, ninguém marca.
+- O jogo vai a **100 pontos**. Cada um só vê as próprias peças (módulo
+  `secret`); os outros veem quantas peças cada um tem. 30 s por jogada;
+  estourou, joga a primeira peça que encaixa (ou compra/passa).

@@ -76,8 +76,9 @@
   // Mesa (spec 2026-09-24): a vista e de cada pessoa. `mesaView` e o
   // controlador de mesa-view.js (criado mais abaixo, junto dos outros
   // ganchos da grade); `mesaViewers` e quem esta na vista Mesa agora e
-  // `mesaCount` quantas janelas a mesa tem -- as duas coisas chegam mesmo a
-  // quem esta na Transmissao (welcome, mesa-viewers, mesa-count).
+  // `mesaCount` quantas janelas a mesa tem e `mesaLocks` as travas -- as tres
+  // coisas chegam mesmo a quem esta na Transmissao (welcome, mesa-viewers,
+  // mesa-count).
   let mesaView = null;
   let mesaPor = null; // "Pôr na mesa" do chat e da Galeria (mesa-por.js)
   // As imagens que o historico do chat ainda guarda (espelho das regras do
@@ -87,6 +88,7 @@
   window.GoLive.chatImagens = chatImagens;
   let mesaViewers = [];
   let mesaCount = 0;
+  let mesaLocks = null;
   let joinedAtMs = null;
   let notifyTracker = livenotify.createTracker();
   let roomId = null;
@@ -3552,7 +3554,11 @@
         // QUALQUER welcome -- o servidor tira a pessoa da Mesa ao retomar).
         mesaCount = Number.isInteger(msg.mesaCount) ? msg.mesaCount : 0;
         mesaViewers = Array.isArray(msg.mesaViewers) ? msg.mesaViewers.map(String) : [];
+        mesaLocks = typeof msg.mesaLocks?.leaderOnly === 'boolean' && typeof msg.mesaLocks?.lockSize === 'boolean'
+          ? { leaderOnly: msg.mesaLocks.leaderOnly, lockSize: msg.mesaLocks.lockSize }
+          : null;
         renderViewSwitch();
+        renderRoomMore();
         mesaView?.afterWelcome();
         mesaView?.onViewers();
         mesaView?.onLeaderChange();
@@ -3758,7 +3764,11 @@
       }
       case 'mesa-count': {
         if (Number.isInteger(msg.count) && msg.count >= 0) mesaCount = msg.count;
+        if (typeof msg.leaderOnly === 'boolean' && typeof msg.lockSize === 'boolean') {
+          mesaLocks = { leaderOnly: msg.leaderOnly, lockSize: msg.lockSize };
+        }
         renderViewSwitch();
+        renderRoomMore();
         break;
       }
       // O resto da Mesa so chega a quem esta na vista Mesa (ou e resposta a
@@ -3877,6 +3887,11 @@
       // servidor: e dele que sai a cor do pincel, entao nao da pra desenhar
       // com a cor de outra pessoa.
       case 'annotate': {
+        // Rabisco em janela da Mesa (contrato, secao 10, "Quadro"):
+        // superficie 'mesa:<id>', tratada inteiramente pela vista (ela nao
+        // tem tela real pra empurrar pro overlay, nem lousa no annotStore
+        // global de tela/camera).
+        if (mesaView?.handleAnnotate(msg)) break;
         ui.annotations.applyOp(msg.surface, msg.from, msg);
         pushToAnnotOverlay(msg.surface, msg.from, msg);
         break;
@@ -3902,6 +3917,8 @@
       // (`from === surface`): sem esta checagem, qualquer um podia
       // reescrever a lousa inteira de qualquer tela com um sync forjado.
       case 'annotate-sync': {
+        // Janela da Mesa: ver o comentario do caso 'annotate' acima.
+        if (mesaView?.handleAnnotateSync(msg)) break;
         // O dono sai da chave COMPOSTA ('7:screen'), nao da chave inteira --
         // senao um sync legitimo seria descartado. parseSurface aceita
         // tambem a chave sem kind, que e o que um cliente antigo manda.
@@ -5722,11 +5739,11 @@
 
   function renderRoomMore() {
     const leader = ownerId === 'me';
-    const locks = mesaView?.locks() || null;
+    const locks = mesaView?.locks() || mesaLocks;
     $('opt-mesa-leader-only-row').classList.toggle('hidden', !leader);
     $('opt-mesa-lock-size-row').classList.toggle('hidden', !leader);
-    // As travas so sao conhecidas com a Mesa aberta (quem esta na
-    // Transmissao nao recebe a mesa): fora dela, o motivo no lugar.
+    // Servidores antigos nao mandam as travas para a Transmissao: so nesse
+    // caso o motivo ocupa o lugar dos controles.
     $('opt-mesa-locks-hint').classList.toggle('hidden', !leader || Boolean(locks));
     for (const [id, key] of [['opt-mesa-leader-only', 'leaderOnly'], ['opt-mesa-lock-size', 'lockSize']]) {
       const box = $(id);
@@ -5774,6 +5791,7 @@
     chatImagens.clear();
     mesaViewers = [];
     mesaCount = 0;
+    mesaLocks = null;
     setRoomMoreOpen(false);
     renderViewSwitch();
   });

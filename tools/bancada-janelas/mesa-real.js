@@ -27,7 +27,7 @@ const PAGINA = `file://${path.join(RAIZ, 'src', 'renderer', 'index.html')}`;
 const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-24-janelas');
 // Os tabuleiros primeiro: no "Ver tudo" eles ficam em cima, longe do mapa
 // (canto de baixo a esquerda), onde o arraste de peca e conferido.
-const TIPOS = ['damas', 'xadrez', 'velha', 'lig4', 'batalha', 'placar', 'cronometro', 'nota', 'lista', 'enquete', 'sorteio', 'dados', 'roleta'];
+const TIPOS = ['damas', 'xadrez', 'velha', 'lig4', 'batalha', 'poquer', 'blackjack', 'placar', 'cronometro', 'nota', 'lista', 'enquete', 'sorteio', 'dados', 'roleta'];
 
 const espera = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const falhas = [];
@@ -198,6 +198,53 @@ async function main() {
       await page.keyboard.press('Escape');
       await espera(300);
     }
+
+    // Pôquer (secret): Ana vê só as próprias duas cartas; a Bia sentada
+    // recebe a própria view, sem as cartas da Ana nem o baralho. No zoom
+    // "Ver tudo" com as 15 janelas a caixa fica pequena (o conteudo encolhe
+    // com o zoom, mas os controles do canto -- avatar/tela cheia/tirar --
+    // tem tamanho fixo na tela) e "Dar as cartas"/"Levantar" ficam por
+    // baixo deles; tela cheia (o mesmo atalho usado acima para o print da
+    // batalha) tira a janela do zoom da mesa e da tamanho de sobra para
+    // clicar, como uma pessoa faria antes de jogar numa janela pequena.
+    const pq = win('poquer');
+    await pq.hover();
+    await pq.locator('.mesa-ctrl[data-act="full"]').click();
+    await espera(300);
+    await pq.getByRole('button', { name: /^Sentar/ }).first().click();
+    await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.poquer && m.state.seats[0]).catch(() => null);
+    bia.envia({ type: 'mesa', op: 'act', id: ids.poquer, action: { kind: 'sit', seat: 1 } });
+    await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.poquer && m.state.seats[1] === bia.id);
+    await pq.getByRole('button', { name: 'Dar as cartas' }).click();
+    const maoPoquer = await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.poquer && m.state.hand).catch(() => null);
+    // A tela da Ana atualiza pelo proprio socket, que chega perto do da Bia
+    // mas nao junto: espera a segunda carta aparecer em vez de contar na hora.
+    await pq.locator('.mj-pq-minhas .mj-carta').nth(1).waitFor({ timeout: 2000 }).catch(() => {});
+    conferir(await pq.locator('.mj-pq-minhas .mj-carta').count() === 2, 'pôquer: Ana vê as próprias duas cartas');
+    conferir(!!maoPoquer && maoPoquer.state.hand.holes[0] === null && maoPoquer.state.hand.holes[1]?.length === 2,
+      'pôquer: Bia não recebe as cartas da Ana nem o baralho');
+    await page.keyboard.press('Escape');
+    await espera(300);
+
+    // Blackjack (secret): a fechada da banca fica nula no socket até a
+    // rodada terminar; o sapato nunca é enviado. Mesmo motivo da tela
+    // cheia acima.
+    const bj = win('blackjack');
+    await bj.hover();
+    await bj.locator('.mesa-ctrl[data-act="full"]').click();
+    await espera(300);
+    await bj.getByRole('button', { name: /^Sentar/ }).first().click();
+    await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.blackjack && m.state.seats[0]).catch(() => null);
+    bia.envia({ type: 'mesa', op: 'act', id: ids.blackjack, action: { kind: 'sit', seat: 1 } });
+    await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.blackjack && m.state.seats[1] === bia.id);
+    await bj.locator('.mj-bj-campo').fill('10');
+    await bj.getByRole('button', { name: 'Apostar' }).click();
+    bia.envia({ type: 'mesa', op: 'act', id: ids.blackjack, action: { kind: 'bet', amount: 10 } });
+    const cartasBj = await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.blackjack && m.state.dealer.cards.length === 2).catch(() => null);
+    conferir(!!cartasBj && cartasBj.state.dealer.cards[1] === null && !Object.hasOwn(cartasBj.state, 'shoe'),
+      'blackjack: Bia não recebe a fechada da banca nem o sapato');
+    await page.keyboard.press('Escape');
+    await espera(300);
 
     await page.mouse.move(5, 5);
     await espera(400);
