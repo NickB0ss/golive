@@ -49,6 +49,9 @@ Estas decisões anteriores continuam valendo (vault: `golive - acento reservado�
 
 ## 3. Fundação (vale para o app todo)
 
+Na fase 1, os tokens desta seção passam a existir e são aplicados na Mesa. A casca da sala e o lobby passam a
+usá-los nas fases 2 e 3 (seção 5).
+
 ### 3.1 Forma "Macio"
 
 Os tokens de raio já existem (`--r-xs` 6, `--r-sm` 10, `--r-md` 14, `--r-lg` 18, `--r-full`). O que muda é o papel
@@ -139,19 +142,24 @@ Estrutura nova de `makeWin` (`mesa-view.js`):
   jogar.
 - **Janela ativa.** A última janela com foco ou toque recebe `.is-active`, com `--elev-3` e título em `--tx`. As
   outras ficam com título em `--tx2`. É o estado "key window" do HIG (`windows.md › macOS window states`).
-- **Travas do líder** (`no-edit`, `no-resize`): os botões ficam `disabled` com o motivo em `title` (vindo de
-  `lockReason()`), e a barra usa `cursor: not-allowed`. O ✕ continua escondido quando `!canRemove(win)`.
+- **Travas do líder** (`no-edit`, `no-resize`): ⋯ e ⤢ continuam ativos, porque são da vista de cada
+  pessoa. A barra usa `cursor: not-allowed` com o motivo em `title` (vindo de `lockReason()`), e o ✕ continua
+  escondido quando `!canRemove(win)`.
 - **Tela cheia.** A barra continua no topo, e o ⤢ vira ⤡ com o rótulo "Sair da tela cheia".
+- **Zoom distante.** A barra está no mundo e encolhe com o zoom (a 36%, tem 13 px). Abaixo de 60% de zoom
+  (`.mesa[data-far]`), a barra mostra só o título, continua servindo para arrastar, e os botões voltam ao
+  aproximar.
 - **Janela de outra pessoa sendo movida.** O `.mesa-moving` ("Bia está movendo") passa para a área de status da
   barra, sem nada por cima do corpo.
 
 ### 4.2 Tamanho: o `size` mede o conteúdo
 
 - Em cada módulo, `size.w`, `size.h`, `size.minW`, `size.minH` e `size.aspect` passam a descrever o **corpo**.
-- `mesa-modules/index.js` exporta `BAR_H = 36` e, ao normalizar o módulo, deriva `outer`:
-  `{ w, h: h + BAR_H, minW, minH: minH + BAR_H, aspect, chromeH: BAR_H }`.
-  O servidor (`signaling-core.js`: `checkRect` e a colocação de tela e câmera) e o app passam a usar `mod.outer`
-  onde hoje usam `mod.size` para retângulos. `mesa.js › checkRect` fica como está e recebe o `outer`.
+- `mesa-modules/index.js` exporta `BAR_H = 36`. Ao normalizar o módulo, o registro devolve em `mod.size` o
+  retângulo **externo**, `{ w, h: h + BAR_H, minW, minH: minH + BAR_H, aspect, chromeH: BAR_H }`, e guarda o que
+  o módulo declarou em `mod.content`. O servidor (`signaling-core.js`: `checkRect` e a colocação de tela e câmera)
+  e a vista já leem `mod.size`, então passam a receber o externo sem mudar uma linha. `mesa.js › checkRect` fica
+  como está.
 - `mesa-vista.js › resizeRect` e `keyRect` ganham `chromeH` (padrão 0): com `aspect`, a proporção vale para
   `h - chromeH`. Tela e câmera ficam 16:9 e 4:3 no corpo.
 - Tela e câmera, postas pelo servidor em `index.js` (as linhas com `size` 640×360 e 320×240), seguem a mesma regra.
@@ -174,8 +182,8 @@ Estrutura nova de `makeWin` (`mesa-view.js`):
   medida decide.
 
 **Teste "caber"** — `tools/bancada-janelas/caber.js`, no padrão das bancadas atuais (Playwright,
-`PLAYWRIGHT_DIR`). Para cada um dos 30 tipos de `MODULE_NAMES` e para tela e câmera (32 ao todo), nos temas padrão e Papel, no tamanho padrão e no mínimo,
-com o estado inicial e com um estado cheio de exemplo (roleta com 8 opções, pôquer com 5 lugares, lista com 12
+`PLAYWRIGHT_DIR`). Para cada um dos 30 tipos de `MODULE_NAMES`, nos temas padrão e Papel, no tamanho padrão e
+no mínimo, com o estado inicial e com um estado cheio de exemplo (roleta com 8 opções, pôquer com 5 lugares, lista com 12
 itens, …), ele confere:
 
 1. `body.scrollHeight <= body.clientHeight + 1` e o mesmo na largura. No padrão, isso vale também para todo
@@ -186,6 +194,8 @@ itens, …), ele confere:
 4. O padrão com a barra cabe em 1000×620.
 
 Sai com código diferente de 0 quando falha e grava prints dos casos que falharam em `docs/prints/<data>-caber/`.
+Tela e câmera dependem do tile de vídeo e não montam na bancada. Elas são conferidas na passada visual do app real
+(seção 7).
 
 ### 4.4 Área segura e controles da Mesa
 
@@ -194,8 +204,9 @@ Sai com código diferente de 0 quando falha e grava prints dos casos que falhara
 - **Avatares de quem está na Mesa** (`.mesa-people`) saem do canvas e vão para o cabeçalho do palco, ao lado do
   seletor Transmissão/Mesa. Só aparecem com a vista Mesa aberta. Clicar num avatar continua levando até o ponteiro
   daquela pessoa.
-- **Avisos** (`.mesa-toast`) e a **nota de trava** (`.mesa-lock-note`) vão para uma fila centralizada logo acima do
-  dock (`--z-toast`), com no máximo dois avisos visíveis ao mesmo tempo.
+- **Avisos** (`.mesa-toast`) e a **nota de trava** (`.mesa-lock-note`) ficam centralizados logo acima do dock
+  (`--z-toast`). Um aviso por vez, com o novo substituindo o anterior, como hoje; a nota de trava fica acima do
+  aviso.
 - **Área segura.** `measure()` calcula, pelas caixas reais da pílula e da fila de avisos, as margens
   `{top, right, bottom, left}` do canvas. `V.viewCenter`, "Ver tudo" (`fit`), `addWindow`, `spot` ("Pôr na mesa")
   e o voo do foco pelo Tab passam a usar o retângulo seguro, não a seção inteira.
