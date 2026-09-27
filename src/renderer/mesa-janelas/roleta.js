@@ -102,7 +102,6 @@
     let rodando = false;
     let timer = null;
     let chaveDisco = '';
-    let abertoPorMim = null; // o painel de opcoes: null = automatico
 
     // Disco.
     const disco = el('div', { class: 'mj-rol-disco' });
@@ -113,12 +112,14 @@
     const saida = el('p', { class: 'mj-rol-saida', attrs: { role: 'status', 'aria-live': 'polite' } });
     const quem = el('span', { class: 'mj-dados-quem mj-rol-quem' });
     const girar = C.botao({ icone: 'zerar', text: 'Girar', class: 'mj-pri' });
-    const alternar = C.botao({ text: 'Opções', class: 'mj-fantasma mj-rol-alternar', attrs: { 'aria-expanded': 'false' } });
-    const ctrl = el('div', { class: 'mj-barra mj-rol-ctrl' }, alternar, el('span', { class: 'mj-mola' }), girar);
+    const ctrl = el('div', { class: 'mj-barra mj-rol-ctrl' }, el('span', { class: 'mj-mola' }), girar);
     const lado = el('div', { class: 'mj-rol-lado' }, roda, el('div', { class: 'mj-rol-res' }, saida, quem), ctrl);
 
     // Opcoes.
-    const painel = el('section', { class: 'mj-rol-painel', attrs: { 'aria-label': 'Opções da roleta' } });
+    const painel = el('section', {
+      class: 'mj-rol-painel',
+      attrs: { 'aria-label': 'Opções da roleta', 'data-caber-rola': '' },
+    });
     const listaOp = el('ol', { class: 'mj-rol-lista mj-rola' });
     const campoNova = el('input', {
       class: 'mj-campo',
@@ -132,11 +133,6 @@
     b.raiz.append(lado, painel);
 
     b.clique(girar, ctrl, () => b.acao(ctrl, { kind: 'spin' }));
-    alternar.addEventListener('click', () => {
-      abertoPorMim = painel.hidden;
-      pintarPainel();
-      if (!painel.hidden) campoNova.focus();
-    });
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       if (!campoNova.value.trim()) return;
@@ -173,7 +169,6 @@
         C.ligado(l.x, true, `Tirar ${o}`);
       });
       C.ligado(addBtn, C.podeFazer(api, { kind: 'add', text: 'x' }), 'Adicionar opção');
-      alternar.replaceChildren(el('span', { text: `Opções (${ops.length})` }));
       const faltam = m.MIN_SPIN_OPTIONS - ops.length;
       dicaPainel.textContent = faltam > 0 ? `Ponha pelo menos ${m.MIN_SPIN_OPTIONS} opções para girar.` : '';
       dicaPainel.hidden = faltam <= 0;
@@ -264,21 +259,10 @@
       C.ligado(girar, rodando ? 'A roleta está girando' : C.podeFazer(api, { kind: 'spin' }), 'Girar a roleta');
     }
 
-    function pintarPainel() {
-      const auto = state.options.length < m.MIN_SPIN_OPTIONS;
-      // Aberto sozinho e a pessoa esta digitando nele: nao fecha embaixo dela.
-      if (abertoPorMim === null && !auto && !painel.hidden && painel.contains(root.document.activeElement)) abertoPorMim = true;
-      const aberto = abertoPorMim === null ? auto : abertoPorMim;
-      painel.hidden = !aberto;
-      alternar.setAttribute('aria-expanded', String(aberto));
-      b.raiz.classList.toggle('is-painel', aberto);
-    }
-
     function update(novo, meta) {
       state = novo;
       desenharDisco();
       desenharLista();
-      pintarPainel();
       const spin = state.spin;
       if (!spin) {
         if (timer) clearTimeout(timer);

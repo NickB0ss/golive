@@ -156,7 +156,7 @@
 .mj-placar-rodape:empty { display: none; }
 .mj-placar-rodape.is-vence { color: var(--tx); font-weight: 600; }
 
-@container mj (max-height: 199px) {
+@container mj (max-height: 179px) {
   .mj-placar .mj-sec { display: none; }
 }
 @container mj (max-width: 335px) {
@@ -301,7 +301,7 @@
 .mj-cron-ctrl .mj-pri { min-width: calc(var(--s-7) * 2); }
 .mj-cronometro .mj-aviso { justify-content: center; }
 
-@container mj (max-height: 190px) {
+@container mj (max-height: 150px) {
   .mj-cronometro .mj-sec { display: none; }
 }
 @container mj (max-width: 300px) {
@@ -509,7 +509,7 @@
 .mj-dados-ctrl .mj-pri { min-width: calc(var(--s-7) * 2); }
 .mj-dados .mj-aviso { justify-content: center; }
 
-@container mj (min-width: 520px) and (min-height: 360px) {
+@container mj (min-width: 360px) and (min-height: 260px) {
   .mj-dados-corpo { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
   .mj-dados-col { display: flex; }
 }
@@ -565,17 +565,10 @@
 .mj-rol-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
 .mj-rol-lista .mj-campo { flex: 1; }
 
-/* Estreita: o painel de opcoes cobre a roda (e o botao Opcoes alterna). */
+/* Estreita: a roda em cima, as opcoes numa lista rolavel embaixo. Nada cobre a roda. */
 @container mj (max-width: 559px) {
   .mj-roleta { flex-direction: column; }
-  .mj-rol-painel { position: absolute; inset: 0; width: auto; max-width: none; padding: var(--s-3) var(--s-3) calc(var(--s-3) + 44px); background: var(--s1); }
-  .mj-roleta.is-painel .mj-rol-roda { visibility: hidden; }
-  .mj-roleta { position: relative; }
-  .mj-rol-ctrl { position: relative; z-index: 1; }
-}
-@container mj (min-width: 560px) {
-  .mj-rol-alternar { display: none !important; }
-  .mj-rol-painel[hidden] { display: flex !important; }
+  .mj-rol-painel { width: auto; max-width: none; flex: 0 1 40%; min-height: 0; overflow-y: auto; }
 }
 
 /* ---------- Lista ---------- */
@@ -597,7 +590,7 @@
 .mj-lista-vazio { flex: 1; }
 .mj-item {
   display: flex; align-items: center; gap: var(--s-1);
-  min-height: 36px;
+  min-height: 28px;
   padding: 0 var(--s-1) 0 var(--s-2);
   border-radius: var(--r-sm);
 }

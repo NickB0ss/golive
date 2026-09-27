@@ -63,7 +63,7 @@ async function abrir(browser, tipo, tam, tema) {
   return { page, erros };
 }
 
-function medirEAssinar() {
+function medirEAssinar(cresce) {
   function rotuloLocal(el) {
     const classes = [...el.classList].join('.');
     const texto = el.textContent ? ` "${el.textContent.trim().slice(0, 20)}"` : '';
@@ -93,6 +93,7 @@ function medirEAssinar() {
     return assinatura;
   }
 
+  const foraDaVista = (r, v) => r.top + r.height / 2 < v.top || r.top + r.height / 2 > v.bottom;
   const corpo = window.bancada.conteudoEl('1');
   const caixa = corpo.getBoundingClientRect();
   const problemas = [];
@@ -112,11 +113,16 @@ function medirEAssinar() {
       || ret.right > caixa.right + 1 || ret.bottom > caixa.bottom + 1;
     if (fora && !el.closest('[data-caber-rola]')) problemas.push(`fora da caixa: ${rotuloLocal(el)}`);
     const rola = /(auto|scroll)/.test(estilo.overflowY) && el.scrollHeight > el.clientHeight + 1;
-    if (rola && tam === 'padrao') problemas.push(`rolagem escondida no padrao: ${rotuloLocal(el)}`);
+    // Lista que cresce com o uso (estado cheio) pode rolar no contêiner marcado; no estado inicial, nada rola.
+    const rolaPermitida = cresce && el.hasAttribute('data-caber-rola');
+    if (rola && tam === 'padrao' && !rolaPermitida) problemas.push(`rolagem escondida no padrao: ${rotuloLocal(el)}`);
   }
   for (const el of corpo.querySelectorAll('button, input, select, textarea, [role="button"]')) {
     const ret = el.getBoundingClientRect();
     if (ret.width === 0 || ret.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
+    // Rolado para fora da vista do contêiner: alcança rolando, nao esta coberto.
+    const rolavel = el.closest('[data-caber-rola]');
+    if (rolavel && foraDaVista(ret, rolavel.getBoundingClientRect())) continue;
     const alvo = document.elementFromPoint(ret.left + ret.width / 2, ret.top + ret.height / 2);
     if (!alvo || (alvo !== el && !el.contains(alvo))) {
       problemas.push(`coberto: ${rotuloLocal(el)} por ${alvo ? rotuloLocal(alvo) : 'nada'}`);
@@ -198,7 +204,7 @@ async function conferirEstado(ctx, tipo, tam, tema, estadoNome, estado, assinatu
   if (estado) await ctx.page.evaluate((valor) => window.bancada.impor(valor), estado);
   await ctx.page.waitForTimeout(60);
   await ctx.page.mouse.move(0, 0);
-  const medida = await ctx.page.evaluate(medirEAssinar);
+  const medida = await ctx.page.evaluate(medirEAssinar, estadoNome === 'cheio');
   const problemas = medida.problemas;
   if (tam === 'padrao' && assinaturaGrande) {
     problemas.push(...problemasDaAssinatura(assinaturaGrande, medida.assinatura));

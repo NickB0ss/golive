@@ -199,7 +199,7 @@
     type: TYPE,
     title: 'Roleta',
     group: 'noite',
-    size: { w: 440, h: 520, minW: 320, minH: 380, aspect: null },
+    size: { w: 640, h: 440, minW: 360, minH: 420, aspect: null },
     maxStateBytes: 3072,
     MIN_SPIN_OPTIONS, MAX_OPTIONS, MAX_TEXT, MIN_TURNS, MAX_TURNS, MAX_PEER_ID,
     init,

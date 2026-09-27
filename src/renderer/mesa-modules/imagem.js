@@ -21,7 +21,7 @@
     type: TYPE,
     title: 'Imagem',
     group: 'ferramentas',
-    size: { w: 480, h: 360, minW: 160, minH: 120, aspect: null },
+    size: { w: 480, h: 360, minW: 160, minH: 160, aspect: null },
     maxStateBytes: 256,
 
     init() {

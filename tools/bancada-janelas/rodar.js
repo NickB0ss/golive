@@ -275,7 +275,6 @@ const ROTEIROS = {
     }
     let s = await c.estado('2');
     conferir(s.options.length === 3, `roleta/${tam}: tres opcoes`);
-    if (tam === 'min') await c.ana.locator('.mj-rol-alternar').click();
     await c.ana.locator('.mj-pri').click();
     await espera(100);
     conferir((await c.bia.locator('.mj-rol-saida').textContent()) === 'Girando…', `roleta/${tam}: gira nos dois`);

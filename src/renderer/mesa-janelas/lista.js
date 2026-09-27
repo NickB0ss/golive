@@ -58,7 +58,10 @@
     });
     const campoTitulo = C.campoLocal(titulo, { confirmar: (v) => b.acao(b.raiz, { kind: 'title', text: v }) });
 
-    const ul = el('ul', { class: 'mj-lista-itens mj-rola', attrs: { 'aria-label': 'Itens' } });
+    const ul = el('ul', {
+      class: 'mj-lista-itens mj-rola',
+      attrs: { 'aria-label': 'Itens', 'data-caber-rola': '' },
+    });
     const vazio = el('p', { class: 'mj-dica mj-lista-vazio', text: 'Nada na lista ainda.' });
 
     const novo = el('input', {
