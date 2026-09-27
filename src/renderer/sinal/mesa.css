@@ -254,3 +254,13 @@ body.mesa-open #grid { display: none; }
 .mesa-win .tile__hud [data-acao]:not([data-acao='rabiscar']):not([data-acao='reagir']) { display: none; }
 /* A regua de rabisco nao encolhe com o zoom da Mesa. */
 .mesa-win .draw-bar { transform: translateX(-50%) scale(var(--mesa-inv, 1)); transform-origin: 50% 100%; }
+/* "Adicionar janela": 30 tipos em duas colunas, com o titulo do grupo de ponta a
+ * ponta -- numa coluna so a lista passava da altura da janela. */
+.mesa-menu[aria-label='Adicionar janela'] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 2px;
+  width: min(420px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+}
+.mesa-menu[aria-label='Adicionar janela'] .mesa-menu-head { grid-column: 1 / -1; }

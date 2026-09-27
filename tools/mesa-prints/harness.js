@@ -224,9 +224,9 @@ async function prints(browser, port, s) {
   caio.envia({ type: 'camera-state', on: true });
   await espera(500);
   await mostrarTela(page, ana.id, 'Duda', '#5E3A2A');
-  await page.mouse.click(1000, 300, { button: 'right' });
-  await page.waitForSelector('.mesa-menu:not([hidden])');
-  await page.keyboard.press('ArrowRight');
+  // Pelo + do dock: com as janelas ja espalhadas, um clique direito num ponto fixo
+  // do mundo pode cair sobre uma janela e abrir o menu dela.
+  await page.click('#btn-mesa-add');
   await page.waitForSelector('.mesa-menu [data-add="nota"]');
   await espera(200);
   await page.screenshot({ path: path.join(PRINTS, '04-menu-adicionar-janela.png') });

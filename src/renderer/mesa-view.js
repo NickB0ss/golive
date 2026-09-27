@@ -1847,14 +1847,24 @@
       }
     }
 
+    // Onde os menus da Mesa podem chegar embaixo: o bus da sala fica por cima da
+    // Mesa (so a Mesa em tela cheia passa por cima dele).
+    function menuFloor() {
+      if (document.body.classList.contains('mesa-full')) return root.innerHeight;
+      const bus = document.querySelector('.bus');
+      const r = bus ? bus.getBoundingClientRect() : null;
+      return r && r.height > 0 ? Math.min(r.top, root.innerHeight) : root.innerHeight;
+    }
+
     function placeMenu(m, x, y, flipFrom = null) {
+      const H = menuFloor();
       m.hidden = false;
       m.classList.add('is-open');
+      m.style.maxHeight = `${Math.max(160, H - 16)}px`;
       m.style.left = '0px';
       m.style.top = '0px';
       const r = m.getBoundingClientRect();
       const W = root.innerWidth;
-      const H = root.innerHeight;
       let nx = x;
       let ny = y;
       if (nx + r.width > W - 8) nx = flipFrom != null ? flipFrom - r.width : W - 8 - r.width;
@@ -1980,12 +1990,14 @@
       sub.innerHTML = addMenuHtml();
       sub.setAttribute('aria-label', 'Adicionar janela');
       const r = anchor ? anchor.getBoundingClientRect() : { left: root.innerWidth / 2, top: root.innerHeight - 80 };
+      const floor = Math.min(r.top, menuFloor());
       sub.hidden = false;
       sub.classList.add('is-open');
+      sub.style.maxHeight = `${Math.max(160, floor - 16)}px`;
       sub.style.left = '0px';
       sub.style.top = '0px';
       const h = sub.getBoundingClientRect().height;
-      placeMenu(sub, r.left, r.top - h - 8);
+      placeMenu(sub, r.left, floor - h - 8);
       wireMenu(sub, null);
       sub.querySelector('.mesa-menu-row')?.focus({ preventScroll: true });
     }
