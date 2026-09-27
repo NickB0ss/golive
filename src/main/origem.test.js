@@ -192,7 +192,7 @@ test('responder recusa metodo, outra origem, travessia, pasta, teste e symlink',
 });
 
 test('responder serve os arquivos de verdade do renderer que as janelas pedem', async () => {
-  for (const nome of ['index.html', 'espiar.html', 'vazia.html', 'app.js', 'style.css', 'espiar-page.js', 'pcm-injector-worklet.js', 'assets/fonts/outfit-latin.woff2', 'assets/icon.svg']) {
+  for (const nome of ['index.html', 'espiar.html', 'vazia.html', 'app.js', 'sinal/tokens.css', 'sinal/shell.css', 'espiar-page.js', 'pcm-injector-worklet.js', 'assets/fonts/outfit-latin.woff2', 'assets/icon.svg']) {
     const r = await responder({ raiz: RENDERER, metodo: 'HEAD', url: `http://localhost/${nome}` });
     assert.equal(r.status, 200, nome);
   }

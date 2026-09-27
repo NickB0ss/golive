@@ -7,7 +7,7 @@
 }(typeof window !== 'undefined' ? window : globalThis, () => {
   function peopleForRoom(room) {
     const total = Number.isInteger(room?.peers) && room.peers > 0 ? room.peers : 0;
-    const shown = Math.min(total, 4);
+    const shown = Math.min(total, 5);
 
     return {
       avatars: Array.from({ length: shown }, (_, index) => index),

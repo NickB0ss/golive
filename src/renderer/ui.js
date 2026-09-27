@@ -2445,46 +2445,60 @@
   const roomsCountEl = $('rooms-count');
   const LOCK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
   // Sem sala, os tres nos ficam neutros: vermelho continua reservado ao ao vivo.
-  const ANTENNA_ICON = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M20.71 14.20 L11.35 9.06"/><path d="M20.71 17.80 L11.35 22.94"/><circle cx="8.5" cy="7.5" r="3.25"/><circle cx="8.5" cy="24.5" r="3.25"/><circle cx="24" cy="16" r="3.75"/></svg>`;
 
   let networkEmptyHint = null;
 
   function renderRoomAvatars(room) {
     const people = lobbyRoom.peopleForRoom(room);
-    const avatars = people.avatars.map(() => '<span class="room-presence-avatar" aria-hidden="true"></span>');
-    const extra = people.extra ? `<span class="room-presence-extra">+${people.extra}</span>` : '';
+    const avatars = people.avatars.map(() => '<span class="node" data-size="16" data-state="present" aria-hidden="true"></span>');
+    const extra = people.extra ? `<span class="cluster__more">+${people.extra}</span>` : '';
     const label = room.peers === 1 ? '1 pessoa na sala' : `${room.peers || 0} pessoas na sala`;
 
-    return `<span class="room-presence" aria-label="${label}">${avatars.join('')}${extra}</span>`;
+    return `<span class="cluster" aria-label="${label}"><span class="cluster__nodes">${avatars.join('')}</span>${extra}</span>`;
   }
 
   function emptyRoomsHint() {
-    return networkEmptyHint || 'Crie uma sala ou entre pelo endereço para encontrar seus amigos.';
+    return networkEmptyHint || 'Nenhuma sala anunciada na sua rede. Se seus amigos usam Tailscale, peça o endereço e entre por ele.';
   }
 
   function renderEmptyRooms(listEl) {
-    const empty = document.createElement('li');
-    empty.className = 'rooms-empty';
+    const empty = document.createElement('div');
+    empty.className = 'blank';
     empty.innerHTML = `
-      ${ANTENNA_ICON}
-      <span class="rooms-empty-title">Nenhuma sala na sua rede ainda</span>
-      <span class="rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</span>
-      <span class="rooms-empty-actions">
-        <button class="secondary" type="button" data-lobby-action="join">Entrar por endereço</button>
-        <button class="primary" type="button" data-lobby-action="create">Criar sala</button>
-      </span>`;
-    empty.querySelector('[data-lobby-action="join"]').addEventListener('click', () => {
-      $('btn-join-address').click();
-    });
-    empty.querySelector('[data-lobby-action="create"]').addEventListener('click', () => {
-      $('btn-create-room').click();
-    });
+      <svg class="blank__art graph-art" viewBox="0 0 32 32" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round">
+          <path d="M20.71 14.20 L11.35 9.06" /><path d="M20.71 17.80 L11.35 22.94" />
+          <circle class="ring" cx="8.5" cy="7.5" r="3.25" /><circle class="ring" cx="8.5" cy="24.5" r="3.25" />
+          <circle cx="24" cy="16" r="3.75" stroke-dasharray="1.5 1.5" />
+        </g>
+      </svg>
+      <p class="blank__title">Nenhuma sala na sua rede ainda</p>
+      <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>`;
     listEl.appendChild(empty);
   }
 
   function updateEmptyRoomsHint() {
     const hint = roomListLiveEl.querySelector('.rooms-empty-hint');
     if (hint) hint.textContent = emptyRoomsHint();
+  }
+
+  /** Coluna do meio da linha: cadeado de PIN ou a frase da versao diferente. */
+  function roomMetaHtml(room, incompatible, appVersionAtual) {
+    // Curta na linha (a frase completa fica na dica): quem precisa agir.
+    if (incompatible) {
+      const quem = version.compare(appVersionAtual, room.version) === 1
+        ? 'quem criou precisa atualizar'
+        : 'atualize o seu GoLive';
+      return escapeHtml(`Versão ${room.version} — ${quem}`);
+    }
+    return room.protected ? '<svg class="i i--sm"><use href="#i-lock" /></svg>PIN' : '';
+  }
+
+  /** Coluna da acao: "Entrar", "Conectando…" na sala escolhida, nada quando nao da para entrar. */
+  function roomGoHtml({ isActive, onCooldown, incompatible }) {
+    if (isActive) return '<span class="room-row__go"><span class="spinner" aria-hidden="true"></span>Conectando…</span>';
+    if (onCooldown || incompatible) return '<span></span>';
+    return '<span class="room-row__go">Entrar <svg class="i i--sm"><use href="#i-chevron-right" /></svg></span>';
   }
 
   function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown, appVersion }) {
@@ -2503,7 +2517,8 @@
       // antiga anunciando) nao e marcado -- a recusa vem do servidor.
       const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
       const name = room.name || room.hostName || 'sala';
-      const li = document.createElement('li');
+      const li = document.createElement('button');
+      li.type = 'button';
       li.className = 'room-row';
       if (isActive) li.classList.add('active');
       if (incompatible) li.classList.add('incompatible');
@@ -2515,43 +2530,23 @@
 
       // A descoberta (beacon e probe-ok) ainda nao conta quem esta ao vivo:
       // sem o campo, a coluna fica vazia em vez de afirmar um "—" falso.
-      const sabeAoVivo = Number.isInteger(room.livePeers);
-      const liveCount = sabeAoVivo ? room.livePeers : 0;
-      const state = isActive
-        ? '<span class="room-current">Nesta sala</span>'
-        : onCooldown
-          ? '<span class="room-waiting">Aguarde para entrar de novo</span>'
-          : incompatible
-            ? `<span class="room-version-note">${escapeHtml(versionNote)}</span>`
-            : '';
-      const tally = !sabeAoVivo ? '' : liveCount > 0 ? `${liveCount} AO VIVO` : '—';
       li.innerHTML = `
-        <span class="room-item-text">
-          <span class="room-name-line">
-            <span class="room-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-            ${room.protected ? `<span class="room-lock" title="Precisa de PIN">${LOCK_ICON}</span>` : ''}
-          </span>
-          <span class="room-meta room-address" title="${escapeHtml(room.address)}">${escapeHtml(room.address)}</span>
-          ${state}
-        </span>
         ${renderRoomAvatars(room)}
-        <span class="room-live ${liveCount > 0 ? 'tally' : ''}">${tally}</span>`;
+        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)}</span></span>
+        <span class="room-row__meta${incompatible ? ' tx-warn' : ''}" title="${escapeHtml(versionNote)}">${roomMetaHtml(room, incompatible, appVersion)}</span>
+        ${roomGoHtml({ isActive, onCooldown, incompatible })}`;
 
-      if (!isActive && !onCooldown && !incompatible) {
-        li.classList.add('clickable');
-        li.tabIndex = 0;
-        li.setAttribute('role', 'button');
+      if (isActive) li.setAttribute('aria-busy', 'true');
+      if (isActive || onCooldown || incompatible) {
+        li.disabled = true;
+      } else {
         li.setAttribute('aria-label', `Entrar em ${name}`);
         li.addEventListener('click', () => onSelect(room));
-        li.addEventListener('keydown', (event) => {
-          // role=button: Enter e Espaco ativam, como num <button>.
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          onSelect(room);
-        });
       }
 
-      listEl.appendChild(li);
+      const item = document.createElement('li');
+      item.appendChild(li);
+      listEl.appendChild(item);
     }
   }
 
@@ -2561,8 +2556,7 @@
   // chegar.
   function renderRooms({ onSelect, activeAddress, liveRooms = [], isOnCooldown, appVersion = null }) {
     fillRoomList(roomListLiveEl, liveRooms, { onSelect, activeAddress, isOnCooldown, appVersion });
-    roomsCountEl.textContent = String(liveRooms.length);
-    roomsCountEl.classList.toggle('empty', liveRooms.length === 0);
+    roomsCountEl.textContent = liveRooms.length ? ` · ${liveRooms.length}` : '';
   }
 
   // ---------- Lobby: endereco desta maquina na rede ----------
@@ -2575,25 +2569,33 @@
     const dot = $('lobby-net-dot');
     const kindEl = $('lobby-net-kind');
     const addrEl = $('lobby-net-addr');
+    const homeNet = $('home-network');
     if (!dot || !kindEl || !addrEl) return;
+    const copy = $('btn-copy-network');
     networkEmptyHint = null;
-    // Ponto neutro quando esta tudo certo: --live (vermelho) e reservado a
-    // "alguem esta ao vivo", e uma bolinha vermelha aqui ainda leria como
-    // erro. So o que exige atencao ganha cor.
-    dot.classList.remove('warn');
     addrEl.removeAttribute('title');
+    // Tres barras: verde com rede virtual, atencao so com LAN, apagadas sem
+    // rede. Vermelho nunca: ele e so "ao vivo".
     if (!info) {
-      networkEmptyHint = 'Ligue o Radmin ou o Tailscale e atualize para procurar salas.';
-      dot.classList.add('warn');
-      kindEl.textContent = 'Sem rede detectada';
-      addrEl.textContent = 'ligue o Radmin ou o Tailscale e atualize';
+      networkEmptyHint = 'Ligue o Radmin ou o Tailscale e procure de novo.';
+      dot.dataset.level = 'none';
+      kindEl.textContent = 'Nenhuma rede encontrada.';
+      addrEl.textContent = '';
+      if (copy) copy.hidden = true;
+      if (homeNet) homeNet.textContent = 'Conecte o Radmin VPN ou o Tailscale.';
       updateEmptyRoomsHint();
       return;
     }
-    if (info.kind === 'lan') dot.classList.add('warn');
-    kindEl.textContent = NET_LABELS[info.kind] || 'Rede';
+    dot.dataset.level = info.kind === 'lan' ? 'warn' : 'ok';
+    kindEl.textContent = `${NET_LABELS[info.kind] || 'Rede'} ·`;
     addrEl.textContent = info.address;
     addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
+    if (copy) copy.hidden = false;
+    if (homeNet) {
+      homeNet.textContent = info.kind === 'lan'
+        ? '— amigos de fora precisam do Radmin VPN ou do Tailscale.'
+        : '';
+    }
     updateEmptyRoomsHint();
   }
 

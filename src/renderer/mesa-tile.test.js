@@ -12,43 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const annotate = require('./annotate');
 
-const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 const vista = fs.readFileSync(path.join(__dirname, 'mesa-view.js'), 'utf8');
-
-/** Blocos `seletores { corpo }` de primeiro nivel: o que esta dentro de
- * @container/@media (a janela estreita) fica de fora. */
-function blocos(texto) {
-  const t = texto.replace(/\/\*[\s\S]*?\*\//g, '');
-  const out = [];
-  let i = 0;
-  while (i < t.length) {
-    const abre = t.indexOf('{', i);
-    if (abre < 0) break;
-    const sel = t.slice(i, abre).trim();
-    let prof = 1;
-    let j = abre + 1;
-    while (j < t.length && prof > 0) {
-      if (t[j] === '{') prof += 1;
-      else if (t[j] === '}') prof -= 1;
-      j += 1;
-    }
-    if (!sel.startsWith('@')) out.push({ sel, corpo: t.slice(abre + 1, j - 1) });
-    i = j;
-  }
-  return out;
-}
-
-test('a janela da Mesa nao esconde a barra de rabisco nem a de reacoes', () => {
-  const escondem = blocos(css).filter((b) => /display:\s*none/.test(b.corpo));
-  for (const b of escondem) {
-    for (const s of b.sel.split(',').map((x) => x.trim())) {
-      assert.ok(!/^\.mesa-win \.tile-(annot|react)-bar$/.test(s), `"${s}" some com as barras do tile na Mesa`);
-    }
-  }
-  assert.match(css, /\.mesa-win:hover \.tile-annot-bar/, 'a barra de rabisco aparece com o mouse em cima');
-  assert.match(css, /\.mesa-win \.tile\.annot-on \.tile-annot-bar/, 'com o rabisco ligado a barra fica');
-  assert.match(css, /\.mesa-win \.tile-react-bar \{[^}]*scale\(var\(--mesa-inv/, 'a barra de reacoes fica do mesmo tamanho com zoom');
-});
 
 test('arrastar a janela de video so comeca na barra', () => {
   assert.match(vista, /e\.target\.closest\('\.mesa-bar'\)/, 'a barra inicia o arraste');

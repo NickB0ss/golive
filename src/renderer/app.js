@@ -835,6 +835,21 @@
       avatarImg.src = '';
       avatarFallback.textContent = (cfg.name || '?').trim().charAt(0).toUpperCase() || '?';
     }
+    renderHomeIdentity();
+  }
+
+  function renderHomeIdentity() {
+    const greeting = $('home-greeting');
+    const whoami = $('home-whoami');
+    const nameInput = $('home-name');
+    if (!greeting || !whoami || !nameInput) return;
+    const name = (cfg.name || '').trim();
+    const hour = new Date().getHours();
+    const salutation = hour >= 5 && hour <= 11 ? 'Bom dia' : hour >= 12 && hour <= 17 ? 'Boa tarde' : 'Boa noite';
+    greeting.textContent = name ? `${salutation}, ${name}.` : 'Como seus amigos vão te ver?';
+    greeting.hidden = false;
+    whoami.hidden = Boolean(name);
+    if (document.activeElement !== nameInput) nameInput.value = name;
   }
   renderUserPanel();
 
@@ -899,6 +914,47 @@
     });
   }
 
+  async function saveAvatar(file) {
+    if (!file) return;
+    if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
+      showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToAvatar(file);
+      cfg = { ...cfg, avatar: dataUrl };
+      persist();
+      renderUserPanel();
+    } catch (err) {
+      showToast(err?.message === AVATAR_TOO_LARGE
+        ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
+        : 'Não consegui processar essa imagem.');
+    }
+  }
+
+  const homeAvatarButton = $('home-avatar');
+  const homeAvatarInput = $('home-avatar-input');
+  const homeNameInput = $('home-name');
+  homeAvatarButton?.addEventListener('click', () => homeAvatarInput?.click());
+  homeAvatarInput?.addEventListener('change', (event) => {
+    const [file] = event.target.files;
+    event.target.value = '';
+    void saveAvatar(file);
+  });
+  function saveHomeName() {
+    const name = homeNameInput?.value.trim() || '';
+    if (name === cfg.name) return;
+    cfg = { ...cfg, name };
+    persist();
+    renderUserPanel();
+  }
+  homeNameInput?.addEventListener('blur', saveHomeName);
+  homeNameInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    saveHomeName();
+  });
+
   function openSettingsOnProfile() {
     openSettings();
     document.querySelector('.settings-cat[data-cat="profile"]')?.click();
@@ -912,22 +968,7 @@
         persist();
         renderUserPanel();
       },
-      onAvatarChange: async (file) => {
-        if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
-          showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
-          return;
-        }
-        try {
-          const dataUrl = await resizeImageToAvatar(file);
-          cfg = { ...cfg, avatar: dataUrl };
-          persist();
-          renderUserPanel();
-        } catch (err) {
-          showToast(err?.message === AVATAR_TOO_LARGE
-            ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
-            : 'Não consegui processar essa imagem.');
-        }
-      },
+      onAvatarChange: saveAvatar,
       onCameraDeviceChange: (deviceId) => {
         cfg = { ...cfg, camera: { ...cfg.camera, deviceId } };
         persist();
@@ -1169,7 +1210,7 @@
     btnUpdateAvailable.disabled = estado === 'baixando';
     $('update-bar-progress').classList.toggle('hidden', estado !== 'baixando');
     if (estado === 'baixando') {
-      $('update-bar-fill').style.width = `${Math.max(0, Math.min(100, progress ?? 0))}%`;
+      $('update-bar-progress').style.setProperty('--pct', `${Math.max(0, Math.min(100, progress ?? 0))}%`);
     }
     updateBarEl.classList.remove('hidden');
   }
@@ -1243,15 +1284,31 @@
   }
 
   let toastTimer = null;
-  function showToast(msg, ms = 4000) {
+  let toastDeadline = 0;
+  let toastRemaining = 0;
+  function hideToast() {
+    $('toast').classList.add('hidden');
+    toastTimer = null;
+  }
+  function showToast(msg, ms = 5000) {
     $('toast-text').textContent = msg;
     $('toast').classList.remove('hidden');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      $('toast').classList.add('hidden');
-      toastTimer = null;
-    }, ms);
+    toastRemaining = ms;
+    toastDeadline = Date.now() + ms;
+    toastTimer = setTimeout(hideToast, ms);
   }
+  $('toast').addEventListener('mouseenter', () => {
+    if (!toastTimer) return;
+    toastRemaining = Math.max(0, toastDeadline - Date.now());
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  });
+  $('toast').addEventListener('mouseleave', () => {
+    if ($('toast').classList.contains('hidden') || toastTimer) return;
+    toastDeadline = Date.now() + toastRemaining;
+    toastTimer = setTimeout(hideToast, toastRemaining);
+  });
 
   $('btn-refresh-discovery').addEventListener('click', () => {
     const btn = $('btn-refresh-discovery');
@@ -1283,8 +1340,28 @@
     });
   }
 
-  $('btn-join-address').addEventListener('click', () => {
-    ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
+  $('join-address-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const address = $('join-address').value.trim();
+    if (!/^(?:wss?:\/\/)?[^\s:]+:\d+$/.test(address)) {
+      showLobbyError('Informe um endereço no formato IP:porta.');
+      return;
+    }
+    showLobbyError('');
+    // Direto, sem dialogo: ele so aparece se a sala pedir PIN (o joinRoom o
+    // reabre com o campo depois do 'join-denied').
+    handleJoinConnect({ address });
+  });
+
+  $('btn-copy-network')?.addEventListener('click', () => {
+    const address = $('lobby-net-addr')?.textContent?.trim();
+    if (!address) return;
+    navigator.clipboard.writeText(address).then(() => {
+      const button = $('btn-copy-network');
+      button.setAttribute('aria-label', 'Copiado');
+      showToast('Copiado', 1500);
+      setTimeout(() => button.setAttribute('aria-label', 'Copiar endereço'), 1500);
+    }).catch(() => {});
   });
 
   // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto

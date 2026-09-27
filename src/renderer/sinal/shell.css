@@ -523,3 +523,28 @@
   .tile__hud [data-hud-optional] { display: none; }
   .tile__state { gap: var(--s-2); font-size: 12px; }
 }
+
+/* ============ Inicio: o que o prototipo nao mostrava ============ */
+.head__lobby-only { display: contents; }
+.me-chip { gap: var(--s-2); padding: 0 var(--s-2) 0 var(--s-1); }
+.me-chip .node { overflow: hidden; }
+.me-chip__name { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.me-chip__name:empty { display: none; }
+
+.winctl__restore { display: none; }
+.winctl__btn.is-maximized .winctl__max { display: none; }
+.winctl__btn.is-maximized .winctl__restore { display: block; }
+
+.hello__net .btn { margin-left: calc(var(--s-1) * -1); }
+.hello__net #home-network:empty { display: none; }
+.lobby__error:empty, .lobby__status:empty { display: none; }
+.lobby__error, .lobby__status { margin-top: calc(var(--s-5) * -1); }
+
+.rooms__list { display: grid; }
+.room-row__name, .room-row__addr { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.room-row__meta { max-width: 300px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.room-row__meta .i { flex: none; }
+.room-row__go .spinner { width: 14px; height: 14px; }
+
+.lobby__foot { display: flex; align-items: center; gap: var(--s-2); }
+.room-row__meta.tx-warn { color: var(--warn); }
