@@ -302,7 +302,7 @@ test('mesa passa de 32 janelas: recusa full; cota de 20 operacoes/s por pessoa',
   // Metade de cada um: 16 por pessoa cabe na cota de 20/s.
   for (let i = 0; i < 32; i += 1) {
     const quem = i % 2 ? bia : ana;
-    const r = await quem.op({ op: 'add', win: nota((i % 12) * 400, Math.floor(i / 12) * 300, 160, 120) });
+    const r = await quem.op({ op: 'add', win: nota((i % 12) * 400, Math.floor(i / 12) * 300, 320, 276) });
     assert.equal(r.type, 'mesa', `janela ${i}`);
   }
   assert.equal((await bia.op({ op: 'add', win: nota(0, 2000) })).reason, 'full');

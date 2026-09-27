@@ -134,3 +134,23 @@ test('o registro e o mesmo pelo renderer (GoLive.mesaRegistry)', () => {
   assert.equal(global.GoLive.mesaRegistry, registry);
   assert.ok(path.basename(require.resolve('./index')) === 'index.js');
 });
+
+test('size do registro e o retangulo externo: conteudo + barra', () => {
+  const r = registry.checkModule(modulo());
+  assert.equal(r.ok, true);
+  assert.equal(registry.BAR_H, 36);
+  assert.deepEqual(
+    { ...r.module.content },
+    { w: 200, h: 100, minW: 100, minH: 50, aspect: null },
+  );
+  assert.deepEqual(
+    { ...r.module.size },
+    { w: 200, h: 136, minW: 100, minH: 86, aspect: null, chromeH: 36 },
+  );
+});
+
+test('a proporcao do modulo continua sendo a do conteudo', () => {
+  const tela = registry.get('tela');
+  assert.equal(tela.size.aspect, 16 / 9);
+  assert.equal(tela.size.h - tela.size.chromeH, tela.size.w / tela.size.aspect);
+});

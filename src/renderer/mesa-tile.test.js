@@ -3,8 +3,8 @@
  * Controles do tile (volume, rabisco, reacoes) dentro da janela da Mesa.
  * O comportamento com DOM de verdade e conferido no banco de prova
  * (tools/mesa-prints/harness.js, `tileNaMesa`); aqui fica o que da para
- * travar sem navegador: o CSS nao esconde as barras, o arrastar da janela
- * pula os controles do tile, e o rabisco nao depende da escala da mesa.
+ * travar sem navegador: o CSS nao esconde as barras, o arrastar fica so na
+ * barra da janela, e o rabisco nao depende da escala da mesa.
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -50,10 +50,9 @@ test('a janela da Mesa nao esconde a barra de rabisco nem a de reacoes', () => {
   assert.match(css, /\.mesa-win \.tile-react-bar \{[^}]*scale\(var\(--mesa-inv/, 'a barra de reacoes fica do mesmo tamanho com zoom');
 });
 
-test('arrastar a janela de video pula os controles do tile', () => {
-  const linha = vista.split('\n').find((l) => l.includes('media && e.target.closest('));
-  assert.ok(linha, 'a guarda do arrastar existe');
-  for (const s of ['button', 'input', '.tile-annot-bar', '.tile-react-bar']) assert.ok(linha.includes(s), `falta ${s}`);
+test('arrastar a janela de video so comeca na barra', () => {
+  assert.match(vista, /e\.target\.closest\('\.mesa-bar'\)/, 'a barra inicia o arraste');
+  assert.match(vista, /e\.target\.closest\('\.mesa-bar-btn, \.mesa-resize'\)/, 'os botoes ficam livres');
 });
 
 test('o menu da janela de video oferece o volume do tile', () => {

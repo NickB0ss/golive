@@ -435,12 +435,26 @@ async function checar(browser, port, s) {
   await page.keyboard.press('Alt+ArrowRight');
   const m3 = await bia.espera((m) => m.type === 'mesa' && m.op === 'place' && m.seq === m2.seq + 1);
   ok.altRedimensiona = m3.w === add.win.w + 10;
-  // Arrastar pela alca: a Bia ve a vez, o arraste e o place.
-  const alca = await page.$eval(`.mesa-win[data-id="${id}"] .mesa-handle`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-  await page.mouse.move(alca.x, alca.y);
+  const winSel = `.mesa-win[data-id="${id}"]`;
+  ok.botoesDaBarra = await page.$$eval(`${winSel} .mesa-bar-btn`, (botoes) => (
+    botoes.length === 3
+      && botoes.every((b) => b.tabIndex >= 0 && Boolean(b.getAttribute('aria-label')))
+  ));
+  await page.click(`${winSel} [data-act="menu"]`);
+  ok.menuPelaBarra = await page.evaluate(() => (
+    [...document.querySelectorAll('.mesa-menu')].some((menu) => (
+      !menu.hidden && Boolean(menu.querySelector('[data-act="full"]'))
+    ))
+  ));
+  // Arrastar pela barra: a Bia ve a vez, o arraste e o place.
+  const barra = await page.$eval(`${winSel} .mesa-bar`, (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(barra.x, barra.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i += 1) {
-    await page.mouse.move(alca.x + i * 15, alca.y + i * 5);
+    await page.mouse.move(barra.x + i * 15, barra.y + i * 5);
     await espera(30);
   }
   ok.contornoDeOndeAssenta = await page.evaluate(() => Boolean(document.querySelector('.mesa-win.is-dragging')));

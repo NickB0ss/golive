@@ -125,14 +125,14 @@
     const caixa = document.createElement('div');
     caixa.className = 'janela';
     caixa.style.width = `${dims.w}px`;
-    caixa.style.height = `${dims.h}px`;
+    caixa.style.height = `${dims.h + 36}px`;
+    const barra = document.createElement('div');
+    barra.className = 'barra';
+    barra.textContent = mod.title;
     const el = document.createElement('div');
-    // O mesmo `el` que a Vista entrega: `.mesa-content`, com a alca de
-    // 28 px por cima do topo.
+    // O mesmo corpo que a Vista entrega, abaixo da barra da moldura.
     el.className = 'conteudo mesa-content';
-    const alca = document.createElement('div');
-    alca.className = 'alca';
-    caixa.append(alca);
+    caixa.append(barra);
     caixa.append(el);
     coluna.append(rot, caixa);
     palco.append(coluna);

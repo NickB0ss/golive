@@ -284,7 +284,7 @@
    * de baixo sozinha mexe na altura e a largura acompanha; as outras mexem
    * na largura e a altura acompanha. A borda esquerda segura a direita no
    * lugar. Nunca abaixo do minimo do tipo. */
-  function resizeRect(orig, edge, dx, dy, { aspect = null, minW = 48, minH = 48 } = {}) {
+  function resizeRect(orig, edge, dx, dy, { aspect = null, minW = 48, minH = 48, chromeH = 0 } = {}) {
     const left = edge.includes('l');
     const right = edge.includes('r');
     const bottom = edge.includes('b');
@@ -294,13 +294,14 @@
     if (left) w = orig.w - dx;
     if (bottom) h = orig.h + dy;
     if (aspect) {
-      const minWa = Math.max(minW, minH * aspect);
+      const minWa = Math.max(minW, (minH - chromeH) * aspect);
       if (bottom && !left && !right) {
-        h = Math.max(minWa / aspect, h);
-        w = h * aspect;
+        const body = Math.max(minWa / aspect, h - chromeH);
+        w = body * aspect;
+        h = body + chromeH;
       } else {
         w = Math.max(minWa, w);
-        h = w / aspect;
+        h = w / aspect + chromeH;
       }
     } else {
       w = Math.max(minW, w);
@@ -341,7 +342,11 @@
 
   /** Teclado numa janela focada: setas movem 10 (Shift, 100); Alt+setas
    * redimensionam pela borda de baixo a direita. `null` para outra tecla. */
-  function keyRect(rect, key, { shift = false, alt = false, aspect = null, minW = 48, minH = 48 } = {}) {
+  function keyRect(
+    rect,
+    key,
+    { shift = false, alt = false, aspect = null, minW = 48, minH = 48, chromeH = 0 } = {},
+  ) {
     const d = ARROWS[key];
     if (!d) return null;
     const step = shift ? 100 : 10;
@@ -349,9 +354,9 @@
       if (aspect) {
         // Com proporcao, direita/baixo crescem e esquerda/cima encolhem.
         const grow = d[0] + d[1];
-        return resizeRect(rect, 'r', grow * step, 0, { aspect, minW, minH });
+        return resizeRect(rect, 'r', grow * step, 0, { aspect, minW, minH, chromeH });
       }
-      return resizeRect(rect, 'br', d[0] * step, d[1] * step, { aspect, minW, minH });
+      return resizeRect(rect, 'br', d[0] * step, d[1] * step, { aspect, minW, minH, chromeH });
     }
     return { x: rect.x + d[0] * step, y: rect.y + d[1] * step, w: rect.w, h: rect.h };
   }

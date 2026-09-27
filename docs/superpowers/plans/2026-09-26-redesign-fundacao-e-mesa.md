@@ -580,7 +580,7 @@ test('fitRect com safe cabe dentro da area segura', () => {
   - `renderPeople` escreve em `deps.peopleSlot || S.peopleEl`. Quando `peopleSlot` existe, `S.peopleEl` sai do
     DOM da seção, e `close()` limpa o slot e põe `hidden` nele.
   - `.mesa-toast` e `.mesa-lock-note` ficam centralizados embaixo, acima do dock
-    (`bottom: calc(var(--dock-h, 72px) + var(--s-3))`), com `z-index: var(--z-toast)`. É um aviso por vez: o novo
+    (`bottom: calc(var(--dock-h, 72px) + var(--s-3))`), com `z-index: var(--z-mesa-toast)`. É um aviso por vez: o novo
     substitui o anterior, como hoje. A nota de trava fica logo acima do aviso.
 - [ ] **Passo 5: `index.html` e `app.js`.** Logo depois de `#view-switch`:
   `<div id="stage-mesa-people" class="stage-mesa-people hidden" role="group" aria-label="Quem está na mesa"></div>`.

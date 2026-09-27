@@ -62,6 +62,7 @@
   const ICON = {
     fs: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
     fsExit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>',
+    more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
     x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     minus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>',
@@ -180,6 +181,7 @@
         tracker: V.createWatchTracker(),
         widths: new Map(), // id -> largura em pixels da tela (teto de qualidade)
         drag: null,
+        activeId: null,
         fly: 0,
         raf: new Set(),
         timers: new Set(),
@@ -408,6 +410,7 @@
       // Controles da janela (avatar, Tela cheia, Tirar) ficam do mesmo
       // tamanho na tela com zoom baixo, ate um teto (janela minuscula).
       S.world.style.setProperty('--mesa-inv', String(Math.min(2.5, Math.max(1, 1 / v.z))));
+      S.section.toggleAttribute('data-far', v.z < 0.6);
       const g = V.gridStyle(v);
       const st = S.gridBg.style;
       st.backgroundImage = g.backgroundImage;
@@ -946,15 +949,21 @@
       el.tabIndex = 0;
       el.setAttribute('role', 'group');
       el.innerHTML = `
-        <div class="mesa-win-body"></div>
-        ${media ? '' : '<div class="mesa-handle" aria-hidden="true"></div>'}
-        ${media ? '<p class="mesa-win-label"><span class="mesa-win-name"></span></p>' : ''}
-        <span class="mesa-moving" hidden></span>
-        <div class="mesa-ctrls">
+        <div class="mesa-bar">
+          ${media ? '<span class="mesa-live-slot"></span>' : ''}
+          <span class="mesa-bar-title"></span>
+          <span class="mesa-bar-status"></span>
+          <span class="mesa-bar-turn" hidden>Sua vez</span>
+          <span class="mesa-moving" hidden></span>
           <span class="mesa-avatar"></span>
-          <button type="button" class="mesa-ctrl" data-act="full" aria-label="Tela cheia" title="Tela cheia (F)">${ICON.fs}</button>
-          <button type="button" class="mesa-ctrl" data-act="remove" aria-label="Tirar da mesa" title="Tirar da mesa (Delete)">${ICON.x}</button>
+          <button type="button" class="mesa-bar-btn" data-act="menu" aria-label="Mais ações da janela"
+            title="Mais ações (Shift+F10)" aria-haspopup="menu">${ICON.more}</button>
+          <button type="button" class="mesa-bar-btn" data-act="full" aria-label="Tela cheia"
+            title="Tela cheia (F)">${ICON.fs}</button>
+          <button type="button" class="mesa-bar-btn" data-act="remove" aria-label="Tirar da mesa"
+            title="Tirar da mesa (Delete)">${ICON.x}</button>
         </div>
+        <div class="mesa-win-body"></div>
         <div class="mesa-resize" data-edge="l" aria-hidden="true"></div>
         <div class="mesa-resize" data-edge="r" aria-hidden="true"></div>
         <div class="mesa-resize" data-edge="b" aria-hidden="true"></div>
@@ -974,6 +983,11 @@
         fixTried: false,
       };
       S.world.appendChild(el);
+      el.querySelector('[data-act="menu"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        openMenuAt(r.left, r.bottom + 4, rec.id, { keyboard: e.detail === 0 });
+      });
       el.querySelector('[data-act="full"]').addEventListener('click', (e) => {
         e.stopPropagation();
         toggleFull(rec.id);
@@ -987,6 +1001,7 @@
       // Chegou pelo Tab numa janela fora da vista: a vista vai ate ela (o
       // navegador nao rola a mesa -- ela e overflow: clip).
       el.addEventListener('focus', () => {
+        setActive(rec.id);
         const w = findWin(rec.id);
         // So o foco do teclado: clicar numa janela meio de fora nao voa.
         if (!w || S.fullId || S.drag || !el.matches(':focus-visible')) return;
@@ -1006,6 +1021,8 @@
       const owner = win.owner != null ? String(win.owner) : null;
       const label = labelOf(win);
       rec.el.setAttribute('aria-label', owner ? `${label}, posta por ${deps.nameOf(owner)}` : label);
+      rec.el.querySelector('.mesa-bar-title').textContent = label;
+      rec.el.querySelector('.mesa-bar').title = !canEdit() ? lockReason() || '' : '';
       const av = rec.el.querySelector('.mesa-avatar');
       const avKey = owner || '';
       if (av.dataset.key !== avKey) {
@@ -1017,20 +1034,25 @@
       }
       rec.el.querySelector('[data-act="remove"]').hidden = !canRemove(win);
       if (isMedia(win)) {
-        const name = rec.el.querySelector('.mesa-win-name');
-        if (name) name.textContent = label;
-        const labelEl = rec.el.querySelector('.mesa-win-label');
+        const liveSlot = rec.el.querySelector('.mesa-live-slot');
         const live = win.type === 'tela';
-        let pill = labelEl.querySelector('.mesa-live-pill');
+        let pill = liveSlot.querySelector('.mesa-live-pill');
         if (live && !pill) {
           pill = document.createElement('span');
           pill.className = 'mesa-live-pill';
           pill.textContent = 'AO VIVO';
-          labelEl.prepend(pill);
+          liveSlot.append(pill);
         } else if (!live && pill) pill.remove();
         adoptTile(rec, win);
       }
       renderGrab(rec.id);
+    }
+
+    function setActive(id) {
+      if (!S || S.activeId === id) return;
+      S.wins.get(S.activeId)?.el.classList.remove('is-active');
+      S.activeId = id;
+      S.wins.get(id)?.el.classList.add('is-active');
     }
 
     function avatarHtml(id) {
@@ -1209,6 +1231,16 @@
         nameOf: (id) => deps.nameOf(id),
         colorFor: (id) => deps.colorFor(id),
         serverNow: () => serverNow(),
+        setStatus(texto) {
+          const el = rec.el.querySelector('.mesa-bar-status');
+          el.textContent = String(texto ?? '').slice(0, 60);
+        },
+        setTurn(on) {
+          const el = rec.el.querySelector('.mesa-bar-turn');
+          const antes = !el.hidden;
+          el.hidden = !on;
+          if (on && !antes) announce(`Sua vez: ${labelOf(findWin(rec.id) || { type: rec.type })}`, null);
+        },
         onDenied(fn) {
           if (typeof fn !== 'function') return () => {};
           rec.denied.add(fn);
@@ -1282,16 +1314,10 @@
 
     function onWinDown(e, rec) {
       if (e.button !== 0) return;
-      if (e.target.closest('.mesa-ctrls, .mesa-resize')) return;
+      setActive(rec.id);
+      if (!e.target.closest('.mesa-bar') || e.target.closest('.mesa-bar-btn, .mesa-resize')) return;
       const win = findWin(rec.id);
       if (!win || S.fullId) return;
-      const media = isMedia(win);
-      const onHandle = Boolean(e.target.closest('.mesa-handle'));
-      // Janela de video: arrasta por qualquer ponto. Janela com conteudo:
-      // so pela alca (clicar no tabuleiro nao pode mover a janela).
-      if (!media && !onHandle) return;
-      // Controles do tile (volume, rabisco) continuam do tile.
-      if (media && e.target.closest('button, input, select, textarea, a, .tile-annot-bar, .tile-react-bar')) return;
       if (!canEdit()) {
         toast('Só o líder mexe na mesa agora.');
         return;
@@ -1640,7 +1666,7 @@
       const b = rec.el.querySelector('[data-act="full"]');
       b.innerHTML = on ? ICON.fsExit : ICON.fs;
       b.setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
-      b.title = on ? 'Sair da tela cheia (Esc)' : 'Tela cheia (F)';
+      b.title = on ? 'Sair da tela cheia (F)' : 'Tela cheia (F)';
     }
 
     function onDoubleClick(e) {
@@ -1649,7 +1675,7 @@
       e.stopPropagation();
       e.preventDefault();
       const win = findWin(winEl.dataset.id);
-      if (win && (isMedia(win) || e.target.closest('.mesa-handle'))) toggleFull(win.id);
+      if (win && e.target.closest('.mesa-bar')) toggleFull(win.id);
     }
 
     // ------------------------------------------------------------------

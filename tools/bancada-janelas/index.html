@@ -11,11 +11,9 @@
   #titulo { margin: 0 0 var(--s-3); font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif; color: var(--tx2); }
   #palco { display: flex; gap: var(--s-5); align-items: flex-start; flex-wrap: wrap; }
   .pessoa h2 { margin: 0 0 var(--s-2); font-size: var(--fs-small); font-weight: 600; color: var(--tx2); }
-  .janela { position: relative; background: var(--s1); border-radius: var(--r-lg); box-shadow: 0 0 0 1px var(--line2); overflow: hidden; }
-  .conteudo { position: absolute; inset: 0; container-type: size; overflow: hidden; }
-  /* A alca da Vista: 28 px por cima do conteudo. */
-  .alca { position: absolute; left: 0; right: 0; top: 0; height: 28px; z-index: 4; display: grid; place-items: center; pointer-events: none; }
-  .alca::after { content: ""; width: 36px; height: 4px; border-radius: 2px; background: var(--tx3); opacity: 0.5; }
+  .janela { display: flex; flex-direction: column; background: var(--s1); border-radius: var(--r-lg); box-shadow: var(--elev-2); overflow: hidden; }
+  .barra { flex: none; height: 36px; display: flex; align-items: center; padding: 0 var(--s-3); background: var(--s2); color: var(--tx); font: 600 var(--fs-body) 'Outfit', system-ui, sans-serif; }
+  .conteudo { position: relative; flex: 1; min-height: 0; container-type: size; overflow: hidden; }
 </style>
 </head>
 <body>

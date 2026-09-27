@@ -26,7 +26,11 @@ function palco({ open = false, spot = null, sendOk = true } = {}) {
 test('na Transmissao: add no meio da mesa, e o mesa-ack leva o act com o conteudo', () => {
   const p = palco();
   assert.equal(p.por.put('youtube', { kind: 'load', url: 'https://youtu.be/dQw4w9WgXcQ' }), true);
-  assert.deepEqual(p.sent[0], { type: 'mesa', op: 'add', win: { type: 'youtube', x: 2080, y: 1320, w: 640, h: 360 } });
+  assert.deepEqual(p.sent[0], {
+    type: 'mesa',
+    op: 'add',
+    win: { type: 'youtube', x: 2080, y: 1302, w: 640, h: 396 },
+  });
   assert.equal(p.por.handle({ type: 'mesa-ack', op: 'add', id: 'w1', seq: 3 }), true);
   assert.deepEqual(p.sent[1], { type: 'mesa', op: 'act', id: 'w1', action: { kind: 'load', url: 'https://youtu.be/dQw4w9WgXcQ' } });
   assert.deepEqual(p.toasts, ['Vídeo do YouTube foi para a mesa.']);
@@ -53,7 +57,7 @@ test('na Mesa: nasce no lugar que a vista escolheu e o eco do add (by = eu) leva
 test('na Mesa sem retrato ainda: cai no meio da mesa', () => {
   const p = palco({ open: true, spot: null });
   p.por.put('imagem', { kind: 'set', msgId: '1' });
-  assert.deepEqual(p.sent[0].win, { type: 'imagem', x: 2160, y: 1320, w: 480, h: 360 });
+  assert.deepEqual(p.sent[0].win, { type: 'imagem', x: 2160, y: 1302, w: 480, h: 396 });
 });
 
 test('sobreposicao: tenta de novo no lugar livre que o servidor mandou, ate 3 vezes', () => {

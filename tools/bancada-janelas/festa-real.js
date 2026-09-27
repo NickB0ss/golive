@@ -120,7 +120,7 @@ async function main() {
     }, TIPOS);
     conferir(noMenu.join() === 'jam:assistir,sons:noite,link:ferramentas', `no menu, nos grupos certos (${noMenu.join()})`);
 
-    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaModules[t].size])), TIPOS);
+    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaRegistry.get(t).size])), TIPOS);
     const ids = {};
     let x = 1400;
     for (const t of TIPOS) {

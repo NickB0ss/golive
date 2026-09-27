@@ -104,7 +104,7 @@ async function main() {
     await bia.espera((m) => m.type === 'mesa-sync');
 
     // Uma janela de cada tipo, em grade, no tamanho padrao do modulo.
-    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaModules[t].size])), TIPOS);
+    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaRegistry.get(t).size])), TIPOS);
     const ids = {};
     let x = 120;
     let y = 120;
@@ -192,7 +192,7 @@ async function main() {
     if (process.env.PRINT_BATALHA) {
       // A janela em tela cheia, no tamanho de verdade: para olhar o desenho.
       await bn.hover();
-      await bn.locator('.mesa-ctrl[data-act="full"]').click();
+      await bn.locator('.mesa-bar-title').dblclick();
       await espera(500);
       await page.screenshot({ path: process.env.PRINT_BATALHA });
       await page.keyboard.press('Escape');
@@ -209,7 +209,7 @@ async function main() {
     // clicar, como uma pessoa faria antes de jogar numa janela pequena.
     const pq = win('poquer');
     await pq.hover();
-    await pq.locator('.mesa-ctrl[data-act="full"]').click();
+    await pq.locator('.mesa-bar-title').dblclick();
     await espera(300);
     await pq.getByRole('button', { name: /^Sentar/ }).first().click();
     await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.poquer && m.state.seats[0]).catch(() => null);
@@ -231,7 +231,7 @@ async function main() {
     // cheia acima.
     const bj = win('blackjack');
     await bj.hover();
-    await bj.locator('.mesa-ctrl[data-act="full"]').click();
+    await bj.locator('.mesa-bar-title').dblclick();
     await espera(300);
     await bj.getByRole('button', { name: /^Sentar/ }).first().click();
     await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.blackjack && m.state.seats[0]).catch(() => null);

@@ -207,3 +207,21 @@ test('sameRect compara x, y, w e h e recusa ausente', () => {
   assert.equal(v.sameRect(undefined, r), false);
   assert.equal(v.sameRect(r, null), false);
 });
+
+test('resizeRect com chromeH: a proporcao vale so para o corpo', () => {
+  const orig = { x: 0, y: 0, w: 640, h: 396 };
+  const opts = { aspect: 16 / 9, minW: 160, minH: 126, chromeH: 36 };
+  assert.deepEqual(v.resizeRect(orig, 'r', 160, 0, opts), { x: 0, y: 0, w: 800, h: 486 });
+  assert.deepEqual(v.resizeRect(orig, 'b', 0, 90, opts), { x: 0, y: 0, w: 800, h: 486 });
+  const min = v.resizeRect(orig, 'br', -9999, -9999, opts);
+  assert.deepEqual({ w: min.w, h: min.h }, { w: 160, h: 126 });
+});
+
+test('keyRect repassa chromeH', () => {
+  const r = v.keyRect(
+    { x: 0, y: 0, w: 640, h: 396 },
+    'ArrowRight',
+    { alt: true, aspect: 16 / 9, chromeH: 36 },
+  );
+  assert.deepEqual(r, { x: 0, y: 0, w: 650, h: 402 });
+});

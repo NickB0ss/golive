@@ -3442,34 +3442,105 @@ body.mesa-open #grid { display: none; }
 .mesa-edge { position: absolute; left: 0; top: 0; border-radius: 40px; box-shadow: 0 0 0 1px var(--line); pointer-events: none; }
 .mesa-over { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 
-/* Janela: plana, sem sombra, contorno de 1 px. */
+/* Janela: a barra fica fora do corpo para nao cobrir conteudo. */
 .mesa-win {
   position: absolute;
   z-index: var(--z-win);
-  /* Controles da janela usam a escala local sem vazar para a Mesa. */
   isolation: isolate;
   left: 0;
   top: 0;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--r-lg);
   background: var(--s1);
-  box-shadow: 0 0 0 1px var(--line2);
+  box-shadow: var(--elev-2);
   overflow: hidden;
   outline: 0;
   transition: box-shadow var(--dur-fast) var(--ease-out);
 }
-.mesa-win:focus-visible { box-shadow: 0 0 0 2px var(--on-text); }
-.mesa-win.is-media { cursor: grab; container: mesawin / size; }
+.mesa-win.is-active { box-shadow: var(--elev-3); }
+.mesa-win:focus-visible { box-shadow: var(--elev-3), 0 0 0 2px var(--ring); }
+.mesa-win.is-media { container: mesawin / size; }
 .mesa-win.is-dragging {
   z-index: var(--z-win-drag);
-  box-shadow: 0 0 0 1px var(--on-text);
-  opacity: .92;
+  box-shadow: var(--elev-3);
   will-change: transform;
-  cursor: grabbing;
 }
 .mesa-win.is-settling { transition: transform 260ms var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
-.mesa-win.is-remote-drag { transition: transform 60ms linear, width 60ms linear, height 60ms linear; }
+.mesa-win.is-remote-drag { transition: transform 60ms linear; }
 .mesa-win.is-held { box-shadow: 0 0 0 2px var(--who); }
-.mesa-win-body { position: absolute; inset: 0; }
+.mesa-bar {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-1) 0 var(--s-3);
+  background: var(--s2);
+  cursor: grab;
+  user-select: none;
+}
+.mesa-win.is-dragging .mesa-bar { cursor: grabbing; }
+.mesa.no-edit .mesa-bar { cursor: not-allowed; }
+.mesa-bar-title {
+  flex: none;
+  max-width: 15ch;
+  overflow: hidden;
+  color: var(--tx2);
+  font: 600 var(--fs-body) 'Outfit', system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mesa-win.is-active .mesa-bar-title { color: var(--tx); }
+.mesa-bar-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tx2);
+  font-size: var(--fs-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mesa-bar-turn {
+  flex: none;
+  padding: var(--s-05) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--act);
+  color: var(--on-act);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.mesa-bar-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--tx2);
+}
+.mesa-bar-btn:hover { background: var(--s3); color: var(--tx); }
+.mesa-bar-btn:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.mesa-bar-btn:disabled { opacity: .4; cursor: not-allowed; }
+.mesa-bar-btn svg, .mesa-lock-note svg, .mesa-zoom-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mesa-bar-btn[hidden] { display: none; }
+.mesa[data-far] .mesa-bar-btn,
+.mesa[data-far] .mesa-bar-status,
+.mesa[data-far] .mesa-avatar,
+.mesa[data-far] .mesa-bar-turn,
+.mesa[data-far] .mesa-moving { display: none; }
+.mesa-win-body { position: relative; flex: 1; min-height: 0; }
 .mesa-content { position: absolute; inset: 0; container-type: size; overflow: hidden; }
 
 /* O tile do palco dentro da janela: so o video e os avisos de estado. */
@@ -3492,11 +3563,7 @@ body.mesa-open #grid { display: none; }
 .mesa-win .tile-kind-badge,
 .mesa-win .pip-strip { display: none; }
 
-/* Rabisco e reacoes do tile valem tambem na janela da Mesa. Aparecem com o
-   mouse em cima ou o foco dentro (como os controles da janela), no mesmo
-   tamanho na tela com qualquer zoom (--mesa-inv), e nao arrastam a janela
-   (mesa-view.js pula .tile-annot-bar e .tile-react-bar no pointerdown).
-   Com o rabisco ligado a barra fica, para dar para desligar. */
+/* Rabisco e reacoes do tile continuam dentro do corpo da janela. */
 .mesa-win .tile-annot-bar,
 .mesa-win .tile-react-bar {
   bottom: var(--s-2);
@@ -3511,36 +3578,11 @@ body.mesa-open #grid { display: none; }
 .mesa-win .tile.annot-on .tile-annot-bar,
 .mesa-win:hover .tile-react-bar,
 .mesa-win:focus-within .tile-react-bar { opacity: 1; pointer-events: auto; }
-/* Com a barra de rabisco a vista, o nome embaixo sai da frente (o avatar
-   de quem e continua nos controles de cima; com zoom baixo as barras
-   crescem na mesa e encostariam nele). Janela bem estreita: so o rabisco. */
-.mesa-win:hover:has(.tile.annotatable) .mesa-win-label,
-.mesa-win:focus-within:has(.tile.annotatable) .mesa-win-label { opacity: 0; }
 @container mesawin (max-width: 280px) {
   .mesa-win .tile-react-bar { display: none; }
 }
 
-/* Nome sempre visivel embaixo, AO VIVO na tela de quem transmite. */
-.mesa-win-label {
-  position: absolute;
-  left: var(--s-2);
-  bottom: var(--s-2);
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--s-15);
-  max-width: calc(100% - var(--s-4));
-  margin: 0;
-  padding: var(--s-05) var(--s-2);
-  border-radius: var(--r-full);
-  background: var(--scrim-4);
-  font-size: var(--fs-small);
-  font-weight: 600;
-  pointer-events: none;
-  transform: scale(var(--mesa-inv, 1));
-  transform-origin: 0 100%;
-}
-.mesa-win-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mesa-live-slot { display: flex; flex: none; }
 .mesa-live-pill {
   flex: none;
   padding: 0 var(--s-15);
@@ -3551,58 +3593,6 @@ body.mesa-open #grid { display: none; }
   font-weight: 700;
   letter-spacing: .06em;
 }
-
-/* Alca de 36 x 4 no topo das janelas com conteudo: aparece com o mouse. */
-.mesa-handle {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 2;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  cursor: grab;
-}
-.mesa-handle::after { content: ''; width: 36px; height: 4px; border-radius: 2px; background: var(--tx3); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
-
-/* Controles so com o mouse em cima (ou foco). */
-.mesa-ctrls {
-  position: absolute;
-  top: var(--s-2);
-  right: var(--s-2);
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: var(--s-05);
-  padding: var(--s-05);
-  border-radius: var(--r-full);
-  background: var(--scrim-4);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
-  transform: scale(var(--mesa-inv, 1));
-  transform-origin: 100% 0;
-}
-.mesa-win:hover .mesa-ctrls,
-.mesa-win:focus-within .mesa-ctrls,
-.mesa-win:hover .mesa-handle::after,
-.mesa-win:focus-within .mesa-handle::after { opacity: 1; }
-.mesa-ctrl {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--tx2);
-}
-.mesa-ctrl:hover { background: var(--s4); color: var(--tx); }
-.mesa-ctrl svg, .mesa-lock-note svg, .mesa-zoom-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.mesa-ctrl[hidden] { display: none; }
 
 /* Avatar de quem pos (e dos avatares "Ir ate"): contorno na cor da pessoa. */
 .mesa-avatar {
@@ -3624,10 +3614,7 @@ body.mesa-open #grid { display: none; }
 
 /* "Bia esta movendo": chip com a bolinha na cor da pessoa. */
 .mesa-moving {
-  position: absolute;
-  left: var(--s-2);
-  top: var(--s-2);
-  z-index: 2;
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: var(--s-15);
@@ -3638,8 +3625,6 @@ body.mesa-open #grid { display: none; }
   font-size: var(--fs-small);
   font-weight: 600;
   pointer-events: none;
-  transform: scale(var(--mesa-inv, 1));
-  transform-origin: 0 0;
 }
 .mesa-moving::before { content: ''; width: 8px; height: 8px; border-radius: var(--r-full); background: var(--who); }
 .mesa-moving[hidden] { display: none; }
@@ -3654,11 +3639,9 @@ body.mesa-open #grid { display: none; }
 .mesa-resize[data-edge="b"] { left: 14px; right: 14px; bottom: 0; height: 10px; cursor: ns-resize; }
 .mesa-resize[data-edge="bl"] { left: 0; bottom: 0; width: 20px; height: 20px; cursor: nesw-resize; }
 .mesa-resize[data-edge="br"] { right: 0; bottom: 0; width: 20px; height: 20px; cursor: nwse-resize; }
-/* Travas: o que nao se pode fazer some (o motivo fica no aviso do canto). */
-.mesa.no-edit .mesa-handle,
+/* Travas: a barra explica o motivo; so as bordas somem. */
 .mesa.no-edit .mesa-resize,
 .mesa.no-resize .mesa-resize { display: none; }
-.mesa.no-edit .mesa-win.is-media { cursor: default; }
 
 /* Onde a janela vai assentar, durante o arraste. */
 .mesa-landing {
@@ -3826,9 +3809,7 @@ body.mesa-open #grid { display: none; }
 /* Tudo some com o mouse parado (o mesmo timer da sala, ui.js). */
 .mesa-nav, .mesa-people { transition: opacity var(--dur-fast) var(--ease-out); }
 .room-idle .mesa-nav,
-.room-idle .mesa-people,
-.room-idle .mesa-ctrls,
-.room-idle .mesa-handle::after { opacity: 0; }
+.room-idle .mesa-people { opacity: 0; }
 .room-idle .mesa-nav:focus-within,
 .room-idle .mesa-people:focus-within { opacity: 1; }
 
@@ -3841,8 +3822,7 @@ body.mesa-open #grid { display: none; }
 .mesa.has-full .mesa-grid,
 .mesa.has-full .mesa-over,
 .mesa.has-full .mesa-edge { visibility: hidden; }
-.mesa-win.is-full .mesa-resize,
-.mesa-win.is-full .mesa-handle { display: none; }
+.mesa-win.is-full .mesa-resize { display: none; }
 body.mesa-full .titlebar { display: none; }
 body.mesa-full .stage-header,
 body.mesa-full .control-bar,
