@@ -39,7 +39,7 @@
 <div id="toast" class="toast hidden"><span id="toast-text"></span></div>
 
 <!-- ============ LOBBY (fora de sala) ============ -->
-<div id="lobby-view" class="lobby">
+<div id="lobby-view" class="lobby lobby-control">
   <aside class="lobby-sidebar">
     <div class="lobby-brand">
       <svg class="app-brand-mark" viewBox="0 0 32 32" aria-hidden="true">
@@ -51,25 +51,19 @@
         </g>
         <circle class="app-brand-origin" cx="24" cy="16" r="3.75" />
       </svg>
-      <span class="app-brand-name">GoLive LAN</span>
+      <span class="app-brand-name">GoLive</span>
       <span id="app-version" class="app-version"></span>
     </div>
-    <div class="lobby-actions">
-      <button id="btn-create-room" class="primary lobby-cta" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Criar sala
-      </button>
-      <button id="btn-join-address" class="secondary lobby-cta" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        Entrar por endereço
-      </button>
-    </div>
+    <nav class="lobby-nav" aria-label="Navegação principal">
+      <span class="lobby-nav-item is-current" aria-current="page">Salas</span>
+      <button id="btn-open-settings" class="lobby-nav-item" type="button">Configurações</button>
+    </nav>
     <p id="lobby-error" class="error" role="alert"></p>
     <!-- Canal separado do erro: "Conectando..." e o countdown de reconexao
          sao progresso, nao alerta -- ver A6 na auditoria de 2026-09-18. -->
     <p id="lobby-status" role="status"></p>
     <section class="lobby-network">
-      <p class="sidebar-label">Sua rede</p>
+      <p class="sidebar-label">Rede</p>
       <div class="lobby-net">
         <span id="lobby-net-dot" class="dot"></span>
         <span class="lobby-net-text">
@@ -87,9 +81,9 @@
       <button id="btn-check-update" class="icon-btn-inline" title="Buscar atualizações" aria-label="Buscar atualizações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l4 4 4-4M12 12v9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
       </button>
-      <button id="btn-open-settings" class="icon-btn-inline" title="Configurações" aria-label="Configurações" type="button">
+      <span class="icon-btn-inline" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
+      </span>
     </div>
   </aside>
 
@@ -110,10 +104,19 @@
     </section>
     <section class="lobby-rooms">
       <div class="rooms-head">
-        <div class="rooms-intro"><div class="rooms-title-line"><h1 class="rooms-title">Salas na sua rede</h1><span id="rooms-count" class="rooms-count">0</span></div><p class="rooms-subtitle">Encontre amigos na sua LAN virtual e entre em segundos.</p></div>
+        <div class="rooms-intro">
+          <div class="rooms-title-line">
+            <h1 class="rooms-title">Salas na sua rede</h1>
+            <span id="rooms-count" class="rooms-count">0</span>
+          </div>
+        </div>
         <button id="btn-refresh-discovery" class="icon-btn-inline" title="Procurar salas de novo" aria-label="Procurar salas de novo" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
         </button>
+        <button id="btn-join-address" class="secondary lobby-head-action" type="button">
+          Entrar por endereço
+        </button>
+        <button id="btn-create-room" class="primary lobby-head-action" type="button">Criar sala</button>
       </div>
       <ul id="room-list-live" class="room-list room-grid"></ul>
     </section>
@@ -241,7 +244,7 @@
       </div>
       <button id="btn-toggle-people" class="icon-btn-inline" title="Recolher pessoas" aria-label="Recolher pessoas" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 18l-6-6 6-6"/></svg>
-      </button>
+      </span>
       <button id="btn-toggle-side" class="icon-btn-inline" title="Recolher coluna" aria-label="Recolher coluna" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         <span id="chat-unread-dot" class="chat-unread-dot hidden" aria-hidden="true"></span>
@@ -508,6 +511,7 @@
 <script src="broadcastguards.js"></script>
 <script src="espiar.js"></script>
 <script src="gridlayout.js"></script>
+<script src="lobby-room.js"></script>
 <script src="tile-menu.js"></script>
 <script src="sala-layout.js"></script>
 <script src="themecode.js"></script>

@@ -15,6 +15,7 @@
   const themecode = root.GoLive.themecode;
   const gridLayout = root.GoLive.gridLayout;
   const roomname = root.GoLive.roomname;
+  const lobbyRoom = root.GoLiveLobbyRoom;
   const chatlimit = root.GoLiveChatLimit;
   const chatGrouping = root.GoLive.chatGrouping;
   // O registro de avisos fica no app; esta camada so recebe a lista pronta e
@@ -2443,21 +2444,53 @@
   const roomListLiveEl = $('room-list-live');
   const roomsCountEl = $('rooms-count');
   const LOCK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
-  const CONNECT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
-  const CONNECTED_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
   // Sem sala, os tres nos ficam neutros: vermelho continua reservado ao ao vivo.
   const ANTENNA_ICON = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M20.71 14.20 L11.35 9.06"/><path d="M20.71 17.80 L11.35 22.94"/><circle cx="8.5" cy="7.5" r="3.25"/><circle cx="8.5" cy="24.5" r="3.25"/><circle cx="24" cy="16" r="3.75"/></svg>`;
+
+  let networkEmptyHint = null;
+
+  function renderRoomAvatars(room) {
+    const people = lobbyRoom.peopleForRoom(room);
+    const avatars = people.avatars.map(() => '<span class="room-presence-avatar" aria-hidden="true"></span>');
+    const extra = people.extra ? `<span class="room-presence-extra">+${people.extra}</span>` : '';
+    const label = room.peers === 1 ? '1 pessoa na sala' : `${room.peers || 0} pessoas na sala`;
+
+    return `<span class="room-presence" aria-label="${label}">${avatars.join('')}${extra}</span>`;
+  }
+
+  function emptyRoomsHint() {
+    return networkEmptyHint || 'Crie uma sala ou entre pelo endereço para encontrar seus amigos.';
+  }
+
+  function renderEmptyRooms(listEl) {
+    const empty = document.createElement('li');
+    empty.className = 'rooms-empty';
+    empty.innerHTML = `
+      ${ANTENNA_ICON}
+      <span class="rooms-empty-title">Nenhuma sala na sua rede ainda</span>
+      <span class="rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</span>
+      <span class="rooms-empty-actions">
+        <button class="secondary" type="button" data-lobby-action="join">Entrar por endereço</button>
+        <button class="primary" type="button" data-lobby-action="create">Criar sala</button>
+      </span>`;
+    empty.querySelector('[data-lobby-action="join"]').addEventListener('click', () => {
+      $('btn-join-address').click();
+    });
+    empty.querySelector('[data-lobby-action="create"]').addEventListener('click', () => {
+      $('btn-create-room').click();
+    });
+    listEl.appendChild(empty);
+  }
+
+  function updateEmptyRoomsHint() {
+    const hint = roomListLiveEl.querySelector('.rooms-empty-hint');
+    if (hint) hint.textContent = emptyRoomsHint();
+  }
 
   function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown, appVersion }) {
     listEl.innerHTML = '';
     if (!rooms.length) {
-      const empty = document.createElement('li');
-      empty.className = 'rooms-empty';
-      empty.innerHTML = `
-        ${ANTENNA_ICON}
-        <span class="rooms-empty-title">Sua tela, na casa dos seus amigos.</span>
-        <span class="rooms-empty-hint">Ainda não há salas abertas. Crie uma sala ou entre por endereço pela barra lateral.</span>`;
-      listEl.appendChild(empty);
+      renderEmptyRooms(listEl);
       return;
     }
     for (const room of rooms) {
@@ -2471,50 +2504,51 @@
       const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
       const name = room.name || room.hostName || 'sala';
       const li = document.createElement('li');
-      li.className = 'room-row room-card';
+      li.className = 'room-row';
       if (isActive) li.classList.add('active');
       if (incompatible) li.classList.add('incompatible');
+      if (onCooldown) li.classList.add('cooldown');
 
       const versionNote = incompatible
         ? version.mismatchText({ mine: appVersion, theirs: room.version })
         : '';
 
-      const info = document.createElement('div');
-      info.className = 'room-info';
-      info.innerHTML = `
-        <span class="room-badge" style="background:${avatarColorFor(room.address)}">${escapeHtml(name.trim().charAt(0) || '?')}</span>
+      // A descoberta (beacon e probe-ok) ainda nao conta quem esta ao vivo:
+      // sem o campo, a coluna fica vazia em vez de afirmar um "—" falso.
+      const sabeAoVivo = Number.isInteger(room.livePeers);
+      const liveCount = sabeAoVivo ? room.livePeers : 0;
+      const state = isActive
+        ? '<span class="room-current">Nesta sala</span>'
+        : onCooldown
+          ? '<span class="room-waiting">Aguarde para entrar de novo</span>'
+          : incompatible
+            ? `<span class="room-version-note">${escapeHtml(versionNote)}</span>`
+            : '';
+      const tally = !sabeAoVivo ? '' : liveCount > 0 ? `${liveCount} AO VIVO` : '—';
+      li.innerHTML = `
         <span class="room-item-text">
           <span class="room-name-line">
-            ${room.protected ? `<span class="room-lock" title="Precisa de PIN">${LOCK_ICON}</span>` : ''}
             <span class="room-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-            ${incompatible ? `<span class="room-version" title="${escapeHtml(versionNote)}">${escapeHtml(version.mismatchBadge({ mine: appVersion, theirs: room.version }))}</span>` : ''}
+            ${room.protected ? `<span class="room-lock" title="Precisa de PIN">${LOCK_ICON}</span>` : ''}
           </span>
-          ${incompatible
-            ? `<span class="room-meta room-version-note" title="${escapeHtml(versionNote)}">${escapeHtml(versionNote)}</span>`
-            : `<span class="room-meta room-address" title="${escapeHtml(room.address)}">${escapeHtml(room.address)}</span>${room.peers != null ? `<span class="room-meta room-people">${room.peers} ${room.peers === 1 ? 'pessoa' : 'pessoas'}</span>` : ''}`
-          }
-        </span>`;
-      li.appendChild(info);
+          <span class="room-meta room-address" title="${escapeHtml(room.address)}">${escapeHtml(room.address)}</span>
+          ${state}
+        </span>
+        ${renderRoomAvatars(room)}
+        <span class="room-live ${liveCount > 0 ? 'tally' : ''}">${tally}</span>`;
 
-      const connectBtn = document.createElement('button');
-      connectBtn.className = 'room-connect secondary';
-      connectBtn.type = 'button';
-      connectBtn.title = isActive ? 'Já conectado nessa sala'
-        : incompatible ? versionNote
-        : `Entrar em ${name}`;
-      connectBtn.disabled = isActive || onCooldown || incompatible;
-      if (onCooldown) connectBtn.classList.add('cooldown');
-      connectBtn.innerHTML = isActive
-        ? `${CONNECTED_ICON}<span>Conectado</span>`
-        : `${CONNECT_ICON}<span>Entrar</span>`;
-      li.appendChild(connectBtn);
-
-      // O card inteiro e a porta; o botao e o reforco visual. Um so
-      // caminho de codigo, pra nao existir "clicou no card" diferente de
-      // "clicou no botao".
-      if (!connectBtn.disabled) {
+      if (!isActive && !onCooldown && !incompatible) {
         li.classList.add('clickable');
+        li.tabIndex = 0;
+        li.setAttribute('role', 'button');
+        li.setAttribute('aria-label', `Entrar em ${name}`);
         li.addEventListener('click', () => onSelect(room));
+        li.addEventListener('keydown', (event) => {
+          // role=button: Enter e Espaco ativam, como num <button>.
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onSelect(room);
+        });
       }
 
       listEl.appendChild(li);
@@ -2542,21 +2576,25 @@
     const kindEl = $('lobby-net-kind');
     const addrEl = $('lobby-net-addr');
     if (!dot || !kindEl || !addrEl) return;
+    networkEmptyHint = null;
     // Ponto neutro quando esta tudo certo: --live (vermelho) e reservado a
     // "alguem esta ao vivo", e uma bolinha vermelha aqui ainda leria como
     // erro. So o que exige atencao ganha cor.
     dot.classList.remove('warn');
     addrEl.removeAttribute('title');
     if (!info) {
+      networkEmptyHint = 'Ligue o Radmin ou o Tailscale e atualize para procurar salas.';
       dot.classList.add('warn');
       kindEl.textContent = 'Sem rede detectada';
       addrEl.textContent = 'ligue o Radmin ou o Tailscale e atualize';
+      updateEmptyRoomsHint();
       return;
     }
     if (info.kind === 'lan') dot.classList.add('warn');
     kindEl.textContent = NET_LABELS[info.kind] || 'Rede';
     addrEl.textContent = info.address;
     addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
+    updateEmptyRoomsHint();
   }
 
   // ---------- Dialogo: Criar sala ----------
