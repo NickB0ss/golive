@@ -1297,7 +1297,12 @@
           const el = rec.el.querySelector('.mesa-bar-turn');
           const antes = !el.hidden;
           el.hidden = !on;
-          if (on && !antes) announce(`Sua vez: ${labelOf(findWin(rec.id) || { type: rec.type })}`, null);
+          // So o leitor de tela ouve: a pilula na barra ja e o sinal visual, e um aviso
+          // por jogada viraria ruido com varias janelas de jogo.
+          if (on && !antes) {
+            S.liveEl.textContent = '';
+            S.liveEl.textContent = `Sua vez: ${labelOf(findWin(rec.id) || { type: rec.type })}`;
+          }
         },
         onDenied(fn) {
           if (typeof fn !== 'function') return () => {};

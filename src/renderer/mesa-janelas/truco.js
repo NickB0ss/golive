@@ -110,7 +110,6 @@
 
     const base = comum.base(el, api, 'truco');
     const doc = root.document;
-    const titulo = criar(doc, 'h2', 'mj-tr-titulo', 'Truco');
     const placar = criar(doc, 'p', 'mj-tr-placar');
     const resumo = criar(doc, 'p', 'mj-tr-resumo');
     const status = criar(doc, 'p', 'mj-jogo-status');
@@ -120,7 +119,7 @@
     const minhas = criar(doc, 'div', 'mj-tr-minhas');
     const acoes = criar(doc, 'div', 'mj-tr-acoes');
     const topo = criar(doc, 'div', 'mj-tr-topo');
-    topo.append(titulo, vira);
+    topo.append(vira);
     base.raiz.append(topo, resumo, lugares, mesa, minhas, acoes);
     let view = null;
 

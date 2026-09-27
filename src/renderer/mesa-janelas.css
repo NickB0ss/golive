@@ -1670,8 +1670,6 @@
   gap: var(--s-1);
   min-width: 0;
 }
-.mj-tr-titulo { margin: 0; font-size: var(--fs-body); }
-.mj-tr-placar { margin: 0 auto; font-weight: 700; }
 .mj-tr-resumo { margin: 0; color: var(--tx2); font-size: var(--fs-micro); }
 .mj-tr-vira { display: flex; align-items: center; gap: var(--s-05); font-size: var(--fs-small); }
 .mj-tr-lugares { justify-content: space-between; }
