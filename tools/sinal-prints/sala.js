@@ -171,6 +171,12 @@ async function rodada(browser, port, [w, h]) {
   await foto(page, '06-menu-sala', w, h);
   await page.keyboard.press('Escape');
 
+  if (await page.isVisible('#btn-chat-emoji')) {
+    await page.click('#btn-chat-emoji');
+    await foto(page, '15-emoji', w, h);
+    await page.keyboard.press('Escape');
+  }
+
   // O seletor de fonte (Transmitir), com as telas e depois as janelas.
   await page.click('#btn-toggle-share');
   await espera(600);

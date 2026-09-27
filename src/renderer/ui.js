@@ -3622,10 +3622,10 @@
       { id: 'recentes', icon: '🕐', label: 'Recentes' },
       ...emoji.GROUPS.map((g) => ({ id: g.id, icon: g.icon, label: g.label })),
     ]
-      .map((t) => `<button type="button" class="emoji-tab" data-group="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}">${t.icon}</button>`)
+      .map((t) => `<button type="button" class="emoji__tab" data-group="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}">${t.icon}</button>`)
       .join('');
     emojiTabsEl.addEventListener('click', (e) => {
-      const tab = e.target.closest('.emoji-tab');
+      const tab = e.target.closest('.emoji__tab');
       if (!tab) return;
       emojiGroup = tab.dataset.group;
       emojiSearchEl.value = '';
@@ -3664,8 +3664,8 @@
       tab.classList.toggle('active', ativo);
     }
     emojiListEl.innerHTML = chars.length
-      ? chars.map((c) => `<button type="button" class="emoji-item" data-emoji="${c}" title="${escapeHtml(emoji.labelFor(c))}">${c}</button>`).join('')
-      : `<p class="emoji-empty">${vazio}</p>`;
+      ? chars.map((c) => `<button type="button" class="emoji__item" data-emoji="${c}" title="${escapeHtml(emoji.labelFor(c))}">${c}</button>`).join('')
+      : `<p class="emoji__empty">${vazio}</p>`;
   }
 
   function openEmojiPanel() {
@@ -3692,7 +3692,7 @@
   }
 
   emojiListEl?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.emoji-item');
+    const btn = e.target.closest('.emoji__item');
     if (!btn) return;
     insertAtCursor(chatInputEl, btn.dataset.emoji);
     emojiDeps.onEmojiUsed?.(btn.dataset.emoji);

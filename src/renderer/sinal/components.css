@@ -528,3 +528,19 @@ label.opt { cursor: pointer; }
 /* Imagem ampliada. */
 .lightbox > img { max-width: min(92vw, 1600px); max-height: 86vh; border-radius: var(--r-xs); box-shadow: var(--elev-float); }
 .lightbox__close { position: absolute; top: var(--s-4); right: var(--s-4); }
+
+/* ============ Emoji (popover da conversa) ============ */
+.emoji { width: 320px; padding: var(--s-2); }
+.emoji:not(.hidden) { display: grid; gap: var(--s-2); }
+.emoji__search { position: relative; }
+.emoji__search .i { position: absolute; left: var(--s-2); top: 50%; transform: translateY(-50%); color: var(--tx3); }
+.emoji__search .input { padding-left: var(--s-6); }
+.emoji__tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding-bottom: var(--s-1); }
+.emoji__tab { display: grid; place-items: center; width: 32px; height: 28px; border-radius: var(--r-xs); color: var(--tx3); }
+.emoji__tab:hover { background: var(--veil); color: var(--tx); }
+.emoji__tab.active { background: var(--s3); color: var(--tx); }
+.emoji__tab svg { width: 16px; height: 16px; }
+.emoji__list { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; max-height: 240px; overflow-y: auto; }
+.emoji__item { display: grid; place-items: center; aspect-ratio: 1; border-radius: var(--r-xs); font-size: 20px; }
+.emoji__item:hover, .emoji__item:focus-visible { background: var(--veil); }
+.emoji__empty { grid-column: 1 / -1; padding: var(--s-4) var(--s-2); text-align: center; font: var(--t-meta); color: var(--tx3); }

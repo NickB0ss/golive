@@ -423,14 +423,14 @@
 <div id="member-menu" class="pop hidden" role="menu"></div>
 
 <!-- ============ PAINEL DE EMOJI (ancorado no compose por ui.js) ============ -->
-<div id="emoji-panel" class="popover emoji-panel hidden">
-  <div class="emoji-search">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <label for="emoji-search-input" class="visually-hidden">Procurar emoji</label>
-    <input id="emoji-search-input" type="text" placeholder="Procurar…" spellcheck="false" autocomplete="off" />
+<div id="emoji-panel" class="pop emoji hidden" role="dialog" aria-label="Emoji">
+  <div class="emoji__search">
+    <svg class="i i--sm" aria-hidden="true"><use href="#i-search" /></svg>
+    <label for="emoji-search-input" class="sr-only">Procurar emoji</label>
+    <input id="emoji-search-input" class="input" type="text" placeholder="Procurar emoji" spellcheck="false" autocomplete="off" />
   </div>
-  <div id="emoji-tabs" class="emoji-tabs"></div>
-  <div id="emoji-list" class="emoji-list"></div>
+  <div id="emoji-tabs" class="emoji__tabs" role="tablist" aria-label="Categorias"></div>
+  <div id="emoji-list" class="emoji__list"></div>
 </div>
 
 <!-- ============ IMAGEM DO CHAT AMPLIADA ============ -->
