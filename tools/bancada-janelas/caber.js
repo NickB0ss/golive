@@ -111,7 +111,9 @@ function medirEAssinar(cresce) {
     if (ret.width === 0 || ret.height === 0) continue;
     const fora = ret.left < caixa.left - 1 || ret.top < caixa.top - 1
       || ret.right > caixa.right + 1 || ret.bottom > caixa.bottom + 1;
-    if (fora && !el.closest('[data-caber-rola]')) problemas.push(`fora da caixa: ${rotuloLocal(el)}`);
+    // So o que esta DENTRO do conteiner rolavel fica isento; o conteiner em si tem de caber no corpo.
+    const dentroDeRolavel = el.parentElement?.closest('[data-caber-rola]');
+    if (fora && !dentroDeRolavel) problemas.push(`fora da caixa: ${rotuloLocal(el)}`);
     const rola = /(auto|scroll)/.test(estilo.overflowY) && el.scrollHeight > el.clientHeight + 1;
     // Lista que cresce com o uso (estado cheio) pode rolar no contêiner marcado; no estado inicial, nada rola.
     const rolaPermitida = cresce && el.hasAttribute('data-caber-rola');

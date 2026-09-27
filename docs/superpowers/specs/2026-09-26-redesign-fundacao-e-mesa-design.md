@@ -170,6 +170,10 @@ Estrutura nova de `makeWin` (`mesa-view.js`):
 
 - **No tamanho padrão**, todo o conteúdo aparece: sem rolagem no corpo, nenhum painel cobrindo outro, nenhum
   controle cortado.
+- **Lista que cresce com o uso** (itens da lista, opções da enquete e da roleta): no estado inicial nada rola;
+  quando a pessoa enche a lista, ela rola dentro de um contêiner marcado com `data-caber-rola`, e a janela não
+  cresce. O contêiner em si tem de caber no corpo (decisão da integração: o outro caminho era a lista nascer
+  com 584 px de altura).
 - **No tamanho mínimo**, aparece o essencial. O secundário some por `@container`, nunca por sobreposição.
   Painel em `position: absolute` sobre o conteúdo é proibido nas janelas; menus e popovers da própria janela
   (que abrem por clique e fecham com Esc) são a exceção.

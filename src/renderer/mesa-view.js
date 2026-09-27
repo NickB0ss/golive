@@ -367,12 +367,15 @@
       const toast = S.toastEl.getBoundingClientRect();
       const dock = deps.dockEl?.()?.getBoundingClientRect();
       const margem = 12;
+      // Quanto uma caixa ocupa do fundo da Mesa. Caixa sem tamanho (escondida ou antes do
+      // layout) tem top 0 e viraria a Mesa inteira: nao conta.
+      const doFundo = (r) => (r && r.height > 0 && r.top > sec.top && r.top < sec.bottom ? sec.bottom - r.top : 0);
       S.section.style.setProperty('--dock-h', `${dock?.height || 0}px`);
       S.section.style.setProperty('--toast-h', `${toast.height}px`);
       S.safe = {
         top: margem,
         right: margem,
-        bottom: Math.max(sec.bottom - nav.top, sec.bottom - toast.top, dock ? sec.bottom - dock.top : 0) + margem,
+        bottom: Math.min(S.vh / 2, Math.max(doFundo(nav), doFundo(toast), doFundo(dock)) + margem),
         left: margem,
       };
     }

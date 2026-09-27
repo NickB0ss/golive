@@ -3535,11 +3535,12 @@ body.mesa-open #grid { display: none; }
   stroke-linejoin: round;
 }
 .mesa-bar-btn[hidden] { display: none; }
-.mesa[data-far] .mesa-bar-btn,
-.mesa[data-far] .mesa-bar-status,
-.mesa[data-far] .mesa-avatar,
-.mesa[data-far] .mesa-bar-turn,
-.mesa[data-far] .mesa-moving { display: none; }
+/* Tela cheia sai do zoom da mesa: la os botoes (inclusive o de sair) ficam. */
+.mesa[data-far] .mesa-win:not(.is-full) .mesa-bar-btn,
+.mesa[data-far] .mesa-win:not(.is-full) .mesa-bar-status,
+.mesa[data-far] .mesa-win:not(.is-full) .mesa-avatar,
+.mesa[data-far] .mesa-win:not(.is-full) .mesa-bar-turn,
+.mesa[data-far] .mesa-win:not(.is-full) .mesa-moving { display: none; }
 .mesa-win-body { position: relative; flex: 1; min-height: 0; }
 .mesa-content { position: absolute; inset: 0; container-type: size; overflow: hidden; }
 
