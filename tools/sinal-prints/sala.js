@@ -181,6 +181,31 @@ async function rodada(browser, port, [w, h]) {
     await page.keyboard.press('Escape');
   }
 
+  // Auditoria de teclado: cada parada do Tab tem nome acessivel e foco visivel.
+  await page.mouse.move(1, 1);
+  await page.evaluate(() => document.activeElement?.blur());
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.press('Tab');
+    const parada = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body) return null;
+      const cs = getComputedStyle(el);
+      const nome = el.getAttribute('aria-label') || el.textContent.trim().slice(0, 40) || el.getAttribute('title')
+        || (el.id && document.querySelector(`label[for="${el.id}"]`)?.textContent.trim()) || el.placeholder || '';
+      // Foco pode ser indicado pelo proprio controle ou pela caixa em volta (:focus-within).
+      const caixaDoCampo = el.parentElement && getComputedStyle(el.parentElement);
+      const visivel = cs.boxShadow !== 'none' || (cs.outlineStyle !== 'none' && cs.outlineWidth !== '0px')
+        || (caixaDoCampo && caixaDoCampo.boxShadow !== 'none');
+      const caixa = el.getBoundingClientRect();
+      return { alvo: `${el.tagName.toLowerCase()}#${el.id}.${[...el.classList].slice(0, 2).join('.')}`, nome, visivel,
+        naTela: caixa.width > 0 && caixa.height > 0 };
+    });
+    if (!parada) continue;
+    if (!parada.nome) erros.push(`teclado: sem nome acessivel em ${parada.alvo}`);
+    if (!parada.visivel) erros.push(`teclado: foco invisivel em ${parada.alvo} (${parada.nome})`);
+    if (!parada.naTela) erros.push(`teclado: foco em elemento fora da tela ${parada.alvo}`);
+  }
+
   // Painel de comando.
   await page.keyboard.press('Control+k');
   await page.keyboard.type('ass');
