@@ -3707,6 +3707,31 @@ body.mesa-open #grid { display: none; }
   gap: var(--s-15);
 }
 .mesa-person { width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; }
+.stage-mesa-people {
+  display: flex;
+  align-items: center;
+  margin-left: var(--s-2);
+}
+.stage-mesa-people[hidden] { display: none; }
+.stage-mesa-people .mesa-person {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+.stage-mesa-people .mesa-person + .mesa-person { margin-left: -6px; }
+.mesa-person-more {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--s3);
+  color: var(--tx2);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+}
 
 /* Mapa e zoom no canto de baixo a esquerda. */
 .mesa-nav {
@@ -3720,11 +3745,12 @@ body.mesa-open #grid { display: none; }
   gap: var(--s-2);
 }
 .mesa-map {
-  position: relative;
+  position: absolute;
+  bottom: calc(100% + var(--s-2));
   width: 192px;
   height: 120px;
   overflow: hidden;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   background: var(--s1);
   box-shadow: inset 0 0 0 1px var(--line2);
   cursor: pointer;
@@ -3734,19 +3760,54 @@ body.mesa-open #grid { display: none; }
 .mesa-map i.is-live { background: var(--live-dim); box-shadow: inset 0 0 0 1px var(--live); }
 .mesa-map b { width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: var(--r-full); background: var(--who); }
 .mesa-map u { border: 1.5px solid var(--tx); border-radius: 3px; }
-.mesa-zoom { display: flex; align-items: center; gap: var(--s-05); padding: var(--s-05); border-radius: var(--r-sm); background: var(--s1); box-shadow: inset 0 0 0 1px var(--line2); }
-.mesa-zoom-btn { display: grid; place-items: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--tx2); }
+.mesa-zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--s-05);
+  padding: var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--s1);
+  box-shadow: var(--elev-2);
+}
+.mesa-zoom-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tx2);
+}
 .mesa-zoom-btn:hover { background: var(--s3); color: var(--tx); }
 .mesa-zoom-val { min-width: 46px; color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; text-align: center; }
-.mesa-lock-note { display: flex; align-items: center; gap: var(--s-15); margin: 0; padding: var(--s-1) var(--s-2); border-radius: var(--r-full); background: var(--s2); color: var(--tx2); font-size: var(--fs-small); }
+.mesa-lock-note {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--dock-h, 0px) + var(--toast-h, 0px) + var(--s-5));
+  z-index: var(--z-mesa-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--s-15);
+  margin: 0;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+  transform: translateX(-50%);
+}
 .mesa-lock-note[hidden] { display: none; }
 
-/* Avisos curtos no topo ("Leo pos Lig 4 na mesa"). */
+/* Avisos curtos acima do dock ("Leo pos Lig 4 na mesa"). */
 .mesa-toast {
   position: absolute;
   left: 50%;
-  top: var(--s-3);
-  z-index: var(--z-mesa-hud);
+  bottom: calc(var(--dock-h, 0px) + var(--s-3));
+  z-index: var(--z-mesa-toast);
   display: flex;
   align-items: center;
   gap: var(--s-2);

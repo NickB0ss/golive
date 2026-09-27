@@ -5655,6 +5655,8 @@
     colorFor: (id) => annotate.colorFor(id),
     avatarOf: (id) => (String(id) === String(myId) ? cfg.avatar || null : currentSession?.mesh?.peers.get(String(id))?.avatar || null),
     viewers: () => mesaViewers,
+    peopleSlot: () => $('stage-mesa-people'),
+    dockEl: () => document.querySelector('.control-bar'),
     tileIdFor: mesaTileId,
     tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
     returnTile: ui.grid.returnTile,
@@ -5664,6 +5666,7 @@
     onOpenChange: (on) => {
       document.body.classList.toggle('mesa-open', on);
       $('btn-mesa-add').classList.toggle('hidden', !on);
+      $('stage-mesa-people').hidden = !on;
       renderViewSwitch();
       renderRoomMore();
     },

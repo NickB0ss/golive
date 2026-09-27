@@ -208,6 +208,29 @@ test('sameRect compara x, y, w e h e recusa ausente', () => {
   assert.equal(v.sameRect(r, null), false);
 });
 
+test('viewCenter com safe: o centro e o da area segura', () => {
+  const view = { x: 0, y: 0, z: 1 };
+  assert.deepEqual(v.viewCenter(view, 1000, 600), { x: 500, y: 300 });
+  assert.deepEqual(v.viewCenter(view, 1000, 600, { top: 0, right: 0, bottom: 100, left: 200 }), {
+    x: 600,
+    y: 250,
+  });
+});
+
+test('centerOn com safe poe o ponto no centro da area segura', () => {
+  const safe = { top: 0, right: 0, bottom: 100, left: 200 };
+  const view = v.centerOn(2000, 1000, 1, 1000, 600, { safe });
+  assert.deepEqual(v.viewCenter(view, 1000, 600, safe), { x: 2000, y: 1000 });
+});
+
+test('fitRect com safe cabe dentro da area segura', () => {
+  const safe = { top: 40, right: 0, bottom: 120, left: 0 };
+  const rect = { x: 1000, y: 1000, w: 800, h: 800 };
+  const view = v.fitRect(rect, 1000, 800, { pad: 0, safe });
+  const s = v.screenRect(view, rect);
+  assert.ok(s.y >= 40 - 0.5 && s.y + s.h <= 800 - 120 + 0.5, 'a janela cabe entre o topo e a pilula');
+});
+
 test('resizeRect com chromeH: a proporcao vale so para o corpo', () => {
   const orig = { x: 0, y: 0, w: 640, h: 396 };
   const opts = { aspect: 16 / 9, minW: 160, minH: 126, chromeH: 36 };

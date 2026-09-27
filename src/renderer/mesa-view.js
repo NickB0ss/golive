@@ -66,6 +66,8 @@
     x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     minus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>',
+    map: '<svg viewBox="0 0 24 24" aria-hidden="true">'
+      + '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></svg>',
     chev: '<svg class="mesa-menu-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
     here: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
     lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
@@ -197,6 +199,8 @@
         focusAfterAdd: false,
         watchTimer: 0,
         lastWatchKey: '',
+        safe: null,
+        mapOpen: false,
       };
       build();
       loadJanelas();
@@ -237,6 +241,13 @@
       s.ro?.disconnect();
       for (const rec of s.wins.values()) unmountWin(rec, { returnTile: true });
       s.section.remove();
+      if (deps.peopleSlot) {
+        const slot = deps.peopleSlot();
+        if (slot) {
+          slot.textContent = '';
+          slot.hidden = true;
+        }
+      }
       S = null;
       lastAnnotateViewers = new Set();
       deps.resyncGrid?.();
@@ -299,15 +310,17 @@
         <p class="mesa-loading" role="status">Abrindo a mesa…</p>
         <div class="mesa-people" role="group" aria-label="Quem está na mesa"></div>
         <div class="mesa-nav">
-          <p class="mesa-lock-note" hidden></p>
-          <div class="mesa-map" role="button" tabindex="0" aria-label="Mapa da mesa: clique para ir até um ponto; Enter mostra tudo"></div>
+          <div id="mesa-map" class="mesa-map" hidden aria-label="Mapa da mesa"></div>
           <div class="mesa-zoom" role="group" aria-label="Aproximação">
             <button type="button" class="mesa-zoom-btn" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
             <output class="mesa-zoom-val" aria-live="off">100%</output>
             <button type="button" class="mesa-zoom-btn" data-zoom="in" aria-label="Aproximar" title="Aproximar (+)">${ICON.plus}</button>
             <button type="button" class="mesa-zoom-btn" data-zoom="fit" aria-label="Ver tudo" title="Ver tudo (0)">${ICON.fs}</button>
+            <button type="button" class="mesa-zoom-btn" data-zoom="map" aria-label="Abrir mapa" title="Mapa"
+              aria-expanded="false" aria-controls="mesa-map">${ICON.map}</button>
           </div>
         </div>
+        <p class="mesa-lock-note" hidden></p>
         <div class="mesa-toast" aria-hidden="true"><span class="mesa-toast-dot"></span><span class="mesa-toast-text"></span></div>
         <p class="visually-hidden mesa-live" aria-live="polite"></p>
         <div class="mesa-menu" role="menu" hidden></div>
@@ -321,6 +334,7 @@
       S.loadingEl = q('.mesa-loading');
       S.peopleEl = q('.mesa-people');
       S.mapEl = q('.mesa-map');
+      S.mapButton = q('[data-zoom="map"]');
       S.zoomVal = q('.mesa-zoom-val');
       S.lockNote = q('.mesa-lock-note');
       S.toastEl = q('.mesa-toast');
@@ -331,8 +345,15 @@
       edge.style.height = `${V.WORLD.h}px`;
 
       deps.grid.after(sec);
+      if (deps.peopleSlot) S.peopleEl.remove();
+      try {
+        S.mapOpen = root.localStorage.getItem('golive.mesa.mapa') === 'aberto';
+      } catch (erro) {
+        console.warn('Não foi possível ler o estado do mapa da Mesa:', erro);
+      }
+      setMapOpen(S.mapOpen);
       measure();
-      S.view = V.centerOn(V.WORLD.w / 2, V.WORLD.h / 2, 1, S.vw, S.vh);
+      S.view = V.centerOn(V.WORLD.w / 2, V.WORLD.h / 2, 1, S.vw, S.vh, { safe: S.safe });
       applyView();
       wire();
       renderPeople();
@@ -341,6 +362,19 @@
     function measure() {
       S.vw = S.section.clientWidth || 1;
       S.vh = S.section.clientHeight || 1;
+      const sec = S.section.getBoundingClientRect();
+      const nav = S.section.querySelector('.mesa-nav').getBoundingClientRect();
+      const toast = S.toastEl.getBoundingClientRect();
+      const dock = deps.dockEl?.()?.getBoundingClientRect();
+      const margem = 12;
+      S.section.style.setProperty('--dock-h', `${dock?.height || 0}px`);
+      S.section.style.setProperty('--toast-h', `${toast.height}px`);
+      S.safe = {
+        top: margem,
+        right: margem,
+        bottom: Math.max(sec.bottom - nav.top, sec.bottom - toast.top, dock ? sec.bottom - dock.top : 0) + margem,
+        left: margem,
+      };
     }
 
     function wire() {
@@ -355,16 +389,13 @@
       // pega na captura, antes do tile.
       listen(sec, 'dblclick', onDoubleClick, true);
       listen(S.mapEl, 'pointerdown', onMapDown);
-      listen(S.mapEl, 'keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          flyTo(V.fitAll(windows(), S.vw, S.vh));
-        }
-      });
       for (const b of sec.querySelectorAll('.mesa-zoom-btn')) {
         listen(b, 'click', () => {
           const k = b.dataset.zoom;
-          if (k === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh));
+          if (k === 'fit') {
+            flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
+          }
+          else if (k === 'map') setMapOpen(!S.mapOpen);
           else setView(V.zoomStep(S.view, k === 'in' ? 1 : -1, S.vw, S.vh));
         });
       }
@@ -372,6 +403,12 @@
         if (S.menu && !e.target.closest?.('.mesa-menu') && !e.target.closest?.('[data-mesa-add]')) closeMenu();
       }, true);
       listen(document, 'keydown', (e) => {
+        if (e.key === 'Escape' && S.mapOpen) {
+          e.preventDefault();
+          setMapOpen(false);
+          S.mapButton.focus();
+          return;
+        }
         if (e.key === 'Escape' && S.fullId) {
           e.preventDefault();
           exitFull();
@@ -385,6 +422,20 @@
         });
         S.ro.observe(sec);
       }
+    }
+
+    function setMapOpen(open) {
+      if (!S) return;
+      S.mapOpen = Boolean(open);
+      S.mapEl.hidden = !S.mapOpen;
+      S.mapButton.setAttribute('aria-expanded', String(S.mapOpen));
+      S.mapButton.setAttribute('aria-label', S.mapOpen ? 'Fechar mapa' : 'Abrir mapa');
+      try {
+        root.localStorage.setItem('golive.mesa.mapa', S.mapOpen ? 'aberto' : 'fechado');
+      } catch (erro) {
+        console.warn('Não foi possível guardar o estado do mapa da Mesa:', erro);
+      }
+      if (S.mapOpen) scheduleMap();
     }
 
     /** O fullscreen da janela do Electron mudou por qualquer via (Esc do
@@ -411,6 +462,9 @@
       // tamanho na tela com zoom baixo, ate um teto (janela minuscula).
       S.world.style.setProperty('--mesa-inv', String(Math.min(2.5, Math.max(1, 1 / v.z))));
       S.section.toggleAttribute('data-far', v.z < 0.6);
+      for (const bar of S.world.querySelectorAll('.mesa-bar')) {
+        bar.title = v.z < 0.6 ? 'Clique duplo: tela cheia · botão direito: mais ações' : '';
+      }
       const g = V.gridStyle(v);
       const st = S.gridBg.style;
       st.backgroundImage = g.backgroundImage;
@@ -582,7 +636,7 @@
       renderAll({ refreshContent: true });
       if (first && !S.fitted) {
         S.fitted = true;
-        setView(V.fitAll(windows(), S.vw, S.vh), { quiet: true });
+        setView(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }), { quiet: true });
       }
       scheduleGrabExpiry();
       emitLocks();
@@ -1008,7 +1062,11 @@
         const seen = V.watchable(S.view, S.vw, S.vh, rectOf(w), { minPx: 1 });
         const s2 = V.screenRect(S.view, rectOf(w));
         const inteira = s2.x >= 0 && s2.y >= 0 && s2.x + s2.w <= S.vw && s2.y + s2.h <= S.vh;
-        if (!seen.onScreen || !inteira) flyTo(V.centerOn(w.x + w.w / 2, w.y + w.h / 2, S.view.z, S.vw, S.vh));
+        if (!seen.onScreen || !inteira) {
+          flyTo(V.centerOn(w.x + w.w / 2, w.y + w.h / 2, S.view.z, S.vw, S.vh, {
+            safe: S.safe,
+          }));
+        }
       });
       for (const edge of el.querySelectorAll('.mesa-resize')) {
         edge.addEventListener('pointerdown', (e) => onResizeDown(e, rec, edge.dataset.edge));
@@ -1538,7 +1596,7 @@
         setView(V.zoomStep(S.view, -1, S.vw, S.vh));
       } else if (e.key === '0') {
         e.preventDefault();
-        flyTo(V.fitAll(windows(), S.vw, S.vh));
+          flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
       }
     }
 
@@ -1609,7 +1667,7 @@
 
     function centerWin(id) {
       const win = findWin(id);
-      if (win) flyTo(V.focusRect(win, S.vw, S.vh));
+      if (win) flyTo(V.focusRect(win, S.vw, S.vh, { safe: S.safe }));
     }
 
     /** Tela cheia de uma janela, so para voce: a janela do Electron vai a
@@ -1821,7 +1879,7 @@
       const winId = S.menu?.winId;
       const { x = 0, y = 0 } = S.menu || {};
       closeMenu();
-      if (act === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh));
+      if (act === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
       else if (act === 'volume' && winId) {
         const win = findWin(winId);
         if (win) deps.openTileMenu(deps.tileIdFor(tileKind(win), String(win.state?.peerId)), x, y);
@@ -1904,7 +1962,7 @@
       const { w, h } = mod.size;
       // Pelo botao direito a janela nasce com o canto no ponto do clique;
       // pelo + (ou teclado), no meio da vista.
-      const c = V.viewCenter(S.view, S.vw, S.vh);
+      const c = V.viewCenter(S.view, S.vw, S.vh, S.safe);
       const want = at ? { x: at.x, y: at.y, w, h } : { x: c.x - w / 2, y: c.y - h / 2, w, h };
       const rect = M.nearestFree(windows(), want, { gap: M.GAP });
       if (!rect) {
@@ -2019,6 +2077,7 @@
     }
 
     function renderMap() {
+      if (!S.mapOpen) return;
       const mw = S.mapEl.clientWidth || 192;
       const mh = S.mapEl.clientHeight || 120;
       const s = V.minimapScale(mw, mh);
@@ -2043,7 +2102,7 @@
       e.stopPropagation();
       const r = S.mapEl.getBoundingClientRect();
       const p = V.fromMinimap(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
-      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh));
+      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh, { safe: S.safe }));
     }
 
     /** Avatares de quem esta na Mesa: "Ir ate Bia" voa ate o ponteiro. */
@@ -2051,8 +2110,21 @@
       if (!S) return;
       const me = String(deps.me());
       const ids = (deps.viewers?.() || []).map(String).filter((id) => id !== me);
-      S.peopleEl.innerHTML = ids.map((id) => `<button type="button" class="mesa-avatar mesa-person" data-id="${escapeHtml(id)}" aria-label="Ir até ${escapeHtml(deps.nameOf(id))}" title="Ir até ${escapeHtml(deps.nameOf(id))}">${avatarHtml(id)}</button>`).join('');
-      for (const b of S.peopleEl.querySelectorAll('.mesa-person')) {
+      const peopleEl = deps.peopleSlot?.() || S.peopleEl;
+      if (!peopleEl) return;
+      const visiveis = ids.slice(0, 5);
+      const restantes = ids.slice(5);
+      peopleEl.innerHTML = visiveis.map((id) => {
+        const nome = deps.nameOf(id);
+        return `<button type="button" class="mesa-avatar mesa-person" data-id="${escapeHtml(id)}"
+          aria-label="Ir até ${escapeHtml(nome)}" title="Ir até ${escapeHtml(nome)}">${avatarHtml(id)}</button>`;
+      }).join('');
+      if (restantes.length) {
+        const nomes = restantes.map((id) => deps.nameOf(id)).join(', ');
+        const mais = `<span class="mesa-person-more" title="${escapeHtml(nomes)}">+${restantes.length}</span>`;
+        peopleEl.insertAdjacentHTML('beforeend', mais);
+      }
+      for (const b of peopleEl.querySelectorAll('.mesa-person')) {
         b.style.setProperty('--who', deps.colorFor(b.dataset.id));
         b.addEventListener('click', () => goTo(b.dataset.id));
       }
@@ -2064,7 +2136,7 @@
         toast(`${deps.nameOf(id)} ainda não mexeu o ponteiro na mesa.`, id);
         return;
       }
-      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh));
+      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh, { safe: S.safe }));
     }
 
     function onPeersChange() {
@@ -2146,7 +2218,7 @@
     function spot(type) {
       const mod = modOf(type);
       if (!S?.state || !mod) return null;
-      const c = V.viewCenter(S.view, S.vw, S.vh);
+      const c = V.viewCenter(S.view, S.vw, S.vh, S.safe);
       const { w, h } = mod.size;
       return M.nearestFree(windows(), { x: Math.round(c.x - w / 2), y: Math.round(c.y - h / 2), w, h }, { gap: M.GAP });
     }

@@ -40,6 +40,7 @@
   // Setas andam isto em pixels da tela (nao unidades), para o passo parecer
   // o mesmo em qualquer zoom.
   const PAN_STEP_PX = 80;
+  const SAFE0 = { top: 0, right: 0, bottom: 0, left: 0 };
 
   function clamp(v, lo, hi) {
     return v < lo ? lo : v > hi ? hi : v;
@@ -117,15 +118,25 @@
     return clampView({ x: view.x - dx / view.z, y: view.y - dy / view.z, z: view.z }, vw, vh, opts);
   }
 
+  /** Centro, em pixels da tela, da area que sobra sem os controles da Mesa. */
+  function safeCenter(vw, vh, safe = SAFE0) {
+    return {
+      sx: safe.left + (vw - safe.left - safe.right) / 2,
+      sy: safe.top + (vh - safe.top - safe.bottom) / 2,
+    };
+  }
+
   /** Vista centrada no ponto do mundo `cx`,`cy` com zoom `z`. */
-  function centerOn(cx, cy, z, vw, vh, opts) {
+  function centerOn(cx, cy, z, vw, vh, opts = {}) {
     const zz = clampZoom(z);
-    return clampView({ x: cx - vw / 2 / zz, y: cy - vh / 2 / zz, z: zz }, vw, vh, opts);
+    const { sx, sy } = safeCenter(vw, vh, opts.safe);
+    return clampView({ x: cx - sx / zz, y: cy - sy / zz, z: zz }, vw, vh, opts);
   }
 
   /** Centro da vista no mundo. */
-  function viewCenter(view, vw, vh) {
-    return { x: view.x + vw / 2 / view.z, y: view.y + vh / 2 / view.z };
+  function viewCenter(view, vw, vh, safe) {
+    const { sx, sy } = safeCenter(vw, vh, safe);
+    return { x: view.x + sx / view.z, y: view.y + sy / view.z };
   }
 
   /** Menor retangulo que cobre todas as janelas, ou `null` sem janela. */
@@ -147,11 +158,11 @@
 
   /** Vista que mostra o retangulo inteiro com `pad` pixels de folga em
    * volta, sem passar de `maxZ` (uma janela so nao vira tela cheia). */
-  function fitRect(rect, vw, vh, { pad = 64, maxZ = 1.2, ...opts } = {}) {
-    const aw = Math.max(1, vw - pad * 2);
-    const ah = Math.max(1, vh - pad * 2);
+  function fitRect(rect, vw, vh, { pad = 64, maxZ = 1.2, safe = SAFE0, ...opts } = {}) {
+    const aw = Math.max(1, vw - safe.left - safe.right - pad * 2);
+    const ah = Math.max(1, vh - safe.top - safe.bottom - pad * 2);
     const z = clamp(Math.min(aw / Math.max(1, rect.w), ah / Math.max(1, rect.h)), ZOOM_MIN, Math.min(ZOOM_MAX, maxZ));
-    return centerOn(rect.x + rect.w / 2, rect.y + rect.h / 2, z, vw, vh, opts);
+    return centerOn(rect.x + rect.w / 2, rect.y + rect.h / 2, z, vw, vh, { ...opts, safe });
   }
 
   /** "Ver tudo": todas as janelas na tela. Mesa vazia: o meio da mesa a
