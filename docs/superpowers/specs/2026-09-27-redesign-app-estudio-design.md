@@ -1,6 +1,7 @@
-# Redesign, fase 2 — a sala em três colunas e a identidade "Estúdio"
+# Redesign, fases 2 e 3 — o app inteiro na identidade "Estúdio"
 
-Data: 2026-09-27. Base: branch `feat/redesign-mesa` (PR #85, fase 1). Branch desta fase: `feat/redesign-sala`.
+Data: 2026-09-27. Base: branch `feat/redesign-mesa` (PR #85, fase 1). Branch: `feat/redesign-sala`, com as fases 2 e 3 juntas
+num lançamento só, com o app inteiro novo.
 
 Pedido do Nicolas: "trazer uma cara nova ao aplicativo, sem utilizar o atual como referência", com "grandes
 mudanças, a nível de não parecer o mesmo aplicativo". Incômodos citados: o painel de reações abre sem nada atrás, e
@@ -16,10 +17,14 @@ o menu do botão direito na transmissão não agrada.
 | Câmeras | no palco, junto da tela assistida, cada uma com a sua barra | na coluna de pessoas; faixa sobre o palco |
 | Cabeçalho | endereço e PIN pequenos no topo, em fonte mono | botão "Convidar" com painel |
 | Chat | lista com avatar, mensagens seguidas agrupadas | balões |
+| Lobby | painel de controle: barra lateral (Salas, Configurações, rede, perfil), salas em lista | vitrine de cartões |
+| Configurações | tela própria do app, seções na lateral, "‹ Voltar" | modal maior |
+| Escolher o que compartilhar | tudo numa tela: miniaturas, qualidade, som e Compartilhar | dois passos |
+| Site | fora deste plano | junto |
 | Identidade | **Estúdio**: grafite neutro, interface monocromática, vermelho só no tally | "Noite de jogo" (escuro quente, menta); "Luz do dia" (claro, azul) |
 
 Mockups: `C:\Users\nicol\AppData\Local\Temp\golive-brainstorm\.superpowers\brainstorm\2752-1790481844\content\`
-(`sala-layout.html`, `palco.html`, `cameras.html`, `identidade-sala.html`).
+(`sala-layout.html`, `palco.html`, `cameras.html`, `identidade-sala.html`, `app-inteiro.html`).
 
 ## 1. O que muda de decisões anteriores
 
@@ -174,11 +179,12 @@ PIN, resolução, taxa, hora, atalhos) aparece em fonte mono, como num painel de
 
   Grupos separados por divisória `--line`. Não tem "Tela cheia". Itens com 36 px de altura, atalhos à direita em mono
   `--tx3`.
-- **Qualidade que você recebe:** o espectador escolhe um teto de resolução para aquela tela, e o app manda esse
-  teto pelo mesmo caminho que a Mesa já usa para a largura da janela (teto por espectador,
-  `scaleResolutionDownBy` no transmissor). "Auto" é o comportamento de hoje. A escolha vale enquanto a pessoa
-  assiste. **Antes de implementar, o plano confirma no `app.js` que a Transmissão usa esse mesmo caminho.** Se não
-  usar, o item sai da fase e vira pendência, sem protocolo novo.
+- **Qualidade que você recebe:** o espectador escolhe um teto de resolução para aquela tela. O `view-state` já
+  leva `maxWidth`, hoje só da largura da janela da Mesa (`app.js`, `mesaView?.widthFor`), e o transmissor já
+  o aplica. O teto enviado passa a ser o menor entre a escolha (Auto sem teto; 1080p = 1920; 720p = 1280;
+  480p = 854) e o da Mesa. Não há protocolo novo. Quando você repassa aquela tela para outras pessoas (relay
+  com filhos, `anyFolhaWatching`), o teto não vale, e o item aparece desabilitado com o motivo "Você repassa esta
+  tela para outras pessoas". A escolha vale enquanto a pessoa assiste.
 - **Palco vazio:** ícone, "Ninguém em foco" e "Escolha alguém ao vivo na coluna ao lado", centralizados em `--tx2`.
   Não fica um retângulo preto.
 
@@ -203,10 +209,74 @@ PIN, resolução, taxa, hora, atalhos) aparece em fonte mono, como num painel de
   borda interna, e sair em `--danger`. Os `.btn-label` (dicas) viram popover `--s3` com texto mono para o atalho.
 - **Faixa de título do app:** só troca para os tokens novos. O comportamento não muda.
 
-## 7. Fora desta fase
+## 7. Fora da sala
 
-Lobby, Configurações e diálogos: eles recebem as cores e as fontes novas automaticamente, pelos tokens, mas o
-layout deles fica para a fase 3. O site e as janelas de Espiar e splash também ficam para a fase 3.
+### 7.1 Lobby (painel de controle)
+
+- `#lobby-view` vira duas colunas: barra lateral de 232 px (`.lobby-sidebar`) e área principal.
+- **Barra lateral:**
+  - marca: a logo em 20 px e "GoLive" em Instrument Sans 700;
+  - navegação: **Salas** e **Configurações**, com o item atual em `--s3` e marcador branco;
+  - embaixo, a seção **REDE** (rótulo mono): nome da rede (Radmin, ZeroTier…) e IP em mono, com o estado atual de
+    `renderNetworkStatus`;
+  - no rodapé, o seu perfil: avatar e nome, e o clique abre Configurações › Perfil.
+- **Área principal:**
+  - a faixa de atualização (`#update-bar`) no topo, com o mesmo comportamento e o visual Estúdio;
+  - o cabeçalho "Salas na sua rede", com a contagem em mono, **Entrar por endereço** (secundário) e **Criar sala**
+    (`--act`);
+  - a lista de salas: uma linha de 52 px por sala, com nome (e cadeado se tiver PIN), endereço em mono, avatares de
+    quem está (até 4, e "+N") e tally "N AO VIVO" ou "—". Clicar entra, e Enter no foco também;
+  - a sala em que você já está fica marcada. A sala em espera (`isOnCooldown`) aparece esmaecida, com o motivo;
+  - **estado vazio:** o desenho dos três nós em `--tx3`, "Nenhuma sala na sua rede ainda" e as duas ações. Sem rede
+    ou com erro, a mensagem de `renderNetworkStatus` aparece no mesmo lugar, dizendo o que fazer.
+- Os ids de hoje (`#rooms-count`, `#update-bar`, os botões de criar e entrar e a lista) só mudam de lugar.
+
+### 7.2 Configurações (tela própria)
+
+- `#settings-modal` deixa de ser modal e vira uma vista que ocupa a janela inteira abaixo da faixa de título, no
+  lugar do lobby ou da sala. O id e as seções continuam.
+- **Topo:** "‹ Voltar" (Esc também volta), o título da seção e, quando você está ao vivo, um tally "VOCÊ ESTÁ AO
+  VIVO". A transmissão continua com as Configurações abertas; a sala não sai do DOM, só fica escondida.
+- **Lateral de 220 px** com as seções que já existem: Perfil, Aparência, Som (hoje "Voz"; o id `#settings-voice`
+  continua) e Estatísticas. Nenhuma seção nova.
+- **Conteúdo:** coluna de até 720 px. Cada grupo é um bloco `--s1` com raio 12 px, rótulo mono em caixa alta acima e
+  linhas de 48 px (rótulo à esquerda, controle à direita), como os Ajustes do macOS.
+- **Aparência:** os presets em cartões de 120×80 que mostram a cor real do tema, com Estúdio primeiro e o selecionado
+  com anel branco de 2 px. Temas personalizados e código de tema continuam como hoje.
+- `openSettings`/`closeSettings` passam a mostrar e esconder a vista. Quem chamava (lobby, dock e ⋯ da sala)
+  continua chamando igual.
+
+### 7.3 Escolher o que compartilhar (`#picker`)
+
+- Continua um diálogo, porque é uma escolha rápida e modal por natureza, com 880×560 no máximo.
+- **Esquerda:** segmentado Telas/Janelas e a grade de miniaturas 16:9 com o nome embaixo. A selecionada tem anel
+  branco de 2 px e marca ✓.
+- **Direita (240 px):**
+  - **QUALIDADE:** os dois eixos de hoje (`#picker-quality`), como segmentados;
+  - **SOM:** a opção de hoje;
+  - custo estimado em mono (≈ 12 Mb/s);
+  - **Compartilhar** (`--act`) sempre visível embaixo, e Cancelar.
+- Os ids e o fluxo de `picker.open` não mudam.
+
+### 7.4 Diálogos, visualizador e painéis
+
+- **Criar sala, Entrar, confirmação e texto** (`.modal`, `.dialog-box`):
+  - folha centralizada de 440 px, `--s1`, raio 12 px e `--elev-3`;
+  - título em Instrument Sans 700 e campos `--s2` com rótulo acima;
+  - ações à direita, com a principal em `--act`. A destrutiva usa `--danger` e nunca é o padrão do Enter;
+  - fundo da página escurecido com `rgba` sólido, sem blur. Esc e clique fora cancelam.
+- **Visualizador de imagem:** fundo `--bg` a 92%, imagem centralizada e botões em pílula `--s2` no topo à direita.
+- **Painel de emoji do chat:** o mesmo popover sólido das reações (`--s2`, `--elev-3`, raio 12 px), com as abas em
+  mono.
+- **Menus** (membro, tema e "⋯" da sala): o mesmo componente do menu do vídeo (seção 4).
+
+### 7.5 Faixa de título, splash e Espiar
+
+- **Faixa de título** (`titlebar.js`): altura e comportamento iguais, com fundo `--bg`, texto `--tx2` e botões de
+  janela de 46 px no padrão do Windows (fechar com hover `--danger`).
+- **Splash e Espiar** (`espiar.html` e o `backgroundColor` das janelas no main): fundo `#0C0D0F` e as fontes novas.
+  No Espiar, a barra do vídeo segue a seção 4, só com tally, nome e fechar.
+- O site continua fora deste plano.
 
 ## 8. Verificação
 
@@ -227,6 +297,11 @@ layout deles fica para a fase 3. O site e as janelas de Espiar e splash também 
   - o painel de reações e o menu do vídeo com fundo sólido (cor de fundo computada não transparente);
   - o menu sem "Tela cheia";
   - a qualidade só na tela dos outros.
+- Bancada de telas fora da sala (`tools/bancada-telas/`): monta o lobby com 0, 3 e 12 salas, as Configurações
+  em cada seção, o seletor de tela e cada diálogo, em 1366×768 e 1440×900, nos temas Estúdio e Papel. Ela
+  confere que nada rola na horizontal, que todo botão e campo visível tem nome acessível e não está coberto
+  (`elementFromPoint`), que o Esc fecha diálogos e volta das Configurações, e que o foco vai para o primeiro
+  campo ao abrir um diálogo.
 - Boot no Electron real sem erros de console, e prints do app real em 1440×900 e 1366×768 nos temas Estúdio e Papel.
 
 ## 9. Como o trabalho se divide
@@ -241,6 +316,10 @@ dois ao mesmo tempo e nunca dois no mesmo arquivo:
 | Palco: barra do tile, reações, menu do vídeo e palco vazio | `gpt-5.6-terra` medium |
 | Qualidade que você recebe (se o caminho existir) | `gpt-5.6-terra` high |
 | Chat, cabeçalho, dock e faixa de título | `gpt-5.6-terra` medium |
+| Lobby em painel de controle | `gpt-5.6-terra` medium |
+| Configurações em tela própria | `gpt-5.6-terra` high (muda a navegação entre vistas) |
+| Seletor de tela, diálogos, visualizador, emoji, splash e Espiar | `gpt-5.6-terra` medium |
+| Bancada de telas fora da sala | `gpt-5.6-terra` medium |
 | Bancada de sala | `gpt-5.6-terra` medium |
 | Revisão final, sandbox `read-only` | `gpt-5.6-terra` high |
 | STATUS, glossário e prints | `gpt-5.6-luna` medium |
