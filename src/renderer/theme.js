@@ -157,7 +157,7 @@
   // ---------------------------------------------------------------------
   // Predefinicoes. Valores exatos da spec (secao 5.2) -- os mesmos numeros
   // vao pro CSS via outro agente, entao NENHUM destes hex muda sem avisar
-  // quem mantem style.css.
+  // quem mantem sinal/tokens.css e sinal/themes.css.
   //
   // Ajuste feito nesta task em cima da tabela original da spec -- ver o
   // relatorio desta task pro que mudou e por que (e um ajuste bem maior do
@@ -403,7 +403,7 @@
     const tx3 = hslToHex({ h: hue, s: Math.min(sat, 4), l: surfaceL(0.56) });
 
     // Linhas: brancas com alpha baixo em fundo escuro, pretas em fundo
-    // claro -- a convencao que style.css ja usa em PRESETS.
+    // claro -- a convencao que sinal/themes.css ja usa em PRESETS.
     const lineBase = bgL < 50 ? '#ffffff' : '#000000';
     const line = rgba(lineBase, 0.08);
     const line2 = rgba(lineBase, 0.14);
