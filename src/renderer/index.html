@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="sinal/base.css" />
 <link rel="stylesheet" href="sinal/components.css" />
 <link rel="stylesheet" href="sinal/shell.css" />
+<link rel="stylesheet" href="sinal/sheets.css" />
 <link rel="stylesheet" href="mesa-janelas.css" />
 </head>
 <body>
@@ -509,78 +510,51 @@
   </div>
 </section>
 
-<!-- ============ SELETOR DE FONTE + AUDIO (inalterado) ============ -->
-<div id="picker" class="modal hidden">
-  <div class="modal-box picker-box">
-    <h2>O que você quer compartilhar?</h2>
-    <div class="picker-content">
-      <section class="picker-main" aria-label="Fonte para compartilhar">
-        <div id="picker-tabs" class="picker-tabs">
-          <button class="picker-tab active" data-tab="screen" type="button">
-            Telas <span id="picker-count-screen" class="picker-tab-count"></span>
-          </button>
-          <button class="picker-tab" data-tab="window" type="button">
-            Janelas <span id="picker-count-window" class="picker-tab-count"></span>
-          </button>
-          <button id="picker-refresh" class="ghost small picker-refresh" type="button" title="Procurar de novo"
-            aria-label="Procurar fontes de novo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
-          </button>
+<!-- ============ TRANSMITIR: seletor de fonte (05 §5) ============ -->
+<div id="picker" class="dlg-layer hidden">
+  <div class="dlg dlg--wide picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="dlg__head picker__head">
+      <h2 id="picker-title" class="dlg__title">Transmitir</h2>
+      <div id="picker-tabs" class="seg" role="tablist" aria-label="Tipo de fonte">
+        <button class="seg__opt picker-tab active" data-tab="screen" type="button" role="tab" aria-selected="true">
+          Telas <span id="picker-count-screen" class="tx-data"></span>
+        </button>
+        <button class="seg__opt picker-tab" data-tab="window" type="button" role="tab" aria-selected="false">
+          Janelas <span id="picker-count-window" class="tx-data"></span>
+        </button>
+      </div>
+      <button id="picker-refresh" class="btn btn--quiet btn--icon btn--sm" type="button" title="Procurar de novo"
+              aria-label="Procurar fontes de novo"><svg class="i i--sm"><use href="#i-refresh-cw" /></svg></button>
+    </div>
+    <p id="picker-window-hint" class="picker__hint hidden">
+      Para jogos, prefira a tela inteira: capturar só a janela pesa mais e não funciona em tela cheia exclusiva.
+    </p>
+    <div id="picker-grid" class="picker__grid" role="listbox" aria-label="Fontes"></div>
+    <div class="picker__foot">
+      <div class="picker__opts">
+        <div class="picker__opt">
+          <span id="picker-quality-title" class="tx-tag">Qualidade</span>
+          <div id="picker-quality" class="picker__quality"></div>
+          <small id="picker-quality-bandwidth" class="tx-data tx-2" aria-live="polite"></small>
         </div>
-        <p id="picker-window-hint" class="picker-hint hidden">
-          Pra jogos, prefira compartilhar a tela inteira — capturar só a janela é
-          mais pesado e não funciona em fullscreen exclusivo.
-        </p>
-        <div id="picker-grid" class="picker-grid"></div>
-      </section>
-      <aside class="picker-side" aria-label="Opções de compartilhamento">
-        <h3>Qualidade</h3>
-    <!-- Teto da transmissao. O app desce sozinho dai pra baixo (tamanho da
-         sala + telemetria de encode) -- ver STATUS.md. -->
-    <!-- Duas trilhas (resolucao x fps), montadas por ui.js. O role de
-         radiogroup fica em CADA trilha, nao aqui: sao dois grupos
-         independentes, e setas so andam dentro do proprio eixo. -->
-        <div id="picker-quality" class="quality-axes"></div>
-    <!-- aria-live: quem anda de seta ouve o preco da combinacao mudar em
-         vez de ter de ir procurar a linha. -->
-        <small id="picker-quality-bandwidth" class="quality-bandwidth" aria-live="polite"></small>
-
-        <h3>Som</h3>
-        <div id="audio-mode" class="check-group audio-mode">
-      <label class="check compact">
-        <input type="checkbox" id="share-sound" checked />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text"><span class="check-title">Compartilhar som</span></span>
-      </label>
-      <label class="check compact hidden" id="share-discord-row">
-        <input type="checkbox" id="share-discord" />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text"><span class="check-title">Incluir o som do Discord também</span></span>
-      </label>
+        <div id="audio-mode" class="picker__opt">
+          <span class="tx-tag">Som</span>
+          <label class="picker__switch"><input type="checkbox" id="share-sound" class="switch" checked />Som do PC</label>
+          <label class="picker__switch hidden" id="share-discord-row"><input type="checkbox" id="share-discord"
+                 class="switch" />Incluir o Discord</label>
         </div>
-
-        <h3>Rabisco</h3>
-    <!-- Propriedade DESTA transmissao, decidida onde ela nasce -- nao uma
-         configuracao global escondida em Configuracoes (mesmo racional que
-         pos "anunciar na rede" no dialogo de criar sala). Ver a spec de
-         2026-09-04, secao 5.1. -->
-        <div class="check-group bare">
-      <label class="check compact">
-        <input type="checkbox" id="allow-annotations" />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text">
-          <span class="check-title">Deixar a sala rabiscar na minha tela</span>
-          <span class="check-desc">Todo mundo pode desenhar e escrever por cima, cada um com sua cor. Só aparece pra quem está na sala.</span>
-        </span>
-      </label>
+        <div class="picker__opt picker__annot">
+          <span class="tx-tag">Rabisco</span>
+          <label class="picker__switch" title="Todo mundo pode desenhar e escrever por cima, cada um com sua cor.">
+            <input type="checkbox" id="allow-annotations" class="switch" />Deixar a sala rabiscar</label>
         </div>
-
-        <div class="picker-actions">
-          <span id="picker-go-live-hint" class="picker-go-live-hint">Escolha uma tela ou janela</span>
-          <button id="picker-cancel" class="ghost" type="button">Cancelar</button>
-          <button id="btn-go-live" class="primary" type="button" disabled aria-describedby="picker-go-live-hint">Compartilhar</button>
-        </div>
-      </aside>
+      </div>
+      <div class="picker__actions">
+        <span id="picker-go-live-hint" class="tx-meta">Escolha uma tela ou janela</span>
+        <button id="picker-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+        <button id="btn-go-live" class="btn btn--primary btn--lg" type="button" disabled
+                aria-describedby="picker-go-live-hint">Transmitir</button>
+      </div>
     </div>
   </div>
 </div>

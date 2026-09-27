@@ -3180,6 +3180,14 @@
   /** O no da sua fonte: inicial e cor de voce. */
   function renderMeNode(self) {
     const node = $('me-node');
+    const sub = $('me-source-sub');
+    if (sub) {
+      const pausado = $('btn-pause-share')?.getAttribute('aria-pressed') === 'true';
+      const vendo = (tileWatchers.get('me') || []).length;
+      sub.textContent = pausado ? 'Pausada'
+        : [nomeFonteAoVivo || 'ao vivo', vendo ? `${vendo} vendo` : ''].filter(Boolean).join(' · ');
+      sub.classList.toggle('tx-live', pausado);
+    }
     if (!node || !self) return;
     node.style.setProperty('--who', avatarColorFor('me'));
     node.innerHTML = avatarInnerHtml('me', self.name, self.avatar);
@@ -4694,8 +4702,8 @@
   const pickerQualityEl = $('picker-quality');
   const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
   const pickerQualityTitleEl = pickerQualityEl.previousElementSibling;
-  const pickerAnnotationsEl = $('allow-annotations').closest('.check-group');
-  const pickerAnnotationsTitleEl = pickerAnnotationsEl.previousElementSibling;
+  const pickerAnnotationsEl = $('allow-annotations').closest('.picker__opt');
+  const pickerAnnotationsTitleEl = pickerAnnotationsEl.querySelector('.tx-tag');
   const shareSoundEl = $('share-sound');
   const shareDiscordRowEl = $('share-discord-row');
   const shareDiscordEl = $('share-discord');
@@ -4703,6 +4711,8 @@
   const pickerGoLiveHintEl = $('picker-go-live-hint');
   let selectedSourceId = null;
   let pickerMode = 'start';
+  // O que voce esta transmitindo, para o subtitulo da sua fonte no barramento.
+  let nomeFonteAoVivo = '';
 
   /** D3 (analise de 2026-09-23): o botao desabilitado diz por que esta
    * desabilitado -- sem isto, "Ir ao vivo" apagado nao explica nada. */
@@ -4731,11 +4741,11 @@
   pickerQualityEl.innerHTML = QUALITY_AXES.map(({ axis, label, values, text }) => {
     const labelId = `quality-axis-${axis}-label`;
     const opcoes = values.map((valor) => (
-      `<button class="quality-seg-opt" type="button" role="radio" aria-checked="false" tabindex="-1" data-value="${escapeHtml(valor)}">${escapeHtml(text(valor))}</button>`
+      `<button class="seg__opt quality-seg-opt" type="button" role="radio" aria-checked="false" tabindex="-1" data-value="${escapeHtml(valor)}">${escapeHtml(text(valor))}</button>`
     )).join('');
-    return `<div class="quality-axis">
-      <span class="quality-axis-label" id="${labelId}">${escapeHtml(label)}</span>
-      <div class="quality-seg" role="radiogroup" aria-labelledby="${labelId}" data-axis="${axis}" style="--seg-count: ${values.length}">${opcoes}</div>
+    return `<div class="picker__axis">
+      <span class="sr-only" id="${labelId}">${escapeHtml(label)}</span>
+      <div class="seg quality-seg" role="radiogroup" aria-labelledby="${labelId}" data-axis="${axis}" style="--seg-count: ${values.length}">${opcoes}</div>
     </div>`;
   }).join('');
 
@@ -4853,58 +4863,103 @@
     $('picker-count-window').textContent = pickerLoading.window ? '' : String(janelas);
   }
 
+  /** Rotulo do botao principal: a acao com o nome da fonte (05 §5). */
+  function rotuloTransmitir(fonte) {
+    const nome = fonte?.name ? (fonte.name.length > 28 ? `${fonte.name.slice(0, 27)}…` : fonte.name) : '';
+    if (pickerMode === 'swap') return nome ? `Trocar para ${nome}` : 'Trocar';
+    return nome ? `Transmitir ${nome}` : 'Transmitir';
+  }
+
+  function escolherFonteDoSeletor(fonte, card) {
+    selectedSourceId = fonte.id;
+    setGoLiveEnabled(true);
+    btnGoLiveEl.textContent = rotuloTransmitir(fonte);
+    pickerGridEl.querySelectorAll('.src-card').forEach((c) => {
+      c.classList.remove('selected');
+      c.setAttribute('aria-selected', 'false');
+      c.tabIndex = -1;
+    });
+    card.classList.add('selected');
+    card.setAttribute('aria-selected', 'true');
+    card.tabIndex = 0;
+  }
+
   function renderPickerGrid() {
     pickerGridEl.innerHTML = '';
     syncPickerCounts();
     const filtered = sortSources(pickerSources.filter((s) => (pickerTab === 'screen' ? s.isScreen : !s.isScreen)));
     if (!filtered.length) {
       if (pickerLoading[pickerTab]) {
-        pickerGridEl.innerHTML = `<div class="picker-grid-empty">${
-          pickerTab === 'screen' ? 'procurando telas…' : 'procurando janelas…'
-        }</div>`;
+        // Esqueleto na forma do que vem: cartoes 16:9.
+        pickerGridEl.innerHTML = Array.from({ length: pickerTab === 'screen' ? 2 : 6 },
+          () => '<div class="src-card src-card--skel" aria-hidden="true"><span class="src-card__thumb skel"></span>'
+            + '<span class="skel src-card__skel-line"></span></div>').join('')
+          + `<p class="sr-only" role="status">${pickerTab === 'screen' ? 'Procurando telas…' : 'Procurando janelas…'}</p>`;
         return;
       }
-      pickerGridEl.innerHTML = `<div class="picker-grid-empty">${
-        pickerTab === 'screen' ? 'nenhuma tela encontrada' : 'nenhuma janela encontrada'
-      }</div>`;
+      pickerGridEl.innerHTML = `<p class="picker__empty">${
+        pickerTab === 'screen' ? 'Nenhuma tela encontrada.' : 'Nenhuma janela aberta para mostrar.'
+      } <button type="button" class="btn btn--secondary btn--sm" data-picker-refresh>Procurar de novo</button></p>`;
       return;
     }
     for (const source of filtered) {
       const card = document.createElement('button');
       card.type = 'button';
-      card.className = 'source-card';
-      card.classList.toggle('selected', source.id === selectedSourceId);
+      card.className = 'src-card';
+      card.setAttribute('role', 'option');
+      const escolhida = source.id === selectedSourceId;
+      card.classList.toggle('selected', escolhida);
+      card.setAttribute('aria-selected', String(escolhida));
+      card.tabIndex = escolhida ? 0 : -1;
       const tag = qualityTagFor(source);
       card.title = source.name;
       card.innerHTML = `
-        <span class="source-thumb">
-          <img class="source-shot" src="${source.thumbnail}" alt="" />
-          ${tag ? `<span class="source-quality">${escapeHtml(tag)}</span>` : ''}
+        <span class="src-card__thumb">
+          <img src="${source.thumbnail}" alt="" />
+          ${tag ? `<span class="tag src-card__tag">${escapeHtml(tag)}</span>` : ''}
         </span>
-        <span class="source-body">
-          ${source.appIcon ? `<img class="source-icon" src="${source.appIcon}" alt="" />` : ''}
-          <span class="source-text">
-            <span class="source-name">${escapeHtml(source.name)}</span>
-            <span class="source-meta">${source.isScreen ? 'Tela' : 'Janela'}${
-              source.resolution ? ` &middot; ${escapeHtml(source.resolution)}` : ''
-            }</span>
-          </span>
+        <span class="src-card__name">
+          ${source.appIcon ? `<img class="src-card__icon" src="${source.appIcon}" alt="" />` : ''}
+          <span class="ellipsis">${escapeHtml(source.name)}</span>
         </span>`;
-      card.addEventListener('click', () => {
-        selectedSourceId = source.id;
-        setGoLiveEnabled(true);
-        pickerGridEl.querySelectorAll('.source-card').forEach((c) => c.classList.remove('selected'));
-        card.classList.add('selected');
+      card.addEventListener('click', () => escolherFonteDoSeletor(source, card));
+      // Duplo clique: escolhe e ja transmite.
+      card.addEventListener('dblclick', () => {
+        escolherFonteDoSeletor(source, card);
+        btnGoLiveEl.click();
       });
       pickerGridEl.appendChild(card);
     }
+    if (!pickerGridEl.querySelector('.src-card[tabindex="0"]')) pickerGridEl.querySelector('.src-card').tabIndex = 0;
   }
+
+  // Setas andam pela grade de fontes; Enter/duplo clique transmitem.
+  pickerGridEl.addEventListener('keydown', (event) => {
+    const cards = [...pickerGridEl.querySelectorAll('.src-card:not(.src-card--skel)')];
+    const i = cards.indexOf(document.activeElement);
+    if (i < 0) return;
+    const colunas = Math.max(1, Math.round(pickerGridEl.clientWidth / (cards[0].offsetWidth || 1)));
+    const passo = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: colunas, ArrowUp: -colunas }[event.key];
+    if (!passo) return;
+    event.preventDefault();
+    const alvo = cards[Math.min(cards.length - 1, Math.max(0, i + passo))];
+    cards.forEach((c) => { c.tabIndex = c === alvo ? 0 : -1; });
+    alvo.focus();
+    alvo.click();
+  });
+  pickerGridEl.addEventListener('click', (event) => {
+    if (event.target.closest('[data-picker-refresh]')) $('picker-refresh').click();
+  });
 
   pickerTabsEl.addEventListener('click', (event) => {
     const btn = event.target.closest('.picker-tab');
     if (!btn || btn.classList.contains('active')) return;
-    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.remove('active'));
+    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     pickerTab = btn.dataset.tab;
     syncPickerIndicator();
     syncWindowHint();
@@ -4940,6 +4995,7 @@
       if (tab === 'screen' && pickerMode !== 'swap' && !selectedSourceId && telas.length === 1) {
         selectedSourceId = telas[0].id;
         setGoLiveEnabled(true);
+        btnGoLiveEl.textContent = rotuloTransmitir(telas[0]);
       }
       renderPickerGrid();
     };
@@ -5007,7 +5063,10 @@
     pickerMode = mode;
     setGoLiveEnabled(false);
     pickerTab = 'screen';
-    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === 'screen'));
+    pickerTabsEl.querySelectorAll('.picker-tab').forEach((t) => {
+      t.classList.toggle('active', t.dataset.tab === 'screen');
+      t.setAttribute('aria-selected', String(t.dataset.tab === 'screen'));
+    });
     syncWindowHint();
     pickerGridEl.innerHTML = '';
     pickerOnQualityChange = onQualityChange;
@@ -5016,8 +5075,8 @@
     syncQualityAxes(quality.preset, false);
     pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
     const swapping = mode === 'swap';
-    pickerEl.querySelector('h2').textContent = swapping ? 'Trocar para qual fonte?' : 'O que você quer compartilhar?';
-    btnGoLiveEl.textContent = swapping ? 'Trocar' : 'Compartilhar';
+    $('picker-title').textContent = swapping ? 'Trocar fonte' : 'Transmitir';
+    btnGoLiveEl.textContent = rotuloTransmitir(null);
     pickerQualityTitleEl.classList.toggle('hidden', swapping);
     pickerQualityEl.classList.toggle('hidden', swapping);
     pickerQualityBandwidthEl.classList.toggle('hidden', swapping);
@@ -5039,6 +5098,7 @@
       : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
 
     btnGoLiveEl.onclick = async () => {
+      nomeFonteAoVivo = pickerSources.find((s) => s.id === selectedSourceId)?.name || nomeFonteAoVivo;
       closePicker();
       try {
         await onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked, $('allow-annotations').checked);
@@ -5223,9 +5283,6 @@
     if (id === 'pause') {
       const node = $('me-node');
       if (node) node.dataset.state = state === 'on' ? 'paused' : 'live';
-      $('me-source-sub')?.classList.toggle('tx-live', state === 'on');
-      if (state === 'on') $('me-source-sub').textContent = 'Pausada';
-      else if ($('me-source-sub')?.textContent === 'Pausada') $('me-source-sub').textContent = 'ao vivo';
     }
   }
 

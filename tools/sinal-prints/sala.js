@@ -54,6 +54,26 @@ const PONTE = () => {
     get: (_, k) => {
       if (k === 'getNetworkAddress') return async () => ({ address: '26.114.8.201', kind: 'radmin' });
       if (k === 'getVersion') return async () => null;
+      if (k === 'listSources') {
+        // Fontes de mentira com miniatura desenhada aqui mesmo.
+        const shot = (cor, texto) => {
+          const c = document.createElement('canvas');
+          c.width = 320;
+          c.height = 180;
+          const g = c.getContext('2d');
+          g.fillStyle = cor;
+          g.fillRect(0, 0, 320, 180);
+          g.fillStyle = 'rgba(255,255,255,.8)';
+          g.font = '22px sans-serif';
+          g.fillText(texto, 16, 40);
+          return c.toDataURL();
+        };
+        return async (tipos) => (tipos.includes('screen')
+          ? [{ id: 's1', name: 'Tela 1', isScreen: true, height: 1080, thumbnail: shot('#26415c', 'Tela 1') },
+            { id: 's2', name: 'Tela 2', isScreen: true, height: 1440, thumbnail: shot('#3b2a4a', 'Tela 2') }]
+          : ['VALORANT', 'Discord', 'Google Chrome — Documentação do Radmin', 'Spotify', 'OBS 30.2'].map((n, i) => (
+            { id: `w${i}`, name: n, isScreen: false, thumbnail: shot(['#1d3b2a', '#2a2a4a', '#4a3a1d', '#1d4a3a', '#3a1d1d'][i], n) })));
+      }
       if (k === 'win') {
         return { platform: 'win32', minimize() {}, toggleMaximize() {}, close() {}, onMaximizeChange() {}, show() {} };
       }
@@ -149,6 +169,15 @@ async function rodada(browser, port, [w, h]) {
   await page.keyboard.press('Escape');
   await page.click('#btn-room-more').catch((e) => erros.push(`menu da sala: ${e.message}`));
   await foto(page, '06-menu-sala', w, h);
+  await page.keyboard.press('Escape');
+
+  // O seletor de fonte (Transmitir), com as telas e depois as janelas.
+  await page.click('#btn-toggle-share');
+  await espera(600);
+  await foto(page, '13-transmitir-telas', w, h);
+  await page.click('#picker-tabs [data-tab="window"]');
+  await page.click('#picker-grid .src-card');
+  await foto(page, '14-transmitir-janelas', w, h);
   await page.keyboard.press('Escape');
 
   // Voce transmitindo e depois pausado (a UI recebe o estado pelo mesmo setToggleState que o app usa).

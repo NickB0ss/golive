@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DIR = path.join(__dirname, 'sinal');
-const FILES = ['tokens.css', 'themes.css', 'base.css', 'components.css', 'shell.css'];
+// Toda folha do Sinal entra: um arquivo novo nao pode escapar das regras.
+const FILES = fs.readdirSync(DIR).filter((file) => file.endsWith('.css')).sort();
 const cssByFile = new Map(FILES.map((file) => [file, fs.readFileSync(path.join(DIR, file), 'utf8')]));
 
 test('as fontes Sinal apontam para arquivos locais existentes', () => {
@@ -24,7 +25,7 @@ test('hidden vence os displays dos componentes', () => {
 });
 
 test('folhas Sinal nao usam cores literais fora dos arquivos de tema', () => {
-  for (const file of ['base.css', 'components.css', 'shell.css']) {
+  for (const file of FILES.filter((f) => !['tokens.css', 'themes.css'].includes(f))) {
     const source = cssByFile.get(file).replace(/\/\*[\s\S]*?\*\//g, '');
     assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i, `${file} contem cor literal`);
   }
