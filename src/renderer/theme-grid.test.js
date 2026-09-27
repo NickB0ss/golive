@@ -10,9 +10,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const theme = require('./theme');
 
-test('grade da Mesa: --grid e --grid2 dos oito temas ficam entre 1,1:1 e 1,4:1 contra --bg', () => {
+test('grade da Mesa: --grid e --grid2 dos nove temas ficam entre 1,1:1 e 1,4:1 contra --bg', () => {
   const { min, max } = theme.GRID_CONTRAST;
-  assert.equal(Object.keys(theme.PRESETS).length, 8);
+  assert.equal(Object.keys(theme.PRESETS).length, 9);
   for (const [nome, preset] of Object.entries(theme.PRESETS)) {
     const s = preset.surfaces;
     const fina = theme.contrast(theme.blendOver(s.grid, s.bg), s.bg);
@@ -52,11 +52,18 @@ test('grade da Mesa: blendOver pinta rgba sobre o fundo e recusa o que nao e rgb
   assert.equal(theme.blendOver(undefined, '#000000'), null);
 });
 
-test('grade da Mesa: o CSS de cada tema traz os mesmos --grid/--grid2 do theme.js', () => {
-  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+test('grade da Mesa: os CSSs de Sinal trazem os mesmos --grid/--grid2 do theme.js', () => {
+  const tokens = fs.readFileSync(path.join(__dirname, 'sinal', 'tokens.css'), 'utf8');
+  const themes = fs.readFileSync(path.join(__dirname, 'sinal', 'themes.css'), 'utf8');
   const norm = (v) => v.replace(/\s+/g, '').replace(/,0\./g, ',.');
   const bloco = (nome) => {
-    const i = nome === 'estudio' ? css.indexOf(':root {') : css.indexOf(`:root[data-theme="${nome}"]`);
+    const css = nome === 'sinal' || nome === 'sinal-claro' ? tokens : themes;
+    const selector = nome === 'sinal'
+      ? ':root {'
+      : nome === 'sinal-claro'
+        ? `:root[data-theme='${nome}']`
+        : `:root[data-theme="${nome}"]`;
+    const i = css.indexOf(selector);
     assert.ok(i >= 0, `${nome}: bloco CSS`);
     return css.slice(i, css.indexOf('}', i));
   };

@@ -3758,7 +3758,7 @@
   // Array explicito, nao Object.keys(theme.PRESETS) -- a ordem de exibicao
   // nao deveria depender da ordem de insercao de theme.js. O preco e ter de
   // lembrar de acrescentar aqui cada predefinicao nova: theme.test.js cobra.
-  const THEME_PRESET_ORDER = ['estudio', 'marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+  const THEME_PRESET_ORDER = ['sinal', 'sinal-claro', 'marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
 
   /** Um cartao por predefinicao: o app EM MINIATURA, com as cores daquela
    * predefinicao aplicadas inline -- nao um quadrado solido com o nome

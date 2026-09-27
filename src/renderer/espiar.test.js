@@ -100,7 +100,7 @@ test('espiar ignora token vazio e valor que nao e cor', () => {
 
 test('espiar.html abre com o tema GoLive e usa cada cor do tema', () => {
   const html = fs.readFileSync(path.join(__dirname, 'espiar.html'), 'utf8');
-  const defaults = spyThemeVars(readerFor(PRESETS.estudio));
+  const defaults = spyThemeVars(readerFor(PRESETS.sinal));
   for (const [name, value] of Object.entries(defaults)) {
     const declared = html.match(new RegExp(`${name}:\\s*([^;]+);`, 'i'));
     assert.ok(declared, `espiar.html precisa declarar ${name}`);

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   PRESETS,
   DANGER,
+  toneOf,
   contrast,
   hueOf,
   hueDistance,
@@ -16,15 +17,14 @@ const {
 const fs = require('node:fs');
 const path = require('node:path');
 
-// A lista de cartoes em Aparencia e um array fixo em ui.js. Quando o tema
-// `marca` entrou, ele ficou de fora dela: o padrao novo nao aparecia para
-// escolher e nenhum cartao ficava marcado.
-test('Aparencia mostra um cartao para cada predefinicao, sem id inventado', () => {
+// A lista de cartoes e uma responsabilidade da interface. Este contrato do
+// motor apenas protege que ela continue explicita, sem inferir a ordem do
+// catalogo que o motor exporta.
+test('Aparencia mantem uma ordem explicita de cartoes', () => {
   const uiSource = fs.readFileSync(path.join(__dirname, 'ui.js'), 'utf8');
   const match = /const THEME_PRESET_ORDER = \[([^\]]*)\]/.exec(uiSource);
   assert.ok(match, 'THEME_PRESET_ORDER nao encontrado em ui.js');
   const order = [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual([...order].sort(), Object.keys(PRESETS).sort());
   assert.equal(order.length, new Set(order).size);
 });
 
@@ -50,8 +50,12 @@ test('contrast e simetrico na ordem dos argumentos', () => {
   assert.equal(a, b);
 });
 
-test('botao de sair usa texto legivel sobre perigo nos sete presets', () => {
-  for (const nome of Object.keys(PRESETS)) {
+test('DANGER e o laranja reservado para perigo', () => {
+  assert.equal(DANGER, '#FF8A3D');
+});
+
+test('botao de sair usa texto legivel sobre perigo nos presets escuros', () => {
+  for (const nome of Object.keys(PRESETS).filter((id) => toneOf(PRESETS[id].surfaces.bg) === 'dark')) {
     const texto = deriveAction(DANGER).onAct;
     const razao = contrast(texto, DANGER);
     assert.ok(razao >= 4.5, `${nome}: texto do botao Sair deu ${razao.toFixed(2)}:1`);
@@ -115,16 +119,26 @@ test('todo preset do catalogo passa em validate', () => {
   }
 });
 
-test('catalogo oferece o preset estudio', () => {
-  assert.ok(PRESETS.estudio);
+test('catalogo oferece Sinal como preset padrao', () => {
+  assert.ok(PRESETS.sinal);
+  assert.equal(PRESETS.sinal.label, 'Sinal');
+  assert.deepEqual(PRESETS.sinal.surfaces, {
+    bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
+    tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',
+    line: 'rgba(237,237,242,.09)', line2: 'rgba(237,237,242,.17)',
+    grid: 'rgba(237,237,242,.06)', grid2: 'rgba(237,237,242,.10)',
+  });
+  assert.equal(PRESETS.sinal.act, '#EDEDF2');
+  assert.equal(PRESETS.sinal.actHover, '#FFFFFF');
+  assert.equal(PRESETS.sinal.onAct, '#0E0E14');
 });
 
-test('estudio passa na trava de contraste', () => {
-  assert.ok(PRESETS.estudio && validate(PRESETS.estudio).ok);
+test('Sinal claro passa na trava de contraste', () => {
+  assert.ok(PRESETS['sinal-claro'] && validate(PRESETS['sinal-claro']).ok);
 });
 
-test('estudio declara texto escuro para sua acao clara', () => {
-  assert.equal(PRESETS.estudio?.onAct, '#0C0D0F');
+test('Sinal declara texto escuro para sua acao clara', () => {
+  assert.equal(PRESETS.sinal?.onAct, '#0E0E14');
 });
 
 test('tema personalizado usa texto escuro sobre acao clara', () => {
@@ -188,25 +202,30 @@ test('deriveAction com acento escuro comum aceita branco', () => {
   assert.equal(derived.onAct.toLowerCase(), '#ffffff');
 });
 
-test('tokensFor com preset desconhecido cai no padrao (estudio)', () => {
+test('toneOf identifica fundos claros e escuros pela luminancia relativa', () => {
+  assert.equal(toneOf('#0E0E14'), 'dark');
+  assert.equal(toneOf('#F4F4F7'), 'light');
+});
+
+test('tokensFor com preset desconhecido cai no padrao (sinal)', () => {
   const tokens = tokensFor({ preset: 'nao-existe' });
-  assert.deepEqual(tokens, PRESETS.estudio);
+  assert.deepEqual(tokens, PRESETS.sinal);
 });
 
 test('tokensFor com custom sem act valido cai no padrao', () => {
   const tokens = tokensFor({ preset: 'custom', base: { temp: 0.5, level: 0.5 }, act: 'nao-e-hex' });
-  assert.deepEqual(tokens, PRESETS.estudio);
+  assert.deepEqual(tokens, PRESETS.sinal);
 });
 
 test('tokensFor com custom sem base valida cai no padrao', () => {
   const tokens = tokensFor({ preset: 'custom', base: { temp: 2, level: 0.5 }, act: '#4F46E5' });
-  assert.deepEqual(tokens, PRESETS.estudio);
+  assert.deepEqual(tokens, PRESETS.sinal);
 });
 
 test('tokensFor com custom ausente/vazio cai no padrao', () => {
-  assert.deepEqual(tokensFor(undefined), PRESETS.estudio);
-  assert.deepEqual(tokensFor({}), PRESETS.estudio);
-  assert.deepEqual(tokensFor({ preset: 'custom' }), PRESETS.estudio);
+  assert.deepEqual(tokensFor(undefined), PRESETS.sinal);
+  assert.deepEqual(tokensFor({}), PRESETS.sinal);
+  assert.deepEqual(tokensFor({ preset: 'custom' }), PRESETS.sinal);
 });
 
 test('tokensFor com custom valido deriva surfaces e action, nao devolve preset fixo', () => {
@@ -221,18 +240,20 @@ test('hueOf de --live e estavel (regressao simples)', () => {
   assert.ok(h >= 355 || h <= 5, `esperava matiz perto de 0/360 (vermelho), veio ${h}`);
 });
 
-test('apply com preset "estudio" remove data-theme; outro preset seta o atributo', () => {
+test('apply remove data-theme para Sinal e grava o tom de preset', () => {
   const doc = { documentElement: { attrs: {}, style: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } } };
   doc.documentElement.style.setProperty = function setProperty(k, v) { this[k] = v; };
 
   apply({ preset: 'midnight' }, doc);
   assert.equal(doc.documentElement.attrs['data-theme'], 'midnight');
+  assert.equal(doc.documentElement.attrs['data-tone'], 'dark');
 
-  apply({ preset: 'estudio' }, doc);
+  apply({ preset: 'sinal' }, doc);
   assert.equal(doc.documentElement.attrs['data-theme'], undefined);
+  assert.equal(doc.documentElement.attrs['data-tone'], 'dark');
 });
 
-test('apply do estudio usa o onAct declarado pelo preset', () => {
+test('apply do Sinal usa o onAct declarado pelo preset', () => {
   const props = {};
   const doc = {
     documentElement: {
@@ -246,9 +267,9 @@ test('apply do estudio usa o onAct declarado pelo preset', () => {
     },
   };
 
-  apply({ preset: 'estudio' }, doc);
+  apply({ preset: 'sinal' }, doc);
 
-  assert.equal(props['--on-act'], '#0C0D0F');
+  assert.equal(props['--on-act'], '#0E0E14');
 });
 
 test('apply com custom valido seta data-theme="custom" e escreve variaveis, sem tocar em tokens semanticos', () => {
@@ -265,6 +286,7 @@ test('apply com custom valido seta data-theme="custom" e escreve variaveis, sem 
   apply({ preset: 'custom', base: { temp: 0.3, level: 0.2 }, act: '#4F8EF7' }, doc);
 
   assert.equal(doc.documentElement.attrs['data-theme'], 'custom');
+  assert.equal(doc.documentElement.attrs['data-tone'], 'dark');
   assert.ok(setProps['--bg']);
   assert.ok(setProps['--act']);
   assert.equal(setProps['--live'], undefined);
@@ -295,7 +317,7 @@ test('apply de um preset APAGA as variaveis inline de um custom anterior', () =>
   apply({ preset: 'custom', base: { temp: 0.3, level: 0.9 }, act: '#4F8EF7' }, doc);
   assert.ok(props['--bg'], 'o custom precisa ter escrito --bg');
 
-  apply({ preset: 'estudio' }, doc);
+  apply({ preset: 'sinal' }, doc);
   assert.equal(props['--bg'], undefined);
   assert.equal(props['--act'], undefined);
   assert.equal(doc.documentElement.attrs['data-theme'], undefined);

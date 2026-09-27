@@ -16,7 +16,7 @@
   // impossivel, entao a checagem so cobre --live/--danger).
 
   const LIVE = '#FF4D4F';
-  const DANGER = '#C92A33';
+  const DANGER = '#FF8A3D';
 
   // ---------------------------------------------------------------------
   // Conversao de cor. Tudo em hex de 6 digitos (#rrggbb) pra fora; HSL só
@@ -127,6 +127,12 @@
     return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
   }
 
+  /** Tom efetivo da superficie. Fundo claro tem luminancia relativa acima
+   * de 0,5; entrada invalida cai no tom escuro seguro para o boot. */
+  function toneOf(bgHex) {
+    return isHex(bgHex) && relativeLuminance(bgHex) > 0.5 ? 'light' : 'dark';
+  }
+
   /** Razao de contraste WCAG entre duas cores hex. Ordem dos argumentos nao
    * importa -- a formula ja normaliza pra L1 (mais clara) sobre L2. */
   function contrast(hexA, hexB) {
@@ -159,17 +165,29 @@
   // "paper" abaixo pro motivo matematico completo). bg continua sendo a
   // superficie mais clara da rampa, como pede a spec.
   const PRESETS = {
-    estudio: {
-      label: 'Estúdio',
+    sinal: {
+      label: 'Sinal',
       surfaces: {
-        bg: '#0C0D0F', s1: '#131518', s2: '#1A1D21', s3: '#23272C', s4: '#2E3339',
-        tx: '#ECEDEF', tx2: '#A4ABB4', tx3: '#8B929C',
-        line: 'rgba(236,237,239,.06)', line2: 'rgba(236,237,239,.10)',
-        grid: 'rgba(236,237,239,.06)', grid2: 'rgba(236,237,239,.10)',
+        bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
+        tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',
+        line: 'rgba(237,237,242,.09)', line2: 'rgba(237,237,242,.17)',
+        grid: 'rgba(237,237,242,.06)', grid2: 'rgba(237,237,242,.10)',
       },
-      act: '#ECEDEF',
+      act: '#EDEDF2',
       actHover: '#FFFFFF',
-      onAct: '#0C0D0F',
+      onAct: '#0E0E14',
+    },
+    'sinal-claro': {
+      label: 'Sinal claro',
+      surfaces: {
+        bg: '#F4F4F7', s1: '#FFFFFF', s2: '#FFFFFF', s3: '#EBEBF0', s4: '#E0E0E8',
+        tx: '#0E0E14', tx2: '#4A4A5C', tx3: '#666678',
+        line: 'rgba(14,14,20,.09)', line2: 'rgba(14,14,20,.18)',
+        grid: 'rgba(14,14,20,.06)', grid2: 'rgba(14,14,20,.10)',
+      },
+      act: '#0E0E14',
+      actHover: '#26262F',
+      onAct: '#EDEDF2',
     },
     marca: {
       label: 'GoLive',
@@ -408,7 +426,7 @@
    * acesso a eles e nao deveria precisar: um texto escuro generico serve
    * pra qualquer acento claro o bastante pra reprovar branco). */
   function deriveAction(actHex, darkText = '#14151A') {
-    const act = isHex(actHex) ? actHex : PRESETS.signal.act;
+    const act = isHex(actHex) ? actHex : PRESETS.sinal.act;
     const hsl = hexToHsl(act);
 
     // Hover: acentos escuros clareiam, acentos claros escurecem -- sempre
@@ -477,7 +495,7 @@
   function validate(tokens) {
     const failures = [];
     const s = (tokens && tokens.surfaces) || {};
-    const act = (tokens && tokens.act) || PRESETS.signal.act;
+    const act = (tokens && tokens.act) || PRESETS.sinal.act;
     const onAct = (tokens && tokens.onAct) || deriveAction(act).onAct;
 
     // 1. tx sobre bg e s1..s4.
@@ -513,9 +531,12 @@
     // reprovaria todo tema claro por construcao, nao por um --s1 mal
     // escolhido (foi exatamente isso que forcou a primeira tentativa do
     // preset "Papel" a paineis quase pretos -- ver o comentario dentro de
-    // PRESETS.paper acima). --live (~0.27) e --danger (~0.14) nao tem
-    // esse problema: os dois tem solucao com --s1 genuinamente claro.
-    for (const [nome, hex] of [['--live', LIVE], ['--danger', DANGER]]) {
+    // PRESETS.paper acima). --live (~0.27) tem solucao com --s1 claro. O
+    // laranja de perigo (~0.40) nao chega a 3:1 em superficie clara; nesse
+    // tom usa #B3370A, variante clara travada em tokens.css, para a conta
+    // ser matematicamente possivel sem escurecer o tema.
+    const danger = toneOf(s.bg) === 'light' ? '#B3370A' : DANGER;
+    for (const [nome, hex] of [['--live', LIVE], ['--danger', danger]]) {
       if (!isHex(s.s1)) continue;
       const c = contrast(hex, s.s1);
       if (c < MIN_SEMANTIC_CONTRAST) {
@@ -573,7 +594,7 @@
    *      perde o proprio tema num update.
    *
    * Qualquer outra coisa (preset desconhecido, custom malformado, cfg
-   * ausente) cai em PRESETS.estudio sem lancar -- roda no boot do app. */
+   * ausente) cai em PRESETS.sinal sem lancar -- roda no boot do app. */
   function tokensFor(themeCfg) {
     if (isValidCustomCfg(themeCfg)) {
       return { surfaces: deriveSurfaces(themeCfg.base), ...deriveAction(themeCfg.act) };
@@ -583,7 +604,7 @@
       if (isHex(themeCfg.act)) return { surfaces: preset.surfaces, ...deriveAction(themeCfg.act) };
       return preset;
     }
-    return PRESETS.estudio;
+    return PRESETS.sinal;
   }
 
   const SURFACE_VAR_MAP = {
@@ -615,7 +636,7 @@
   const CUSTOM_VAR_MAP = { ...SURFACE_VAR_MAP, ...ACTION_VAR_MAP };
 
   /** Aplica um tema no `<html>`. Presets sao so um atributo `data-theme`
-   * (o CSS ja tem o bloco pronto) -- "estudio" remove o atributo, pra
+   * (o CSS ja tem o bloco pronto) -- "sinal" remove o atributo, pra
    * bater com o :root de hoje sendo o proprio padrao sem override. Custom
    * seta `data-theme="custom"` e escreve cada variavel via
    * `style.setProperty`, sem tocar em --live/--warn/--danger/os -dim (essa
@@ -632,6 +653,9 @@
     if (isValidCustomCfg(themeCfg)) {
       const tokens = tokensFor(themeCfg);
       d.documentElement.setAttribute('data-theme', 'custom');
+      // setAttribute, nao dataset: no DOM real dataset so tem getter e
+      // atribuir a ele lanca em modo estrito.
+      d.documentElement.setAttribute('data-tone', toneOf(tokens.surfaces.bg));
       for (const [varName, getter] of Object.entries(CUSTOM_VAR_MAP)) {
         d.documentElement.style.setProperty(varName, getter(tokens));
       }
@@ -647,9 +671,10 @@
     for (const varName of Object.keys(CUSTOM_VAR_MAP)) {
       d.documentElement.style.removeProperty?.(varName);
     }
-    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'estudio';
-    const preset = PRESETS[requested] ? requested : 'estudio';
-    if (preset === 'estudio') {
+    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'sinal';
+    const preset = PRESETS[requested] ? requested : 'sinal';
+    d.documentElement.setAttribute('data-tone', toneOf(PRESETS[preset].surfaces.bg));
+    if (preset === 'sinal') {
       d.documentElement.removeAttribute('data-theme');
     } else {
       d.documentElement.setAttribute('data-theme', preset);
@@ -678,6 +703,7 @@
     PRESETS,
     DANGER,
     GRID_CONTRAST,
+    toneOf,
     contrast,
     blendOver,
     hueOf,

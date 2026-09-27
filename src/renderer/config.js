@@ -202,7 +202,7 @@
     // aqui -- chaves e tipos -- nunca os valores de cor (isso e trabalho de
     // theme.js, que este arquivo deliberadamente nao importa, pra manter os
     // dois modulos desacoplados; quem cruza os dois e o app.js).
-    theme: { preset: 'estudio' },
+    theme: { preset: 'sinal' },
     // Temas montados pela pessoa (spec 2026-09-15, frente 8). Lista, ao
     // lado de `theme`, que continua sendo "qual esta em uso". Nenhuma
     // migracao: usar um destes grava a forma {preset:'custom', base, act}
@@ -211,9 +211,9 @@
     // Marca que este config ja passou pela troca do padrao: sem isto uma
     // escolha posterior de "Superficie e sinal" seria migrada de novo.
     themeMigration: true,
-    // Marca que a troca para Estudio ja ocorreu. Uma escolha posterior de
-    // marca puro e explicita e nao pode ser desfeita no proximo boot.
-    themeMigrationEstudio: true,
+    // Marca que a troca para Sinal ja ocorreu. Uma escolha posterior de
+    // marca puro e explicita nao pode ser desfeita no proximo boot.
+    themeMigrationSinal: true,
     // Anotacao na tela (spec de 2026-09-04, secao 5.1). NAO e uma
     // configuracao global: e a ULTIMA ESCOLHA feita no dialogo de
     // compartilhar, lembrada pra proxima vez -- exatamente como
@@ -230,7 +230,7 @@
   // a forma de `theme.preset` sem depender de theme.js (ver o comentario
   // acima de DEFAULTS.theme). Se um preset novo entrar em theme.js, ele
   // precisa entrar aqui tambem, senao um config salvo com ele cai no padrao.
-  const THEME_PRESETS = ['estudio', 'marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+  const THEME_PRESETS = ['sinal', 'sinal-claro', 'marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
 
   function isValidThemeBase(base) {
     return isObject(base)
@@ -347,8 +347,8 @@
   }
 
   /** As duas trocas de padrao, em ordem, cada uma uma vez so (marcada por
-   * flag). So o preset puro que era o padrao da vez migra: com acento
-   * proprio, ou gravado depois da flag, e uma escolha da pessoa. */
+   * flag). So o preset puro que era o padrao da vez migra; acento proprio
+   * continua junto quando um Estudio nao lancado vira Sinal. */
   function migrateTheme(parsed) {
     let theme = parsed.theme;
     const semAcento = !isValidHexColor(theme?.act);
@@ -356,9 +356,10 @@
     if (parsed.themeMigration !== true && theme?.preset === 'signal' && semAcento) {
       theme = { preset: 'marca' };
     }
-    // 2026-09-27: a marca, padrao ate aqui, vira o Estudio.
-    if (parsed.themeMigrationEstudio !== true && theme?.preset === 'marca' && semAcento) {
-      theme = { preset: 'estudio' };
+    // 2026-09-27: marca implicita e todo Estudio nao lancado viram Sinal.
+    if (parsed.themeMigrationSinal !== true
+      && ((theme?.preset === 'marca' && semAcento) || theme?.preset === 'estudio')) {
+      theme = isValidHexColor(theme?.act) ? { preset: 'sinal', act: theme.act } : { preset: 'sinal' };
     }
     return loadTheme(theme);
   }
@@ -387,7 +388,7 @@
       theme: migrateTheme(parsed),
       themes: loadCustomThemes(parsed.themes),
       themeMigration: true,
-      themeMigrationEstudio: true,
+      themeMigrationSinal: true,
       annotations: { allow: parsed.annotations?.allow === true },
       emojiRecents: loadStringList(parsed.emojiRecents, 24),
     };
