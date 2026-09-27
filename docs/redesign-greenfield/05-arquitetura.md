@@ -58,7 +58,10 @@ Janelas auxiliares: Splash · Espiar · Overlay (rabisco no monitor físico)
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Coluna única centrada (máx. 760 px), alinhada à esquerda dentro dela. A saudação usa `--t-display`.
+- Composição ancorada à esquerda que ocupa a janela (revisto em 2026-09-27 a pedido do Nicolas: a coluna
+  centrada de 760 px deixava tudo "no meio" e desperdiçava a largura). Abertura com a saudação à esquerda e a rede
+  alinhada à direita; ações logo abaixo; lista de salas de ponta a ponta; rodapé com a versão no pé da janela; sem
+  salas, o grafo do ícone ocupa o espaço que sobra. A saudação usa `--t-display`.
 - **Sem apelido**: no lugar da saudação, "Como seus amigos vão te ver?" com campo de nome e o nó de avatar
   (clique troca a foto). Salvar é imediato ao sair do campo/Enter. Não bloqueia nada.
 - **Criar sala** abre o diálogo (seção 7.2). **Endereço**: campo `host:porta` com `Entrar`; Enter envia;
