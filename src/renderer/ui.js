@@ -3361,7 +3361,7 @@
       ${grouped
     ? `<span class="msg__gutter" aria-hidden="true">${formatTime(entry.ts)}</span>`
     : `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>
-      <span class="msg__head"><span class="msg__author" style="color:${cor}">${escapeHtml(entry.name)}</span><span class="msg__time">${formatTime(entry.ts)}</span></span>`}
+      <span class="msg__head"><span class="msg__author" style="--who:${cor}">${escapeHtml(entry.name)}</span><span class="msg__time">${formatTime(entry.ts)}</span></span>`}
       ${entry.text ? `<p class="msg__body">${escapeHtml(entry.text)}</p>` : ''}
       ${chatImageHtml(entry)}
       ${chatPutHtml(entry)}`;
@@ -3449,7 +3449,7 @@
     const cor = avatarColorFor(String(entry.from));
     const texto = entry.text || (entry.image ? 'mandou uma imagem' : '');
     item.innerHTML = `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>`
-      + `<span class="peek__text"><b style="color:${cor}">${escapeHtml(entry.name)}</b>${escapeHtml(texto)}</span>`;
+      + `<span class="peek__text"><b class="peek__who" style="--who:${cor}">${escapeHtml(entry.name)}</b>${escapeHtml(texto)}</span>`;
     item.addEventListener('click', () => document.dispatchEvent(new CustomEvent('golive:conv-open')));
     item.addEventListener('animationend', () => item.remove());
     chatPeekEl.appendChild(item);

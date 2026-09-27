@@ -19,7 +19,9 @@ const { createSignalingServer } = require('../../server/signaling-core');
 const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'C:/Users/nicol/Desktop/portfolio-nubinho/node_modules/playwright');
 const RAIZ = path.join(__dirname, '..', '..');
 const PAGINA = `file://${path.join(RAIZ, 'src', 'renderer', 'index.html')}`;
-const SAIDA = path.join(RAIZ, 'docs', 'redesign-greenfield', 'prints', 'sala');
+// SINAL_TEMA=<preset> fotografa com outro tema (ex.: sinal-claro), numa pasta propria.
+const TEMA = process.env.SINAL_TEMA || '';
+const SAIDA = path.join(RAIZ, 'docs', 'redesign-greenfield', 'prints', TEMA ? `sala-${TEMA}` : 'sala');
 const TAMANHOS = process.argv.slice(2).length
   ? process.argv.slice(2).map((t) => t.split('x').map(Number))
   : [[1440, 900], [1180, 760], [960, 600]];
@@ -40,7 +42,7 @@ async function pessoa(port, name) {
 }
 
 /** Ponte simulada: o app acha que esta no Windows, com rede Radmin, e entra como quem criou a sala. */
-const PONTE = () => {
+const PONTE = (tema) => {
   const enviar = WebSocket.prototype.send;
   WebSocket.prototype.send = function send(data) {
     if (typeof data === 'string' && data.includes('"type":"join"')) {
@@ -82,7 +84,9 @@ const PONTE = () => {
     },
   });
   if (!localStorage.getItem('golive')) {
-    localStorage.setItem('golive', JSON.stringify({ v: 1, name: 'Nick', clientId: 'cli-nick' }));
+    const cfg = { v: 1, name: 'Nick', clientId: 'cli-nick' };
+    if (tema) cfg.theme = { preset: tema };
+    localStorage.setItem('golive', JSON.stringify(cfg));
   }
 };
 
@@ -127,7 +131,7 @@ async function rodada(browser, port, [w, h]) {
   const erros = [];
   page.on('console', (m) => { if (m.type() === 'error') erros.push(m.text()); });
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
-  await page.addInitScript(PONTE);
+  await page.addInitScript(PONTE, TEMA);
   await page.goto(PAGINA);
   await page.fill('#join-address', `127.0.0.1:${port}`);
   await page.press('#join-address', 'Enter');

@@ -829,3 +829,12 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 .spin svg { animation: node-spin 600ms var(--ease-out); }
 .addr.copied-flash, .addr.copied-flash .i { color: var(--ok); }
 .theme-warning-fix { margin-left: var(--s-2); }
+
+/* Cor de identidade como TEXTO: no tom claro ela e misturada a tinta para
+ * passar contraste (a paleta de pessoas e clara, feita para o fundo escuro). */
+.msg__author, .peek__who { color: var(--who, var(--tx)); }
+:root[data-tone='light'] .msg__author,
+:root[data-tone='light'] .node:not([data-state]) { color: color-mix(in srgb, var(--who, var(--tx)) 45%, var(--tx)); }
+:root[data-tone='light'] .node:not([data-state]) { --ring: color-mix(in srgb, var(--who, var(--tx3)) 60%, var(--tx)); }
+/* Parar e neutro (nao e selecao): so o hover avisa perigo. */
+.me .me__share[aria-pressed='true'] .i { color: currentColor; }
