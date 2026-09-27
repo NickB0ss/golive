@@ -12,6 +12,8 @@
   --tx2:  #A4ABB4;
   --live: #FF4D4F;
   --line: rgba(236, 237, 239, 0.08);
+  --font-body: 'Instrument Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
 }
 
 @font-face {
@@ -55,7 +57,7 @@ html, body {
   background: var(--bg);
   color: var(--tx);
   overflow: hidden;
-  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-family: var(--font-body);
 }
 
 body {
@@ -73,7 +75,7 @@ body {
   height: 48px;
   color: var(--tx);
 }
-.brand-mark + .status-text { font-family: 'Instrument Sans', system-ui, sans-serif; }
+.brand-mark + .status-text { font-family: var(--font-body); }
 .brand-origin { fill: var(--live); }
 
 .status-text {

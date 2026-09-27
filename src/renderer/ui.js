@@ -2754,17 +2754,28 @@
 
   const peerListEl = $('peer-list');
   const memberMenuEl = $('member-menu');
+  let memberPopover = null;
 
+  // O mesmo id tambem ancora o menu de temas salvo; preserva o fechamento dele.
   function closeMemberMenu() {
+    if (memberPopover) {
+      memberPopover.close();
+      return;
+    }
     memberMenuEl.classList.add('hidden');
     memberMenuEl.classList.remove('in-modal');
-    memberMenuEl.innerHTML = '';
+    memberMenuEl.replaceChildren();
     memberMenuEl.onkeydown = null;
   }
-  document.addEventListener('click', (e) => {
-    if (!memberMenuEl.contains(e.target) && !e.target.closest('.member-menu-btn, .my-theme-menu-btn')) closeMemberMenu();
+  document.addEventListener('click', (event) => {
+    if (memberPopover) return;
+    if (!memberMenuEl.contains(event.target) && !event.target.closest('.my-theme-menu-btn')) {
+      closeMemberMenu();
+    }
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMemberMenu(); });
+  document.addEventListener('keydown', (event) => {
+    if (!memberPopover && event.key === 'Escape') closeMemberMenu();
+  });
 
   const MODERATE_ICONS = {
     'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
@@ -2793,8 +2804,9 @@
     canAdd = false,
     onWatch,
   } = {}) {
-    const rect = btn.getBoundingClientRect();
-    memberMenuEl.classList.remove('in-modal');
+    closeMemberMenu();
+    memberMenuEl.classList.remove('hidden', 'in-modal');
+    memberMenuEl.removeAttribute('role');
     memberMenuEl.innerHTML = `
       ${canAdd ? '<button class="menu-item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
       ${live ? `<button class="menu-item warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</button>` : ''}
@@ -2812,22 +2824,29 @@
         item.remove();
       }
     }
-    memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
-    memberMenuEl.style.top = `${rect.bottom + 4}px`;
-    memberMenuEl.classList.remove('hidden');
+    const fechar = openPopover({
+      anchor: btn,
+      content: memberMenuEl,
+      onClose: () => {
+        memberPopover = null;
+        memberMenuEl.replaceChildren();
+        memberMenuEl.classList.add('hidden');
+        memberMenuEl.setAttribute('role', 'menu');
+      },
+    });
+    memberPopover = fechar;
     for (const item of memberMenuEl.querySelectorAll('[data-action]')) {
       item.addEventListener('click', () => {
         onModerate?.(item.dataset.action, id, name);
-        closeMemberMenu();
+        fechar.close();
       });
     }
     for (const item of memberMenuEl.querySelectorAll('[data-watch]')) {
       item.addEventListener('click', () => {
         onWatch?.(id, item.dataset.watch);
-        closeMemberMenu();
+        fechar.close();
       });
     }
-    memberMenuEl.querySelector('[role="menuitem"]')?.focus();
   }
 
   // `live` liga `.peer-avatar.on` (anel --live via box-shadow, o unico sinal
@@ -2883,7 +2902,19 @@
     const focar = () => {
       const tela = document.getElementById(`tile-${id}`);
       const camera = document.getElementById(`tile-cam-${id}`);
-      const alvo = tela || camera;
+      if (tela?.hidden && live && !watched) {
+        onWatch?.(id, 'only');
+        // A troca de assistida redesenha o tile no mesmo ciclo antes do foco.
+        requestAnimationFrame(() => {
+          const tile = document.getElementById(`tile-${id}`);
+          if (!tile?.hidden) focarTile(tile);
+        });
+        return;
+      }
+      const alvo = tela && !tela.hidden ? tela : camera;
+      focarTile(alvo);
+    };
+    const focarTile = (alvo) => {
       alvo?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       alvo?.focus({ preventScroll: true });
     };
@@ -3379,7 +3410,6 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !emojiPanelEl.classList.contains('hidden')) {
         closeEmojiPanel();
-        chatInputEl.focus();
       }
     });
   }
@@ -3423,8 +3453,10 @@
   }
 
   function closeEmojiPanel() {
+    if (emojiPanelEl.classList.contains('hidden')) return;
     emojiPanelEl.classList.add('hidden');
     emojiBtnEl.setAttribute('aria-expanded', 'false');
+    emojiBtnEl.focus({ preventScroll: true });
   }
 
   emojiListEl?.addEventListener('click', (e) => {

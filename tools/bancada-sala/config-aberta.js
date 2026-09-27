@@ -155,6 +155,14 @@ async function abrirConfiguracoes(page) {
   await page.waitForSelector('#settings-modal:not(.hidden)');
 }
 
+async function reenviarViewState(page, origemId) {
+  await page.evaluate((id) => {
+    const tileId = `${id}:screen`;
+    const escolha = window.GoLive.tetoRecebido.escolha(tileId);
+    window.GoLive.tetoRecebido.escolher(tileId, escolha);
+  }, origemId);
+}
+
 async function conferirVistaConfiguracoes(page, origem, aoVivo) {
   const estrutura = await page.evaluate(() => {
     const settings = document.querySelector('#settings-modal');
@@ -179,33 +187,50 @@ async function conferirVistaConfiguracoes(page, origem, aoVivo) {
   }
 }
 
-async function conferirViewStates(ana, idBia, maxWidthMinimo) {
-  const estados = await ana.page.evaluate((id) => window.__caixa.filter((mensagem) => (
-    mensagem.type === 'view-state' && mensagem.from === id && mensagem.kind === 'screen'
-  )), idBia);
+async function conferirViewStates(ana, idBia, inicio, larguraAntes, naMesa) {
+  const estados = await ana.page.evaluate(({ id, inicioCaixa }) => (
+    window.__caixa.slice(inicioCaixa).filter((mensagem) => (
+      mensagem.type === 'view-state' && mensagem.from === id && mensagem.kind === 'screen'
+    ))
+  ), { id: idBia, inicioCaixa: inicio });
   if (!estados.length) throw new Error('Bia não enviou view-state durante a medição');
   if (estados.some((estado) => estado.watching === false)) {
     throw new Error(`Bia enviou watching:false: ${JSON.stringify(estados)}`);
   }
-  if (maxWidthMinimo != null && estados.some((estado) => (
-    Number.isFinite(estado.maxWidth) && estado.maxWidth < maxWidthMinimo
+  if (naMesa && estados.some((estado) => (
+    !Number.isFinite(estado.maxWidth) || estado.maxWidth < larguraAntes
   ))) {
-    throw new Error(`Bia reduziu maxWidth: ${JSON.stringify(estados)}`);
+    throw new Error(`Bia perdeu o teto da Mesa: ${JSON.stringify(estados)}`);
+  }
+  if (!naMesa && estados.some((estado) => estado.maxWidth !== larguraAntes)) {
+    throw new Error(`Bia mudou maxWidth na Transmissao: ${JSON.stringify(estados)}`);
   }
 }
 
-async function medirConfiguracoes(ana, bia, seletor, maxWidthMinimo) {
+async function medirConfiguracoes(ana, bia, seletor, naMesa) {
   await abrirConfiguracoes(ana.page);
   console.log('config-aberta: Configurações de Ana abertas');
   await conferirVistaConfiguracoes(ana.page, 'Ana', true);
   const quadrosAna = await medirQuadros(bia.page, seletor);
   console.log('config-aberta: Bia recebeu com Configurações de Ana');
+  const larguraAntes = await ana.page.evaluate((id) => {
+    const estados = window.__caixa.filter((mensagem) => (
+      mensagem.type === 'view-state' && mensagem.from === id && mensagem.kind === 'screen'
+    ));
+    return estados.at(-1)?.maxWidth ?? null;
+  }, bia.id);
+  if (naMesa && !Number.isFinite(larguraAntes)) {
+    throw new Error('Bia nao tinha teto finito antes de abrir Configuracoes na Mesa');
+  }
+  const inicio = await ana.page.evaluate(() => window.__caixa.length);
   await abrirConfiguracoes(bia.page);
+  // Reenvia pelo caminho da escolha para medir o estado com a vista aberta.
+  await reenviarViewState(bia.page, ana.id);
   console.log('config-aberta: Configurações de Bia abertas');
   await conferirVistaConfiguracoes(bia.page, 'Bia', false);
   const quadrosBia = await medirQuadros(bia.page, seletor);
   console.log('config-aberta: Bia recebeu com Configurações próprias');
-  await conferirViewStates(ana, bia.id, maxWidthMinimo);
+  await conferirViewStates(ana, bia.id, inicio, larguraAntes, naMesa);
   return { quadrosAna, quadrosBia };
 }
 
@@ -251,7 +276,7 @@ async function main() {
       mensagem.type === 'view-state' && mensagem.from === bia.id && mensagem.kind === 'screen'
     ));
     const antesTransmissao = await medirQuadros(bia.page, seletorTransmissao);
-    const transmissao = await medirConfiguracoes(ana, bia, seletorTransmissao, null);
+    const transmissao = await medirConfiguracoes(ana, bia, seletorTransmissao, false);
     await ana.page.evaluate(() => window.GoLive.ui.settings.close());
     await bia.page.evaluate(() => window.GoLive.ui.settings.close());
     const seletorMesa = await abrirMesaComTela(bia, ana.id);
@@ -273,7 +298,7 @@ async function main() {
       return estados.at(-1)?.maxWidth || null;
     }, bia.id);
     console.log(`config-aberta: teto da Mesa ${larguraAntes}`);
-    const mesa = await medirConfiguracoes(ana, bia, seletorMesa, larguraAntes);
+    const mesa = await medirConfiguracoes(ana, bia, seletorMesa, true);
     const erros = pessoas.flatMap((pessoa) => pessoa.erros);
     if (erros.length) throw new Error(`erro de pagina: ${erros.join(' | ')}`);
     console.log(`config-aberta: transmissão ${JSON.stringify({ antesTransmissao, transmissao })}`);

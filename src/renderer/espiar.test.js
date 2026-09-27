@@ -40,6 +40,9 @@ function readerFor(tokens) {
     '--bg': tokens.surfaces.bg, '--tx': tokens.surfaces.tx, '--tx2': tokens.surfaces.tx2,
     '--s2': tokens.surfaces.s2, '--s3': tokens.surfaces.s3, '--act': tokens.act,
     '--on-act': tokens.onAct || '#FFFFFF',
+    '--font-body': tokens.fontBody || "'Instrument Sans', system-ui, sans-serif",
+    '--font-display': tokens.fontDisplay || "'Instrument Sans', system-ui, sans-serif",
+    '--font-mono': tokens.fontMono || "'IBM Plex Mono', monospace",
   };
   return (name) => ` ${vars[name] ?? ''}`;
 }
@@ -62,6 +65,28 @@ test('espiar segue o acento trocado por cima da predefinicao', () => {
   assert.equal(vars['--spy-bg'], PRESETS.paper.surfaces.bg);
 });
 
+test('espiar leva as fontes do tema para a janela auxiliar', () => {
+  const fonts = {
+    '--font-body': "'Work Sans', system-ui, sans-serif",
+    '--font-display': "'Outfit', system-ui, sans-serif",
+    '--font-mono': "'IBM Plex Mono', monospace",
+  };
+  const vars = spyThemeVars((name) => fonts[name] || '#123456');
+  const fontesTransportadas = Object.fromEntries(
+    Object.entries(vars).filter(([name]) => name.startsWith('--font-'))
+  );
+  assert.deepEqual(fontesTransportadas, fonts);
+  assert.deepEqual(sanitizeSpyTheme({
+    '--font-body': "'Work Sans', system-ui, sans-serif",
+    '--font-display': "'Outfit', system-ui, sans-serif",
+    '--font-mono': "'IBM Plex Mono', monospace",
+  }), {
+    '--font-body': "'Work Sans', system-ui, sans-serif",
+    '--font-display': "'Outfit', system-ui, sans-serif",
+    '--font-mono': "'IBM Plex Mono', monospace",
+  });
+});
+
 test('espiar ignora token vazio e valor que nao e cor', () => {
   const vars = spyThemeVars((name) => ({ '--bg': '', '--tx': 'red; background: url(x)' })[name] ?? '#123456');
   assert.equal(vars['--spy-bg'], undefined);
@@ -77,11 +102,23 @@ test('espiar.html abre com o tema GoLive e usa cada cor do tema', () => {
   const html = fs.readFileSync(path.join(__dirname, 'espiar.html'), 'utf8');
   const defaults = spyThemeVars(readerFor(PRESETS.estudio));
   for (const [name, value] of Object.entries(defaults)) {
-    const declared = html.match(new RegExp(`${name}:\\s*(#[0-9a-f]+)`, 'i'));
+    const declared = html.match(new RegExp(`${name}:\\s*([^;]+);`, 'i'));
     assert.ok(declared, `espiar.html precisa declarar ${name}`);
-    assert.equal(declared[1].toUpperCase(), value.toUpperCase(), `${name} padrao difere do tema GoLive`);
+    assert.equal(
+      declared[1].trim().toUpperCase(),
+      value.toUpperCase(),
+      `${name} padrao difere do tema GoLive`
+    );
     assert.match(html, new RegExp(`var\\(${name}\\)`), `${name} declarada e nunca usada`);
   }
   const lib = html.indexOf('src="espiar.js"');
   assert.ok(lib > -1 && lib < html.indexOf('src="espiar-page.js"'), 'espiar.js precisa carregar antes de espiar-page.js');
+});
+
+test('espiar recusa fonte com parenteses, barra ou aspas duplas', () => {
+  assert.deepEqual(sanitizeSpyTheme({
+    '--font-body': "'Instrument Sans', system-ui",
+    '--font-display': "url('x.woff2')",
+    '--font-mono': '"Mono", monospace',
+  }), { '--font-body': "'Instrument Sans', system-ui" });
 });

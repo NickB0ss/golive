@@ -35,32 +35,43 @@
     '--spy-s3': '--s3',
     '--spy-act': '--act',
     '--spy-on-act': '--on-act',
+    '--font-body': '--font-body',
+    '--font-display': '--font-display',
+    '--font-mono': '--font-mono',
   });
 
   // So cor: `#rgb`..`#rrggbbaa` ou rgb()/rgba() com numeros. A janela nao
   // aceita nada que pudesse virar outra coisa dentro de um `style`.
   const COLOR = /^(?:#[0-9a-f]{3,8}|rgba?\(\s*[\d.]+%?\s*(?:,\s*[\d.]+%?\s*){2,3}\))$/i;
+  // Fonte: lista de familias, com ou sem aspas simples, so letras, digitos,
+  // espaco e hifen -- sem parenteses, barras nem aspas duplas.
+  const FAMILIA = "(?:'[A-Za-z0-9 -]+'|[A-Za-z][A-Za-z0-9 -]*)";
+  const FONT = new RegExp(`^${FAMILIA}(?:\\s*,\\s*${FAMILIA})*$`);
 
-  /** Le do tema da janela principal as cores do Espiar. `read(nome)` devolve
+  function validSpyThemeValue(name, value) {
+    return name.startsWith('--font-') ? FONT.test(value) : COLOR.test(value);
+  }
+
+  /** Le do tema da janela principal os tokens do Espiar. `read(nome)` devolve
    * o valor computado de um token (`getComputedStyle(...).getPropertyValue`).
    * Token vazio ou invalido fica de fora: o Espiar mantem o padrao. */
   function spyThemeVars(read) {
     const out = {};
     for (const [spyVar, appVar] of Object.entries(SPY_THEME_VARS)) {
       const value = String(read(appVar) ?? '').trim();
-      if (COLOR.test(value)) out[spyVar] = value;
+      if (validSpyThemeValue(spyVar, value)) out[spyVar] = value;
     }
     return out;
   }
 
-  /** Filtra o que chega na janela Espiar: so as variaveis conhecidas, so
-   * valores de cor. */
+  /** Filtra o que chega na janela Espiar: so variaveis conhecidas e valores
+   * seguros para cor ou fonte. */
   function sanitizeSpyTheme(vars) {
     const out = {};
     if (!vars || typeof vars !== 'object') return out;
     for (const spyVar of Object.keys(SPY_THEME_VARS)) {
       const value = typeof vars[spyVar] === 'string' ? vars[spyVar].trim() : '';
-      if (COLOR.test(value)) out[spyVar] = value;
+      if (validSpyThemeValue(spyVar, value)) out[spyVar] = value;
     }
     return out;
   }

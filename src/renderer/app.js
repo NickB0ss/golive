@@ -2859,12 +2859,19 @@
     document.body.dataset.pessoas = estados.pessoas;
     document.body.dataset.chat = estados.chat;
     const chatRecolhido = estados.chat === 'recolhido';
+    const pessoasRecolhidas = estados.pessoas === 'recolhido';
     // Chat de volta a vista: o que chegou enquanto estava fechado ja aparece.
     if (!chatRecolhido) $('chat-unread-dot').classList.add('hidden');
     const chatBtn = $('btn-toggle-side');
     chatBtn.classList.toggle('collapsed', chatRecolhido);
     chatBtn.title = chatRecolhido ? 'Expandir chat' : 'Recolher chat';
     chatBtn.setAttribute('aria-label', chatBtn.title);
+    chatBtn.setAttribute('aria-expanded', String(!chatRecolhido));
+    const pessoasBtn = $('btn-toggle-people');
+    pessoasBtn.classList.toggle('collapsed', pessoasRecolhidas);
+    pessoasBtn.title = pessoasRecolhidas ? 'Expandir pessoas' : 'Recolher pessoas';
+    pessoasBtn.setAttribute('aria-label', pessoasBtn.title);
+    pessoasBtn.setAttribute('aria-expanded', String(!pessoasRecolhidas));
   }
 
   salaManual.pessoas = lerPreferenciaSala('pessoas');
