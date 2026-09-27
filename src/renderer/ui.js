@@ -195,6 +195,13 @@
     '1080p60': 'padrão',
   };
 
+  /** O servidor nomeia a sala padrao como 'sala de <host>'; na tela a
+   * primeira letra vem maiuscula, como qualquer titulo. */
+  function nomeDeSala(nome) {
+    const s = String(nome || '');
+    return s.charAt(0).toLocaleUpperCase('pt-BR') + s.slice(1);
+  }
+
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
@@ -930,6 +937,7 @@
         <span class="tile__warn hidden"></span>
         <div class="tile__stall hidden" role="status"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
+      acompanharCaixaDoVideo(tile);
       wireTileAnnotations(tile, id);
       wireTileBar(tile, id);
       if (id !== 'me' && id !== 'cam-me') {
@@ -996,6 +1004,30 @@
 
   let onTileShown = null;
 
+  // O HUD, o aviso de recepcao e a regua de rabisco ficam sobre a IMAGEM, nao
+  // sobre as tarjas do letterbox: o tile publica o retangulo util do video
+  // (mesma conta do rabisco, annotate.contentRect) em --vx/--vy/--vw/--vh.
+  const observadorCaixa = new ResizeObserver((entradas) => {
+    for (const entrada of entradas) publicarCaixaDoVideo(entrada.target);
+  });
+
+  function publicarCaixaDoVideo(tile) {
+    const video = tile.querySelector('video');
+    const r = annotate.contentRect(video?.videoWidth, video?.videoHeight, tile.clientWidth, tile.clientHeight);
+    tile.style.setProperty('--vx', `${Math.round(r.left)}px`);
+    tile.style.setProperty('--vy', `${Math.round(r.top)}px`);
+    tile.style.setProperty('--vw', `${Math.round(r.width)}px`);
+    tile.style.setProperty('--vh', `${Math.round(r.height)}px`);
+  }
+
+  function acompanharCaixaDoVideo(tile) {
+    observadorCaixa.observe(tile);
+    const video = tile.querySelector('video');
+    for (const evento of ['loadedmetadata', 'resize']) {
+      video?.addEventListener(evento, () => publicarCaixaDoVideo(tile));
+    }
+  }
+
   /** O palco se arruma de novo depois que a vista Mesa devolve os tiles:
    * tira o cartao de "ninguem transmitindo" que um removeTile possa ter
    * posto enquanto os tiles estavam fora, reorganiza e religa a pintura. */
@@ -1038,7 +1070,7 @@
     const acoes = aoVivo.length
       ? aoVivo.slice(0, 3).map((p) => `<button type="button" class="btn btn--secondary" data-assistir="${escapeHtml(p.id)}">
           Assistir ${escapeHtml(p.nome)}</button>`).join('')
-      : '<button type="button" class="btn btn--primary" data-transmitir>Transmitir tela</button>';
+      : '<button type="button" class="btn btn--secondary" data-transmitir>Transmitir tela</button>';
     gridEl.insertAdjacentHTML('beforeend', `
       <div class="stage-empty blank" data-chave="${escapeHtml(chave)}">
         <svg class="blank__art graph-art" viewBox="0 0 32 32" aria-hidden="true">
@@ -1064,7 +1096,9 @@
 
   function removeTile(id) {
     closeSpyWindow(id);
-    document.getElementById(`tile-${id}`)?.remove();
+    const tileSaindo = document.getElementById(`tile-${id}`);
+    if (tileSaindo) observadorCaixa.unobserve(tileSaindo);
+    tileSaindo?.remove();
     // A lousa morre com a tela: parou de compartilhar, o desenho vai junto
     // (spec de 2026-09-04, secao 8) -- e o observador de tamanho tem de
     // soltar o elemento que acabou de sair do DOM.
@@ -2177,8 +2211,8 @@
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'pip-add-btn';
-    addBtn.title = 'Adicionar miniatura';
-    addBtn.textContent = '+';
+    addBtn.innerHTML = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>Miniatura';
+    addBtn.setAttribute('aria-label', 'Mostrar outra fonte em miniatura');
     addBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       openPipPicker(addBtn, id);
@@ -2442,7 +2476,7 @@
           <circle cx="24" cy="16" r="3.75" stroke-dasharray="1.5 1.5" />
         </g>
       </svg>
-      <p class="blank__title">Nenhuma sala na sua rede ainda</p>
+      <p class="blank__title">${networkEmptyHint ? 'Nenhuma rede encontrada' : 'Nenhuma sala na sua rede ainda'}</p>
       <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>`;
     listEl.appendChild(empty);
   }
@@ -2479,6 +2513,7 @@
     }
     for (const room of rooms) {
       const isActive = activeAddress && room.address === activeAddress;
+      const outraEntrando = Boolean(activeAddress) && !isActive;
       const onCooldown = !isActive && !!isOnCooldown && isOnCooldown(room.address);
       // Trava de versao: a sala so aceita quem estiver na MESMA versao (o
       // servidor recusa o 'join'). O beacon traz a versao de quem hospeda,
@@ -2486,7 +2521,7 @@
       // pessoa conectar e voltar com um erro. Beacon sem versao (release
       // antiga anunciando) nao e marcado -- a recusa vem do servidor.
       const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
-      const name = room.name || room.hostName || 'sala';
+      const name = nomeDeSala(room.name || room.hostName || 'sala');
       const li = document.createElement('button');
       li.type = 'button';
       li.className = 'room-row';
@@ -2502,12 +2537,12 @@
       // sem o campo, a coluna fica vazia em vez de afirmar um "—" falso.
       li.innerHTML = `
         ${renderRoomAvatars(room)}
-        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)}</span></span>
+        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)} · ${room.peers === 1 ? '1 pessoa' : `${room.peers || 0} pessoas`}</span></span>
         <span class="room-row__meta${incompatible ? ' tx-warn' : ''}" title="${escapeHtml(versionNote)}">${roomMetaHtml(room, incompatible, appVersion)}</span>
         ${roomGoHtml({ isActive, onCooldown, incompatible })}`;
 
       if (isActive) li.setAttribute('aria-busy', 'true');
-      if (isActive || onCooldown || incompatible) {
+      if (isActive || onCooldown || incompatible || outraEntrando) {
         li.disabled = true;
       } else {
         li.setAttribute('aria-label', `Entrar em ${name}`);
@@ -2862,6 +2897,7 @@
     canAdd,
     estado,
     onWatch,
+    cameraOn,
   }) {
     // O ⋮ so existe quando ha o que fazer: pra quem nao e dono da sala, o
     // menu inteiro ficou vazio quando "Silenciar" saiu dele, e um botao que
@@ -2871,8 +2907,7 @@
     if (isSelf) li.dataset.self = '';
     li.classList.add('person');
     li.tabIndex = 0;
-    const pausado = tilePaused.get(id)?.paused;
-    const noEstado = live ? (pausado ? 'paused' : 'live') : 'present';
+    const noEstado = estadoNo({ id, isSelf, live, cameraOn });
     const coroa = isOwner
       ? '<svg class="node__crown" viewBox="0 0 12 7" aria-hidden="true"><path d="M1 6 2 1l2.5 2L6 0l1.5 3L10 1l1 5z" fill="currentColor" /></svg>'
       : '';
@@ -2957,6 +2992,23 @@
     renderMembers(...ultimasPresencas);
   }
 
+  /** Estado do no de uma pessoa, o mesmo em todo lugar: ao vivo (tela ou
+   * camera no ar), pausado, assistindo alguma fonte, ou so na sala. */
+  function estadoNo(pessoa) {
+    const eu = pessoa.isSelf;
+    const transmitindo = eu ? document.getElementById('btn-toggle-share')?.getAttribute('aria-pressed') === 'true'
+      : Boolean(pessoa.live);
+    const camera = eu ? document.getElementById('btn-toggle-camera')?.getAttribute('aria-pressed') === 'true'
+      : Boolean(pessoa.cameraOn || tileRegistry.has(`cam-${pessoa.id}`));
+    const pausado = eu ? document.getElementById('btn-pause-share')?.getAttribute('aria-pressed') === 'true'
+      : Boolean(tilePaused.get(String(pessoa.id))?.paused);
+    if (transmitindo && pausado) return 'paused';
+    if (transmitindo || camera) return 'live';
+    if (eu && [...tileWatch.values()].some((w) => w.watched)) return 'watching';
+    return 'present';
+  }
+  const ORDEM_NO = { live: 0, paused: 1, watching: 2, present: 3 };
+
   function renderMembers(peers, self, qualityTags, opcoes = {}) {
     ultimasPresencas = [peers, self, qualityTags, opcoes];
     const { ownerId, myId, onModerate, healthTags, mesaPeople } = opcoes;
@@ -2972,11 +3024,11 @@
     const presenceCount = pessoas.length;
     const presenceNodes = $('presence-nodes');
     if (presenceNodes) {
-      presenceNodes.innerHTML = pessoas.slice(0, 5).map((pessoa) => {
-        const mesa = mesaPeople?.has(String(pessoa.id));
-        const state = root.GoLive.roomUi?.estadoPessoa({ live: pessoa.live, mesa }) || 'present';
-        return `<span class="node" data-size="16" data-state="${state}"></span>`;
-      }).join('');
+      // Ao vivo primeiro, depois pausado, assistindo e na sala; voce por ultimo.
+      const nos = pessoas.map((pessoa) => ({ pessoa, estado: estadoNo(pessoa) }))
+        .sort((a, b) => (a.pessoa.isSelf - b.pessoa.isSelf) || (ORDEM_NO[a.estado] - ORDEM_NO[b.estado]));
+      presenceNodes.innerHTML = nos.slice(0, 5).map(({ estado }) => `<span class="node" data-size="16" data-state="${estado}"></span>`)
+        .join('') + (nos.length > 5 ? `<span class="cluster__more">+${nos.length - 5}</span>` : '');
     }
     $('presence-count').textContent = String(presenceCount);
     renderBus(pessoas);
@@ -3141,7 +3193,7 @@
     // Ao vivo e nao assistido: o botao Assistir ja diz o estado, e na coluna
     // de 232 px o texto a mais espremia o nome ate uma letra.
     if (pessoa.live && !assistido && !pessoa.isSelf) return '';
-    if (pessoa.live && assistido && !pessoa.isSelf) return 'vendo';
+    if (pessoa.live && assistido && !pessoa.isSelf) return 'você assiste';
     if (tileRegistry.has(`cam-${pessoa.id}`)) return 'câmera';
     if (mesaPeople?.has(String(pessoa.id))) return 'na Mesa';
     return '';
@@ -3196,7 +3248,7 @@
   const SYSTEM_TONE = { 'stop-share': 'warn', kick: 'danger', ban: 'danger' };
   // Icone da linha de evento: entrar, sair e moderacao.
   const SYSTEM_ICON = {
-    join: 'chevron-right', leave: 'log-out', 'stop-share': 'square', kick: 'triangle-alert', ban: 'lock', unban: 'check',
+    join: 'log-in', leave: 'log-out', 'stop-share': 'square', kick: 'triangle-alert', ban: 'lock', unban: 'check',
   };
 
   function formatTime(ts) {
@@ -3676,8 +3728,8 @@
 
   function setStageHeader({ name, address, pin }) {
     $('stage-header').classList.remove('hidden');
-    $('stage-room-name').textContent = name;
-    $('room-screen-title').textContent = name;
+    $('stage-room-name').textContent = nomeDeSala(name);
+    $('room-screen-title').textContent = nomeDeSala(name);
     $('stage-room-address').textContent = address || '';
     const pinEl = $('stage-room-pin');
     if (pin) {
@@ -3704,8 +3756,8 @@
    * welcome chega com o nome de verdade da sala (P1) depois que joinRoom ja
    * abriu a tela com o palpite otimista de setStageHeader. */
   function setStageHeaderName(name) {
-    $('stage-room-name').textContent = name;
-    $('room-screen-title').textContent = name;
+    $('stage-room-name').textContent = nomeDeSala(name);
+    $('room-screen-title').textContent = nomeDeSala(name);
   }
 
   function clearStageHeader() {
@@ -5166,6 +5218,7 @@
     btn.disabled = state === 'loading';
     if (state === 'loading') btn.setAttribute('aria-busy', 'true');
     else btn.removeAttribute('aria-busy');
+    if (id === 'share' || id === 'pause' || id === 'camera') setTimeout(redesenharUltimasPresencas, 0);
     // A sua fonte no barramento acompanha a pausa: no tracejado e 'Pausada'.
     if (id === 'pause') {
       const node = $('me-node');

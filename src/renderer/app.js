@@ -1214,7 +1214,7 @@
     $('update-bar-title').textContent = titulo;
     $('update-bar-sub').textContent = sub;
     btnUpdateAvailable.textContent = rotulo;
-    btnUpdateAvailable.disabled = estado === 'baixando';
+    btnUpdateAvailable.hidden = estado === 'baixando';
     $('update-bar-progress').classList.toggle('hidden', estado !== 'baixando');
     if (estado === 'baixando') {
       $('update-bar-progress').style.setProperty('--pct', `${Math.max(0, Math.min(100, progress ?? 0))}%`);
@@ -1347,11 +1347,18 @@
     });
   }
 
+  $('join-address').addEventListener('input', () => $('join-address').removeAttribute('aria-invalid'));
   $('join-address-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const address = $('join-address').value.trim();
-    if (!/^(?:wss?:\/\/)?[^\s:]+:\d+$/.test(address)) {
-      showLobbyError('Informe um endereço no formato IP:porta.');
+    const valido = /^(?:wss?:\/\/)?[^\s:]+:\d+$/.test(address);
+    $('join-address').setAttribute('aria-invalid', String(!valido));
+    if (!address) {
+      showLobbyError('Digite o endereço da sala, no formato IP:porta.');
+      return;
+    }
+    if (!valido) {
+      showLobbyError('Esse endereço não está no formato IP:porta (ex.: 26.0.0.5:47800).');
       return;
     }
     showLobbyError('');
@@ -2200,7 +2207,7 @@
               appVersion: appVersion || undefined,
             });
           });
-          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
+          ui.stageHeader.set({ name: `Sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           window.golive.setRoomActive?.(true);
           if (attempts > 0) $('setup-error').textContent = '';
           showLobbyError(''); // limpa erro/countdown de reconexao pendente
@@ -2930,7 +2937,13 @@
     const next = mode || window.GoLive.roomUi.modoConversa($('room-view').clientWidth, convManual);
     app.dataset.conv = next;
     $('btn-conv-toggle').setAttribute('aria-pressed', String(next !== 'closed'));
-    if (next !== 'closed') $('chat-unread-dot').classList.add('hidden');
+    if (next === 'pinned') {
+      naoLidas = 0;
+      $('chat-unread-dot').classList.add('hidden');
+      $('btn-conv-toggle').setAttribute('aria-label', 'Conversa');
+    }
+    // Fixada ou fechada: o que estava espiando some junto.
+    if (next !== 'peek') $('chat-peek').replaceChildren();
     if (!persist) return;
     convManual = next;
     try {
@@ -2960,8 +2973,13 @@
     setConversation(null);
     $('chat-unread-dot').classList.add('hidden');
   }
+  let naoLidas = 0;
   document.addEventListener('golive:chat-received', () => {
-    if ($('app').dataset.conv !== 'pinned') $('chat-unread-dot').classList.remove('hidden');
+    if ($('app').dataset.conv === 'pinned') return;
+    naoLidas += 1;
+    $('chat-unread-dot').textContent = naoLidas > 99 ? '99+' : String(naoLidas);
+    $('chat-unread-dot').classList.remove('hidden');
+    $('btn-conv-toggle').setAttribute('aria-label', `Conversa, ${naoLidas} ${naoLidas === 1 ? 'mensagem nova' : 'mensagens novas'}`);
   });
 
   // ---------- Desconectar ----------

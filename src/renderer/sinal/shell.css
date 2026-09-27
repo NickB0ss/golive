@@ -746,3 +746,43 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 /* Conversa espiando: a mensagem e um botao que abre a conversa. */
 .peek__msg { text-align: left; font: var(--t-body); }
 .peek__text { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ============ Revisao de design (2026-09-27) ============ */
+/* HUD, aviso e regua ficam sobre a imagem, nao sobre as tarjas do letterbox
+ * (o tile publica o retangulo util do video em --vx/--vy/--vw/--vh). */
+.tile__hud { left: var(--vx, 0px); top: var(--vy, 0px); right: auto; width: var(--vw, 100%); }
+.tile__warn { left: calc(var(--vx, 0px) + var(--s-2)); bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-2)); }
+.draw-bar { left: calc(var(--vx, 0px) + var(--vw, 100%) / 2); bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-3)); }
+/* O fio do que voce assiste tambem no palco (05 §0.1), sob a imagem. */
+.tile[data-kind='screen']:not(.fullscreen)::after {
+  content: '';
+  position: absolute;
+  z-index: var(--z-hud);
+  left: var(--vx, 0px);
+  width: var(--vw, 100%);
+  top: calc(var(--vy, 0px) + var(--vh, 100%) - 2px);
+  height: 2px;
+  background: var(--wire);
+  pointer-events: none;
+}
+.grid-strip { justify-content: center; }
+
+/* A sua fonte: pausar e trocar so existem com ela no ar; Parar e solido e
+ * avisa perigo no hover. */
+.me:not(:has(.me__share[aria-pressed='true'])) .me__ctl { display: none; }
+.me .me__share[aria-pressed='true'] .icon-on { fill: currentColor; }
+.me .me__share[aria-pressed='true']:hover { background: var(--danger-dim); color: var(--danger); }
+
+/* Espiando: superficie solida, no canto do botao Conversa, longe da tira. */
+.peek { left: auto; right: var(--s-4); }
+.peek__msg { background: var(--s2); color: var(--tx); box-shadow: var(--elev-float); }
+
+/* Entrando numa sala: a escolhida fica em destaque, as outras esmaecem. */
+.room-row:disabled:not([aria-busy='true']) { opacity: 0.55; }
+.room-row[aria-busy='true'] { background: var(--s1); }
+
+/* Conversa: vazia diz o que fazer; a dica do Enter so aparece escrevendo. */
+.conv__msgs:empty::before { content: attr(data-vazio); display: block; padding-top: var(--s-6); text-align: center;
+  font: var(--t-meta); color: var(--tx3); }
+.compose:not(:focus-within) #chat-input-hint { visibility: hidden; }
+.compose__meta .tx-data:not(.hidden) { color: var(--tx2); }

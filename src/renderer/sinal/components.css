@@ -432,7 +432,7 @@ select.input { padding-right: var(--s-6); appearance: none;
   width: 12px;
   height: 7px;
   transform: translateX(-50%);
-  color: var(--warn);
+  color: var(--tx);
 }
 
 /* Aglomerado: nos de 16 encostados, com o numero ao lado. */
