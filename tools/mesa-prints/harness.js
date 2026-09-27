@@ -141,11 +141,13 @@ async function abrirSala(browser, port, { largura = 1440, altura = 900 } = {}) {
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
   await page.addInitScript(PONTE);
   await page.goto(PAGINA);
-  await page.click('#btn-join-address');
-  await page.fill('#in-server', `ws://127.0.0.1:${port}`);
-  await page.click('#btn-connect');
+  await page.fill('#join-address', `127.0.0.1:${port}`);
+  await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   await page.waitForFunction(() => document.querySelector('#stage-member-count')?.textContent.includes('1'));
+  // A 1440 px a conversa nasce fixada a direita do programa: fecha para os
+  // cliques na Mesa cairem na Mesa.
+  await page.click('#btn-conv-close').catch(() => {});
   return { page, erros };
 }
 
@@ -271,15 +273,15 @@ async function prints(browser, port, s) {
 
   // Menu "..." da sala (o primeiro a entrar e o lider): trava a mesa.
   await page.click('#btn-room-more');
-  await page.check('#opt-mesa-leader-only');
+  await page.click('#opt-mesa-leader-only-row'); // o item alterna a trava (a caixa fica oculta no Sinal)
   await espera(300);
   await page.screenshot({ path: path.join(PRINTS, '08-menu-da-sala-travas.png') });
   s.trava = await bia.espera((m) => m.type === 'mesa' && m.op === 'lock').then((m) => ({ leaderOnly: m.leaderOnly, lockSize: m.lockSize }));
-  await page.uncheck('#opt-mesa-leader-only');
+  await page.click('#opt-mesa-leader-only-row');
   await page.keyboard.press('Escape');
 
   // Volta a Transmissao: nada da mesa fica no DOM e as telas voltam.
-  await page.click('#view-tx');
+  await page.click('#view-mesa');
   await espera(300);
   const depois = await page.evaluate(() => ({
     mesa: document.querySelectorAll('.mesa, .mesa-win').length,
@@ -399,7 +401,7 @@ async function desempenho(browser, port, s) {
       await espera(450);
     }
   }));
-  await page.click('#view-tx');
+  await page.click('#view-mesa');
   await espera(300);
   res.push(await medir(page, 'Transmissão de novo, parada', async (t0, ms) => espera(ms)));
   s.desempenho = { quantos, res, agente: await page.evaluate(() => navigator.userAgent) };
@@ -478,7 +480,7 @@ async function checar(browser, port, s) {
   await espera(100);
   // Trava: a Bia (nao lider) nao consegue por janela.
   await page.click('#btn-room-more');
-  await page.check('#opt-mesa-leader-only');
+  await page.click('#opt-mesa-leader-only-row'); // o item alterna a trava (a caixa fica oculta no Sinal)
   await page.keyboard.press('Escape');
   const lock = await bia.espera((m) => m.type === 'mesa' && m.op === 'lock');
   bia.envia({ type: 'mesa', op: 'add', win: { type: 'nota', x: 0, y: 0, w: 320, h: 240 } });
@@ -488,7 +490,7 @@ async function checar(browser, port, s) {
   await page.keyboard.press('Delete');
   ok.deleteTira = (await bia.espera((m) => m.type === 'mesa' && m.op === 'remove')).id === id;
   // Voltar a Transmissao desmonta tudo.
-  await page.click('#view-tx');
+  await page.click('#view-mesa');
   ok.nadaDaMesaNoDom = await page.evaluate(() => document.querySelectorAll('.mesa, .mesa-win, .mesa-menu').length === 0);
   await espera(300);
   const viewers = bia.caixa.filter((m) => m.type === 'mesa-viewers').pop();
@@ -544,7 +546,9 @@ async function acabamento(browser, port, s, { comPrints = false } = {}) {
   bia.envia({ type: 'chat', text: 'olha esse clipe https://youtu.be/dQw4w9WgXcQ?t=42' });
   bia.envia({ type: 'chat', text: 'o bomb A é aqui', image: png, w: 640, h: 400 });
   const msgImg = await bia.espera((m) => m.type === 'chat' && m.image);
-  await page.waitForSelector('.chat-line .chat-image');
+  // A conversa foi fechada ao entrar (abrirSala); abre fixada para ver a imagem.
+  await page.click('#btn-conv-toggle');
+  await page.waitForSelector('.msg .msg__img');
   ok.botoesPorNaMesa = await page.evaluate(() => [...document.querySelectorAll('.chat-put')].map((b) => b.dataset.put));
   await foto(page, '01-chat-por-na-mesa.png');
 
@@ -630,19 +634,23 @@ async function tileNaMesa(page, bia, erros, foto) {
   const caixa = await page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   await page.mouse.move(caixa.x + caixa.w * 0.3, caixa.y + caixa.h * 0.3);
   await espera(250);
-  ok.barrasVisiveis = await page.$eval(sel, (el) => ['.tile-annot-bar', '.tile-react-bar'].map((s) => {
+  // No Sinal, rabiscar e reagir aparecem no HUD da janela com o mouse em cima.
+  ok.barrasVisiveis = await page.$eval(sel, (el) => ['[data-acao="rabiscar"]', '[data-acao="reagir"]'].map((s) => {
     const b = el.querySelector(s);
-    const cs = getComputedStyle(b);
-    return cs.display !== 'none' && cs.opacity === '1' && cs.pointerEvents !== 'none';
+    const cs = b && getComputedStyle(b);
+    const hud = b && getComputedStyle(b.closest('.tile__hud'));
+    return Boolean(b) && cs.display !== 'none' && hud.opacity === '1' && hud.pointerEvents !== 'none';
   }));
   // Reagir: abre a lista, manda a reacao, e nada disso pega a janela.
   const antesGrab = bia.caixa.filter((m) => m.type === 'mesa-grab').length;
-  await page.click(`${sel} .tile-react-toggle`);
-  ok.listaDeReacoesAbre = await page.$eval(`${sel} .tile-react-bar`, (el) => el.classList.contains('is-open'));
-  await page.click(`${sel} .tile-react-btn >> nth=0`);
+  await page.hover(`${sel} .tile`);
+  await page.click(`${sel} [data-acao="reagir"]`);
+  ok.listaDeReacoesAbre = await page.isVisible('.pop .react-btn');
+  await page.click('.pop .react-btn >> nth=0');
   ok.reacaoChega = Boolean(await bia.espera((m) => m.type === 'reaction'));
   // Rabisco: liga pela barra e risca do meio para a direita.
-  await page.click(`${sel} .annot-toggle`);
+  await page.hover(`${sel} .tile`); // o HUD so aparece com o mouse em cima
+  await page.click(`${sel} [data-acao="rabiscar"]`);
   const v = await page.$eval(`${sel} .tile`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   const p0 = { x: v.x + v.w * 0.25, y: v.y + v.h * 0.5 };
   await page.mouse.move(p0.x, p0.y);
@@ -663,11 +671,12 @@ async function tileNaMesa(page, bia, erros, foto) {
   ok.rabiscoNaoPegaAJanela = bia.caixa.filter((m) => m.type === 'mesa-grab').length === antesGrab;
   await foto(page, '04-tile-com-controles-na-mesa.png');
   // Volume: pelo menu da janela (o botao direito da Mesa).
-  await page.click(`${sel} .annot-toggle`);
+  await page.hover(`${sel} .tile`); // o HUD so aparece com o mouse em cima
+  await page.click(`${sel} [data-acao="rabiscar"]`);
   await page.mouse.click(caixa.x + caixa.w * 0.5, caixa.y + caixa.h * 0.3, { button: 'right' });
   await page.waitForSelector('.mesa-menu [data-act="volume"]');
   await page.click('.mesa-menu [data-act="volume"]');
-  await page.waitForSelector('.tile-menu .tile-menu-volume input');
+  await page.waitForSelector('.tile-menu .menu__volume input');
   ok.menuDeVolume = await page.$eval('.tile-menu .tile-menu-name', (el) => el.textContent);
   await foto(page, '05-volume-da-tela-na-mesa.png');
   await page.keyboard.press('Escape');

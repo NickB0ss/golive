@@ -143,9 +143,8 @@ async function abrirPessoa(browser, servidor, nome, ehDona = false) {
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
   await page.addInitScript(PONTE, { nome, ehDona });
   await page.goto(PAGINA);
-  await page.click('#btn-join-address');
-  await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-  await page.click('#btn-connect');
+  await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+  await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   const welcome = await esperaMsg(page, (m) => m.type === 'welcome', 6000);
   await page.click('#view-mesa');

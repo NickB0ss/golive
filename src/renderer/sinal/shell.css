@@ -827,3 +827,5 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 .bus__sources[data-over='left right'] {
   mask-image: linear-gradient(to right, transparent, var(--tx) 40px, var(--tx) calc(100% - 40px), transparent);
 }
+/* Rabiscar so aparece onde a fonte deixou rabiscar (o app marca .annotatable). */
+.tile:not(.annotatable) .tile__hud [data-acao='rabiscar'] { display: none; }

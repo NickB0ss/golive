@@ -21,7 +21,10 @@
   const tipo = q.get('tipo') || 'placar';
   const tam = q.get('tam') || 'padrao';
   const atraso = Math.max(0, Number(q.get('atraso')) || 0);
-  if (q.get('tema')) document.documentElement.dataset.theme = q.get('tema');
+  if (q.get('tema')) {
+    document.documentElement.dataset.theme = q.get('tema');
+    document.documentElement.dataset.tone = q.get('tema') === 'paper' ? 'light' : 'dark';
+  }
 
   const PEERS = [
     { id: '1', name: 'Ana' },
@@ -147,7 +150,7 @@
     const caixa = document.createElement('div');
     caixa.className = 'janela';
     caixa.style.width = `${dims.w}px`;
-    caixa.style.height = `${dims.h + 36}px`;
+    caixa.style.height = `${dims.h + 32}px`;
     const barra = document.createElement('div');
     barra.className = 'barra';
     barra.textContent = mod.title;

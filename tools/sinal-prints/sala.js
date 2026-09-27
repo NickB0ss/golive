@@ -181,6 +181,13 @@ async function rodada(browser, port, [w, h]) {
     await page.keyboard.press('Escape');
   }
 
+  // A Mesa como vista: as telas e a camera viram janelas; a fonte Mesa alterna de volta.
+  await page.click('#view-mesa');
+  await espera(1200);
+  await foto(page, '21-mesa', w, h);
+  await page.click('#view-mesa');
+  await espera(500);
+
   // Auditoria de teclado: cada parada do Tab tem nome acessivel e foco visivel.
   await page.mouse.move(1, 1);
   await page.evaluate(() => document.activeElement?.blur());

@@ -5794,7 +5794,6 @@
     onOpenChange: (on) => {
       document.body.classList.toggle('mesa-open', on);
       $('btn-mesa-add').classList.toggle('hidden', !on);
-      $('stage-mesa-people').hidden = !on;
       renderViewSwitch();
       renderRoomMore();
     },
@@ -5977,6 +5976,7 @@
     mesaPor.reset();
     chatImagens.clear();
     mesaViewers = [];
+    mesaView.onViewers();
     mesaCount = 0;
     mesaLocks = null;
     setRoomMoreOpen(false);

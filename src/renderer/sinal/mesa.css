@@ -107,10 +107,29 @@
   pointer-events: none;
 }
 
-.mesa-people { position: absolute; top: var(--s-3); right: var(--s-3); z-index: var(--z-chrome); display: flex; gap: var(--s-1); pointer-events: none; }
-.mesa-people .mesa-avatar { margin-left: 0; }
-.mesa-cursor { position: absolute; z-index: var(--z-hud); display: inline-flex; align-items: center; gap: var(--s-1); color: var(--who, var(--tx)); font: var(--t-meta); pointer-events: none; }
+.mesa-cursor {
+  position: absolute;
+  z-index: var(--z-hud);
+  display: inline-flex;
+  align-items: center;
+  color: var(--who, var(--tx));
+  pointer-events: none;
+}
 .mesa-cursor svg { width: 18px; height: 18px; fill: currentColor; stroke: var(--bg); }
+.mesa-cursor-name {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  background: var(--who, var(--tx));
+  color: var(--on-video);
+  font: var(--t-meta);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mesa-person { flex: none; }
+.mesa-person-more { align-self: center; }
 
 .mesa-win {
   --mesa-bar-h: 32px;
@@ -118,17 +137,19 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--line2);
   border-radius: var(--r-sm);
   background: var(--s1);
-  box-shadow: var(--shadow-2);
+  /* Contorno por sombra, nao border: a borda comeria 2 px da altura util de todo modulo. */
+  box-shadow: 0 0 0 1px var(--line2), var(--shadow-2);
   transform-origin: 0 0;
 }
 .mesa-win.is-active,
-.mesa-win:focus-within { border-color: var(--wire); }
-.mesa-win:focus-visible { outline: none; box-shadow: var(--shadow-2), var(--ring); }
-.mesa-win.is-held { border: 2px solid var(--who, var(--wire)); }
+.mesa-win:focus-within { box-shadow: 0 0 0 1px var(--wire), var(--shadow-2); }
+.mesa-win:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--wire), var(--shadow-2), var(--ring); }
+.mesa-win.is-held { box-shadow: 0 0 0 2px var(--who, var(--wire)), var(--shadow-2); }
 .mesa-win.is-held .mesa-bar { color: var(--who, var(--tx)); }
+.mesa-full .mesa { position: fixed; z-index: var(--z-drag); }
+.mesa.has-full .mesa-world { position: fixed; inset: 0; width: auto; height: auto; }
 .mesa-win.is-full { position: fixed; inset: 0; z-index: var(--z-drag); width: auto; height: auto; border-radius: 0; }
 .mesa.has-full > :not(.mesa-world) { visibility: hidden; }
 .mesa-win-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
@@ -155,7 +176,7 @@
 .mesa-avatar img { display: block; }
 .mesa-bar-btn { flex: none; cursor: pointer; }
 .mesa-live-slot { display: inline-flex; }
-.mesa-live-pill { color: var(--tx3); font: var(--t-tag); }
+.mesa-live { pointer-events: none; }
 
 .mesa[data-far] .mesa-bar > :not(.mesa-bar-title) { display: none; }
 .mesa[data-far] .mesa-bar { justify-content: center; padding: 0 var(--s-2); }
@@ -166,14 +187,37 @@
 .mesa-resize[data-edge='b'] { right: 8px; bottom: -4px; left: 8px; height: 8px; cursor: ns-resize; }
 .mesa-resize[data-edge='bl'] { bottom: -5px; left: -5px; width: 12px; height: 12px; cursor: nesw-resize; }
 .mesa-resize[data-edge='br'] { bottom: -5px; right: -5px; width: 12px; height: 12px; cursor: nwse-resize; }
+.mesa.is-panning { cursor: grabbing; }
+.mesa-win.is-dragging { cursor: grabbing; }
+.mesa-win.is-remote-drag { outline: 2px solid var(--who, var(--wire)); }
+.mesa-win.is-settling { transition: transform var(--dur-mid) var(--ease-out); }
+.mesa.no-edit .mesa-bar { cursor: default; }
+.mesa.no-edit .mesa-resize, .mesa.no-resize .mesa-resize { display: none; }
+.mesa-menu-chev { width: 16px; height: 16px; color: var(--tx3); fill: none; stroke: currentColor; }
 
 .mesa-landing { position: absolute; z-index: var(--z-stage); border: 1px dashed var(--wire); border-radius: var(--r-sm); pointer-events: none; }
 .mesa-summary { display: grid; place-content: center; height: 100%; gap: var(--s-2); padding: var(--s-4); text-align: center; }
 .mesa-summary-title { margin: 0; font: var(--t-heading); }
 .mesa-summary-text { margin: 0; color: var(--tx2); font: var(--t-body); }
-.mesa-wait { display: grid; place-content: center; justify-items: center; height: 100%; gap: var(--s-2); color: var(--tx2); font: var(--t-meta); }
+.mesa-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--void);
+  color: var(--on-video);
+  font: var(--t-body);
+  text-align: center;
+}
+.mesa-wait-avatar { margin: 0; }
+.mesa-wait-text { color: var(--on-video); }
+.mesa-avatar-initial { display: block; line-height: 1; }
 
 .mesa-menu { z-index: var(--z-popover); }
+.mesa-menu.is-open, .mesa-map.is-open { animation: pop-in var(--dur-mid) var(--ease-out); }
 .mesa-menu .menu__item { justify-content: flex-start; }
 .mesa-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mesa-menu-row kbd, .mesa-menu-row small { margin-left: auto; color: var(--tx3); }
@@ -183,3 +227,30 @@
 @media (prefers-reduced-motion: reduce) {
   .mesa-world { will-change: auto; }
 }
+
+/* ============ Estrutura (regras de posicionamento que o CSS antigo tinha) ============ */
+/* Na Mesa o palco de video sai de cena: os tiles moram nas janelas. display:none
+ * de proposito -- nada da grade precisa de layout enquanto a Mesa esta aberta. */
+body.mesa-open #grid { display: none; }
+/* O conteudo de cada janela ocupa o corpo inteiro e e o container das
+ * consultas de tamanho dos modulos (versao compacta x confortavel). */
+.mesa-content { position: absolute; inset: 0; container-type: size; overflow: hidden; }
+/* O tile do palco dentro da janela: so o video, o rabisco e os estados. A
+ * barra da janela ja tem as acoes; o HUD do palco e o fio nao entram aqui. */
+.mesa-win .tile { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+.mesa-win .tile[data-kind]::after, .mesa-win .pip-strip { display: none; }
+/* Dentro da janela, o HUD fica no pe da imagem e so com o que a barra da janela
+ * nao tem: rabiscar e reagir (menu, tela cheia e tirar ja estao na barra). */
+.mesa-win .tile__hud {
+  top: auto;
+  bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%));
+  justify-content: flex-end;
+  padding: var(--s-5) var(--s-2) var(--s-2);
+  background: linear-gradient(to top, var(--scrim-4), transparent);
+  transform: scale(var(--mesa-inv, 1));
+  transform-origin: 100% 100%;
+}
+.mesa-win .tile__who,
+.mesa-win .tile__hud [data-acao]:not([data-acao='rabiscar']):not([data-acao='reagir']) { display: none; }
+/* A regua de rabisco nao encolhe com o zoom da Mesa. */
+.mesa-win .draw-bar { transform: translateX(-50%) scale(var(--mesa-inv, 1)); transform-origin: 50% 100%; }

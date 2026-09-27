@@ -4,15 +4,21 @@
 <meta charset="utf-8">
 <title>Bancada das janelas da Mesa</title>
 <!-- Bancada de desenvolvimento, nao e pagina do app. Ver bancada.js. -->
-<link rel="stylesheet" href="../../src/renderer/style.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/tokens.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/themes.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/base.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/components.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/shell.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/sheets.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/mesa.css">
 <link rel="stylesheet" href="../../src/renderer/mesa-janelas.css">
 <style>
   body { overflow: auto; user-select: auto; padding: var(--s-4); }
-  #titulo { margin: 0 0 var(--s-3); font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif; color: var(--tx2); }
+  #titulo { margin: 0 0 var(--s-3); font: var(--t-heading); color: var(--tx2); }
   #palco { display: flex; gap: var(--s-5); align-items: flex-start; flex-wrap: wrap; }
-  .pessoa h2 { margin: 0 0 var(--s-2); font-size: var(--fs-small); font-weight: 600; color: var(--tx2); }
-  .janela { display: flex; flex-direction: column; background: var(--s1); border-radius: var(--r-lg); box-shadow: var(--elev-2); overflow: hidden; }
-  .barra { flex: none; height: 36px; display: flex; align-items: center; padding: 0 var(--s-3); background: var(--s2); color: var(--tx); font: 600 var(--fs-body) 'Outfit', system-ui, sans-serif; }
+  .pessoa h2 { margin: 0 0 var(--s-2); font: var(--t-meta); color: var(--tx2); }
+  .janela { display: flex; flex-direction: column; background: var(--s1); border-radius: var(--r-sm); box-shadow: var(--elev-float); overflow: hidden; }
+  .barra { flex: none; height: 32px; display: flex; align-items: center; padding: 0 var(--s-3); background: var(--s1); color: var(--tx); font: var(--t-label); }
   .conteudo { position: relative; flex: 1; min-height: 0; container-type: size; overflow: hidden; }
 </style>
 </head>

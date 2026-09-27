@@ -3,7 +3,7 @@
 
 /*
  * Roteiro "caber" da bancada das janelas da Mesa. Abre cada tipo que a
- * bancada monta, nos tamanhos padrao, minimo e grande e nos temas padrao e
+ * bancada monta, nos tamanhos padrao, minimo e grande e nos temas Sinal e
  * Papel, para achar rolagem, conteudo fora da caixa e controles cobertos.
  *
  *   node tools/bancada-janelas/caber.js             # todos os tipos
@@ -26,7 +26,7 @@ const registro = require('../../src/renderer/mesa-modules');
 const RAIZ = path.resolve(__dirname, '..', '..');
 const PAGINA = pathToFileURL(path.join(__dirname, 'index.html')).href;
 const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-27-caber');
-const TEMAS = ['padrao', 'papel'];
+const TEMAS = ['sinal', 'paper'];
 const CHEIOS = new Set(['roleta', 'poquer', 'blackjack', 'lista', 'enquete', 'stop', 'quiz', 'truco']);
 const pedidos = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
 const falhas = [];
@@ -57,7 +57,7 @@ async function abrir(browser, tipo, tam, tema) {
   page.on('console', (msg) => {
     if (msg.type() === 'error') erros.push(msg.text());
   });
-  const params = new URLSearchParams({ tipo, tam, ...(tema === 'papel' ? { tema: 'paper' } : {}) });
+  const params = new URLSearchParams({ tipo, tam, ...(tema === 'paper' ? { tema } : {}) });
   await page.goto(`${PAGINA}?${params}`);
   await page.waitForSelector('body[data-pronto="1"]', { timeout: 5000 });
   return { page, erros };

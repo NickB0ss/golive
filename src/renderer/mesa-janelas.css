@@ -377,6 +377,7 @@
   .mj-sort-corpo { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 }
 @container mj (max-height: 300px) {
+  .mj-sort-corpo, .mj-sort-nomes { gap: var(--s-1); }
   .mj-sorteio.tem-times .mj-sort-nomes .mj-sort-acoes { display: none; }
 }
 

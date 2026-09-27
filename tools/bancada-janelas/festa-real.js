@@ -102,9 +102,8 @@ async function main() {
     page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
     await page.addInitScript(PONTE);
     await page.goto(PAGINA);
-    await page.click('#btn-join-address');
-    await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-    await page.click('#btn-connect');
+    await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+    await page.press('#join-address', 'Enter');
     await page.waitForSelector('#room-view:not(.hidden)');
     const bia = await pessoa(servidor.port, 'Bia');
     await page.click('#view-mesa');

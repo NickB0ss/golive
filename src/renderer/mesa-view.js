@@ -240,14 +240,8 @@
       s.ro?.disconnect();
       for (const rec of s.wins.values()) unmountWin(rec, { returnTile: true });
       s.section.remove();
-      if (deps.peopleSlot) {
-        const slot = deps.peopleSlot();
-        if (slot) {
-          slot.textContent = '';
-          slot.hidden = true;
-        }
-      }
       S = null;
+      renderPeople();
       lastAnnotateViewers = new Set();
       deps.resyncGrid?.();
       deps.onOpenChange?.(false);
@@ -440,6 +434,7 @@
       if (!S) return;
       S.mapOpen = Boolean(open);
       S.mapEl.hidden = !S.mapOpen;
+      S.mapEl.classList.toggle('is-open', S.mapOpen);
       S.mapButton.setAttribute('aria-expanded', String(S.mapOpen));
       S.mapButton.setAttribute('aria-label', S.mapOpen ? 'Fechar mapa' : 'Abrir mapa');
       try {
@@ -1108,10 +1103,10 @@
       if (isMedia(win)) {
         const liveSlot = rec.el.querySelector('.mesa-live-slot');
         const live = win.type === 'tela';
-        let pill = liveSlot.querySelector('.mesa-live-pill');
+        let pill = liveSlot.querySelector('.mesa-live');
         if (live && !pill) {
           pill = document.createElement('span');
-          pill.className = 'mesa-live-pill';
+          pill.className = 'mesa-live tag tag--live';
           pill.textContent = 'AO VIVO';
           liveSlot.append(pill);
         } else if (!live && pill) pill.remove();
@@ -1383,7 +1378,11 @@
       }
       if (rec.placeholder) {
         const pid = String(peerId ?? '');
-        rec.placeholder.innerHTML = `<span class="mesa-avatar mesa-wait-avatar">${avatarHtml(pid)}</span><span class="mesa-wait-text">${escapeHtml(win.type === 'tela' ? 'Esperando a tela chegar…' : 'Esperando a câmera chegar…')}</span>`;
+        const espera = win.type === 'tela' ? 'Esperando a tela chegar…' : 'Esperando a câmera chegar…';
+        rec.placeholder.innerHTML = [
+          `<span class="mesa-avatar mesa-wait-avatar node" data-size="56">${avatarHtml(pid)}</span>`,
+          `<span class="mesa-wait-text">${escapeHtml(espera)}</span>`,
+        ].join('');
         rec.placeholder.querySelector('.mesa-avatar').style.setProperty('--who', deps.colorFor(pid));
       }
     }
@@ -1790,6 +1789,8 @@
       S.menu = null;
       S.menuEl.hidden = true;
       S.subEl.hidden = true;
+      S.menuEl.classList.remove('is-open');
+      S.subEl.classList.remove('is-open');
       S.menuEl.textContent = '';
       S.subEl.textContent = '';
       // O foco so volta se estava no menu (clicar fora ja o levou a outro
@@ -1848,6 +1849,7 @@
 
     function placeMenu(m, x, y, flipFrom = null) {
       m.hidden = false;
+      m.classList.add('is-open');
       m.style.left = '0px';
       m.style.top = '0px';
       const r = m.getBoundingClientRect();
@@ -1925,6 +1927,7 @@
 
     function closeSub() {
       S.subEl.hidden = true;
+      S.subEl.classList.remove('is-open');
       S.subEl.textContent = '';
       const row0 = S.menuEl.querySelector('[data-sub]');
       row0?.classList.remove('is-open');
@@ -1940,6 +1943,7 @@
       const sub = S.subEl;
       sub.innerHTML = addMenuHtml();
       sub.setAttribute('aria-label', 'Adicionar janela');
+      sub.classList.add('is-open');
       const r = rowEl.getBoundingClientRect();
       placeMenu(sub, r.right + 4, r.top - 6, r.left - 4);
       wireMenu(sub, () => {
@@ -1977,6 +1981,7 @@
       sub.setAttribute('aria-label', 'Adicionar janela');
       const r = anchor ? anchor.getBoundingClientRect() : { left: root.innerWidth / 2, top: root.innerHeight - 80 };
       sub.hidden = false;
+      sub.classList.add('is-open');
       sub.style.left = '0px';
       sub.style.top = '0px';
       const h = sub.getBoundingClientRect().height;
@@ -2142,26 +2147,31 @@
 
     /** Avatares de quem esta na Mesa: "Ir ate Bia" voa ate o ponteiro. */
     function renderPeople() {
-      if (!S) return;
       const me = String(deps.me());
       const ids = (deps.viewers?.() || []).map(String).filter((id) => id !== me);
-      const peopleEl = deps.peopleSlot?.() || S.peopleEl;
+      const peopleEl = deps.peopleSlot?.() || S?.peopleEl;
       if (!peopleEl) return;
+      peopleEl.hidden = ids.length === 0;
       const visiveis = ids.slice(0, 5);
       const restantes = ids.slice(5);
       peopleEl.innerHTML = visiveis.map((id) => {
         const nome = deps.nameOf(id);
-        return `<button type="button" class="mesa-avatar mesa-person" data-id="${escapeHtml(id)}"
-          aria-label="Ir até ${escapeHtml(nome)}" title="Ir até ${escapeHtml(nome)}">${avatarHtml(id)}</button>`;
+        const acao = S ? `Ir até ${nome}` : `Abrir a Mesa com ${nome}`;
+        return `<button type="button" class="mesa-person node" data-size="16" data-id="${escapeHtml(id)}"
+          aria-label="${escapeHtml(acao)}" title="${escapeHtml(acao)}">${avatarHtml(id)}</button>`;
       }).join('');
       if (restantes.length) {
         const nomes = restantes.map((id) => deps.nameOf(id)).join(', ');
-        const mais = `<span class="mesa-person-more" title="${escapeHtml(nomes)}">+${restantes.length}</span>`;
+        const mais = `<span class="mesa-person-more cluster__more" title="${escapeHtml(nomes)}">+${restantes.length}</span>`;
         peopleEl.insertAdjacentHTML('beforeend', mais);
       }
       for (const b of peopleEl.querySelectorAll('.mesa-person')) {
         b.style.setProperty('--who', deps.colorFor(b.dataset.id));
-        b.addEventListener('click', () => goTo(b.dataset.id));
+        b.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (S) goTo(b.dataset.id);
+          else document.getElementById('view-mesa')?.click();
+        });
       }
     }
 
