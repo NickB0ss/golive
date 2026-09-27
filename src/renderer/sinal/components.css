@@ -499,3 +499,32 @@ select.input { padding-right: var(--s-6); appearance: none;
 .menu__volume { display: grid; gap: var(--s-15); padding: var(--s-2) var(--s-2) var(--s-1); }
 .menu__volume-head { display: flex; justify-content: space-between; font: var(--t-meta); color: var(--tx2); }
 .menu__volume-head b { color: var(--tx); }
+
+/* Camada de dialogo: o veu e o proprio elemento (clique nele cancela). */
+.dlg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  background: var(--scrim);
+  animation: fade-in var(--dur-mid) var(--ease-out);
+}
+.dlg-layer > .dlg { position: relative; top: auto; left: auto; transform: none; animation: dlg-pop var(--dur-slow) var(--ease-out); }
+@keyframes dlg-pop { from { opacity: 0; transform: translateY(8px); } }
+.dlg__body > .field__error:empty { display: none; }
+.btn .spinner { width: 14px; height: 14px; border-color: currentColor; }
+
+/* Alternancia nativa (checkbox) com a mesma cara do .switch de botao. */
+input.switch { appearance: none; margin: 0; cursor: pointer; }
+input.switch:checked { background: var(--act); border-color: var(--act); }
+input.switch:checked::after { transform: translateX(14px); background: var(--on-act); }
+input.switch:disabled { opacity: 0.45; cursor: not-allowed; }
+label.opt { cursor: pointer; }
+
+.input--pin { font-size: 24px; letter-spacing: 0.3em; text-align: center; }
+
+/* Imagem ampliada. */
+.lightbox > img { max-width: min(92vw, 1600px); max-height: 86vh; border-radius: var(--r-xs); box-shadow: var(--elev-float); }
+.lightbox__close { position: absolute; top: var(--s-4); right: var(--s-4); }

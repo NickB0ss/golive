@@ -2675,7 +2675,9 @@
     setJoinRoomBusy(false);
     onJoinConnect = onConnect;
     dlgJoinEl.classList.remove('hidden');
-    focusFirstInteractive(dlgJoinEl);
+    // Com PIN pedido, o que falta e o PIN: o foco vai direto nele.
+    if (showPinField) $('in-pin').focus();
+    else focusFirstInteractive(dlgJoinEl);
   }
   function closeJoinRoom() {
     // Idempotente: app.js chama isto de dentro de joinRoom (sucesso, erro,
@@ -5017,7 +5019,7 @@
     $('dialog-confirm-text').textContent = text;
     const okBtn = $('btn-confirm-ok');
     okBtn.textContent = confirmLabel;
-    okBtn.className = tone === 'destructive' ? 'destructive' : 'primary';
+    okBtn.className = tone === 'destructive' ? 'btn btn--danger-solid' : 'btn btn--primary';
     onConfirmAccept = onConfirm;
     dlgConfirmEl.classList.remove('hidden');
     lastFocusedBeforeDialog = document.activeElement;

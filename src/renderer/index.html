@@ -246,69 +246,63 @@
 
 
 <!-- ============ DIALOGO: CRIAR SALA ============ -->
-<div id="dialog-create-room" class="modal hidden">
-  <div class="modal-box dialog-box">
-    <h2>Criar sala</h2>
-
-    <!-- Opcional: quem nao digita nada mantem o comportamento de sempre
-         ("Sala de <seu nome>"), preenchido pelo JS ao abrir o dialogo --
-         so ali cfg.name existe. Mesmo teto do campo `room` no protocolo
-         (40 caracteres). -->
-    <div class="dialog-field">
-      <label for="in-room-name">Nome da sala (opcional)</label>
-      <input id="in-room-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
+<div id="dialog-create-room" class="dlg-layer hidden">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dialog-create-room-title">
+    <div class="dlg__head"><h2 id="dialog-create-room-title" class="dlg__title">Criar sala</h2></div>
+    <div class="dlg__body">
+      <!-- Opcional: sem nada digitado vale "Sala de <seu nome>", preenchido pelo JS
+           ao abrir. Mesmo teto do campo `room` no protocolo (40 caracteres). -->
+      <div class="field">
+        <label class="field__label" for="in-room-name">Nome da sala</label>
+        <input id="in-room-name" class="input" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
+      </div>
+      <!-- "Anunciar na rede" mora aqui: e da sala que esta nascendo, e a ultima
+           escolha fica lembrada. -->
+      <div>
+        <label class="opt">
+          <span class="opt__text"><span class="opt__title">Anunciar na minha rede</span>
+            <span class="opt__desc">Aparece sozinha para quem está na mesma rede.</span></span>
+          <input id="chk-advertise-room" class="switch" type="checkbox" />
+        </label>
+        <label class="opt">
+          <span class="opt__text"><span class="opt__title">Proteger com PIN</span>
+            <span class="opt__desc">Seis dígitos, pedidos na entrada. Você passa para os amigos.</span></span>
+          <input id="chk-protect-room" class="switch" type="checkbox" />
+        </label>
+      </div>
+      <p id="create-room-error" class="field__error" role="alert"></p>
     </div>
-
-    <!-- "Anunciar na rede" mora AQUI, nao em Configuracoes: e uma
-         propriedade da sala que esta sendo criada, decidida no momento em
-         que ela e criada. O estado inicial vem do config (ultima escolha). -->
-    <div class="check-group bare">
-      <label class="check tight">
-        <input id="chk-advertise-room" type="checkbox" />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text">
-          <span class="check-title">Anunciar a sala na rede</span>
-          <span class="check-desc">Aparece na lista de quem está na mesma LAN.</span>
-        </span>
-      </label>
-      <label class="check tight">
-        <input id="chk-protect-room" type="checkbox" />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text">
-          <span class="check-title">Proteger com um PIN</span>
-          <span class="check-desc">Seis dígitos, pedidos na entrada.</span>
-        </span>
-      </label>
-    </div>
-
-    <p id="create-room-error" class="error" role="alert"></p>
-    <div class="dialog-actions">
-      <button id="btn-create-room-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-create-room-confirm" class="primary" type="button">
-        <svg class="btn-spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
+    <div class="dlg__foot">
+      <button id="btn-create-room-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+      <button id="btn-create-room-confirm" class="btn btn--primary" type="button">
+        <span class="spinner btn-spinner hidden" aria-hidden="true"></span>
         <span class="btn-label">Criar</span>
       </button>
     </div>
   </div>
 </div>
 
-<!-- ============ DIALOGO: ENTRAR NUMA SALA ============ -->
-<div id="dialog-join-room" class="modal hidden">
-  <div class="modal-box dialog-box">
-    <h2>Entrar numa sala</h2>
-    <div class="dialog-field">
-      <label for="in-server">Endereço da sala</label>
-      <input id="in-server" type="text" placeholder="26.0.0.1 ou ws://26.0.0.1:9000" spellcheck="false" />
+<!-- ============ DIALOGO: ENTRAR NUMA SALA (volta quando a sala pede PIN) ============ -->
+<div id="dialog-join-room" class="dlg-layer hidden">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dialog-join-room-title">
+    <div class="dlg__head"><h2 id="dialog-join-room-title" class="dlg__title">Entrar na sala</h2></div>
+    <div class="dlg__body">
+      <div class="field">
+        <label class="field__label" for="in-server">Endereço da sala</label>
+        <input id="in-server" class="input input--mono" type="text" placeholder="26.0.0.1:47800" spellcheck="false" />
+      </div>
+      <div id="join-pin-field" class="field hidden">
+        <label class="field__label" for="in-pin">PIN da sala</label>
+        <input id="in-pin" class="input input--lg input--mono input--pin" type="text" inputmode="numeric" maxlength="16"
+               pattern="[0-9]{6}" autocomplete="off" placeholder="000000" spellcheck="false" />
+        <p class="field__help">Peça o PIN a quem criou a sala.</p>
+      </div>
+      <p id="setup-error" class="field__error" role="alert"></p>
     </div>
-    <div id="join-pin-field" class="dialog-field hidden">
-      <label for="in-pin">PIN da sala</label>
-      <input id="in-pin" type="text" inputmode="numeric" maxlength="16" pattern="[0-9]{6}" autocomplete="off" placeholder="6 dígitos" spellcheck="false" />
-    </div>
-    <p id="setup-error" class="error"></p>
-    <div class="dialog-actions">
-      <button id="btn-join-room-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-connect" class="primary" type="button">
-        <svg class="btn-spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
+    <div class="dlg__foot">
+      <button id="btn-join-room-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+      <button id="btn-connect" class="btn btn--primary" type="button">
+        <span class="spinner btn-spinner hidden" aria-hidden="true"></span>
         <span class="btn-label">Conectar</span>
       </button>
     </div>
@@ -432,40 +426,41 @@
   <div id="emoji-list" class="emoji-list"></div>
 </div>
 
-<!-- ============ IMAGEM DO CHAT EM TELA CHEIA ============ -->
-<div id="image-lightbox" class="modal image-lightbox hidden">
+<!-- ============ IMAGEM DO CHAT AMPLIADA ============ -->
+<div id="image-lightbox" class="dlg-layer lightbox hidden" role="dialog" aria-modal="true" aria-label="Imagem ampliada">
   <img id="image-lightbox-img" alt="" />
-  <button id="image-lightbox-close" class="modal-close" type="button" title="Fechar" aria-label="Fechar">×</button>
+  <button id="image-lightbox-close" class="btn btn--secondary btn--icon lightbox__close" type="button" title="Fechar"
+          aria-label="Fechar"><svg class="i"><use href="#i-x" /></svg></button>
 </div>
 
 <!-- ============ DIALOGO: CONFIRMACAO ============ -->
-<!-- Um so pra banir e pra passar a lideranca: dois dialogos de confirmacao
-     divergindo em detalhe de foco e de estilo e divida nascendo (ver a spec
-     de 2026-09-04, secao 4.4). O botao de confirmar troca de rotulo e de
-     tom; o foco nasce SEMPRE no Cancelar. -->
-<div id="dialog-confirm" class="modal hidden">
-  <div class="modal-box dialog-box">
-    <h2 id="dialog-confirm-title"></h2>
-    <p id="dialog-confirm-text"></p>
-    <div class="dialog-actions">
-      <button id="btn-confirm-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-confirm-ok" class="destructive" type="button">Confirmar</button>
+<!-- Um so para banir, expulsar, passar a lideranca e encerrar: o botao de
+     confirmar troca de rotulo e de tom; o foco nasce SEMPRE no Cancelar. -->
+<div id="dialog-confirm" class="dlg-layer hidden">
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dialog-confirm-title"
+       aria-describedby="dialog-confirm-text">
+    <div class="dlg__head"><h2 id="dialog-confirm-title" class="dlg__title"></h2></div>
+    <div class="dlg__body"><p id="dialog-confirm-text" class="dlg__text"></p></div>
+    <div class="dlg__foot">
+      <button id="btn-confirm-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+      <button id="btn-confirm-ok" class="btn btn--danger-solid" type="button">Confirmar</button>
     </div>
   </div>
 </div>
 
-<!-- Segundo dialogo generico: mesma casca do #dialog-confirm, com campo.
-     O foco nasce no campo: aqui a acao esperada e digitar. -->
-<div id="dialog-text" class="modal hidden">
-  <div class="modal-box dialog-box">
-    <h2 id="dialog-text-title"></h2>
-    <div class="dialog-field">
-      <label for="dialog-text-input">Valor</label>
-      <input id="dialog-text-input" type="text" maxlength="48" autocomplete="off" />
+<!-- Dialogo com campo (renomear tema, importar codigo). O foco nasce no campo. -->
+<div id="dialog-text" class="dlg-layer hidden">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dialog-text-title">
+    <div class="dlg__head"><h2 id="dialog-text-title" class="dlg__title"></h2></div>
+    <div class="dlg__body">
+      <div class="field">
+        <label class="field__label" for="dialog-text-input">Nome</label>
+        <input id="dialog-text-input" class="input" type="text" maxlength="48" autocomplete="off" />
+      </div>
     </div>
-    <div class="dialog-actions">
-      <button id="btn-text-cancel" class="ghost" type="button">Cancelar</button>
-      <button id="btn-text-ok" class="primary" type="button">Salvar</button>
+    <div class="dlg__foot">
+      <button id="btn-text-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+      <button id="btn-text-ok" class="btn btn--primary" type="button">Salvar</button>
     </div>
   </div>
 </div>

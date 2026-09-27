@@ -56,6 +56,11 @@ async function state(page, kind) {
     if (scenario === 'downloading') {
       window.__pontes.onUpdateStatus({ status: 'downloading', version: '0.22.0', progress: 62 });
     }
+    if (scenario === 'criar') document.querySelector('#btn-create-room').click();
+    if (scenario === 'pin') {
+      window.GoLive.ui.dialogs.openJoinRoom({ address: '26.3.1.9:47800', showPinField: true, onConnect() {} });
+      document.querySelector('#setup-error').textContent = 'PIN errado. Restam 4 tentativas.';
+    }
     if (scenario === 'invalid') {
       document.querySelector('#lobby-error').textContent = 'Informe um endereço no formato IP:porta.';
     }
@@ -68,7 +73,7 @@ async function state(page, kind) {
   const allErrors = [];
   try {
     for (const [width, height] of sizes) {
-      for (const scenario of ['first', 'rooms', 'joining', 'empty', 'offline', 'downloading', 'invalid']) {
+      for (const scenario of ['first', 'rooms', 'joining', 'empty', 'offline', 'downloading', 'invalid', 'criar', 'pin']) {
         const { page, errors } = await setup(browser, width, height);
         if (scenario === 'first') {
           // Primeira vez de verdade: sem apelido salvo antes de o app carregar.
@@ -80,6 +85,7 @@ async function state(page, kind) {
           await page.waitForTimeout(150);
         }
         await state(page, scenario);
+        await page.waitForTimeout(400); // animacoes de entrada (dialogo, faixa) terminam
         await page.screenshot({ path: path.join(output, `${scenario}-${width}x${height}.png`) });
         allErrors.push(...errors.map((error) => `${scenario}-${width}x${height}: ${error}`));
         await page.close();
