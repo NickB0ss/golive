@@ -56,6 +56,16 @@
 
   let estadoServidor = inicial;
 
+  function copiar(valor) {
+    return JSON.parse(JSON.stringify(valor));
+  }
+
+  // Segredos ficam somente na sala; a tela recebe o retrato da propria pessoa.
+  function vistaPara(id) {
+    if (!mod.secret) return copiar(estadoServidor);
+    return mod.view(estadoServidor, id, { peers: PEERS });
+  }
+
   function entregar(fn) {
     if (atraso > 0) setTimeout(fn, atraso);
     else setTimeout(fn, 0);
@@ -81,17 +91,27 @@
     log.push({ from, action: pronta });
     entregar(() => {
       for (const [, c] of clientes) {
-        c.state = mod.reduce(c.state, pronta, meta);
+        c.state = mod.secret ? vistaPara(c.id) : mod.reduce(c.state, pronta, meta);
         c.tela.update(c.state, { by: from, isLeader: from === LIDER });
       }
     });
+  }
+
+  function enviarAnotacao(from, op) {
+    for (const [id, c] of clientes) {
+      if (id !== from) c.tela.annotateOp?.({ ...copiar(op), by: from });
+    }
+    return true;
   }
 
   function criarApi(me) {
     const c = clientes.get(me);
     return {
       act(action) { receber(me, JSON.parse(JSON.stringify(action))); },
-      validate(action) { return mod.validate(c.state, action, { from: me, isLeader: me === LIDER, peers: PEERS }); },
+      validate(action) {
+        if (mod.secret) return true;
+        return mod.validate(c.state, action, { from: me, isLeader: me === LIDER, peers: PEERS });
+      },
       me: () => me,
       isLeader: () => me === LIDER,
       peers: () => PEERS.slice(),
@@ -102,6 +122,8 @@
         c.negados.add(fn);
         return () => c.negados.delete(fn);
       },
+      annotateSurface: () => `bancada:${tipo}`,
+      sendAnnotate(op) { return enviarAnotacao(me, op); },
     };
   }
 
@@ -136,7 +158,7 @@
     caixa.append(el);
     coluna.append(rot, caixa);
     palco.append(coluna);
-    clientes.set(id, { state: JSON.parse(JSON.stringify(inicial)), negados: new Set(), tela: null, el });
+    clientes.set(id, { id, state: vistaPara(id), negados: new Set(), tela: null, el });
     const c = clientes.get(id);
     c.tela = conteudo.mount(el, criarApi(id));
     c.tela.update(c.state, null);
@@ -149,11 +171,11 @@
     estado: (id) => clientes.get(id || LIDER).state,
     servidor: () => estadoServidor,
     act: (id, action) => receber(id, action),
-    // Estado imposto (para montar cenas de print): vale para os dois.
+    // Estado imposto (para montar cenas de print): conserva o segredo na sala.
     impor(state) {
-      estadoServidor = state;
+      estadoServidor = copiar(state);
       for (const [, c] of clientes) {
-        c.state = JSON.parse(JSON.stringify(state));
+        c.state = vistaPara(c.id);
         c.tela.update(c.state, null);
       }
     },

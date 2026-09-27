@@ -63,6 +63,12 @@ async function abrir(browser, tipo, tam, tema) {
 }
 
 function medirEAssinar() {
+  function rotuloLocal(el) {
+    const classes = [...el.classList].join('.');
+    const texto = el.textContent ? ` "${el.textContent.trim().slice(0, 20)}"` : '';
+    return `${el.tagName.toLowerCase()}.${classes}${texto}`;
+  }
+
   function estaVisivel(el, raiz) {
     for (let atual = el; atual; atual = atual.parentElement) {
       const estilo = getComputedStyle(atual);
@@ -103,25 +109,19 @@ function medirEAssinar() {
     if (ret.width === 0 || ret.height === 0) continue;
     const fora = ret.left < caixa.left - 1 || ret.top < caixa.top - 1
       || ret.right > caixa.right + 1 || ret.bottom > caixa.bottom + 1;
-    if (fora && !el.closest('[data-caber-rola]')) problemas.push(`fora da caixa: ${rotulo(el)}`);
+    if (fora && !el.closest('[data-caber-rola]')) problemas.push(`fora da caixa: ${rotuloLocal(el)}`);
     const rola = /(auto|scroll)/.test(estilo.overflowY) && el.scrollHeight > el.clientHeight + 1;
-    if (rola && tam === 'padrao') problemas.push(`rolagem escondida no padrao: ${rotulo(el)}`);
+    if (rola && tam === 'padrao') problemas.push(`rolagem escondida no padrao: ${rotuloLocal(el)}`);
   }
   for (const el of corpo.querySelectorAll('button, input, select, textarea, [role="button"]')) {
     const ret = el.getBoundingClientRect();
     if (ret.width === 0 || ret.height === 0 || getComputedStyle(el).visibility === 'hidden') continue;
     const alvo = document.elementFromPoint(ret.left + ret.width / 2, ret.top + ret.height / 2);
     if (!alvo || (alvo !== el && !el.contains(alvo))) {
-      problemas.push(`coberto: ${rotulo(el)} por ${alvo ? rotulo(alvo) : 'nada'}`);
+      problemas.push(`coberto: ${rotuloLocal(el)} por ${alvo ? rotuloLocal(alvo) : 'nada'}`);
     }
   }
   return { problemas, assinatura: assinaturaVisivel(corpo) };
-}
-
-function rotulo(el) {
-  const classes = [...el.classList].join('.');
-  const texto = el.textContent ? ` "${el.textContent.trim().slice(0, 20)}"` : '';
-  return `${el.tagName.toLowerCase()}.${classes}${texto}`;
 }
 
 function montarCheio(tipo) {
