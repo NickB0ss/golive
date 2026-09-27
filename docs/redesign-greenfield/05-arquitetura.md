@@ -79,7 +79,7 @@ Janelas auxiliares: Splash · Espiar · Overlay (rabisco no monitor físico)
 ## 3. Sala — estrutura
 
 ```
-┌ Sala do Nick ▾  26.12.4.8:47800 ⧉  PIN 4821     ○○●●○ 5 · ⚠1 · ▮▮▮   ⚙  Sair  — □ × ┐  cabeça 44
+┌ Sala do Nick ▾  26.12.4.8:47800 ⧉  PIN 482193     ○○●●○ 5 · ⚠1 · ▮▮▮   ⚙  Sair  — □ × ┐  cabeça 44
 ├──────────────────────────────────────────────────────────────┬──────────────────────┤
 │                                                              │ Conversa      ◧  ×   │
 │                         PROGRAMA                             │                      │
@@ -288,7 +288,7 @@ Folha com uma tabela por fonte (enviando e recebendo): codec, resolução, fps, 
 - **7.2 Criar sala**: nome (máx. 40), "Anunciar na minha rede" (lembrado), "Proteger com PIN". Estados:
   Criar → "Preparando a sala…" → "Aguardando a permissão do Windows…" → pronto (fecha e entra). Erro de porta
   ou servidor fica no diálogo.
-- **7.3 PIN**: 4 dígitos em campo mono grande, erro "PIN errado. Restam N tentativas." / bloqueio com prazo.
+- **7.3 PIN**: 6 dígitos em campo mono grande, erro "PIN errado. Restam N tentativas." / bloqueio com prazo.
 - **7.4 Imagem ampliada**: imagem sobre o véu, Esc fecha, ⋯ Pôr na Mesa.
 - **7.5 Transferir liderança / Expulsar / Banir / Encerrar sala**: frase com a consequência exata.
 
