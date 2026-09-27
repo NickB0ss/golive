@@ -472,41 +472,39 @@
   </div>
 </div>
 
-<!-- ============ VISTA DE CONFIGURACOES ============ -->
-<section id="settings-modal" class="settings-view hidden" aria-labelledby="settings-section-title">
-  <header class="settings-header">
-    <button id="btn-close-settings" class="settings-back" type="button">‹ Voltar</button>
-    <h2 id="settings-section-title">Perfil</h2>
-    <span id="settings-live-tally" class="tally hidden">Você está ao vivo</span>
+<!-- ============ CONFIGURACOES: folha sobre a tela atual (05 §6) ============ -->
+<!-- A tela de baixo continua viva (so fica inert): a Mesa segue medindo e o
+     view-state nao cai. O veu comeca abaixo da cabeca, que segue arrastavel. -->
+<div id="settings-veil" class="veil-layer veil-layer--sheet hidden"></div>
+<section id="settings-modal" class="sheet settings hidden" role="dialog" aria-modal="true"
+         aria-labelledby="settings-section-title">
+  <header class="sheet__head">
+    <div class="settings__titles">
+      <span class="tx-tag">Configurações</span>
+      <h2 id="settings-section-title" class="sheet__title">Perfil</h2>
+    </div>
+    <span id="settings-live-tally" class="tag tag--live hidden">Ao vivo</span>
+    <button id="btn-close-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Fechar configurações"
+            title="Fechar (Esc)"><svg class="i"><use href="#i-x" /></svg></button>
   </header>
-  <nav class="settings-nav" aria-label="Seções das Configurações" role="tablist">
-    <button id="settings-cat-profile" class="settings-cat active" data-cat="profile" type="button" role="tab"
-      aria-selected="true" aria-controls="settings-profile" tabindex="0"><svg viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path
-      d="M4 21a8 8 0 0 1 16 0"/></svg>Perfil</button>
-    <button id="settings-cat-appearance" class="settings-cat" data-cat="appearance" type="button" role="tab"
-      aria-selected="false" aria-controls="settings-appearance" tabindex="-1"><svg viewBox="0 0 24 24"
-      fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/>
-      <path d="M12 3a9 9 0 0 0 0 18z"/></svg>Aparência</button>
-    <button id="settings-cat-voice" class="settings-cat" data-cat="voice" type="button" role="tab"
-      aria-selected="false" aria-controls="settings-voice" tabindex="-1"><svg viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2"
-      width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg>Som</button>
-    <button id="settings-cat-stats" class="settings-cat" data-cat="stats" type="button" role="tab"
-      aria-selected="false" aria-controls="settings-stats" tabindex="-1"><svg viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path
-      d="M4 19V9M10 19V5M16 19v-7M22 19V3"/>
-      </svg>Estatísticas</button>
+  <nav class="settings__nav" aria-label="Seções das configurações" role="tablist">
+    <div class="seg">
+      <button id="settings-cat-profile" class="seg__opt settings-cat active" data-cat="profile" type="button" role="tab"
+              aria-selected="true" aria-controls="settings-profile" tabindex="0">Perfil</button>
+      <button id="settings-cat-appearance" class="seg__opt settings-cat" data-cat="appearance" type="button" role="tab"
+              aria-selected="false" aria-controls="settings-appearance" tabindex="-1">Aparência</button>
+      <button id="settings-cat-voice" class="seg__opt settings-cat" data-cat="voice" type="button" role="tab"
+              aria-selected="false" aria-controls="settings-voice" tabindex="-1">Câmera e sons</button>
+      <button id="settings-cat-stats" class="seg__opt settings-cat" data-cat="stats" type="button" role="tab"
+              aria-selected="false" aria-controls="settings-stats" tabindex="-1">Diagnóstico</button>
+    </div>
   </nav>
-  <div class="settings-content">
-    <section id="settings-profile" class="settings-pane" role="tabpanel"
-      aria-labelledby="settings-cat-profile"></section>
+  <div class="sheet__body settings-content">
+    <section id="settings-profile" class="settings-pane" role="tabpanel" aria-labelledby="settings-cat-profile"></section>
     <section id="settings-appearance" class="settings-pane hidden" role="tabpanel"
-      aria-labelledby="settings-cat-appearance"></section>
-    <section id="settings-voice" class="settings-pane hidden" role="tabpanel"
-      aria-labelledby="settings-cat-voice"></section>
-    <section id="settings-stats" class="settings-pane hidden" role="tabpanel"
-      aria-labelledby="settings-cat-stats"></section>
+             aria-labelledby="settings-cat-appearance"></section>
+    <section id="settings-voice" class="settings-pane hidden" role="tabpanel" aria-labelledby="settings-cat-voice"></section>
+    <section id="settings-stats" class="settings-pane hidden" role="tabpanel" aria-labelledby="settings-cat-stats"></section>
   </div>
 </section>
 

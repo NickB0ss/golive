@@ -3797,6 +3797,7 @@
   const settingsTitleEl = $('settings-section-title');
   const settingsLiveTallyEl = $('settings-live-tally');
   let settingsUnderlayEl = null;
+  $('settings-veil').addEventListener('click', () => closeSettings());
 
   // Indicador deslizante (motion #8). O CSS desenha UM retangulo em
   // ::before/::after e o JS so escreve onde ele fica; a transicao acontece
@@ -3830,7 +3831,7 @@
     }
   }
 
-  const settingsNavEl = document.querySelector('.settings-nav');
+  const settingsNavEl = document.querySelector('.settings__nav');
 
   function syncSettingsIndicator(animate = true) {
     moveIndicator(settingsNavEl, settingsCatButtons.find((b) => b.classList.contains('active')), 'y', animate);
@@ -3903,7 +3904,7 @@
 
   function closeSettings() {
     settingsModalEl.classList.add('hidden');
-    settingsUnderlayEl?.classList.remove('settings-underlay');
+    $('settings-veil').classList.add('hidden');
     if (settingsUnderlayEl) settingsUnderlayEl.inert = false;
     settingsUnderlayEl = null;
     stopSettingsCameraPreview();
@@ -3936,25 +3937,9 @@
   function esconderVistaAnterior() {
     const salaVisivel = !roomViewEl.classList.contains('hidden');
     settingsUnderlayEl = salaVisivel ? roomViewEl : lobbyViewEl;
-    settingsUnderlayEl.classList.add('settings-underlay');
     settingsUnderlayEl.inert = true;
   }
 
-  function agruparConfiguracoes() {
-    for (const pane of Object.values(settingsPanes)) {
-      const headings = Array.from(pane.querySelectorAll(':scope > h3'));
-      for (const heading of headings) {
-        const group = document.createElement('section');
-        group.className = 'settings-group';
-        heading.classList.add('rotulo-mono');
-        heading.before(group);
-        group.append(heading);
-        while (group.nextElementSibling && group.nextElementSibling.tagName !== 'H3') {
-          group.append(group.nextElementSibling);
-        }
-      }
-    }
-  }
 
   function bandwidthLine(quality) {
     const screenMbps = quality.bitrate / 1_000_000;
@@ -4012,28 +3997,24 @@
    *
    * Cores inline, nao `var(--...)`: as variaveis do tema sao globais, e
    * aqui sao seis temas na tela ao mesmo tempo. */
+  /** Miniatura de um tema: a propria sala do Sinal em pequeno -- cabeca,
+   * programa no vazio e barramento com o no ao vivo e a acao em giz. As cores
+   * sao dado do tema (preset ou salvo), por isso entram inline. */
+  function amostraTema(s, act) {
+    return `<span class="theme-mini" style="--m-bg:${s.bg};--m-s1:${s.s1};--m-line:${s.line2};--m-tx:${s.tx};--m-act:${act}">
+        <span class="theme-mini__head"><i></i><b></b></span>
+        <span class="theme-mini__program"></span>
+        <span class="theme-mini__bus"><i class="theme-mini__live"></i><b></b><u></u></span>
+      </span>`;
+  }
+
   function renderThemePresetCard(id, activeId) {
     const preset = theme.PRESETS[id];
-    const s = preset.surfaces;
     const active = id === activeId;
     return `
-      <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
-        <span class="theme-preset-mini" style="background:${s.bg}">
-          <span class="tpm-top" style="background:${s.s1};border-color:${s.line2}">
-            <i style="background:${preset.act}"></i>
-            <b style="background:${s.s3}"></b>
-            <u style="background:var(--live)"></u>
-          </span>
-          <span class="tpm-body">
-            <span class="tpm-stage" style="background:${s.s2}"></span>
-            <span class="tpm-side">
-              <b style="background:${s.s3}"></b>
-              <b style="background:${s.s3}"></b>
-              <span class="tpm-cta" style="background:${preset.act}"></span>
-            </span>
-          </span>
-        </span>
-        <span class="theme-preset-label">${escapeHtml(preset.label)}</span>
+      <button type="button" class="theme-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
+        ${amostraTema(preset.surfaces, preset.act)}
+        <span class="theme-card__label">${escapeHtml(preset.label)}</span>
       </button>`;
   }
 
@@ -4050,7 +4031,7 @@
     const host = $('my-themes');
     if (!host) return;
     if (!myThemes.length) {
-      host.innerHTML = '<p class="settings-hint">Nenhum tema salvo ainda.</p>';
+      host.innerHTML = '<p class="field__help">Nenhum tema salvo ainda.</p>';
       return;
     }
     host.innerHTML = myThemes.map((t) => {
@@ -4058,27 +4039,13 @@
       const s = tokens.surfaces;
       const active = t.id === ativoId;
       return `
-        <div class="my-theme-slot">
-          <button type="button" class="theme-preset-card${active ? ' active' : ''}" data-theme-id="${escapeHtml(t.id)}" aria-pressed="${active}">
-            <span class="theme-preset-mini" style="background:${s.bg}">
-              <span class="tpm-top" style="background:${s.s1};border-color:${s.line2}">
-                <i style="background:${tokens.act}"></i>
-                <b style="background:${s.s3}"></b>
-                <u style="background:var(--live)"></u>
-              </span>
-              <span class="tpm-body">
-                <span class="tpm-stage" style="background:${s.s2}"></span>
-                <span class="tpm-side">
-                  <b style="background:${s.s3}"></b>
-                  <b style="background:${s.s3}"></b>
-                  <span class="tpm-cta" style="background:${tokens.act}"></span>
-                </span>
-              </span>
-            </span>
-            <span class="theme-preset-label">${escapeHtml(t.name)}</span>
+        <div class="theme-slot">
+          <button type="button" class="theme-card${active ? ' active' : ''}" data-theme-id="${escapeHtml(t.id)}" aria-pressed="${active}">
+            ${amostraTema(s, tokens.act)}
+            <span class="theme-card__label">${escapeHtml(t.name)}</span>
           </button>
-          <button class="my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
-                  title="Opções de ${escapeHtml(t.name)}" aria-label="Opções de ${escapeHtml(t.name)}">⋮</button>
+          <button class="btn btn--quiet btn--icon btn--sm my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
+                  title="Opções de ${escapeHtml(t.name)}" aria-label="Opções de ${escapeHtml(t.name)}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>
         </div>`;
     }).join('');
   }
@@ -4087,7 +4054,7 @@
     const rect = anchorEl.getBoundingClientRect();
     memberMenuEl.classList.toggle('in-modal', Boolean(anchorEl.closest('.modal')));
     memberMenuEl.innerHTML = itens.map((item, index) => `
-      <button type="button" class="menu__item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
+      <button type="button" class="menu__item${item.tom === 'danger' ? ' menu__item--danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
     `).join('');
     memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
     memberMenuEl.style.top = `${rect.bottom + 4}px`;
@@ -4172,12 +4139,12 @@
    * nenhuma --, entao sempre ha uma resposta; 'marca' (o padrao) e a rede de
    * seguranca se o DOM ainda nao foi montado. */
   function selectedThemePreset() {
-    const card = $('theme-presets')?.querySelector('.theme-preset-card.active');
+    const card = $('theme-presets')?.querySelector('.theme-card.active');
     return card?.dataset.preset || 'marca';
   }
 
   function hasActiveThemePreset() {
-    return Boolean($('theme-presets')?.querySelector('.theme-preset-card.active'));
+    return Boolean($('theme-presets')?.querySelector('.theme-card.active'));
   }
 
   function updateThemeSaveState() {
@@ -4250,142 +4217,114 @@
     const estavaFechada = settingsModalEl.classList.contains('hidden');
     if (estavaFechada) lastFocusedBeforeModal = document.activeElement;
     settingsPanes.profile.innerHTML = `
-      <h3>Perfil</h3>
-      <div class="settings-field settings-profile-field">
-        <button id="settings-profile-avatar" class="user-avatar user-avatar-lg" type="button"
-          title="Alterar foto de perfil" aria-label="Alterar foto de perfil">
-          <img id="settings-profile-avatar-img" class="hidden" alt="" />
-          <span id="settings-profile-avatar-fallback"></span>
-        </button>
-        <input id="settings-profile-avatar-input" type="file" accept="image/*" class="hidden" />
-      </div>
-      <div class="settings-field">
-        <label for="settings-profile-name">Apelido</label>
-        <input id="settings-profile-name" type="text" placeholder="seu apelido" spellcheck="false" />
+      <div class="settings__block">
+        <div class="settings__profile">
+          <button id="settings-profile-avatar" class="settings__avatar" type="button"
+            title="Trocar a foto" aria-label="Trocar a foto de perfil">
+            <span class="node" data-size="56">
+              <img id="settings-profile-avatar-img" class="hidden" alt="" />
+              <span id="settings-profile-avatar-fallback"></span>
+            </span>
+            <span class="tx-meta">Trocar foto</span>
+          </button>
+          <input id="settings-profile-avatar-input" type="file" accept="image/*" class="hidden" />
+          <div class="field">
+            <label class="field__label" for="settings-profile-name">Apelido</label>
+            <input id="settings-profile-name" class="input" type="text" placeholder="Como te chamam no grupo"
+              spellcheck="false" maxlength="32" />
+            <p class="field__help">Aparece para quem está na sala a partir da próxima entrada.</p>
+          </div>
+        </div>
       </div>`;
 
-    // A previa e um pedaco de sala DE MENTIRA montado com os mesmos tokens
-    // do tema (`var(--s1)`, `var(--act)`, `var(--live)`...). Como theme.apply
-    // escreve esses tokens no `:root`, ela muda sozinha enquanto a pessoa
-    // arrasta o slider -- sem uma linha de codigo pra sincroniza-la. E a
-    // resposta pra "o que essa barrinha faz, afinal?".
     settingsPanes.appearance.innerHTML = `
-      <h3>Prévia</h3>
-      <div class="theme-preview" aria-hidden="true">
-        <div class="theme-preview-app">
-          <div class="theme-preview-top">
-            <svg class="theme-preview-badge" viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20.71 14.20 L11.35 9.06"/><path d="M20.71 17.80 L11.35 22.94"/><circle cx="8.5" cy="7.5" r="3.25"/><circle cx="8.5" cy="24.5" r="3.25"/></g><circle class="app-brand-origin" cx="24" cy="16" r="3.75"/></svg>
-            <span class="theme-preview-title">GoLive LAN</span>
-            <span class="theme-preview-dot"></span>
-          </div>
-          <div class="theme-preview-body">
-            <div class="theme-preview-stage">
-              <span class="theme-preview-live">● AO VIVO</span>
-            </div>
-            <div class="theme-preview-side">
-              <span class="theme-preview-row"><i class="theme-preview-av"></i><b></b></span>
-              <span class="theme-preview-row"><i class="theme-preview-av"></i><b class="short"></b></span>
-              <span class="theme-preview-msg"></span>
-              <span class="theme-preview-msg short"></span>
-              <span class="theme-preview-cta">Compartilhar tela</span>
-            </div>
-          </div>
+      <div class="settings__block">
+        <h3 class="settings__h">Tema</h3>
+        <p class="field__help">O vermelho continua sendo só "ao vivo" e o âmbar, só aviso, em qualquer tema.</p>
+        <div id="theme-presets" class="theme-grid"></div>
+      </div>
+
+      <div class="settings__block">
+        <h3 class="settings__h">Personalizar</h3>
+        <div class="field">
+          <label class="field__label" for="theme-act">Cor de ação</label>
+          <p class="field__help">Botão principal e seleção. Tem de passar no contraste com o fundo.</p>
+          <input id="theme-act" class="settings__color" type="color" value="#EDEDF2" aria-describedby="theme-warning" />
         </div>
-        <ul class="theme-legend">
-          <li><span class="theme-legend-chip" style="background:var(--bg)"></span>fundo</li>
-          <li><span class="theme-legend-chip" style="background:var(--s2)"></span>painéis</li>
-          <li><span class="theme-legend-chip" style="background:var(--act)"></span>ação</li>
-          <li><span class="theme-legend-chip" style="background:var(--live)"></span>ao vivo</li>
-        </ul>
-      </div>
-
-      <h3>Predefinições</h3>
-      <div id="theme-presets" class="theme-presets"></div>
-
-      <h3>Personalizar</h3>
-      <div class="settings-field">
-        <label for="theme-act">Cor de ação</label>
-        <p class="settings-hint">Botão principal, foco do teclado e seleção. O vermelho de "ao vivo" e o âmbar de aviso não mudam — eles significam uma coisa só.</p>
-        <input id="theme-act" type="color" value="#4F46E5" aria-describedby="theme-warning" />
-      </div>
-      <div class="settings-field">
-        <label for="theme-temp">Temperatura das superfícies</label>
-        <input id="theme-temp" type="range" min="0" max="100" value="50" />
-      </div>
-      <div class="settings-field">
-        <label for="theme-level">Claridade das superfícies</label>
-        <input id="theme-level" type="range" min="0" max="100" value="20" />
-      </div>
-      <p id="theme-warning" class="hint" role="alert"></p>
-      <div class="settings-actions">
-        <button id="btn-theme-reset" type="button" class="ghost small">Voltar ao padrão</button>
-      </div>
-
-      <h3>Meus temas</h3>
-      <p class="settings-hint">Guarde a combinação que você montou e mande o código pra quem quiser usar igual.</p>
-      <div id="my-themes" class="theme-presets"></div>
-      <div class="settings-actions">
-        <button id="btn-theme-save" type="button" class="secondary small">Salvar tema atual</button>
-        <p id="theme-save-hint" class="settings-hint hidden">Mexa na temperatura ou na claridade pra montar um tema seu.</p>
-      </div>
-      <div class="settings-field">
-        <label for="theme-code-input">Usar um código</label>
-        <p class="settings-hint">Cole aqui o código que um amigo te mandou.</p>
-        <div class="theme-code-row">
-          <input id="theme-code-input" type="text" placeholder="GL-XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off" />
-          <button id="btn-theme-code-use" type="button" class="secondary small" disabled>Salvar como…</button>
+        <div class="field">
+          <label class="field__label" for="theme-temp">Temperatura das superfícies</label>
+          <input id="theme-temp" class="range" type="range" min="0" max="100" value="50" />
         </div>
-        <p id="theme-code-status" class="hint" role="status"></p>
+        <div class="field">
+          <label class="field__label" for="theme-level">Claridade das superfícies</label>
+          <input id="theme-level" class="range" type="range" min="0" max="100" value="20" />
+        </div>
+        <p id="theme-warning" class="field__error" role="alert"></p>
+        <div class="settings__actions">
+          <button id="btn-theme-reset" type="button" class="btn btn--quiet btn--sm">Voltar ao padrão</button>
+        </div>
+      </div>
+
+      <div class="settings__block">
+        <h3 class="settings__h">Meus temas</h3>
+        <p class="field__help">Guarde a combinação que você montou e mande o código para quem quiser usar igual.</p>
+        <div id="my-themes" class="theme-grid"></div>
+        <div class="settings__actions">
+          <button id="btn-theme-save" type="button" class="btn btn--secondary btn--sm">Salvar tema atual</button>
+          <p id="theme-save-hint" class="field__help hidden">Mexa na temperatura ou na claridade para montar um tema seu.</p>
+        </div>
+        <div class="field">
+          <label class="field__label" for="theme-code-input">Usar um código</label>
+          <div class="combo">
+            <input id="theme-code-input" class="input input--mono" type="text" placeholder="GL-XXXX-XXXX-XXXX"
+              spellcheck="false" autocomplete="off" />
+            <button id="btn-theme-code-use" type="button" class="btn btn--secondary" disabled>Salvar como…</button>
+          </div>
+          <p id="theme-code-status" class="field__help" role="status"></p>
+        </div>
       </div>`;
 
     settingsPanes.voice.innerHTML = `
-      <h3>Câmera</h3>
-      <div class="settings-field">
-        <label for="settings-camera-device">Dispositivo</label>
-        <select id="settings-camera-device"></select>
-      </div>
-      <div class="settings-field">
-        <video id="settings-camera-preview" autoplay playsinline muted></video>
-      </div>
-      <h3>Sons</h3>
-      <div class="check-group">
-        <label class="check">
-          <input id="settings-sounds" type="checkbox" />
-          <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-          <span class="check-text">
-            <span class="check-title">Sons do app</span>
-            <span class="check-desc">Entrada, saída, chat, transmissão começando e avisos de moderação.</span>
-          </span>
-        </label>
-      </div>
-      <div class="sound-check" aria-labelledby="sound-check-title">
-        <div class="sound-check-head">
-          <strong id="sound-check-title">Verificação</strong>
-          <span id="sound-test-current" aria-live="polite">Pronto para testar.</span>
+      <div class="settings__block">
+        <h3 class="settings__h">Câmera</h3>
+        <div class="field">
+          <label class="field__label" for="settings-camera-device">Dispositivo</label>
+          <select id="settings-camera-device" class="input"></select>
         </div>
-        <button id="btn-test-sounds" type="button" class="ghost small">Testar sons</button>
-        <p class="sound-check-hint">O teste toca todos os avisos, inclusive o de chat com a janela em foco.</p>
-        <h4>Últimos sons</h4>
-        <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
+        <video id="settings-camera-preview" class="settings__preview" autoplay playsinline muted></video>
       </div>
-      <h3>Notificações</h3>
-      <div class="check-group">
-        <label class="check">
-          <input id="settings-live-notify" type="checkbox" />
-          <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-          <span class="check-text">
-            <span class="check-title">Avisar quando alguém ficar ao vivo</span>
-            <span class="check-desc">Notificação do Windows quando a janela do GoLive não está em foco.</span>
-          </span>
+      <div class="settings__block">
+        <h3 class="settings__h">Sons e avisos</h3>
+        <label class="opt">
+          <span class="opt__text"><span class="opt__title">Sons do app</span>
+            <span class="opt__desc">Entrada, saída, conversa, transmissão começando e moderação.</span></span>
+          <input id="settings-sounds" class="switch" type="checkbox" />
         </label>
+        <label class="opt">
+          <span class="opt__text"><span class="opt__title">Avisar quando alguém ficar ao vivo</span>
+            <span class="opt__desc">Notificação do Windows quando a janela do GoLive não está em foco.</span></span>
+          <input id="settings-live-notify" class="switch" type="checkbox" />
+        </label>
+      </div>
+      <div class="settings__block sound-check" aria-labelledby="sound-check-title">
+        <div class="settings__row">
+          <h3 id="sound-check-title" class="settings__h">Testar os sons</h3>
+          <button id="btn-test-sounds" type="button" class="btn btn--secondary btn--sm">Tocar todos</button>
+        </div>
+        <p id="sound-test-current" class="field__help" aria-live="polite">Toca cada aviso, inclusive o da conversa com a
+          janela em foco.</p>
+        <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
       </div>`;
 
     settingsPanes.stats.innerHTML = `
-      <h3>Estatísticas</h3>
-      <div id="settings-stats-body" class="stats"></div>
-      <div class="settings-field">
-        <button id="btn-open-logs" type="button" class="ghost small">Abrir pasta de logs</button>
-        <small>Pra mandar pra quem for investigar um problema.</small>
+      <div class="settings__block">
+        <p class="field__help">Números de cada fonte, enviando e recebendo. Atualiza sozinho enquanto está aberto.</p>
+        <div id="settings-stats-body" class="stats"></div>
+      </div>
+      <div class="settings__block settings__row">
+        <p class="field__help">Para mandar a quem for investigar um problema.</p>
+        <button id="btn-open-logs" type="button" class="btn btn--secondary btn--sm">
+          <svg class="i i--sm"><use href="#i-folder-open" /></svg>Abrir pasta de logs</button>
       </div>`;
     setStatsHtml(lastStatsHtml, { force: true });
 
@@ -4447,7 +4386,7 @@
 
     initThemeControls(config);
     $('theme-presets').addEventListener('click', (event) => {
-      const card = event.target.closest('.theme-preset-card');
+      const card = event.target.closest('.theme-card');
       if (!card) return;
       Array.from($('theme-presets').children).forEach((c) => {
         c.classList.toggle('active', c === card);
@@ -4599,8 +4538,8 @@
       /* sem permissao de midia ainda, dropdowns ficam vazios */
     }
 
-    agruparConfiguracoes();
     if (estavaFechada) esconderVistaAnterior();
+    $('settings-veil').classList.remove('hidden');
     settingsLiveTallyEl.classList.toggle('hidden', !deps.isLive?.());
     settingsModalEl.classList.remove('hidden');
     // Sem animar: o indicador aparece ja no lugar em vez de deslizar sozinho

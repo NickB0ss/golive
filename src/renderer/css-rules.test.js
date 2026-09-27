@@ -45,7 +45,7 @@ test('important fica restrito a hidden e movimento reduzido', () => {
 });
 
 test('live so marca estados ao vivo e a marca', () => {
-  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand)/;
+  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand|\.theme-mini__live)/;
   for (const source of cssByFile.values()) {
     for (const match of source.matchAll(/([^{}]+)\{[^{}]*var\(--live\)[^{}]*\}/g)) {
       assert.match(match[1], allowed, `uso indevido de --live em ${match[1].trim()}`);

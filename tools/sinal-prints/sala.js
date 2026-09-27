@@ -177,6 +177,19 @@ async function rodada(browser, port, [w, h]) {
     await page.keyboard.press('Escape');
   }
 
+  // Configuracoes como folha sobre a sala.
+  await page.click('#btn-room-settings');
+  await espera(400);
+  await foto(page, '16-config-perfil', w, h);
+  await page.click('#settings-cat-appearance');
+  await foto(page, '17-config-aparencia', w, h);
+  await page.click('#settings-cat-voice');
+  await foto(page, '18-config-sons', w, h);
+  await page.click('#settings-cat-stats');
+  await foto(page, '19-config-diagnostico', w, h);
+  await page.keyboard.press('Escape');
+  await espera(300);
+
   // O seletor de fonte (Transmitir), com as telas e depois as janelas.
   await page.click('#btn-toggle-share');
   await espera(600);

@@ -61,3 +61,75 @@
 .picker__actions { display: flex; align-items: center; gap: var(--s-2); margin-left: auto; }
 .picker__actions #picker-go-live-hint { margin-right: var(--s-2); }
 .picker__actions #btn-go-live { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============ Configuracoes (folha) ============ */
+.veil-layer--sheet { top: var(--h-head); }
+.settings__titles { display: grid; gap: 2px; margin-right: auto; }
+.settings__titles .sheet__title { margin: 0; }
+.settings__nav { padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.settings__block { display: grid; gap: var(--s-3); padding: var(--s-4) 0; }
+.settings__block + .settings__block { border-top: 1px solid var(--line); }
+.settings__h { font: var(--t-heading); }
+.settings__row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.settings__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.settings__profile { display: flex; align-items: flex-start; gap: var(--s-5); }
+.settings__profile .field { flex: 1; }
+.settings__avatar { display: grid; justify-items: center; gap: var(--s-1); border-radius: var(--r-sm); padding: var(--s-1); }
+.settings__avatar:hover .node { --ring: var(--tx2); }
+.settings__avatar .node { overflow: hidden; }
+.settings__color { width: 56px; height: var(--h-ctl); padding: 2px; border: 1px solid var(--line2); border-radius: var(--r-xs);
+  background: var(--s3); cursor: pointer; }
+.settings__preview { width: 100%; max-width: 320px; aspect-ratio: 16 / 9; border-radius: var(--r-xs); background: var(--void); }
+.settings__preview:not([src]):not([srcObject]) { box-shadow: 0 0 0 1px var(--line); }
+
+/* Grade de temas: cada cartao e a sala do Sinal em miniatura. */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--s-3); }
+.theme-slot { position: relative; display: grid; }
+.theme-slot .my-theme-menu-btn { position: absolute; top: var(--s-1); right: var(--s-1); background: var(--s2); }
+.theme-card { display: grid; gap: var(--s-15); padding: var(--s-1); border-radius: var(--r-sm); text-align: left; }
+.theme-card:hover { background: var(--veil); }
+.theme-card.active .theme-mini { box-shadow: 0 0 0 2px var(--wire); }
+.theme-card__label { font: var(--t-meta); color: var(--tx2); padding: 0 var(--s-05); }
+.theme-card.active .theme-card__label { color: var(--tx); font-weight: 700; }
+.theme-mini {
+  display: grid;
+  grid-template-rows: 8px 1fr 12px;
+  gap: 2px;
+  aspect-ratio: 16 / 10;
+  padding: 3px;
+  border-radius: var(--r-xs);
+  background: var(--m-bg);
+  box-shadow: 0 0 0 1px var(--m-line);
+}
+.theme-mini__head { display: flex; align-items: center; gap: 3px; }
+.theme-mini__head i { width: 14px; height: 3px; border-radius: 1px; background: var(--m-tx); opacity: 0.8; }
+.theme-mini__head b { margin-left: auto; width: 8px; height: 3px; border-radius: 1px; background: var(--m-tx); opacity: 0.4; }
+.theme-mini__program { border-radius: 2px; background: var(--void); }
+.theme-mini__bus { display: flex; align-items: center; gap: 3px; padding: 0 2px; border-radius: 2px; background: var(--m-s1); }
+.theme-mini__live { width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
+.theme-mini__bus b { width: 10px; height: 3px; border-radius: 1px; background: var(--m-tx); opacity: 0.5; }
+.theme-mini__bus u { margin-left: auto; width: 12px; height: 6px; border-radius: 1px; background: var(--m-act); }
+
+/* Ultimos sons testados. */
+.sound-recent { display: grid; gap: 2px; font: var(--t-meta); }
+.sound-recent li { display: grid; grid-template-columns: auto 1fr auto; gap: var(--s-2); align-items: baseline;
+  padding: var(--s-1) 0; border-bottom: 1px solid var(--line); }
+.sound-recent time { font: var(--t-data); color: var(--tx3); }
+.sound-recent em { grid-column: 2 / -1; font-style: normal; color: var(--tx3); }
+.sound-recent .sound-played { color: var(--ok); }
+.sound-recent .sound-skipped { color: var(--warn); }
+.sound-recent-empty { display: block; color: var(--tx3); border: 0; }
+
+/* Diagnostico: numeros em mono, tabela sem enfeite. */
+.stats { display: grid; gap: var(--s-3); font: var(--t-meta); }
+.stats h4, .stats-subtitle { font: var(--t-tag); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tx3); }
+.stat { display: flex; justify-content: space-between; gap: var(--s-3); padding: 3px 0; border-bottom: 1px solid var(--line); }
+.stat > span { color: var(--tx2); }
+.stat > b { font: var(--t-data); color: var(--tx); }
+.stats .good { color: var(--ok); }
+.stats .warn-text, .stats .stat-warn { color: var(--warn); }
+.stats-table { width: 100%; border-collapse: collapse; font: var(--t-data); }
+.stats-table th { text-align: left; font: var(--t-tag); color: var(--tx3); padding: var(--s-1) var(--s-1) var(--s-1) 0; }
+.stats-table td { padding: var(--s-1) var(--s-1) var(--s-1) 0; border-top: 1px solid var(--line); color: var(--tx); }
+.stats-kind { margin-left: var(--s-1); font: var(--t-meta); color: var(--tx3); }
+.stats-empty { color: var(--tx3); }
