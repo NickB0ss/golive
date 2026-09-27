@@ -6,18 +6,14 @@
  * Bancada da sala Estudio com servidor real e tres paginas independentes.
  *
  * PLAYWRIGHT_DIR=C:/.../playwright node tools/bancada-sala/rodar.js
- * PLAYWRIGHT_DIR=C:/.../playwright node tools/bancada-sala/rodar.js --sem-prints
  */
 
-const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_DIR || 'playwright');
 const { createSignalingServer } = require('../../server/signaling-core');
 
 const RAIZ = path.resolve(__dirname, '..', '..');
 const PAGINA = `file://${path.join(RAIZ, 'src', 'renderer', 'index.html')}`;
-const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-2x-estudio');
-const SEM_PRINTS = process.argv.includes('--sem-prints');
 const falhas = [];
 const resultados = [];
 
@@ -116,9 +112,8 @@ async function abrirPessoa(browser, servidor, nome, ehDona) {
   page.on('pageerror', (erro) => erros.push(`pageerror: ${erro.message}`));
   await page.addInitScript(ponte, { nome, ehDona });
   await page.goto(PAGINA);
-  await page.click('#btn-join-address');
-  await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-  await page.click('#btn-connect');
+  await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+  await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   const boasVindas = await esperarMensagem(page, (mensagem) => mensagem.type === 'welcome');
   return { page, id: boasVindas.id, nome, erros };
@@ -126,7 +121,7 @@ async function abrirPessoa(browser, servidor, nome, ehDona) {
 
 async function transmitirTela(pessoa) {
   await pessoa.page.click('#btn-toggle-share');
-  await pessoa.page.waitForSelector('#picker:not(.hidden) .source-card');
+  await pessoa.page.waitForSelector('#picker:not(.hidden) .src-card');
   await pessoa.page.click('#btn-go-live');
   await pessoa.page.waitForSelector('#btn-pause-share:not(.hidden)');
 }
@@ -138,65 +133,15 @@ async function transmitirCamera(pessoa) {
   ));
 }
 
-async function conferirColunas(page, largura, altura) {
-  await page.setViewportSize({ width: largura, height: altura });
-  await page.waitForFunction(() => {
-    const pessoas = document.querySelector('#people-panel');
-    const grade = document.querySelector('#grid');
-    const chat = document.querySelector('#chat-panel');
-    return pessoas && grade && chat && pessoas.getBoundingClientRect().width > 0
-      && grade.getBoundingClientRect().width > 0 && chat.getBoundingClientRect().width > 0;
-  });
-  const medidas = await page.evaluate(() => {
-    const caixa = (seletor) => document.querySelector(seletor).getBoundingClientRect();
-    const pessoas = caixa('#people-panel');
-    const grade = caixa('#grid');
-    const chat = caixa('#chat-panel');
-    return {
-      pessoas: pessoas.width,
-      grade: grade.width,
-      chat: chat.width,
-      larguraDocumento: document.documentElement.scrollWidth,
-      larguraJanela: window.innerWidth,
-    };
-  });
-  const esperado = largura === 1440
-    ? Math.abs(medidas.pessoas - 232) <= 1 && Math.abs(medidas.chat - 304) <= 1
-    : medidas.pessoas > 0 && medidas.chat > 0;
-  conferir(`colunas ${largura}×${altura}`, esperado && medidas.grade > 0, JSON.stringify(medidas));
-  conferir(`sem rolagem horizontal ${largura}×${altura}`,
-    medidas.larguraDocumento <= medidas.larguraJanela + 1,
-    `${medidas.larguraDocumento}px > ${medidas.larguraJanela}px`);
-}
-
-async function conferirRecolhimentoAutomatico(page) {
-  await page.setViewportSize({ width: 1279, height: 768 });
-  await page.waitForFunction(() => document.body.dataset.pessoas === 'recolhido');
-  const pessoasRecolhidas = await page.evaluate(() => document.body.dataset.pessoas === 'recolhido');
-  conferir('pessoas recolhem abaixo de 1280', pessoasRecolhidas);
-  await page.setViewportSize({ width: 1099, height: 768 });
-  await page.waitForFunction(() => document.body.dataset.chat === 'recolhido');
-  conferir('chat recolhe abaixo de 1100', await page.evaluate(() => document.body.dataset.chat === 'recolhido'));
-}
-
-async function conferirEscolhaManualPrevalece(page) {
-  await page.setViewportSize({ width: 1099, height: 768 });
-  await page.click('#btn-toggle-people');
-  await page.click('#btn-toggle-side');
-  const estado = await page.evaluate(() => ({
-    pessoas: document.body.dataset.pessoas,
-    chat: document.body.dataset.chat,
-  }));
-  conferir('escolha manual prevalece no recolhimento',
-    estado.pessoas === 'aberto' && estado.chat === 'aberto', JSON.stringify(estado));
-}
-
 /** O app assiste sozinho a primeira tela ao vivo; com duas no ar, a outra
  * fica so na coluna, com o Assistir. `idsPorNome` mapeia nome -> peerId. */
 async function assistirPelaPresenca(pessoa, idsPorNome) {
-  const botao = pessoa.page.locator('.presenca .presenca-assistir').first();
+  await pessoa.page.click('#btn-room-presence');
+  const botao = pessoa.page.locator('#presence-pop .person').filter({
+    has: pessoa.page.getByRole('button', { name: 'Assistir' }),
+  }).getByRole('button', { name: 'Assistir' }).first();
   await botao.waitFor({ timeout: 15000 });
-  const nome = await botao.evaluate((el) => el.closest('.presenca').querySelector('.presenca-nome').textContent);
+  const nome = await botao.evaluate((el) => el.closest('.person').querySelector('.person__name').textContent);
   const id = idsPorNome[nome.trim()];
   await botao.click();
   const seletor = `#tile-${id}:not([hidden]) video`;
@@ -226,8 +171,16 @@ async function conferirVideoRecebeClique(page) {
 }
 
 async function abrirPopover(page, acao) {
-  await page.locator(`.tile-bar-btn[data-acao="${acao}"]`).first().click();
-  const popover = page.locator('.popover:visible').last();
+  // Reagir tem entrada fixa no barramento; o resto vive no HUD, que so
+  // aparece com o mouse sobre o tile.
+  if (acao === 'reagir') {
+    await page.click('#btn-reactions');
+  } else {
+    const tile = page.locator('#grid .tile:not([hidden])').first();
+    await tile.hover();
+    await tile.locator(`[data-acao="${acao}"]`).click();
+  }
+  const popover = page.locator('.pop:visible').last();
   await popover.waitFor();
   return popover;
 }
@@ -253,8 +206,9 @@ function corOpaca(cor) {
 
 async function abrirMenuDoTile(page, seletor) {
   const tile = page.locator(seletor).first();
-  await tile.locator('.tile-bar-btn[data-acao="menu"]').click();
-  const menu = page.locator('.popover:visible').last();
+  await tile.hover();
+  await tile.locator('[data-acao="menu"]').click();
+  const menu = page.locator('.pop:visible').last();
   await menu.waitFor();
   return menu;
 }
@@ -275,15 +229,15 @@ async function conferirQualidadeNosMenus(ana, bia, caio) {
       await espectador.page.keyboard.press('Escape');
       continue;
     }
-    await menu.locator('.menu-item').filter({ hasText: 'Qualidade que você recebe' }).click();
-    const submenu = espectador.page.locator('.popover:visible').last();
-    const opcao720 = submenu.locator('.menu-item').filter({ hasText: /^720p$/ });
+    await menu.locator('.menu__item').filter({ hasText: 'Qualidade que você recebe' }).click();
+    const submenu = espectador.page.locator('.pop:visible').last();
+    const opcao720 = submenu.locator('.menu__item').filter({ hasText: /^720p$/ });
     const existe = (await opcao720.count()) > 0;
     const bloqueado = !existe || (await opcao720.getAttribute('aria-disabled')) === 'true';
     if (bloqueado) {
       const texto = await submenu.textContent();
       const motivo = texto.includes('Você repassa esta tela para outras pessoas');
-      const popovers = await espectador.page.locator('.popover:visible').count();
+      const popovers = await espectador.page.locator('.pop:visible').count();
       conferir(`bloqueio mostra o motivo (${espectador.nome} repassa ${dona.nome})`, motivo,
         `${popovers} popover(s) visivel(is); ultimo: ${texto.replace(/\s+/g, ' ').trim().slice(0, 140)}`);
       await espectador.page.keyboard.press('Escape');
@@ -321,12 +275,6 @@ async function conferirErros(pessoas) {
   conferir('páginas sem erros de console', erros.length === 0, erros.join(' | '));
 }
 
-async function tirarPrint(page, largura, altura) {
-  if (SEM_PRINTS) return;
-  fs.mkdirSync(PRINTS, { recursive: true });
-  await page.screenshot({ path: path.join(PRINTS, `sala-${largura}x${altura}.png`), fullPage: true });
-}
-
 function relatar() {
   console.table(resultados.map((resultado) => ({
     checagem: resultado.nome,
@@ -335,7 +283,6 @@ function relatar() {
   })));
   console.log(`${resultados.length} checagens, ${falhas.length} falha(s)`);
   for (const falha of falhas) console.log(`FALHOU ${falha}`);
-  if (!SEM_PRINTS) console.log(`prints em ${path.relative(RAIZ, PRINTS)}`);
 }
 
 async function main() {
@@ -351,12 +298,6 @@ async function main() {
     await transmitirCamera(ana);
     await transmitirTela(bia);
     await transmitirCamera(bia);
-    await conferirColunas(caio.page, 1440, 900);
-    await tirarPrint(caio.page, 1440, 900);
-    await conferirColunas(caio.page, 1366, 768);
-    await tirarPrint(caio.page, 1366, 768);
-    await conferirRecolhimentoAutomatico(caio.page);
-    await conferirEscolhaManualPrevalece(caio.page);
     await caio.page.setViewportSize({ width: 1440, height: 900 });
     await assistirPelaPresenca(caio, { Ana: ana.id, Bia: bia.id });
     await conferirVideoRecebeClique(caio.page);

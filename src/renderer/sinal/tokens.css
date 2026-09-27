@@ -112,7 +112,9 @@
   --fs-body: 13px;
   --fs-ui: 14px;
   --fs-lead: 16px;
+  --fs-pin: 24px;
   --fs-hero: 28px;
+  --fs-react: clamp(14px, 6vw, 72px);
 
   /* ---- Espaco (4 px) ---- */
   --s-05: 2px;

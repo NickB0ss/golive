@@ -112,9 +112,8 @@ async function abrirPessoa(browser, servidor, nome, ehDona) {
   page.on('pageerror', (erro) => erros.push(`pageerror: ${erro.message}`));
   await page.addInitScript(ponte, { nome, ehDona });
   await page.goto(PAGINA);
-  await page.click('#btn-join-address');
-  await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-  await page.click('#btn-connect');
+  await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+  await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   const boasVindas = await esperarMensagem(page, (mensagem) => mensagem.type === 'welcome');
   return { page, id: boasVindas.id, nome, erros };
@@ -122,7 +121,7 @@ async function abrirPessoa(browser, servidor, nome, ehDona) {
 
 async function transmitirTela(pessoa) {
   await pessoa.page.click('#btn-toggle-share');
-  await pessoa.page.waitForSelector('#picker:not(.hidden) .source-card');
+  await pessoa.page.waitForSelector('#picker:not(.hidden) .src-card');
   await pessoa.page.click('#btn-go-live');
   await pessoa.page.waitForSelector('#btn-pause-share:not(.hidden)');
 }
@@ -173,7 +172,8 @@ async function conferirVistaConfiguracoes(page, origem, aoVivo) {
     const barra = titulo.getBoundingClientRect();
     return {
       abaixoDaFaixa: caixa.top >= barra.bottom - 1,
-      ocupaJanela: caixa.width >= window.innerWidth - 1 && caixa.bottom >= window.innerHeight - 1,
+      folhaAncorada: caixa.width > 0 && caixa.width <= window.innerWidth
+        && caixa.right >= window.innerWidth - 1 && caixa.bottom >= window.innerHeight - 1,
       salaInerte: sala.inert,
       salaMensuravel: sala.getBoundingClientRect().width > 0,
       focoNaSecao: document.activeElement === document.querySelector('.settings-cat.active'),
@@ -181,7 +181,7 @@ async function conferirVistaConfiguracoes(page, origem, aoVivo) {
     };
   });
   const tallyCorreto = estrutura.tallyVisivel === aoVivo;
-  if (!estrutura.abaixoDaFaixa || !estrutura.ocupaJanela || !estrutura.salaInerte
+  if (!estrutura.abaixoDaFaixa || !estrutura.folhaAncorada || !estrutura.salaInerte
     || !estrutura.salaMensuravel || !estrutura.focoNaSecao || !tallyCorreto) {
     throw new Error(`${origem}: vista de Configuracoes invalida ${JSON.stringify(estrutura)}`);
   }

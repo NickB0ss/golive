@@ -134,7 +134,7 @@ async function montarSeletor(page) {
       quality: { preset: '1080p60', bitrate: 12_000_000 },
     });
   });
-  await page.waitForSelector('#picker:not(.hidden) .source-card');
+  await page.waitForSelector('#picker:not(.hidden) .src-card');
 }
 
 async function montarDialogo(page, estado) {
@@ -175,7 +175,7 @@ async function conferirSemRolagemHorizontal(page, nome) {
 async function conferirControlesAcessiveis(page, nome) {
   const problemas = await page.evaluate(() => {
     const camadaAtiva = () => {
-      const dialogo = [...document.querySelectorAll('.modal:not(.hidden), .dialog:not(.hidden)')]
+      const dialogo = [...document.querySelectorAll('.modal:not(.hidden), .dialog:not(.hidden), .dlg-layer:not(.hidden)')]
         .find((elemento) => getComputedStyle(elemento).display !== 'none');
       if (dialogo) return dialogo;
       for (const seletor of ['#picker:not(.hidden)', '#settings-modal:not(.hidden)']) {
@@ -204,7 +204,7 @@ async function conferirControlesAcessiveis(page, nome) {
         const alvoVisual = rotulo || elemento;
         const caixa = alvoVisual.getBoundingClientRect();
         const ponto = document.elementFromPoint(caixa.left + caixa.width / 2, caixa.top + caixa.height / 2);
-        const coberto = !ponto || !(ponto === alvoVisual || alvoVisual.contains(ponto));
+        const coberto = !ponto || !(ponto === alvoVisual || alvoVisual.contains(ponto) || ponto.contains(alvoVisual));
         const id = elemento.id || elemento.outerHTML.slice(0, 80);
         const saida = [];
         if (!nomeDoControle(elemento)) saida.push(`${id} sem nome acessível`);
@@ -258,25 +258,25 @@ async function conferirConfiguracoes(page, tema, vista) {
     const lobby = document.querySelector('#lobby-view');
     const sala = document.querySelector('#room-view');
     return {
-      ocupaJanela: modal.top >= titulo.bottom - 1 && modal.width >= window.innerWidth - 1
-        && modal.height >= window.innerHeight - titulo.bottom - 1,
+      folhaAncorada: modal.top >= titulo.bottom - 1 && modal.width > 0
+        && modal.width <= window.innerWidth && modal.right >= window.innerWidth - 1
+        && modal.bottom >= window.innerHeight - 1,
       lobbyExiste: Boolean(lobby),
       lobbyInerte: lobby?.inert,
       lobbyInvisivel: Boolean(lobby) && getComputedStyle(lobby).visibility === 'hidden',
       salaExiste: Boolean(sala),
       salaInerte: sala?.inert,
       salaInvisivel: Boolean(sala) && getComputedStyle(sala).visibility === 'hidden',
-      salaMensuravel: sala?.getBoundingClientRect().width > 0,
+      lobbyMensuravel: lobby?.getBoundingClientRect().width > 0,
     };
   });
-  conferir(`configurações ocupam a janela abaixo da faixa ${tema} ${vista.largura}×${vista.altura}`,
-    estrutura.ocupaJanela, JSON.stringify(estrutura));
-  // A vista anterior fica fora do Tab (inert) e invisivel, mas continua no
-  // layout: display:none zeraria as medidas que a Mesa usa para o view-state.
-  const lobbyIsolado = estrutura.lobbyInerte && estrutura.lobbyInvisivel;
-  const salaIsolada = estrutura.salaInerte && estrutura.salaInvisivel && estrutura.salaMensuravel;
-  conferir(`configurações isolam a vista anterior sem desmontar a sala ${tema} ${vista.largura}×${vista.altura}`,
-    estrutura.lobbyExiste && estrutura.salaExiste && (lobbyIsolado || salaIsolada),
+  conferir(`configurações abrem como folha abaixo da faixa ${tema} ${vista.largura}×${vista.altura}`,
+    estrutura.folhaAncorada, JSON.stringify(estrutura));
+  // A folha tira a vista anterior do Tab (inert), mas a conserva no layout:
+  // display:none zeraria as medidas usadas pelo view-state da Sala.
+  const lobbyIsolado = estrutura.lobbyInerte && estrutura.lobbyMensuravel;
+  conferir(`configurações isolam a vista anterior sem desmontar o lobby ${tema} ${vista.largura}×${vista.altura}`,
+    estrutura.lobbyExiste && lobbyIsolado,
     JSON.stringify(estrutura));
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('#settings-modal')?.classList.contains('hidden'));

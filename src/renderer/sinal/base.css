@@ -1,6 +1,6 @@
 /* Sinal -- base: reset, tipografia, foco, icones, utilitarios. */
 
-*, *::before, *::after { box-sizing: border-box; }
+:where(*), *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
@@ -17,13 +17,13 @@ html, body {
  * esconde por atributo, e nenhuma regra pode reexibir o que esta oculto). */
 [hidden], .hidden { display: none !important; }
 
-h1, h2, h3, h4, p, ul, ol, figure { margin: 0; }
-ul, ol { padding: 0; list-style: none; }
+h1, h2, h3, h4, p, figure { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
 img, svg, video, canvas { display: block; }
 a { color: var(--wire); }
 
-button, input, select, textarea { font: inherit; color: inherit; }
-button { margin: 0; padding: 0; border: 0; background: none; cursor: pointer; text-align: inherit; }
+input, select, textarea { font: inherit; color: inherit; }
+button { margin: 0; padding: 0; border: 0; background: none; cursor: pointer; text-align: inherit; font: inherit; color: inherit; }
 button:disabled { cursor: not-allowed; }
 
 ::selection { background: var(--wire-soft); color: var(--tx); }
@@ -34,7 +34,7 @@ button:disabled { cursor: not-allowed; }
 input:focus-visible, textarea:focus-visible, select:focus-visible { box-shadow: 0 0 0 1px var(--wire); }
 
 /* Rolagem fina, que nao compete com o conteudo. */
-* { scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
+:root, :where(body *) { scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: var(--r-full); border: 3px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }

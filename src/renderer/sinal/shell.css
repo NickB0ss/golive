@@ -13,10 +13,9 @@
 }
 .bands:empty { display: none; }
 .app > .lobby, .app > .room { flex: 1; min-height: 0; }
-.head { flex: none; }
-
 /* ============ Cabeca (barra de titulo) ============ */
 .head {
+  flex: none;
   position: relative;
   z-index: var(--z-chrome);
   display: flex;
@@ -33,15 +32,13 @@
 .head__sep { width: 1px; height: 20px; margin: 0 var(--s-1); background: var(--line); flex: none; }
 .app[data-place='lobby'] .head__group--room, .app[data-place='lobby'] .head__room-actions { display: none; }
 .app[data-place='room'] .head__group--lobby, .app[data-place='room'] .head__lobby-only { display: none; }
-.head__room, .head__room-actions { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
-.room-menu { top: calc(100% - var(--s-1)); left: var(--s-3); width: 260px; }
 .pop__item { display: flex; align-items: center; width: 100%; min-height: 28px; padding: 0 var(--s-3); border-radius: var(--r-xs); font: var(--t-body); text-align: left; }
 .pop__item:hover, .pop__item:focus-visible { background: var(--veil); }
 .pop__item input { position: absolute; opacity: 0; pointer-events: none; }
 .pop__item[aria-checked='true']::after { content: '✓'; margin-left: auto; color: var(--wire); }
 .pop__item--danger { color: var(--danger); }
-.head__room-actions { position: relative; }
-.presence { position: absolute; top: calc(100% + var(--s-1)); right: 0; max-height: min(560px, calc(100vh - var(--h-head) - var(--s-4))); overflow: auto; }
+.head__room-actions { position: relative; display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.presence { position: absolute; top: calc(100% + var(--s-1)); right: 0; width: 340px; max-height: min(560px, calc(100vh - var(--h-head) - var(--s-4))); overflow: auto; }
 .presence__list, .presence__banned ul { display: grid; gap: 2px; margin: 0; padding: var(--s-2); list-style: none; }
 .presence__banned { border-top: 1px solid var(--line); }
 .presence__banned h2, .pop__head { margin: 0; padding: var(--s-3) var(--s-3) var(--s-1); font: var(--t-tag); color: var(--tx2); }
@@ -95,16 +92,8 @@
 
 /* ============ Inicio ============ */
 .lobby { overflow: auto; }
-.lobby__col {
-  display: grid;
-  gap: var(--s-6);
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 64px var(--s-5) var(--s-7);
-}
-.hello { display: grid; gap: var(--s-2); }
 .hello__title { font: var(--t-display); letter-spacing: -0.02em; }
-.hello__net { display: flex; align-items: center; gap: var(--s-2); font: var(--t-meta); color: var(--tx2); }
+.hello__net { display: flex; align-items: center; gap: var(--s-2); flex: none; padding-bottom: var(--s-15); font: var(--t-meta); color: var(--tx2); }
 .hello__net .tx-data { color: var(--tx); }
 
 /* Primeira vez: o nome vem antes de tudo, sem bloquear. */
@@ -114,10 +103,8 @@
 .whoami .field { flex: 1; max-width: 360px; }
 
 .lobby__actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-3); }
-.lobby__actions .combo { flex: 1; min-width: 260px; max-width: 420px; }
-.lobby__error { margin-top: calc(var(--s-4) * -1); }
+.lobby__actions .combo { flex: 0 1 460px; min-width: 260px; max-width: 420px; }
 
-.rooms { display: grid; }
 .rooms__head {
   display: flex;
   align-items: center;
@@ -127,12 +114,12 @@
 }
 .room-row {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) auto auto;
+  grid-template-columns: 96px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--s-4);
   width: 100%;
   min-height: 64px;
-  padding: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-4);
   border-bottom: 1px solid var(--line);
   --cluster-bg: var(--bg);
   transition: background var(--dur-fast) var(--ease-out);
@@ -142,9 +129,9 @@
 .room-row:disabled { cursor: default; }
 .room-row:disabled .room-row__name { color: var(--tx2); }
 .room-row__main { display: grid; gap: 2px; min-width: 0; }
-.room-row__name { font: var(--t-heading); }
-.room-row__addr { font: var(--t-data); color: var(--tx3); }
-.room-row__meta { display: flex; align-items: center; gap: var(--s-2); font: var(--t-meta); color: var(--tx2); }
+.room-row__name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-heading); }
+.room-row__addr { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-data); color: var(--tx3); }
+.room-row__meta { display: flex; align-items: center; gap: var(--s-2); max-width: 300px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-meta); color: var(--tx2); }
 .room-row__go { display: inline-flex; align-items: center; gap: var(--s-1); font: var(--t-label); color: var(--tx2); }
 .room-row:hover:not(:disabled) .room-row__go { color: var(--tx); }
 .room-row[aria-busy='true'] .room-row__go { color: var(--tx); }
@@ -197,7 +184,7 @@
 }
 .grid-main[data-count='2'], .grid-main[data-count='3'], .grid-main[data-count='4'] { --cols: 2; }
 .grid-main[data-count='5'], .grid-main[data-count='6'], .grid-main[data-count='many'] { --cols: 3; }
-.grid-strip { display: flex; gap: var(--s-2); min-height: 0; overflow-x: auto; }
+.grid-strip { display: flex; justify-content: center; gap: var(--s-2); min-height: 0; overflow-x: auto; }
 .grid-strip > .tile { flex: 0 0 auto; aspect-ratio: 16 / 9; height: 100%; }
 
 /* ---- Tile de video ---- */
@@ -214,8 +201,8 @@
 }
 .tile:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
 .tile__media { position: absolute; inset: 0; }
-.tile__video, .tile__shot { width: 100%; height: 100%; object-fit: contain; background: var(--void); }
-.tile__shot { position: absolute; inset: 0; filter: brightness(0.35); }
+.tile__video { width: 100%; height: 100%; object-fit: contain; background: var(--void); }
+.tile__shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--void); filter: brightness(0.35); }
 .tile__canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .tile.annot-on .tile__canvas { pointer-events: auto; cursor: crosshair; }
 .tile__pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -224,7 +211,8 @@
  * junto com a ociosidade do app (body.room-idle, 3 s parado). */
 .tile__hud {
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: var(--vy, 0px); left: var(--vx, 0px); right: auto;
+  width: var(--vw, 100%);
   z-index: var(--z-hud);
   display: flex;
   align-items: center;
@@ -268,8 +256,8 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .tile__state-sub { color: var(--on-video-2); }
 .tile__warn {
   position: absolute;
-  left: var(--s-2);
-  bottom: var(--s-2);
+  left: calc(var(--vx, 0px) + var(--s-2));
+  bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-2));
   z-index: var(--z-hud);
   display: inline-flex;
   align-items: center;
@@ -291,7 +279,7 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .react-pop {
   position: absolute;
   bottom: 12%;
-  font-size: clamp(14px, 6vw, 72px);
+  font-size: var(--fs-react);
   animation: react-rise 1.4s var(--ease-out) forwards;
 }
 @keyframes react-rise { from { opacity: 0; transform: translateY(20%) scale(0.8); } 20% { opacity: 1; }
@@ -307,8 +295,8 @@ body.room-idle .tile.fullscreen { cursor: none; }
 /* Regua de rabisco: no pe do tile. */
 .draw-bar {
   position: absolute;
-  left: 50%;
-  bottom: var(--s-3);
+  left: calc(var(--vx, 0px) + var(--vw, 100%) / 2);
+  bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-3));
   z-index: var(--z-hud);
   display: flex;
   align-items: center;
@@ -338,7 +326,8 @@ body.room-idle .tile.fullscreen { cursor: none; }
 /* Conversa espiando: mensagens que surgem sobre o programa e somem. */
 .peek {
   position: absolute;
-  left: var(--s-4);
+  left: auto;
+  right: var(--s-4);
   bottom: var(--s-4);
   z-index: var(--z-peek);
   display: grid;
@@ -352,10 +341,12 @@ body.room-idle .tile.fullscreen { cursor: none; }
   gap: var(--s-2);
   padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
   border-radius: var(--r-sm);
-  background: var(--scrim-6);
-  color: var(--on-video);
+  background: var(--s2);
+  color: var(--tx);
+  box-shadow: var(--elev-float);
   pointer-events: auto;
   cursor: pointer;
+  text-align: left;
   animation: peek-life 6s var(--ease-out) forwards;
 }
 .peek__msg b { font: var(--t-label); margin-right: var(--s-15); }
@@ -385,14 +376,14 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .msg { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: var(--s-3); padding-top: var(--s-3); }
 .msg > .node { grid-row: 1 / span 4; align-self: start; margin-top: 2px; }
 .msg > :not(.node):not(.msg__gutter) { grid-column: 2; }
-.msg__gutter { grid-row: 1; padding-top: 3px; font: var(--t-data); font-size: 10px; color: var(--tx3); opacity: 0; }
+.msg__gutter { grid-row: 1; padding-top: 3px; font: var(--t-data); font-size: var(--fs-micro); color: var(--tx3); opacity: 0; }
 .msg--cont:hover .msg__gutter { opacity: 1; }
 .msg__put { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
 .msg-sys--warn { color: var(--warn); }
 .msg-sys--danger { color: var(--danger); }
 .msg + .msg--cont { padding-top: 2px; }
 .msg__head { display: flex; align-items: baseline; gap: var(--s-2); }
-.msg__author { font: var(--t-label); }
+.msg__author { font: var(--t-label); color: var(--who, var(--tx)); }
 .msg__time { font: var(--t-data); font-size: 11px; color: var(--tx3); }
 .msg__body { font: var(--t-body); overflow-wrap: anywhere; white-space: pre-wrap; }
 .msg__img { justify-self: start; margin-top: var(--s-1); max-width: 100%; border-radius: var(--r-xs); overflow: hidden; cursor: zoom-in; }
@@ -418,6 +409,7 @@ body.room-idle .tile.fullscreen { cursor: none; }
   display: flex;
   align-items: flex-end;
   gap: 2px;
+  min-height: 28px;
   padding: var(--s-1) var(--s-1) var(--s-1) var(--s-3);
   border: 1px solid var(--line2);
   border-radius: var(--r-sm);
@@ -548,26 +540,34 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .me:has(.me__share[aria-pressed='true']) .me__live { display: flex; }
 .me .me__share[aria-pressed='true'] { width: var(--h-ctl-sm); min-width: 0; height: var(--h-ctl-sm); padding: 0;
   background: transparent; color: var(--tx2); }
-.me .me__share[aria-pressed='true']:hover { background: var(--veil); color: var(--tx); }
+.me .me__share[aria-pressed='true']:hover { background: var(--danger-dim); color: var(--danger); }
 .me .me__share[aria-pressed='true'] .btn-label { display: none; }
 .me:has(#btn-pause-share[aria-pressed='true']) { background: transparent; box-shadow: inset 0 0 0 1px var(--live-soft); }
 .me__meter { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
 
 /* ---- Modo teatro: so o programa; a moldura volta por cima ao encostar. ---- */
 .app[data-theater] .room { grid-template-rows: minmax(0, 1fr) 0; }
-.app[data-theater] .head, .app[data-theater] .bus {
+.app[data-theater] .head {
   position: fixed;
   left: 0;
   right: 0;
   transition: transform var(--dur-mid) var(--ease-out);
+  top: 0;
+  transform: translateY(-100%);
 }
-.app[data-theater] .head { top: 0; transform: translateY(-100%); }
-.app[data-theater] .bus { bottom: 0; height: var(--h-bus); transform: translateY(100%); }
+.app[data-theater] .bus {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--h-bus);
+  transition: transform var(--dur-mid) var(--ease-out);
+  transform: translateY(100%);
+}
 .app[data-theater][data-reveal='top'] .head, .app[data-theater][data-reveal='bottom'] .bus { transform: none; }
 .app[data-theater] .conv { display: none; }
 
 /* ============ Presenca (popover) ============ */
-.presence { width: 340px; }
 .person {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -620,13 +620,11 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .lobby__error:empty, .lobby__status:empty { display: none; }
 .lobby__error, .lobby__status { margin-top: calc(var(--s-5) * -1); }
 
-.rooms__list { display: grid; }
-.room-row__name, .room-row__addr { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.room-row__meta { max-width: 300px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rooms__list { display: flex; flex: 1; flex-direction: column; align-content: start; }
 .room-row__meta .i { flex: none; }
 .room-row__go .spinner { width: 14px; height: 14px; }
 
-.lobby__foot { display: flex; align-items: center; gap: var(--s-2); }
+.lobby__foot { display: flex; align-items: center; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line); }
 .room-row__meta.tx-warn { color: var(--warn); }
 
 /* Menu da sala: ancorado no nome da sala, na cabeca. */
@@ -744,15 +742,11 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 }
 
 /* Conversa espiando: a mensagem e um botao que abre a conversa. */
-.peek__msg { text-align: left; font: var(--t-body); }
 .peek__text { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 /* ============ Revisao de design (2026-09-27) ============ */
 /* HUD, aviso e regua ficam sobre a imagem, nao sobre as tarjas do letterbox
  * (o tile publica o retangulo util do video em --vx/--vy/--vw/--vh). */
-.tile__hud { left: var(--vx, 0px); top: var(--vy, 0px); right: auto; width: var(--vw, 100%); }
-.tile__warn { left: calc(var(--vx, 0px) + var(--s-2)); bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-2)); }
-.draw-bar { left: calc(var(--vx, 0px) + var(--vw, 100%) / 2); bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-3)); }
 /* O fio do que voce assiste tambem no palco (05 §0.1), sob a imagem. */
 .tile[data-kind='screen']:not(.fullscreen)::after {
   content: '';
@@ -765,17 +759,13 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
   background: var(--wire);
   pointer-events: none;
 }
-.grid-strip { justify-content: center; }
 
 /* A sua fonte: pausar e trocar so existem com ela no ar; Parar e solido e
  * avisa perigo no hover. */
 .me:not(:has(.me__share[aria-pressed='true'])) .me__ctl { display: none; }
 .me .me__share[aria-pressed='true'] .icon-on { fill: currentColor; }
-.me .me__share[aria-pressed='true']:hover { background: var(--danger-dim); color: var(--danger); }
 
 /* Espiando: superficie solida, no canto do botao Conversa, longe da tira. */
-.peek { left: auto; right: var(--s-4); }
-.peek__msg { background: var(--s2); color: var(--tx); box-shadow: var(--elev-float); }
 
 /* Entrando numa sala: a escolhida fica em destaque, as outras esmaecem. */
 .room-row:disabled:not([aria-busy='true']) { opacity: 0.55; }
@@ -808,14 +798,8 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
   gap: var(--s-3) var(--s-6);
 }
 .hello > .hello__title, .hello > .whoami { flex: 1 1 420px; }
-.hello__net { flex: none; padding-bottom: var(--s-15); }
-.lobby__actions .combo { flex: 0 1 460px; }
-.rooms { flex: 1; display: flex; flex-direction: column; }
-.rooms__list { flex: 1; align-content: start; }
 .rooms__list:has(.blank) { display: grid; place-items: center; }
 .rooms .blank__art { width: clamp(120px, 18vw, 200px); height: auto; aspect-ratio: 1; }
-.room-row { grid-template-columns: 96px minmax(0, 1fr) auto auto; padding-inline: var(--s-4); }
-.lobby__foot { padding-top: var(--s-3); border-top: 1px solid var(--line); }
 
 /* Estados pequenos que o JS pendura. */
 .sound-meter-bar { width: 3px; border-radius: 1px; background: var(--line2); }
@@ -832,9 +816,7 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 
 /* Cor de identidade como TEXTO: no tom claro ela e misturada a tinta para
  * passar contraste (a paleta de pessoas e clara, feita para o fundo escuro). */
-.msg__author, .peek__who { color: var(--who, var(--tx)); }
-:root[data-tone='light'] .msg__author,
-:root[data-tone='light'] .node:not([data-state]) { color: color-mix(in srgb, var(--who, var(--tx)) 45%, var(--tx)); }
+:root[data-tone='light'] :is(.msg__author, .node:not([data-state])) { color: color-mix(in srgb, var(--who, var(--tx)) 45%, var(--tx)); }
 :root[data-tone='light'] .node:not([data-state]) { --ring: color-mix(in srgb, var(--who, var(--tx3)) 60%, var(--tx)); }
 /* Parar e neutro (nao e selecao): so o hover avisa perigo. */
 .me .me__share[aria-pressed='true'] .i { color: currentColor; }

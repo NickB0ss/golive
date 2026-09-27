@@ -9,7 +9,7 @@
  * Uso: PLAYWRIGHT_DIR=<playwright> node tools/sinal-prints/sala.js [LxA ...]
  */
 
-/* global window, document, requestAnimationFrame, WebSocket */
+/* global window, document, getComputedStyle, requestAnimationFrame */
 
 const fs = require('node:fs');
 const path = require('node:path');
