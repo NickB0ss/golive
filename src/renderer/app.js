@@ -1978,7 +1978,7 @@
     const live = Boolean(localStream)
       || Array.from(session?.mesh.peers.values() ?? []).some((p) => p.live);
     const effective = qualityFor('screen');
-    ui.stageHeader.setStatus(status.roomStatus({
+    const roomHealth = status.roomStatus({
       inRoom: Boolean(session),
       // orphanSession so existe quando a sinalizacao caiu com a midia
       // viva -- e exatamente o estado "reconectando" (H1).
@@ -1991,7 +1991,17 @@
       meshFallback: Boolean(meshFallback.screen),
       softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
       effectivePreset: effective.preset,
-    }));
+    });
+    ui.stageHeader.setStatus(roomHealth);
+    const health = $('btn-room-health')?.querySelector('.health');
+    if (health) {
+      // Saude e da CONEXAO: sala sem ninguem ao vivo ou pausada esta bem.
+      const nivel = { offline: 'none', reconnecting: 'bad', degraded: 'warn' }[roomHealth.level] || 'ok';
+      health.dataset.level = nivel;
+      const rotulo = { none: 'Sem conexão', bad: 'Reconectando…', warn: `Qualidade reduzida: ${roomHealth.label}` };
+      $('btn-room-health').setAttribute('aria-label', rotulo[nivel] || 'Conexão boa');
+      $('btn-room-health').title = rotulo[nivel] || 'Conexão boa';
+    }
     // Chat: o compose so aceita texto enquanto a sinalizacao esta viva. Com a
     // sessao orfa (H1) `currentSession` e null e o `currentSession?.sig.send`
     // do onSend vira no-op silencioso -- entao desabilita o campo e mostra a
@@ -2905,96 +2915,45 @@
     window.golive.sendFxOverlay?.({ kind: 'drop-author', from: String(peerId) });
   }
 
-  const SALA_PREFS = {
-    pessoas: 'golive.sala.pessoas',
-    chat: 'golive.sala.chat',
-  };
-  const salaManual = {};
+  const CONV_PREF = 'golive.sala.conversa';
+  let convManual = null;
 
-  function lerPreferenciaSala(nome) {
+  function setConversation(mode, { persist = false } = {}) {
+    const app = $('app');
+    const next = mode || window.GoLive.roomUi.modoConversa($('room-view').clientWidth, convManual);
+    app.dataset.conv = next;
+    $('btn-conv-toggle').setAttribute('aria-pressed', String(next !== 'closed'));
+    if (next !== 'closed') $('chat-unread-dot').classList.add('hidden');
+    if (!persist) return;
+    convManual = next;
     try {
-      const valor = localStorage.getItem(SALA_PREFS[nome]);
-      return ['aberto', 'recolhido'].includes(valor) ? valor : null;
+      localStorage.setItem(CONV_PREF, next);
     } catch (error) {
-      console.warn('Não foi possível ler a preferência da sala.', error);
-      return null;
+      console.warn('Não foi possível salvar a preferência da conversa.', error);
     }
   }
 
-  function salvarPreferenciaSala(nome, valor) {
-    salaManual[nome] = valor;
-    try {
-      localStorage.setItem(SALA_PREFS[nome], valor);
-    } catch (error) {
-      console.warn('Não foi possível salvar a preferência da sala.', error);
-    }
+  try {
+    const saved = localStorage.getItem(CONV_PREF);
+    if (['pinned', 'peek', 'closed'].includes(saved)) convManual = saved;
+  } catch (error) {
+    console.warn('Não foi possível ler a preferência da conversa.', error);
   }
+  new ResizeObserver(() => setConversation(null)).observe($('room-view'));
+  setConversation(null);
 
-  function aplicarColunasSala() {
-    const sala = $('room-view');
-    const estados = window.GoLive.salaLayout.recolhimentoAutomatico(sala.clientWidth, salaManual);
-    document.body.dataset.pessoas = estados.pessoas;
-    document.body.dataset.chat = estados.chat;
-    const chatRecolhido = estados.chat === 'recolhido';
-    const pessoasRecolhidas = estados.pessoas === 'recolhido';
-    // Chat de volta a vista: o que chegou enquanto estava fechado ja aparece.
-    if (!chatRecolhido) $('chat-unread-dot').classList.add('hidden');
-    const chatBtn = $('btn-toggle-side');
-    chatBtn.classList.toggle('collapsed', chatRecolhido);
-    chatBtn.title = chatRecolhido ? 'Expandir chat' : 'Recolher chat';
-    chatBtn.setAttribute('aria-label', chatBtn.title);
-    chatBtn.setAttribute('aria-expanded', String(!chatRecolhido));
-    const pessoasBtn = $('btn-toggle-people');
-    pessoasBtn.classList.toggle('collapsed', pessoasRecolhidas);
-    pessoasBtn.title = pessoasRecolhidas ? 'Expandir pessoas' : 'Recolher pessoas';
-    pessoasBtn.setAttribute('aria-label', pessoasBtn.title);
-    pessoasBtn.setAttribute('aria-expanded', String(!pessoasRecolhidas));
-  }
-
-  salaManual.pessoas = lerPreferenciaSala('pessoas');
-  salaManual.chat = lerPreferenciaSala('chat');
-  if (!salaManual.pessoas) delete salaManual.pessoas;
-  if (!salaManual.chat) delete salaManual.chat;
-  new ResizeObserver(aplicarColunasSala).observe($('room-view'));
-  aplicarColunasSala();
-
-  $('btn-toggle-people').addEventListener('click', () => {
-    const proximo = document.body.dataset.pessoas === 'aberto' ? 'recolhido' : 'aberto';
-    salvarPreferenciaSala('pessoas', proximo);
-    aplicarColunasSala();
+  // Fixada fecha; espiando ou fechada abre fixada (05 §3.6).
+  $('btn-conv-toggle').addEventListener('click', () => {
+    setConversation($('app').dataset.conv === 'pinned' ? 'closed' : 'pinned', { persist: true });
   });
-  $('btn-toggle-side').addEventListener('click', () => {
-    const proximo = document.body.dataset.chat === 'aberto' ? 'recolhido' : 'aberto';
-    salvarPreferenciaSala('chat', proximo);
-    aplicarColunasSala();
-  });
-
-  // As abas continuam acessíveis para atalhos antigos, sem esconder as colunas.
-  const roomTabs = [...document.querySelectorAll('.room-tab')];
-  function selectRoomTab(tab) {
-    for (const candidate of roomTabs) {
-      const selected = candidate === tab;
-      candidate.setAttribute('aria-selected', String(selected));
-      candidate.tabIndex = selected ? 0 : -1;
-    }
-    if (tab.id === 'tab-chat') $('chat-unread-dot').classList.add('hidden');
-  }
+  $('btn-conv-peek').addEventListener('click', () => setConversation('peek', { persist: true }));
+  $('btn-conv-close').addEventListener('click', () => setConversation('closed', { persist: true }));
   function resetRoomTabs() {
-    selectRoomTab($('tab-chat'));
+    setConversation(null);
     $('chat-unread-dot').classList.add('hidden');
   }
-  roomTabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => selectRoomTab(tab));
-    tab.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? roomTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + roomTabs.length) % roomTabs.length;
-      selectRoomTab(roomTabs[next]);
-      roomTabs[next].focus();
-    });
-  });
   document.addEventListener('golive:chat-received', () => {
-    if (document.body.dataset.chat === 'recolhido') $('chat-unread-dot').classList.remove('hidden');
+    if ($('app').dataset.conv !== 'pinned') $('chat-unread-dot').classList.remove('hidden');
   });
 
   // ---------- Desconectar ----------
@@ -5799,7 +5758,7 @@
     avatarOf: (id) => (String(id) === String(myId) ? cfg.avatar || null : currentSession?.mesh?.peers.get(String(id))?.avatar || null),
     viewers: () => mesaViewers,
     peopleSlot: () => $('stage-mesa-people'),
-    dockEl: () => document.querySelector('.control-bar'),
+    dockEl: () => document.querySelector('.bus'),
     tileIdFor: mesaTileId,
     tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
     returnTile: ui.grid.returnTile,
@@ -5835,8 +5794,9 @@
   });
   window.GoLive.mesaPor = { put: (type, action) => mesaPor.put(type, action) };
 
-  const viewButtons = [$('view-tx'), $('view-mesa')];
-
+  // A Mesa e uma fonte do barramento (05 §3.2): escolhe-la troca o programa
+  // para a vista Mesa; escolhe-la de novo (ou qualquer fonte de video) volta
+  // para a Transmissao. A vista e de cada pessoa, nao da sala.
   function setRoomView(view) {
     if (view === 'mesa') mesaView.open();
     else mesaView.close();
@@ -5846,29 +5806,23 @@
   function renderViewSwitch() {
     const naMesa = Boolean(mesaView?.isOpen());
     ui.grid.refreshWatchGates();
-    for (const b of viewButtons) {
-      const on = (b.dataset.view === 'mesa') === naMesa;
-      b.setAttribute('aria-checked', String(on));
-      b.tabIndex = on ? 0 : -1;
-    }
+    const mesa = $('view-mesa');
+    mesa.setAttribute('aria-selected', String(naMesa));
+    mesa.toggleAttribute('data-current', naMesa);
     // Quem esta na Transmissao ve que a mesa tem janelas (mesa-count).
-    const count = $('view-mesa-count');
-    count.textContent = mesaCount > 0 ? String(mesaCount) : '';
-    count.classList.toggle('hidden', !(mesaCount > 0));
-    $('view-mesa').setAttribute('aria-label', mesaCount > 0 ? `Mesa, ${mesaCount} ${mesaCount === 1 ? 'janela' : 'janelas'}` : 'Mesa');
+    const janelas = mesaCount === 1 ? '1 janela' : `${mesaCount} janelas`;
+    const sub = naMesa ? 'Voltar à Transmissão' : (mesaCount > 0 ? janelas : 'Abrir a Mesa');
+    $('view-mesa-count').textContent = sub;
+    mesa.setAttribute('aria-label', naMesa ? 'Mesa aberta. Voltar à Transmissão' : `Mesa, ${mesaCount > 0 ? janelas : 'vazia'}`);
   }
 
-  viewButtons.forEach((b, i) => {
-    b.addEventListener('click', () => setRoomView(b.dataset.view));
-    // radiogroup: setas trocam e escolhem (padrao ARIA).
-    b.addEventListener('keydown', (e) => {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-      e.preventDefault();
-      const next = viewButtons[(i + 1) % viewButtons.length];
-      setRoomView(next.dataset.view);
-      next.focus();
-    });
+  $('view-mesa').addEventListener('click', () => setRoomView(mesaView.isOpen() ? 'tx' : 'mesa'));
+  $('view-mesa').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    setRoomView(mesaView.isOpen() ? 'tx' : 'mesa');
   });
+  window.GoLive.salaVista = { setRoomView, isMesa: () => Boolean(mesaView?.isOpen()) };
 
   $('btn-mesa-add').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5896,14 +5850,24 @@
       const box = $(id);
       box.disabled = !locks;
       box.checked = Boolean(locks?.[key]);
+      box.parentElement?.setAttribute('aria-checked', String(box.checked));
     }
     $('opt-mesa-cursors').checked = Boolean(mesaView?.showsCursors());
+    $('opt-mesa-cursors').parentElement?.setAttribute('aria-checked', String($('opt-mesa-cursors').checked));
   }
 
   function setRoomMoreOpen(open) {
     $('room-more').classList.toggle('hidden', !open);
     $('btn-room-more').setAttribute('aria-expanded', String(open));
-    if (open) renderRoomMore();
+    if (!open) return;
+    renderRoomMore();
+    $('room-copy-pin').classList.toggle('hidden', !hostInfo?.pin && !$('stage-room-pin').textContent);
+    roomMoreItems()[0]?.focus();
+  }
+
+  /** Itens do menu da sala que estao a mostra, na ordem, para as setas. */
+  function roomMoreItems() {
+    return [...$('room-more').querySelectorAll('.menu__item')].filter((el) => !el.classList.contains('hidden'));
   }
 
   $('btn-room-more').addEventListener('click', (e) => {
@@ -5911,9 +5875,23 @@
     setRoomMoreOpen($('room-more').classList.contains('hidden'));
   });
   document.addEventListener('pointerdown', (e) => {
-    if (!e.target.closest?.('.room-more-wrap')) setRoomMoreOpen(false);
+    if (!e.target.closest?.('#room-more, #btn-room-more')) setRoomMoreOpen(false);
   });
   $('room-more').addEventListener('keydown', (e) => {
+    const itens = roomMoreItems();
+    const i = itens.indexOf(document.activeElement);
+    const vai = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: itens.length - 1 }[e.key];
+    if (vai !== undefined) {
+      e.preventDefault();
+      itens[(vai + itens.length) % itens.length]?.focus();
+      return;
+    }
+    // Label com checkbox dentro: Enter/Espaco alterna, como um menuitemcheckbox.
+    if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.matches('label.menu__item')) {
+      e.preventDefault();
+      document.activeElement.querySelector('input')?.click();
+      return;
+    }
     if (e.key !== 'Escape') return;
     e.stopPropagation();
     setRoomMoreOpen(false);
@@ -5923,11 +5901,47 @@
   $('opt-mesa-lock-size').addEventListener('change', (e) => mesaView.setLock('lockSize', e.target.checked));
   $('opt-mesa-cursors').addEventListener('change', (e) => {
     mesaView.setShowCursors(e.target.checked);
+    e.target.parentElement?.setAttribute('aria-checked', String(e.target.checked));
     try {
       localStorage.setItem(MESA_CURSORS_KEY, e.target.checked ? '1' : '0');
     } catch {
       // sem armazenamento: vale so ate fechar o app
     }
+  });
+  $('btn-disconnect-menu')?.addEventListener('click', () => $('btn-disconnect').click());
+  $('room-more').addEventListener('click', (event) => {
+    const copy = event.target.closest('[data-copy]')?.dataset.copy;
+    if (copy) {
+      const texto = copy === 'pin' ? (hostInfo?.pin || $('stage-room-pin').textContent.replace(/\D/g, ''))
+        : $('stage-room-address').textContent;
+      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(copy === 'pin' ? 'PIN copiado' : 'Endereço copiado', 1500)).catch(() => {});
+      setRoomMoreOpen(false);
+      return;
+    }
+    const action = event.target.closest('[data-room-action]')?.dataset.roomAction;
+    if (action) setRoomMoreOpen(false);
+    if (action === 'theater') document.getElementById('app').toggleAttribute('data-theater');
+    if (action === 'diagnostics') openSettings();
+  });
+  document.addEventListener('keydown', (event) => {
+    const field = event.target?.matches?.('input, textarea, select, [contenteditable="true"]');
+    if (field || document.getElementById('app').dataset.place !== 'room') return;
+    if (event.key === 't' || event.key === 'T') document.getElementById('app').toggleAttribute('data-theater');
+    if (event.key === 'Escape' && document.getElementById('app').hasAttribute('data-theater')) {
+      document.getElementById('app').removeAttribute('data-theater');
+    }
+    if (event.key === 'm' || event.key === 'M') setRoomView(mesaView?.isOpen() ? 'transmissao' : 'mesa');
+    if (event.key === 'c' || event.key === 'C') {
+      const app = document.getElementById('app');
+      app.dataset.conv = app.dataset.conv === 'closed' ? window.GoLive.roomUi.modoConversa(window.innerWidth) : 'closed';
+    }
+  });
+  document.addEventListener('pointermove', (event) => {
+    const app = document.getElementById('app');
+    if (!app.hasAttribute('data-theater')) return;
+    if (event.clientY <= 8) app.dataset.reveal = 'top';
+    else if (event.clientY >= window.innerHeight - 8) app.dataset.reveal = 'bottom';
+    else delete app.dataset.reveal;
   });
 
   // A sala saiu da tela (Sair da sala, sala fechada, entrada recusada): a

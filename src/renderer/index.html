@@ -79,7 +79,7 @@
   <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><line x1="21" x2="16.65" y1="21" y2="16.65" /><line x1="11" x2="11" y1="8" y2="14" /><line x1="8" x2="14" y1="11" y2="11" /></symbol>
   <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><line x1="21" x2="16.65" y1="21" y2="16.65" /><line x1="8" x2="14" y1="11" y2="11" /></symbol>
 </svg>
-<div id="app" class="app">
+<div id="app" class="app" data-place="lobby" data-conv="peek">
 <!-- Cabeca: e a barra de titulo (arrastavel) no Inicio e na Sala. Os
      controles de janela (#titlebar) so aparecem no Windows: titlebar.js tira
      o hidden deles; macOS/Linux usam a moldura nativa. -->
@@ -95,6 +95,33 @@
       </svg>
       GoLive
     </span>
+  </div>
+  <div class="head__group head__group--room" hidden>
+    <div id="stage-header" class="head__room">
+      <button id="btn-room-more" class="room-name" type="button" aria-haspopup="menu" aria-expanded="false"
+              aria-controls="room-more"><span id="stage-room-name"></span><svg class="i i--sm"><use href="#i-chevron-down" /></svg></button>
+      <button id="btn-copy-address" class="addr" type="button" title="Copiar endereço" aria-label="Copiar endereço">
+        <span id="stage-room-address"></span><svg class="i i--sm"><use href="#i-copy" /></svg>
+      </button>
+      <span id="stage-room-pin" class="tag hidden"></span>
+      <span id="stage-status-dot" hidden></span><span id="stage-status-badge" hidden></span>
+      <span id="stage-member-count" class="sr-only">0 pessoas</span>
+      <span id="copy-address-status" class="sr-only" aria-live="polite"></span>
+      <div id="room-more" class="pop room-menu hidden" role="menu" aria-label="Menu da sala">
+        <button class="menu__item" type="button" role="menuitem" data-copy="address"><svg class="i"><use href="#i-copy" /></svg>Copiar endereço</button>
+        <button id="room-copy-pin" class="menu__item hidden" type="button" role="menuitem" data-copy="pin"><svg class="i"><use href="#i-lock" /></svg>Copiar PIN</button>
+        <button class="menu__item" type="button" role="menuitem" data-room-action="diagnostics"><svg class="i"><use href="#i-info" /></svg>Diagnóstico</button>
+        <button class="menu__item" type="button" role="menuitem" data-room-action="theater"><svg class="i"><use href="#i-tv-minimal" /></svg>Modo teatro<span class="menu__hint">T</span></button>
+        <div class="menu__sep" role="separator"></div>
+        <p class="menu__label">Mesa</p>
+        <label id="opt-mesa-cursors-row" class="menu__item" role="menuitemcheckbox" aria-checked="true" tabindex="-1"><input id="opt-mesa-cursors" class="sr-only" type="checkbox" checked />Mostrar ponteiros das pessoas</label>
+        <label id="opt-mesa-leader-only-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-leader-only" class="sr-only" type="checkbox" />Só o líder mexe nas janelas</label>
+        <label id="opt-mesa-lock-size-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-lock-size" class="sr-only" type="checkbox" />Travar o tamanho das janelas</label>
+        <p id="opt-mesa-locks-hint" class="menu__label hidden">Abra a Mesa para mudar as travas.</p>
+        <div class="menu__sep" role="separator"></div>
+        <button id="btn-disconnect-menu" class="menu__item menu__item--danger" type="button" role="menuitem"><svg class="i"><use href="#i-log-out" /></svg>Sair da sala</button>
+      </div>
+    </div>
   </div>
   <div class="head__group head__group--end">
     <div id="warn-center-wrap" class="warn-center-wrap">
@@ -117,6 +144,18 @@
       </button>
       <button id="btn-open-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações"
               title="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
+    </span>
+    <span class="head__room-actions" hidden>
+      <button id="btn-room-presence" class="presence-btn" type="button" aria-haspopup="dialog" aria-expanded="false"
+              aria-controls="presence-pop" aria-label="Pessoas na sala: 0"><span class="cluster"><span id="presence-nodes" class="cluster__nodes"></span><span id="room-people-count" class="tx-data">0</span></span></button>
+      <div id="presence-pop" class="pop presence hidden" role="dialog" aria-label="Pessoas na sala">
+        <div class="pop__head"><span class="tx-tag">Na sala · <span id="presence-count">0</span></span></div>
+        <ul id="peer-list" class="presence__list"></ul>
+        <section id="banned-section" class="presence__banned hidden"><h2>Banidos</h2><ul id="banned-list"></ul></section>
+      </div>
+      <button id="btn-room-health" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Conexão"><span class="health" data-level="none"><span></span><span></span><span></span></span></button>
+      <button id="btn-room-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
+      <button id="btn-disconnect" class="btn btn--quiet" type="button">Sair</button>
     </span>
     <div id="titlebar" class="winctl" hidden>
       <button id="tb-min" class="winctl__btn" type="button" aria-label="Minimizar">
@@ -278,155 +317,105 @@
 
 <!-- ============ SALA (dentro de sala) ============ -->
 <div id="room-view" class="room hidden">
-  <main class="stage">
-    <header id="stage-header" class="stage-header hidden">
-      <div class="stage-header-left">
-      <span id="stage-status-dot" class="stage-status-dot"></span>
-      <div class="stage-title-group">
-        <h1 id="stage-room-name" class="stage-room-name"></h1>
-        <span id="stage-member-count" class="stage-member-count">0 pessoas</span>
+  <div class="room__main">
+    <section class="program" aria-labelledby="room-screen-title">
+      <h1 id="room-screen-title" class="sr-only"></h1>
+      <div id="grid" class="stage"></div>
+      <div id="chat-peek" class="peek" aria-hidden="true"></div>
+    </section>
+    <aside id="chat-panel" class="conv" aria-label="Conversa">
+      <div class="conv__head">
+        <h2 class="conv__title">Conversa</h2>
+        <button id="btn-conv-peek" class="btn btn--quiet btn--icon btn--sm" type="button"
+                aria-label="Espiar em vez de fixar" title="Espiar em vez de fixar"><svg class="i i--sm"><use href="#i-panel-right" /></svg></button>
+        <button id="btn-conv-close" class="btn btn--quiet btn--icon btn--sm" type="button"
+                aria-label="Fechar conversa" title="Fechar conversa"><svg class="i i--sm"><use href="#i-x" /></svg></button>
       </div>
-      </div>
-      <!-- Vista de CADA pessoa (nao da sala): trocar nao afeta ninguem. -->
-      <div id="view-switch" class="view-switch" role="radiogroup" aria-label="Vista">
-        <button id="view-tx" class="view-switch-btn" type="button" role="radio" aria-checked="true" tabindex="0" data-view="transmissao">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          <span>Transmissão</span>
+      <div class="conv__list">
+        <div id="chat-messages" class="conv__msgs" role="log" aria-live="polite" aria-label="Mensagens"></div>
+        <button id="chat-jump-new" class="btn btn--secondary btn--sm conv__jump hidden" type="button">
+          <svg class="i i--sm"><use href="#i-chevron-down" /></svg>Novas mensagens
         </button>
-        <button id="view-mesa" class="view-switch-btn" type="button" role="radio" aria-checked="false" tabindex="-1" data-view="mesa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-          <span>Mesa</span>
-          <span id="view-mesa-count" class="view-switch-count hidden"></span>
-        </button>
       </div>
-      <div id="stage-mesa-people" class="stage-mesa-people" role="group" aria-label="Quem está na mesa" hidden></div>
-      <div class="stage-room-meta">
-      <span id="stage-room-address" class="stage-room-address"></span>
-      <span id="stage-room-pin" class="stage-room-pin hidden"></span>
-      <span id="stage-status-badge" class="stage-status-badge hidden"></span>
-      <button id="btn-copy-address" class="icon-btn-inline stage-copy" title="Copiar endereço" aria-label="Copiar endereço" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      </button>
-      </div>
-      <div class="stage-header-right">
-      <button class="icon-btn-inline room-settings-header" title="Configurações" aria-label="Configurações" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
-      <span id="copy-address-status" class="visually-hidden" aria-live="polite"></span>
-      <div class="room-more-wrap">
-        <button id="btn-room-more" class="icon-btn-inline" type="button" title="Opções da sala" aria-label="Opções da sala" aria-expanded="false" aria-controls="room-more">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>
-        </button>
-        <div id="room-more" class="room-more hidden" role="group" aria-label="Opções da sala">
-          <p class="room-more-head">Mesa</p>
-          <label id="opt-mesa-leader-only-row" class="room-more-row hidden"><input id="opt-mesa-leader-only" type="checkbox" />Só o líder mexe na mesa</label>
-          <label id="opt-mesa-lock-size-row" class="room-more-row hidden"><input id="opt-mesa-lock-size" type="checkbox" />Travar tamanho</label>
-          <p id="opt-mesa-locks-hint" class="room-more-hint hidden">Abra a Mesa para ver e mudar as travas.</p>
-          <label class="room-more-row"><input id="opt-mesa-cursors" type="checkbox" checked />Mostrar o ponteiro das pessoas</label>
+      <p id="chat-offline-bar" class="conv__offline hidden" role="status">
+        Sem conexão com a sala — as mensagens voltam quando reconectar.
+      </p>
+      <form id="chat-compose" class="compose">
+        <div id="chat-attachment" class="compose__attach hidden">
+          <img id="chat-attachment-img" alt="" />
+          <span id="chat-attachment-info" class="tx-meta"></span>
+          <button id="chat-attachment-remove" class="btn btn--quiet btn--icon btn--sm" type="button"
+                  aria-label="Tirar a imagem"><svg class="i i--sm"><use href="#i-x" /></svg></button>
         </div>
-      </div>
-      <button id="btn-toggle-people" class="icon-btn-inline" title="Recolher pessoas" aria-label="Recolher pessoas" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 18l-6-6 6-6"/></svg>
-      </span>
-      <button id="btn-toggle-side" class="icon-btn-inline" title="Recolher coluna" aria-label="Recolher coluna" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        <span id="chat-unread-dot" class="chat-unread-dot hidden" aria-hidden="true"></span>
-      </button>
-      </div>
-    </header>
-    <div id="grid" class="grid"></div>
-    <div class="control-bar">
-      <button id="btn-toggle-share" class="primary control-btn" type="button" title="Compartilhar tela" aria-label="Compartilhar tela" aria-pressed="false">
-        <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        <svg class="icon-on hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-        <span class="btn-label">Compartilhar tela</span>
-      </button>
-      <button id="btn-toggle-camera" class="secondary control-btn" type="button" title="Câmera" aria-label="Câmera" aria-pressed="false">
-        <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-        <svg class="icon-on hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-        <svg class="btn-spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="28 56"/></svg>
-        <span class="btn-label">Câmera</span>
-      </button>
-      <button id="btn-pause-share" class="secondary control-btn hidden" type="button" title="Pausar" aria-label="Pausar" aria-pressed="false">
-        <svg class="icon-off" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="5" width="4" height="14" rx="1"/><rect x="13" y="5" width="4" height="14" rx="1"/></svg>
-        <svg class="icon-on hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-        <span class="btn-label">Pausar</span>
-      </button>
-      <!-- P7 (auditoria 2026-09-18): nivel do audio compartilhado, colado no
-           botao de pausa. Decorativo -- o aviso de silencio absoluto fica na
-           central da barra de titulo, que tambem anuncia entradas novas. -->
-      <div id="sound-meter" class="sound-meter hidden" title="Nível do áudio compartilhado" aria-hidden="true">
-        <span class="sound-meter-bar"></span>
-        <span class="sound-meter-bar"></span>
-        <span class="sound-meter-bar"></span>
-        <span class="sound-meter-bar"></span>
-      </div>
-      <button id="btn-swap-share" class="secondary control-btn hidden" type="button" title="Trocar de tela ou janela" aria-label="Trocar de tela ou janela">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-        <span class="btn-label">Trocar</span>
-      </button>
-      <button id="btn-mesa-add" class="secondary control-btn hidden" type="button" title="Adicionar janela" aria-label="Adicionar janela" aria-haspopup="menu" data-mesa-add>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        <span class="btn-label">Adicionar janela</span>
-      </button>
-      <span class="control-separator" aria-hidden="true"></span>
-      <button id="btn-room-settings" class="icon-btn-inline control-btn control-settings" title="Configurações" aria-label="Configurações" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        <span class="btn-label">Configurações</span>
-      </button>
-      <button id="btn-disconnect" class="control-btn control-btn-end" type="button" title="Sair da sala" aria-label="Sair da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg><span class="btn-label">Sair da sala</span></button>
-    </div>
-  </main>
-
-  <!-- ============ COLUNA: MEMBROS + BANIDOS + CHAT ============ -->
-  <aside id="room-side" class="room-side" hidden>
-    <div class="room-tabs" role="tablist" aria-label="Painel lateral">
-      <button id="tab-people" class="room-tab" type="button" role="tab" aria-selected="false" aria-controls="people-panel" tabindex="-1">Pessoas · <span id="room-people-count">0</span></button>
-      <button id="tab-chat" class="room-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel"><span>Chat</span></button>
-    </div>
-  </aside>
-  <aside id="people-panel" class="room-tab-panel" role="tabpanel" aria-labelledby="tab-people">
-      <div class="room-side-section">
-      <h2 class="members-title visually-hidden">Na sala</h2>
-      <ul id="peer-list" class="peer-list"></ul>
-      </div>
-      <div id="banned-section" class="room-side-section hidden">
-      <button class="members-title banned-toggle" type="button" aria-expanded="true">Banidos</button>
-      <ul id="banned-list" class="banned-list"></ul>
-      </div>
-  </aside>
-  <aside id="chat-panel" class="room-tab-panel chat-section" role="tabpanel" aria-labelledby="tab-chat">
-      <h2 class="members-title visually-hidden">Chat</h2>
-      <div class="chat-messages-wrap">
-        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
-        <button id="chat-jump-new" class="chat-jump-new hidden" type="button">↓ Novas mensagens</button>
-      </div>
-      <div id="chat-offline-bar" class="offbar hidden">Reconectando — o que você escrever agora não vai sair.</div>
-      <!-- Previa do anexo: a imagem escolhida (clipe, Ctrl+V ou arrastada)
-           espera AQUI ate a pessoa mandar. Colar imagem por engano e comum
-           e chat nao tem apagar -- ver a spec de 2026-09-04, secao 6.1. -->
-      <div id="chat-attachment" class="chat-attachment hidden">
-        <img id="chat-attachment-img" alt="" />
-        <span id="chat-attachment-info" class="chat-attachment-info"></span>
-        <button id="chat-attachment-remove" class="icon-btn-inline" type="button" title="Tirar a imagem" aria-label="Tirar a imagem">×</button>
-      </div>
-      <form id="chat-compose" class="chat-compose">
-        <label for="chat-input" class="visually-hidden">Mensagem para a sala</label>
-        <textarea id="chat-input" rows="1" placeholder="Escreva pra sala…" maxlength="500" aria-describedby="chat-input-hint"></textarea>
-        <span id="chat-input-hint" class="visually-hidden">Enter envia, Shift+Enter quebra linha.</span>
-        <span id="chat-input-count" class="chat-input-count hidden"></span>
-        <button id="btn-chat-attach" class="chat-compose-btn" type="button" title="Enviar imagem" aria-label="Enviar imagem">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-        </button>
-        <button id="btn-chat-emoji" class="chat-compose-btn" type="button" title="Emoji" aria-label="Emoji" aria-expanded="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-        </button>
-        <button id="btn-chat-send" class="chat-compose-btn chat-send-btn" type="button" title="Enviar mensagem" aria-label="Enviar mensagem" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9z"/></svg>
-        </button>
-        <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden" tabindex="-1" aria-hidden="true" />
+        <label class="sr-only" for="chat-input">Mensagem para a sala</label>
+        <div class="compose__box">
+          <textarea id="chat-input" class="compose__input" rows="1" placeholder="Mensagem para a sala" maxlength="500"
+                    aria-describedby="chat-input-hint"></textarea>
+          <button id="btn-chat-emoji" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Emoji"
+                  title="Emoji"><svg class="i i--sm"><use href="#i-smile" /></svg></button>
+          <button id="btn-chat-attach" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Enviar imagem"
+                  title="Enviar imagem"><svg class="i i--sm"><use href="#i-image" /></svg></button>
+          <button id="btn-chat-send" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Enviar mensagem"
+                  title="Enviar" disabled><svg class="i i--sm"><use href="#i-send-horizontal" /></svg></button>
+        </div>
+        <div class="compose__meta">
+          <span id="chat-input-hint">Enter envia · Shift+Enter quebra a linha</span>
+          <span id="chat-input-count" class="tx-data hidden"></span>
+        </div>
+        <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="sr-only"
+               tabindex="-1" aria-hidden="true" />
       </form>
-  </aside>
+    </aside>
+  </div>
+
+  <footer class="bus" aria-label="Fontes e controles da sala">
+    <div id="bus-sources" class="bus__sources" role="listbox" aria-orientation="horizontal" aria-label="Fontes">
+      <div id="bus-live" class="bus__live" role="presentation"></div>
+      <span class="bus__sep" role="presentation"></span>
+      <div id="view-mesa" class="src src--mesa" role="option" aria-selected="false" tabindex="0" data-view="mesa">
+        <span class="src__glyph" aria-hidden="true"></span>
+        <span class="src__text">
+          <span class="src__name">Mesa</span>
+          <span id="view-mesa-count" class="src__sub">Abrir a Mesa</span>
+        </span>
+        <span id="stage-mesa-people" class="cluster__nodes" role="group" aria-label="Quem está na Mesa" hidden></span>
+      </div>
+    </div>
+    <span class="bus__sep"></span>
+    <div id="me-source" class="me">
+      <div class="me__live">
+        <span id="me-node" class="node" data-size="32" data-state="live"></span>
+        <span class="src__text">
+          <span class="src__name">Você</span>
+          <span id="me-source-sub" class="src__sub">ao vivo</span>
+        </span>
+        <div id="sound-meter" class="me__meter hidden" aria-hidden="true"></div>
+      </div>
+      <span class="me__ctl">
+        <button id="btn-pause-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Pausar"
+                aria-pressed="false"><svg class="i i--sm icon-off"><use href="#i-pause" /></svg><svg
+                class="i i--sm icon-on hidden"><use href="#i-play" /></svg><span class="btn-label sr-only">Pausar</span></button>
+        <button id="btn-swap-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Trocar fonte"
+                title="Trocar fonte"><svg class="i i--sm"><use href="#i-arrow-left-right" /></svg></button>
+      </span>
+      <button id="btn-toggle-share" class="btn btn--primary me__share" type="button" aria-label="Transmitir tela"
+              aria-pressed="false"><svg class="i icon-off"><use href="#i-plus" /></svg><svg
+              class="i i--sm icon-on hidden"><use href="#i-square" /></svg><span class="btn-label">Transmitir tela</span></button>
+    </div>
+    <span class="bus__sep"></span>
+    <div class="bus__end">
+      <button id="btn-toggle-camera" class="btn btn--quiet" type="button" aria-label="Câmera" aria-pressed="false"><svg
+              class="i icon-off"><use href="#i-video" /></svg><svg class="i icon-on hidden"><use href="#i-video" /></svg><span
+              class="spinner btn-spinner hidden" aria-hidden="true"></span><span class="btn-label">Câmera</span></button>
+      <button id="btn-reactions" class="btn btn--quiet btn--icon" type="button" aria-label="Reagir" title="Reagir"
+              aria-haspopup="menu"><svg class="i"><use href="#i-smile-plus" /></svg></button>
+      <button id="btn-mesa-add" class="btn btn--quiet hidden" type="button" aria-haspopup="menu" data-mesa-add><svg
+              class="i"><use href="#i-plus" /></svg><span class="btn__label">Pôr na Mesa</span></button>
+      <button id="btn-conv-toggle" class="btn btn--quiet" type="button" aria-pressed="false"
+              aria-label="Conversa"><svg class="i"><use href="#i-message-square" /></svg><span
+              class="btn__label">Conversa</span><span id="chat-unread-dot" class="count hidden"></span></button>
+    </div>
+  </footer>
 </div>
 
 <!-- ============ MENU DE MODERACAO (flutuante, reposicionado por ui.js) ============ -->
@@ -621,6 +610,7 @@
 <script src="lobby-room.js"></script>
 <script src="tile-menu.js"></script>
 <script src="sala-layout.js"></script>
+<script src="room-ui.js"></script>
 <script src="themecode.js"></script>
 <script src="chatlimit.js"></script>
 <script src="chatimagens.js"></script>

@@ -31,6 +31,20 @@
 .head__group { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
 .head__group--end { margin-left: auto; flex: none; }
 .head__sep { width: 1px; height: 20px; margin: 0 var(--s-1); background: var(--line); flex: none; }
+.app[data-place='lobby'] .head__group--room, .app[data-place='lobby'] .head__room-actions { display: none; }
+.app[data-place='room'] .head__group--lobby, .app[data-place='room'] .head__lobby-only { display: none; }
+.head__room, .head__room-actions { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.room-menu { top: calc(100% - var(--s-1)); left: var(--s-3); width: 260px; }
+.pop__item { display: flex; align-items: center; width: 100%; min-height: 28px; padding: 0 var(--s-3); border-radius: var(--r-xs); font: var(--t-body); text-align: left; }
+.pop__item:hover, .pop__item:focus-visible { background: var(--veil); }
+.pop__item input { position: absolute; opacity: 0; pointer-events: none; }
+.pop__item[aria-checked='true']::after { content: '✓'; margin-left: auto; color: var(--wire); }
+.pop__item--danger { color: var(--danger); }
+.head__room-actions { position: relative; }
+.presence { position: absolute; top: calc(100% + var(--s-1)); right: 0; max-height: min(560px, calc(100vh - var(--h-head) - var(--s-4))); overflow: auto; }
+.presence__list, .presence__banned ul { display: grid; gap: 2px; margin: 0; padding: var(--s-2); list-style: none; }
+.presence__banned { border-top: 1px solid var(--line); }
+.presence__banned h2, .pop__head { margin: 0; padding: var(--s-3) var(--s-3) var(--s-1); font: var(--t-tag); color: var(--tx2); }
 
 .brand { display: flex; align-items: center; gap: var(--s-2); padding-right: var(--s-2); font: var(--t-heading); }
 .brand__mark { width: 20px; height: 20px; }
@@ -157,29 +171,34 @@
   background: var(--void);
   overflow: hidden;
 }
+
+/* Arranjo: o app decide (gridlayout.js) e marca data-layout/data-count no #grid.
+ * "spotlight" = telas assistidas no principal, cameras na tira de baixo. */
 .stage {
+  --cols: 1;
   position: absolute;
   inset: var(--s-2);
   display: grid;
   gap: var(--s-2);
-  grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
 }
-.stage[data-layout='spot'] {
-  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr) 120px;
+.stage[data-count='2'], .stage[data-count='3'], .stage[data-count='4'] { --cols: 2; }
+.stage[data-count='5'], .stage[data-count='6'] { --cols: 3; }
+.stage[data-count='many'] { --cols: 4; }
+.stage[data-layout='spotlight'] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 128px; }
+.grid-main {
+  --cols: 1;
+  display: grid;
+  gap: var(--s-2);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  min-height: 0;
 }
-.stage[data-layout='spot'] > .tile[data-spot] { grid-column: 1 / -1; }
-
-.layout-switch {
-  position: absolute;
-  top: var(--s-3);
-  right: var(--s-3);
-  z-index: var(--z-hud);
-  opacity: 0;
-  transition: opacity var(--dur-mid) var(--ease-out);
-}
-.program:hover .layout-switch, .layout-switch:focus-within { opacity: 1; }
+.grid-main[data-count='2'], .grid-main[data-count='3'], .grid-main[data-count='4'] { --cols: 2; }
+.grid-main[data-count='5'], .grid-main[data-count='6'], .grid-main[data-count='many'] { --cols: 3; }
+.grid-strip { display: flex; gap: var(--s-2); min-height: 0; overflow-x: auto; }
+.grid-strip > .tile { flex: 0 0 auto; aspect-ratio: 16 / 9; height: 100%; }
 
 /* ---- Tile de video ---- */
 .tile {
@@ -190,11 +209,19 @@
   background: var(--void);
   overflow: hidden;
   isolation: isolate;
+  container-type: size;
+  container-name: tile;
 }
-.tile > video, .tile__video { width: 100%; height: 100%; object-fit: contain; background: var(--void); }
-.tile__canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .tile:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
+.tile__media { position: absolute; inset: 0; }
+.tile__video, .tile__shot { width: 100%; height: 100%; object-fit: contain; background: var(--void); }
+.tile__shot { position: absolute; inset: 0; filter: brightness(0.35); }
+.tile__canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.tile.annot-on .tile__canvas { pointer-events: auto; cursor: crosshair; }
+.tile__pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 
+/* HUD: aparece com o mouse em cima ou com foco de teclado dentro; some
+ * junto com a ociosidade do app (body.room-idle, 3 s parado). */
 .tile__hud {
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -205,19 +232,25 @@
   padding: var(--s-2) var(--s-2) var(--s-5) var(--s-3);
   background: linear-gradient(to bottom, var(--scrim-4), transparent);
   opacity: 0;
-  transition: opacity var(--dur-mid) var(--ease-out);
   pointer-events: none;
+  transition: opacity var(--dur-mid) var(--ease-out);
 }
-.tile[data-hud] .tile__hud, .tile:focus-within .tile__hud { opacity: 1; pointer-events: auto; }
+.tile:hover .tile__hud, .tile:has(:focus-visible) .tile__hud { opacity: 1; pointer-events: auto; }
+body.room-idle .tile:not(:has(:focus-visible)) .tile__hud { opacity: 0; pointer-events: none; }
+body.room-idle .tile.fullscreen { cursor: none; }
 .tile__who { display: flex; align-items: center; gap: var(--s-2); min-width: 0; margin-right: auto; color: var(--on-video); }
-.tile__name { font: var(--t-label); }
-.tile__what { font: var(--t-meta); color: var(--on-video-2); }
+.tile__label { display: flex; align-items: baseline; gap: var(--s-15); min-width: 0; overflow: hidden; white-space: nowrap; }
+.tile__name { font: var(--t-label); overflow: hidden; text-overflow: ellipsis; }
+.tile__what, .tile__watchers { font: var(--t-meta); color: var(--on-video-2); white-space: nowrap; }
+.tile__watchers:not(:empty)::before { content: '· '; }
+.tile__actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .tile__hud .btn { color: var(--on-video); }
 .tile__hud .btn:hover { background: var(--on-video-hover); }
 .tile__hud .btn[aria-pressed='true'] { background: var(--wire-on-video); }
+.tile.annot-on .tile__hud [data-acao='rabiscar'] { background: var(--wire-on-video); }
 
 /* Estado que nao some: ocupa o tile, sobre o ultimo quadro escurecido. */
-.tile__state {
+.tile__state, .tile__stall {
   position: absolute;
   inset: 0;
   z-index: calc(var(--z-hud) - 1);
@@ -231,7 +264,8 @@
   text-align: center;
   font: var(--t-body);
 }
-.tile__state strong { font: var(--t-heading); }
+.tile__state strong, .tile__stall strong { font: var(--t-heading); }
+.tile__state-sub { color: var(--on-video-2); }
 .tile__warn {
   position: absolute;
   left: var(--s-2);
@@ -247,7 +281,28 @@
   color: var(--warn-on-video);
   font: var(--t-meta);
 }
-.tile__badge { position: absolute; left: var(--s-2); bottom: var(--s-2); z-index: var(--z-hud); }
+
+/* Portao (so na Mesa): tela ao vivo que voce ainda nao pediu. */
+.tile__gate { position: absolute; inset: 0; z-index: var(--z-hud); background: var(--void); color: var(--on-video); }
+.tile__gate .blank__text { color: var(--on-video-2); }
+.tile__gate-actions { display: flex; gap: var(--s-2); }
+
+/* Reacoes: sobem no tile e somem. */
+.react-pop {
+  position: absolute;
+  bottom: 12%;
+  font-size: clamp(14px, 6vw, 72px);
+  animation: react-rise 1.4s var(--ease-out) forwards;
+}
+@keyframes react-rise { from { opacity: 0; transform: translateY(20%) scale(0.8); } 20% { opacity: 1; }
+  to { opacity: 0; transform: translateY(-160%) scale(1.1); } }
+@media (prefers-reduced-motion: reduce) {
+  .react-pop { animation-name: react-fade; }
+  @keyframes react-fade { 0%, 100% { opacity: 0; } 20%, 80% { opacity: 1; } }
+}
+.react-list { display: grid; grid-template-columns: repeat(4, 40px); gap: 2px; }
+.react-btn { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-xs); font-size: 20px; }
+.react-btn:hover, .react-btn:focus-visible { background: var(--veil); }
 
 /* Regua de rabisco: no pe do tile. */
 .draw-bar {
@@ -264,7 +319,18 @@
   background: var(--s2);
   box-shadow: var(--elev-float);
 }
-.draw-bar__who { width: 10px; height: 10px; margin: 0 var(--s-2); border-radius: 50%; background: var(--who, var(--tx)); }
+/* Quem assiste so ve a regua com o rabisco ligado; a dona ve "Apagar tudo" no hover. */
+.tile:not(.annot-on) .draw-bar:has(.annot-toggle), .tile:not(:hover) .draw-bar { display: none; }
+.tile.annot-on .draw-bar:has(.annot-toggle) { display: flex; }
+.draw-bar__sep { width: 1px; height: 20px; margin: 0 var(--s-1); background: var(--line); }
+.draw-bar .active { background: var(--wire-soft); color: var(--tx); }
+.draw-bar .annot-ink { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.draw-bar .annot-ink::-webkit-color-swatch-wrapper { padding: 3px; }
+.draw-bar .annot-ink::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.draw-bar svg { width: 16px; height: 16px; }
+
+/* Tela cheia: o tile cobre a janela. */
+.tile.fullscreen { position: fixed; inset: 0; z-index: var(--z-dialog); border-radius: 0; }
 
 /* Palco vazio. */
 .stage-empty { position: absolute; inset: 0; }
@@ -309,15 +375,28 @@
 .app:not([data-conv='pinned']) .conv { display: none; }
 .conv__head { display: flex; align-items: center; gap: var(--s-1); height: 48px; padding: 0 var(--s-2) 0 var(--s-4); }
 .conv__title { font: var(--t-heading); margin-right: auto; }
-.conv__list { flex: 1; overflow-y: auto; padding: 0 var(--s-4) var(--s-3); overscroll-behavior: contain; }
+.conv__list { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.conv__msgs { flex: 1; overflow-y: auto; padding: 0 var(--s-4) var(--s-3); overscroll-behavior: contain; }
+.conv__jump { position: absolute; left: 50%; bottom: var(--s-2); transform: translateX(-50%); background: var(--s2);
+  box-shadow: var(--elev-float); }
+.conv__offline { margin: 0 var(--s-3) var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-xs);
+  background: var(--warn-dim); color: var(--warn); font: var(--t-meta); }
 
 .msg { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: var(--s-3); padding-top: var(--s-3); }
+.msg > .node { grid-row: 1 / span 4; align-self: start; margin-top: 2px; }
+.msg > :not(.node):not(.msg__gutter) { grid-column: 2; }
+.msg__gutter { grid-row: 1; padding-top: 3px; font: var(--t-data); font-size: 10px; color: var(--tx3); opacity: 0; }
+.msg--cont:hover .msg__gutter { opacity: 1; }
+.msg__put { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
+.msg-sys--warn { color: var(--warn); }
+.msg-sys--danger { color: var(--danger); }
 .msg + .msg--cont { padding-top: 2px; }
 .msg__head { display: flex; align-items: baseline; gap: var(--s-2); }
 .msg__author { font: var(--t-label); }
 .msg__time { font: var(--t-data); font-size: 11px; color: var(--tx3); }
-.msg__body { grid-column: 2; font: var(--t-body); overflow-wrap: anywhere; white-space: pre-wrap; }
-.msg__img { grid-column: 2; margin-top: var(--s-1); max-width: 100%; max-height: 220px; border-radius: var(--r-xs); cursor: zoom-in; }
+.msg__body { font: var(--t-body); overflow-wrap: anywhere; white-space: pre-wrap; }
+.msg__img { justify-self: start; margin-top: var(--s-1); max-width: 100%; border-radius: var(--r-xs); overflow: hidden; cursor: zoom-in; }
+.msg__img img { width: 100%; height: 100%; max-height: 220px; object-fit: cover; }
 .msg-sys {
   display: flex;
   align-items: center;
@@ -385,6 +464,7 @@
   scroll-snap-type: x proximity;
 }
 .bus__sources::-webkit-scrollbar { display: none; }
+.bus__live { display: contents; }
 .bus__sep { flex: none; width: 1px; height: 32px; margin: 0 var(--s-1); background: var(--line); }
 .bus__end { display: flex; align-items: center; gap: var(--s-1); flex: none; }
 
@@ -457,19 +537,21 @@
 .src--mesa[aria-current='true'] .src__glyph::before { border-color: var(--wire); background: var(--wire-soft); }
 
 /* A sua fonte. */
-.me { display: flex; align-items: center; gap: var(--s-2); flex: none; }
-.me__live {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  height: 56px;
-  padding: 0 var(--s-2) 0 var(--s-2);
-  border-radius: var(--r-xs);
-  background: var(--live-soft);
-}
+/* A sua fonte: sem transmitir e so o botao Transmitir; ao vivo vira o bloco
+ * vermelho-claro com o seu no, o que transmite e pausar/trocar/parar. */
+.me { display: flex; align-items: center; gap: var(--s-2); flex: none; height: 56px; padding: 0 var(--s-1);
+  border-radius: var(--r-xs); }
+.me__live { display: none; align-items: center; gap: var(--s-3); padding-left: var(--s-1); }
 .me__live .src__text { max-width: 180px; }
 .me__ctl { display: flex; gap: 2px; }
-.me__live[data-paused] { background: transparent; box-shadow: inset 0 0 0 1px var(--live-soft); }
+.me:has(.me__share[aria-pressed='true']) { background: var(--live-soft); }
+.me:has(.me__share[aria-pressed='true']) .me__live { display: flex; }
+.me .me__share[aria-pressed='true'] { width: var(--h-ctl-sm); min-width: 0; height: var(--h-ctl-sm); padding: 0;
+  background: transparent; color: var(--tx2); }
+.me .me__share[aria-pressed='true']:hover { background: var(--veil); color: var(--tx); }
+.me .me__share[aria-pressed='true'] .btn-label { display: none; }
+.me:has(#btn-pause-share[aria-pressed='true']) { background: transparent; box-shadow: inset 0 0 0 1px var(--live-soft); }
+.me__meter { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
 
 /* ---- Modo teatro: so o programa; a moldura volta por cima ao encostar. ---- */
 .app[data-theater] .room { grid-template-rows: minmax(0, 1fr) 0; }
@@ -514,14 +596,12 @@
 }
 
 /* Tile estreito: o HUD fica com nome + volume + ⋯ + ×; o resto mora no ⋯. */
-.tile { container-type: size; container-name: tile; }
-.tile__who > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
 @container tile (max-width: 460px) {
-  .tile__what, .tile__hud [data-hud-extra] { display: none; }
+  .tile__what, .tile__watchers, .tile__hud [data-hud-extra] { display: none; }
 }
 @container tile (max-width: 260px) {
   .tile__hud [data-hud-optional] { display: none; }
-  .tile__state { gap: var(--s-2); font-size: 12px; }
+  .tile__state, .tile__stall { gap: var(--s-2); font-size: 12px; }
 }
 
 /* ============ Inicio: o que o prototipo nao mostrava ============ */
@@ -548,3 +628,12 @@
 
 .lobby__foot { display: flex; align-items: center; gap: var(--s-2); }
 .room-row__meta.tx-warn { color: var(--warn); }
+
+/* Menu da sala: ancorado no nome da sala, na cabeca. */
+.head__room { position: relative; display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.room-menu { position: absolute; top: calc(100% + var(--s-15)); left: 0; width: 280px; }
+.room-menu .menu__item { cursor: pointer; }
+.room-menu label.menu__item:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
+.stage-empty .blank__art { color: var(--line2); }
+.stage-empty__acoes { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); margin-top: var(--s-2); }
+.bus__live:empty + .bus__sep { display: none; }

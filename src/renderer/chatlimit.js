@@ -7,8 +7,8 @@
 
   function pruneChatMessages(container) {
     let removed = 0;
-    while (container.querySelectorAll('.chat-line, .chat-sys').length > MAX_CHAT_MESSAGES) {
-      const oldest = container.querySelector('.chat-line, .chat-sys');
+    while (container.querySelectorAll('.msg, .msg-sys').length > MAX_CHAT_MESSAGES) {
+      const oldest = container.querySelector('.msg, .msg-sys');
       if (!oldest) break;
       oldest.remove();
       removed += 1;

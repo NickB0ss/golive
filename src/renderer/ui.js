@@ -326,11 +326,6 @@
     if (!canGoIdle()) return;
     idleTimer = setTimeout(() => {
       document.body.classList.add('room-idle');
-      // Transparencia so esconde a barra; fechar tambem restaura inert e
-      // aria-expanded para que Tab nao alcance controles invisiveis.
-      document.querySelectorAll('.tile-react-bar.is-open').forEach((bar) => {
-        bar._fecharReacoes?.();
-      });
       if (fullscreenTileId) {
         closePipMenu();
         closeTileMenu();
@@ -573,7 +568,6 @@
   // tile existir (renegociacao) ou depois dele ter sido recriado.
   const tileWatchers = new Map();
 
-  const EYE_OFF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 
   /** A audiencia virou um OLHO no canto superior esquerdo, com o numero ao
    * lado. Antes era o painel inteiro que aparecia no hover do tile: com
@@ -585,16 +579,11 @@
    * elas so abre quando o mouse para no olho. `:focus-within` abre pelo
    * teclado, entao a lista nao e exclusiva de quem usa mouse. */
   function renderTileWatchers(tile, watchers) {
-    const el = tile?.querySelector('.tile-watchers');
+    const el = tile?.querySelector('.tile__watchers');
     if (!el) return;
-    if (!watchers?.length) {
-      el.classList.add('is-empty');
-      el.innerHTML = '';
-      return;
-    }
-    el.classList.remove('is-empty');
-    const n = watchers.length;
-    el.textContent = `${n} vendo`;
+    const n = watchers?.length || 0;
+    el.textContent = n ? `${n} vendo` : '';
+    el.title = n ? watchers.map((w) => w.name).filter(Boolean).join(', ') : '';
   }
 
   /** `tileId` e o id usado em showTile ('me'/'cam-me' pro proprio, peerId ou
@@ -604,6 +593,7 @@
   function setWatchers(tileId, watchers) {
     tileWatchers.set(tileId, watchers || []);
     renderTileWatchers(document.getElementById(`tile-${tileId}`), watchers);
+    redesenharUltimasPresencas();
   }
 
   /** P4 (auditoria 2026-09-18): chip discreto de saude de recepcao, do lado
@@ -613,12 +603,17 @@
    * proximo tick de updateStats o repinta -- nao ha janela em que um chip
    * de saude ANTIGO ficaria preso num tile que renegociou. */
   function setHealthChip(tileId, state) {
-    const chip = document.getElementById(`tile-${tileId}`)?.querySelector('.tile-health-chip');
+    const chip = document.getElementById(`tile-${tileId}`)?.querySelector('.tile__warn');
     if (!chip) return;
     const show = Boolean(state?.text) && state.level !== 'ok';
-    chip.textContent = show ? state.text : '';
+    chip.innerHTML = show ? `<svg class="i i--sm"><use href="#i-triangle-alert" /></svg>${escapeHtml(state.text)}` : '';
     chip.classList.toggle('hidden', !show);
-    chip.classList.toggle('is-ruim', state?.level === 'ruim');
+    chip.dataset.level = state?.level === 'ruim' ? 'bad' : 'warn';
+    const nivel = state?.level || 'ok';
+    if (tileHealth.get(tileId) !== nivel) {
+      tileHealth.set(tileId, nivel);
+      redesenharUltimasPresencas();
+    }
   }
 
   /** H10/D5 (analise de 2026-09-23): por que a tela assistida congelou --
@@ -627,10 +622,13 @@
    * Sem estado aqui, pelo mesmo motivo do chip acima: o app.js reaplica a
    * cada volta do vigia (2 s), entao um tile recriado recupera o aviso. */
   function setStallNote(tileId, text) {
-    const note = document.getElementById(`tile-${tileId}`)?.querySelector('.tile-stall-note');
+    const note = document.getElementById(`tile-${tileId}`)?.querySelector('.tile__stall');
     if (!note) return;
     const value = text || '';
-    if (note.textContent !== value) note.textContent = value;
+    if (note.dataset.text !== value) {
+      note.dataset.text = value;
+      note.innerHTML = value ? `<span class="spinner" aria-hidden="true"></span><strong>${escapeHtml(value)}</strong>` : '';
+    }
     note.classList.toggle('hidden', !value);
   }
 
@@ -666,7 +664,6 @@
     tile.classList.toggle('is-unwatched', !watched);
     tile.hidden = ocultarNoPalco;
     if (ocultarNoPalco) {
-      tile.querySelector('.tile-bar')?.remove();
       const video = tile.querySelector('video');
       if (video) {
         tile._videoOculto = video;
@@ -678,18 +675,18 @@
       const kind = tileRegistry.get(tileId)?.kind || opts.kind;
       if (kind) tile.dataset.kind = kind;
       if (tile._videoOculto) {
-        tile.querySelector('.tile-media').prepend(tile._videoOculto);
+        tile.querySelector('.tile__media').prepend(tile._videoOculto);
         delete tile._videoOculto;
       }
     }
 
-    let gate = tile.querySelector('.tile-gate');
+    let gate = tile.querySelector('.tile__gate');
     if (watched || !naMesa) {
       gate?.remove();
     } else {
       if (!gate) {
         gate = document.createElement('div');
-        gate.className = 'tile-gate';
+        gate.className = 'tile__gate blank';
         // Fica no caminho do duplo-clique de fullscreen e do arrasto do PiP
         // de proposito: nao ha o que por em tela cheia enquanto nao se esta
         // assistindo.
@@ -708,37 +705,22 @@
       const sub = ehCamera
         ? 'A câmera só chega quando você pede.'
         : 'A tela só chega quando você pede — é um encoder a menos rodando na máquina de quem transmite.';
+      const pessoaId = String(tileId).replace(/^cam-/, '');
       gate.innerHTML = `
-        <span class="tile-gate-avatar">${avatarInnerHtml(tileId, nome, opts.avatar || null)}</span>
-        <p class="tile-gate-title">${titulo}</p>
-        <p class="tile-gate-sub">${sub}</p>
-        <div class="tile-gate-actions">
-          <button type="button" class="primary small" data-watch="only">Assistir</button>
-          ${opts.canAdd ? '<button type="button" class="ghost small" data-watch="add" title="Ver esta tela sem largar a que você já assiste">+ Ver junto</button>' : ''}
+        <span class="node" data-size="56" data-state="live" style="--who:${avatarColorFor(pessoaId)}">${avatarInnerHtml(pessoaId, nome, opts.avatar || null)}</span>
+        <p class="blank__title">${titulo}</p>
+        <p class="blank__text">${sub}</p>
+        <div class="tile__gate-actions">
+          <button type="button" class="btn btn--primary btn--sm" data-watch="only">Assistir</button>
+          ${opts.canAdd ? '<button type="button" class="btn btn--secondary btn--sm" data-watch="add" title="Ver esta tela sem largar a que você já assiste">Ver junto</button>' : ''}
         </div>`;
     }
 
     // O botao de largar uma tela so existe quando ha OUTRA sendo assistida:
     // sozinho ele seria um jeito de ficar sem ver nada, e a saida pra isso
     // ja e sair da sala ou pedir outra tela.
-    let off = tile.querySelector('.tile-unwatch-btn');
-    if (watched && opts.canDrop) {
-      if (!off) {
-        off = document.createElement('button');
-        off.type = 'button';
-        off.className = 'tile-unwatch-btn';
-        off.title = 'Parar de assistir esta tela';
-        off.setAttribute('aria-label', 'Parar de assistir esta tela');
-        off.innerHTML = EYE_OFF_ICON;
-        off.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onWatchIntent?.(tileId, 'remove');
-        });
-        tile.appendChild(off);
-      }
-    } else {
-      off?.remove();
-    }
+    const off = tile.querySelector('.tile__hud [data-acao="parar"]');
+    if (off) off.hidden = !(watched && opts.canDrop);
     // O card de "ver junto" tambem ocupa a tira: a troca de assistida nao
     // pode esperar a proxima track pra redesenhar a hierarquia do palco.
     syncGridCount();
@@ -794,10 +776,10 @@
    * pra preto preserva contexto ("ainda e esta transmissao") e evita ler o
    * conteudo parado (ver a spec de 2026-09-03, secao 4). */
   function renderPausedOverlay(tile, video, paused, opts) {
-    const media = tile.querySelector('.tile-media') || tile;
+    const media = tile.querySelector('.tile__media') || tile;
     if (!paused) {
-      tile.querySelector('.tile-paused-shot')?.remove();
-      tile.querySelector('.tile-paused')?.remove();
+      tile.querySelector('.tile__shot')?.remove();
+      tile.querySelector('.tile__state--paused')?.remove();
       tile.classList.remove('is-paused');
       if (video) {
         video.hidden = false;
@@ -809,8 +791,8 @@
       // 320px de largura: o blur(20px) do CSS destroi qualquer detalhe
       // acima disso, entao borrar um bitmap reduzido e esticar da o mesmo
       // resultado visual por uma fracao dos pixels (ver spec, secao 4.3).
-      const canvas = tile.querySelector('.tile-paused-shot') || document.createElement('canvas');
-      canvas.className = 'tile-paused-shot';
+      const canvas = tile.querySelector('.tile__shot') || document.createElement('canvas');
+      canvas.className = 'tile__shot';
       const w = 320;
       const h = Math.round((video.videoHeight / video.videoWidth) * w) || w;
       canvas.width = w;
@@ -819,25 +801,25 @@
       if (!canvas.isConnected) media.insertBefore(canvas, media.firstChild);
     } else {
       // Sem primeiro quadro ainda: pula o bitmap, so o veu escuro + texto.
-      tile.querySelector('.tile-paused-shot')?.remove();
+      tile.querySelector('.tile__shot')?.remove();
     }
     if (video) {
       video.pause();
       video.hidden = true;
     }
-    let veil = tile.querySelector('.tile-paused');
+    let veil = tile.querySelector('.tile__state--paused');
     if (!veil) {
       veil = document.createElement('div');
-      veil.className = 'tile-paused';
+      veil.className = 'tile__state tile__state--paused';
       veil.setAttribute('role', 'status');
       veil.innerHTML = `
-        <span class="tile-paused-icon">${PAUSE_ICON}</span>
-        <p class="tile-paused-title"></p>
-        <p class="tile-paused-subtitle"></p>`;
+        <span class="node" data-size="56" data-state="paused"><svg class="i"><use href="#i-pause" /></svg></span>
+        <strong class="tile__state-title"></strong>
+        <span class="tile__state-sub"></span>`;
       media.appendChild(veil);
     }
-    veil.querySelector('.tile-paused-title').textContent = opts?.title || 'Transmissão pausada';
-    veil.querySelector('.tile-paused-subtitle').textContent = opts?.subtitle || '';
+    veil.querySelector('.tile__state-title').textContent = opts?.title || 'Transmissão pausada';
+    veil.querySelector('.tile__state-sub').textContent = opts?.subtitle || '';
     tile.classList.add('is-paused');
   }
 
@@ -846,6 +828,7 @@
    * -- o tile local usa um texto diferente do de quem assiste (ver app.js). */
   function setPaused(tileId, paused, opts) {
     tilePaused.set(tileId, { paused, opts });
+    redesenharUltimasPresencas();
     if (spyState.tileId() === tileId) updateSpyWindow();
     const tile = document.getElementById(`tile-${tileId}`);
     if (!tile) return; // tile pode ja ter sido removido (ex: parou de transmitir)
@@ -916,7 +899,7 @@
     // e desenhada. Bastava um segundo tile aparecer pra matar o overlay do
     // primeiro, e nada o trazia de volta ate o tile ser recriado: era esta
     // a audiencia que "as vezes nao aparecia".
-    gridEl.querySelector(':scope > .empty')?.remove();
+    gridEl.querySelector(':scope > .stage-empty')?.remove();
 
     let tile = document.getElementById(`tile-${id}`);
     if (!tile) {
@@ -924,36 +907,22 @@
       tile.className = 'tile';
       tile.id = `tile-${id}`;
       tile.tabIndex = -1;
+      // Anatomia do tile (05 §3.3): o video sangra no vazio; o HUD aparece
+      // por cima com o mouse ou o foco e some parado; o que nao pode sumir
+      // (pausa, sem sinal, recepcao ruim) mora fora do HUD.
       tile.innerHTML = `
-        <div class="tile-bar">
-          <div class="tile-bar-titulo">
-            <span class="tally tile-bar-tipo"></span>
-            <span class="tile-bar-nome"></span>
-          </div>
-          <div class="tile-bar-dados">
-            <span class="tile-watchers is-empty"></span>
-            <span class="tile-health-chip hidden"></span>
-            <span class="tile-stall-note hidden" role="status"></span>
-          </div>
-          <div class="tile-bar-acoes">${TILE_BAR_ACOES_HTML}</div>
-          <span class="tile-kind-badge" hidden></span>
-        </div>
-        <div class="tile-media">
-          <video autoplay playsinline></video>
-          <canvas class="tile-annot-canvas"></canvas>
-          <div class="tile-annot-bar" hidden></div>
-          <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">
-            <button class="tile-react-toggle" type="button" aria-expanded="false" aria-label="Reagir" title="Reagir">
-              ☺
-            </button>
-            <span class="tile-react-list" inert>${reactionBarButtonsHtml()}</span>
-          </div>
-          <div class="tile-react-pops"></div>
+        <div class="tile__media">
+          <video class="tile__video" autoplay playsinline></video>
+          <canvas class="tile__canvas"></canvas>
+          <div class="tile__pops"></div>
+          <div class="draw-bar" role="toolbar" aria-label="Rabisco" hidden></div>
           <div class="pip-strip"></div>
-        </div>`;
+        </div>
+        ${TILE_HUD_HTML}
+        <span class="tile__warn hidden"></span>
+        <div class="tile__stall hidden" role="status"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
       wireTileAnnotations(tile, id);
-      wireTileReactions(tile, id);
       wireTileBar(tile, id);
       if (id !== 'me' && id !== 'cam-me') {
         tile.addEventListener('contextmenu', (event) => {
@@ -994,20 +963,12 @@
     // reusa o mesmo objeto de stream e passaria pelo `if` de cima sem entrar
     // nele, deixando o video desmutado se essa linha so rodasse ali dentro.
     video.muted = (id === 'me' || id === 'cam-me') ? muted : true;
-    const barName = tile.querySelector('.tile-bar-nome');
-    const barTipo = tile.querySelector('.tile-bar-tipo');
-    if (barName) barName.textContent = displayName || label;
-    if (barTipo) barTipo.textContent = kind === 'camera' ? 'CAM' : 'AO VIVO';
+    renderTileWho(tile, id, displayName || label, kind, avatar);
     // Ordena a grade por CSS (`.tile[data-kind="camera"] { order: 1 }`):
     // tela e o conteudo, camera e o acompanhamento.
     if (kind) tile.dataset.kind = kind;
     else delete tile.dataset.kind;
     if (tile.hidden) delete tile.dataset.kind;
-    const badgeEl = tile.querySelector('.tile-kind-badge');
-    badgeEl.innerHTML = tileKindIcon(kind);
-    if (kind === 'camera') badgeEl.title = 'Câmera';
-    else if (kind === 'screen') badgeEl.title = 'Tela';
-    else badgeEl.removeAttribute('title');
 
     // Tile criado enquanto a janela esta oculta nasce pausado (o atributo
     // autoplay do <video> tocaria sozinho, sem isto). Excecao: tile com o
@@ -1016,6 +977,7 @@
     if (!tilePaused.get(id)?.paused) applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
+    redesenharUltimasPresencas();
     // `kind` chega junto da track e pode mudar numa renegociacao. A escolha
     // de palco precisa ver o kind novo, nao o que havia antes no DOM.
     syncGridCount();
@@ -1030,7 +992,7 @@
    * tira o cartao de "ninguem transmitindo" que um removeTile possa ter
    * posto enquanto os tiles estavam fora, reorganiza e religa a pintura. */
   function resyncGrid() {
-    if (gridEl.querySelector('.tile:not([hidden])')) gridEl.querySelector(':scope > .empty')?.remove();
+    if (gridEl.querySelector('.tile:not([hidden])')) gridEl.querySelector(':scope > .stage-empty')?.remove();
     syncGridCount();
     renderEmptyGrid();
     syncPainting();
@@ -1047,25 +1009,50 @@
   // sala" do HTML ficava na tela ao entrar, porque so a remocao de um tile
   // redesenhava isto. E tem acao: o caso comum de sala vazia e ninguem ter
   // comecado ainda, e o botao de compartilhar la embaixo passa batido.
+  /** Palco sem tile a mostra (05 §3.3): ninguem ao vivo, ou gente ao vivo
+   * que voce deixou de assistir. A arte e o grafo do icone, em traco fino. */
   function renderEmptyGrid() {
-    const vazio = gridEl.querySelector(':scope > .empty');
+    const vazio = gridEl.querySelector(':scope > .stage-empty');
     if (gridEl.querySelector('.tile:not([hidden])')) {
       vazio?.remove();
       return;
     }
-    if (vazio) return;
-    // Acrescenta sem apagar a grade: tiles escondidos (telas ao vivo ainda
-    // nao assistidas) continuam no DOM ate a pessoa escolher assistir.
+    const aoVivo = [...tileRegistry.entries()]
+      .filter(([id, t]) => !id.startsWith('cam-') && id !== 'me' && t.kind !== 'camera')
+      .map(([id, t]) => ({ id, nome: t.displayName || t.label || 'Alguém' }));
+    const chave = aoVivo.map((p) => p.id).join(',');
+    if (vazio && vazio.dataset.chave === chave) return;
+    vazio?.remove();
+    const nomes = aoVivo.map((p) => p.nome);
+    const titulo = !aoVivo.length
+      ? 'Ninguém está transmitindo.'
+      : `${nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)} estão` : `${nomes[0]} está`} ao vivo.`;
+    const acoes = aoVivo.length
+      ? aoVivo.slice(0, 3).map((p) => `<button type="button" class="btn btn--secondary" data-assistir="${escapeHtml(p.id)}">
+          Assistir ${escapeHtml(p.nome)}</button>`).join('')
+      : '<button type="button" class="btn btn--primary" data-transmitir>Transmitir tela</button>';
     gridEl.insertAdjacentHTML('beforeend', `
-      <div class="empty">
-        <p class="empty-title">Ninguém transmitindo ainda.</p>
-        <p class="empty-hint">A tela de quem ficar ao vivo aparece aqui sozinha.</p>
-        <p class="empty-icon" aria-hidden="true">◉</p>
+      <div class="stage-empty blank" data-chave="${escapeHtml(chave)}">
+        <svg class="blank__art graph-art" viewBox="0 0 32 32" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="0.75" stroke-linecap="round">
+            <path d="M20.71 14.20 L11.35 9.06" /><path d="M20.71 17.80 L11.35 22.94" />
+            <circle class="ring" cx="8.5" cy="7.5" r="3.25" /><circle class="ring" cx="8.5" cy="24.5" r="3.25" />
+            <circle cx="24" cy="16" r="3.75" stroke-dasharray="1.5 1.5" />
+          </g>
+        </svg>
+        <p class="blank__title">${escapeHtml(titulo)}</p>
+        <p class="blank__text">${aoVivo.length ? 'Escolha quem assistir aqui ou no barramento, embaixo.'
+    : 'Quando alguém entrar ao vivo, aparece no barramento, embaixo.'}</p>
+        <div class="stage-empty__acoes">${acoes}</div>
       </div>`);
-    const empty = gridEl.querySelector(':scope > .empty');
-    empty.querySelector('.empty-title').textContent = 'Ninguém em foco';
-    empty.querySelector('.empty-hint').textContent = 'Escolha alguém ao vivo na coluna ao lado';
   }
+
+  // Os botoes do palco vazio: assistir alguem ou abrir o seletor de tela.
+  gridEl.addEventListener('click', (event) => {
+    const assistir = event.target.closest('.stage-empty [data-assistir]');
+    if (assistir) onWatchIntent?.(assistir.dataset.assistir, 'only');
+    if (event.target.closest('.stage-empty [data-transmitir]')) document.getElementById('btn-toggle-share')?.click();
+  });
 
   function removeTile(id) {
     closeSpyWindow(id);
@@ -1080,6 +1067,8 @@
     tileWatchers.delete(id);
     tilePaused.delete(id);
     tileWatch.delete(id);
+    tileHealth.delete(id);
+    redesenharUltimasPresencas();
     pinnedPip.delete(id);
     pipLayout.delete(id);
     // A grade mudou: se o ultimo tile saiu, a sala nao pode mais ficar
@@ -1194,7 +1183,7 @@
       if (annotDrawingTile === tileId) setAnnotDrawing(tileId, false);
       if (tile) {
         tile.classList.remove('annotatable', 'annot-on');
-        tile.querySelector('.tile-annot-bar').hidden = true;
+        tile.querySelector('.draw-bar').hidden = true;
         clearAnnotCanvas(tile);
       }
       return;
@@ -1204,7 +1193,7 @@
     tile.classList.add('annotatable');
     // A barra nasce visivel: era ela que o lapis do canto do tile abria, e
     // esse lapis saiu. Quem some com ela agora e a ociosidade do mouse.
-    tile.querySelector('.tile-annot-bar').hidden = false;
+    tile.querySelector('.draw-bar').hidden = false;
     if (!canDraw && annotDrawingTile === tileId) setAnnotDrawing(tileId, false);
     syncAnnotBar(tileId);
     redrawAnnot(tileId);
@@ -1390,7 +1379,7 @@
 
   function forgetReactionAuthor(peerId) {
     reactionsStore?.dropAuthor(peerId);
-    for (const el of document.querySelectorAll('.tile-react-pop')) {
+    for (const el of document.querySelectorAll('.react-pop')) {
       if (el.dataset.author === String(peerId)) el.remove();
     }
   }
@@ -1416,69 +1405,20 @@
     if (!reactions) return '';
     return reactions.REACTIONS.map((e) => {
       const nome = REACTION_EMOJI_LABEL[e] || e;
-      return `<button type="button" class="tile-react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
+      return `<button type="button" class="react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
     }).join('');
-  }
-
-  /** Amarra a barra de reacao de UM tile, uma vez, na criacao dele --
-   * mesmo espirito de wireTileAnnotations, so que sem gate de permissao
-   * nenhum (reacao no tile e sempre livre, ver spec secao 2). */
-  function wireTileReactions(tile, tileId) {
-    const bar = tile.querySelector('.tile-react-bar');
-    if (!bar) return;
-    const toggle = bar.querySelector('.tile-react-toggle');
-    const list = bar.querySelector('.tile-react-list');
-    let fecharTimer = null;
-
-    function fechar() {
-      clearTimeout(fecharTimer);
-      fecharTimer = null;
-      bar.classList.remove('is-open');
-      toggle.setAttribute('aria-expanded', 'false');
-      list.inert = true;
-    }
-    function adiarFechamento() {
-      clearTimeout(fecharTimer);
-      fecharTimer = setTimeout(fechar, 3000);
-    }
-    function abrir() {
-      bar.classList.add('is-open');
-      toggle.setAttribute('aria-expanded', 'true');
-      list.inert = false;
-      adiarFechamento();
-    }
-
-    bar._fecharReacoes = fechar;
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (bar.classList.contains('is-open')) fechar();
-      else abrir();
-    });
-    list.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const btn = e.target.closest('.tile-react-btn');
-      if (!btn) return;
-      emitReactionOp(tileId, btn.dataset.emoji);
-      adiarFechamento();
-    });
-    bar.addEventListener('mouseenter', () => { if (bar.classList.contains('is-open')) clearTimeout(fecharTimer); });
-    bar.addEventListener('mouseleave', () => { if (bar.classList.contains('is-open')) adiarFechamento(); });
-    // Mesma razao do annot-bar: a barra fica por cima do video, um clique
-    // nela nao pode disparar o duplo-clique do fullscreen nem o arrasto do PiP.
-    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
-    bar.addEventListener('dblclick', (e) => e.stopPropagation());
   }
 
   function openReactionPopover(anchor, tileId) {
     const list = document.createElement('div');
-    list.className = 'reacoes-popover';
+    list.className = 'react-list';
     list.innerHTML = reactionBarButtonsHtml();
     // Itens do menu: o popover so navega (setas, Home/End) e poe o foco
     // inicial em [role^="menuitem"]. Sem o papel, o foco nao ia ao 1o emoji.
-    for (const botao of list.querySelectorAll('.tile-react-btn')) botao.setAttribute('role', 'menuitem');
+    for (const botao of list.querySelectorAll('.react-btn')) botao.setAttribute('role', 'menuitem');
     const controller = openPopover({ anchor, content: list });
     list.addEventListener('click', (event) => {
-      const button = event.target.closest('.tile-react-btn');
+      const button = event.target.closest('.react-btn');
       if (!button) return;
       emitReactionOp(tileId, button.dataset.emoji);
       controller.close();
@@ -1486,9 +1426,9 @@
   }
 
   function wireTileBar(tile, tileId) {
-    const bar = tile.querySelector('.tile-bar');
-    bar?.addEventListener('click', (event) => {
-      const button = event.target.closest('.tile-bar-btn');
+    const hud = tile.querySelector('.tile__hud');
+    hud?.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-acao]');
       if (!button) return;
       event.stopPropagation();
       switch (button.dataset.acao) {
@@ -1501,55 +1441,74 @@
         case 'volume':
           openTileMenu(tileId, button);
           break;
+        case 'espiar':
+          openSpyWindow(tileId);
+          break;
         case 'tela-cheia':
           toggleTileFullscreen(tile, tileId);
           break;
         case 'menu':
           openTileMenu(tileId, button);
           break;
+        case 'parar':
+          onWatchIntent?.(tileId, 'remove');
+          break;
         default:
           break;
       }
     });
+    // Um clique no HUD nao pode virar o duplo-clique de tela cheia.
+    hud?.addEventListener('dblclick', (event) => event.stopPropagation());
   }
 
-  // Botoes da barra do video (spec 4). Um conjunto de icones so, traco de
-  // 1,75 px; o nome acessivel mora no aria-label/title de cada botao.
-  const TILE_BAR_ICONE = (corpo) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
-    + ' stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-    + corpo + '</svg>';
-  const TILE_BAR_ACOES_HTML = [
-    ['reagir', 'Reagir', '<circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.3 2 3.5 2 3.5-2 3.5-2"/>'
-      + '<path d="M9 9.5h.01M15 9.5h.01"/>'],
-    ['rabiscar', 'Rabisco', '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'],
-    ['volume', 'Volume', '<path d="M11 5 6 9H2v6h4l5 4Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>'
-      + '<path d="M19 5a10 10 0 0 1 0 14"/>'],
-    ['tela-cheia', 'Tela cheia', '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>'
-      + '<path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'],
-    ['menu', 'Mais opções', '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/>'
-      + '<circle cx="19" cy="12" r="1"/>'],
-  ].map(([acao, nome, corpo]) => `<button class="tile-bar-btn" type="button" data-acao="${acao}"`
-    + ` title="${nome}" aria-label="${nome}">${TILE_BAR_ICONE(corpo)}</button>`).join('');
+  // Acoes do HUD (05 §3.3). As marcadas "extra" saem primeiro quando o tile
+  // fica estreito (container query em shell.css); "opcional" sai depois. As
+  // que somem continuam no menu ⋯ ou no duplo clique.
+  const TILE_HUD_ACOES = [
+    ['rabiscar', 'Rabiscar', 'pen-line', 'data-hud-extra'],
+    ['reagir', 'Reagir', 'smile-plus', 'data-hud-extra'],
+    ['espiar', 'Espiar numa janela por cima', 'picture-in-picture-2', 'data-hud-extra'],
+    ['volume', 'Volume', 'volume-2', ''],
+    ['tela-cheia', 'Tela cheia', 'maximize', 'data-hud-optional'],
+    ['menu', 'Mais opções', 'ellipsis', ''],
+    ['parar', 'Parar de assistir', 'x', 'hidden'],
+  ];
+  const TILE_HUD_HTML = `
+    <div class="tile__hud">
+      <div class="tile__who">
+        <span class="node" data-size="24"></span>
+        <span class="tile__label"><span class="tile__name"></span><span class="tile__what"></span></span>
+        <span class="tile__watchers"></span>
+      </div>
+      <div class="tile__actions">${TILE_HUD_ACOES.map(([acao, nome, icone, extra]) => `
+        <button class="btn btn--icon btn--sm" type="button" data-acao="${acao}" title="${nome}"
+                aria-label="${nome}" ${extra}><svg class="i i--sm"><use href="#i-${icone}" /></svg></button>`)
+    .join('')}
+      </div>
+    </div>`;
 
-  function ensureTileBar(tile, tileId) {
-    let bar = tile.querySelector('.tile-bar');
-    if (bar) return bar;
-    bar = document.createElement('div');
-    bar.className = 'tile-bar';
-    bar.innerHTML = `
-      <div class="tile-bar-titulo">
-        <span class="tally tile-bar-tipo"></span>
-        <span class="tile-bar-nome"></span>
-      </div>
-      <div class="tile-bar-dados">
-        <span class="tile-watchers is-empty"></span>
-        <span class="tile-health-chip hidden"></span>
-        <span class="tile-stall-note hidden" role="status"></span>
-      </div>
-      <div class="tile-bar-acoes">${TILE_BAR_ACOES_HTML}</div>`;
-    tile.insertBefore(bar, tile.firstChild);
-    wireTileBar(tile, tileId);
-    return bar;
+  /** Nome, o que transmite e o no da pessoa no HUD. Tela = no ao vivo;
+   * camera = no ao vivo com a marca de camera. */
+  function renderTileWho(tile, tileId, name, kind, avatar) {
+    const node = tile.querySelector('.tile__who .node');
+    const nameEl = tile.querySelector('.tile__name');
+    const whatEl = tile.querySelector('.tile__what');
+    if (!node || !nameEl) return;
+    const personId = String(tileId).replace(/^cam-/, '');
+    node.dataset.state = 'live';
+    node.style.setProperty('--who', avatarColorFor(personId));
+    node.innerHTML = avatarInnerHtml(personId, name, avatar);
+    if (kind === 'camera') {
+      node.insertAdjacentHTML('beforeend', '<span class="node__mark"><svg class="i"><use href="#i-video" /></svg></span>');
+    }
+    nameEl.textContent = name || 'Alguém';
+    whatEl.textContent = kind === 'camera' ? 'câmera' : '';
+  }
+
+  /** Mantem o nome da funcao antiga: renderWatchGate e o PiP chamam depois
+   * de mover o video de volta. O HUD agora nasce junto do tile. */
+  function ensureTileBar(tile) {
+    return tile.querySelector('.tile__hud');
   }
 
   /** Sobe um emoji sobre o tile e o remove sozinho quando a animacao
@@ -1559,10 +1518,10 @@
    * mesmo listener serve pros dois casos. */
   function spawnReactionPop(tileId, bubble) {
     const tile = document.getElementById(`tile-${tileId}`);
-    const host = tile?.querySelector('.tile-react-pops');
+    const host = tile?.querySelector('.tile__pops');
     if (!host) return;
     const el = document.createElement('span');
-    el.className = 'tile-react-pop';
+    el.className = 'react-pop';
     el.dataset.author = String(bubble.from);
     el.textContent = bubble.emoji;
     // Posicao horizontal aleatoria (dentro de uma faixa central) pra
@@ -1589,7 +1548,7 @@
   // ---- desenho ----
 
   function annotCanvasOf(tile) {
-    return tile?.querySelector('.tile-annot-canvas') || null;
+    return tile?.querySelector('.tile__canvas') || null;
   }
 
   function clearAnnotCanvas(tile) {
@@ -1729,14 +1688,14 @@
    * nao precisava de botao. */
   function syncAnnotBar(tileId) {
     const tile = document.getElementById(`tile-${tileId}`);
-    const bar = tile?.querySelector('.tile-annot-bar');
+    const bar = tile?.querySelector('.draw-bar');
     const surfaceId = annotSurfaceOf(tileId);
     if (!bar || !surfaceId) return;
     const info = annotSurfaces.get(tileId);
 
     if (!info.canDraw) {
       bar.innerHTML = info.canClearAll
-        ? `<button type="button" class="annot-tool warn wide" data-act="clear-all" title="Apagar tudo que a sala rabiscou na sua tela" aria-label="Apagar tudo que a sala rabiscou na sua tela">${ANNOT_TOOLS.clear}<em>Apagar tudo</em></button>`
+        ? `<button type="button" class="btn btn--danger btn--sm annot-tool" data-act="clear-all" title="Apagar tudo que a sala rabiscou na sua tela" aria-label="Apagar tudo que a sala rabiscou na sua tela">${ANNOT_TOOLS.clear}<span>Apagar tudo</span></button>`
         : '';
       return;
     }
@@ -1747,18 +1706,18 @@
     // removidas: a barra nao pode mudar de largura ao ligar e desligar.
     const travado = desenhando ? '' : ' disabled';
     bar.innerHTML = `
-      <button type="button" class="annot-tool annot-toggle${desenhando ? ' active' : ''}" data-act="toggle"
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool annot-toggle${desenhando ? ' active' : ''}" data-act="toggle"
               aria-pressed="${desenhando}"
               title="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}"
               aria-label="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}">${ANNOT_TOOLS.penOff}${ANNOT_TOOLS.penOn}</button>
-      <span class="annot-sep"></span>
-      <button type="button" class="annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta" aria-label="Caneta"${travado}>${ANNOT_TOOLS.pen}</button>
-      <button type="button" class="annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever" aria-label="Escrever"${travado}>${ANNOT_TOOLS.text}</button>
-      <button type="button" class="annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="Laser" aria-label="Laser"${travado}>${ANNOT_TOOLS.laser}</button>
-      <span class="annot-sep"></span>
-      <button type="button" class="annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
-      <button type="button" class="annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
-      <span class="annot-sep"></span>
+      <span class="draw-bar__sep" aria-hidden="true"></span>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta" aria-label="Caneta"${travado}>${ANNOT_TOOLS.pen}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever" aria-label="Escrever"${travado}>${ANNOT_TOOLS.text}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="Laser" aria-label="Laser"${travado}>${ANNOT_TOOLS.laser}</button>
+      <span class="draw-bar__sep" aria-hidden="true"></span>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
+      <span class="draw-bar__sep" aria-hidden="true"></span>
       <input type="color" class="annot-ink" data-act="ink" value="${brushColor()}"
              title="Cor do seu pincel" aria-label="Cor do seu pincel"${travado}>`;
 
@@ -1774,7 +1733,7 @@
    * ouvir no container e o que evita religar listener a cada render). */
   function wireTileAnnotations(tile, tileId) {
     const canvas = annotCanvasOf(tile);
-    const bar = tile.querySelector('.tile-annot-bar');
+    const bar = tile.querySelector('.draw-bar');
 
     // O seletor de cor e um <input>, nao um <button>: ouve 'input' (dispara
     // a cada arrasto dentro do seletor nativo), e de proposito NAO chama
@@ -2404,7 +2363,9 @@
   // ACONTECENDO -- e neste tema cor saturada quer dizer uma coisa so:
   // alguem esta ao vivo. Continua dando pra distinguir as pessoas de
   // relance, sem competir com o unico sinal que importa.
-  const AVATAR_PALETTE = ['#3a4152', '#453c4e', '#4a3f39', '#38474a', '#444a38', '#4c3a41'];
+  // Cores de identidade (--who): claras sobre a tinta, nenhuma vermelha --
+  // vermelho e so ao vivo. Pintam anel e inicial do no, nunca fundo de texto.
+  const AVATAR_PALETTE = ['#7CC4FF', '#C7A2FF', '#FFD166', '#6EE7B7', '#F9A8D4', '#67E8F9', '#FDBA74', '#D9DCE6'];
 
   function avatarColorFor(id) {
     const str = String(id);
@@ -2419,25 +2380,9 @@
     const initial = escapeHtml((name || '?').trim().charAt(0).toUpperCase() || '?');
     return avatar
       ? `<img src="${escapeHtml(avatar)}" alt="" />`
-      : `<span class="peer-avatar-fallback" style="background:${avatarColorFor(id)}">${initial}</span>`;
+      : `<span class="node__initial">${initial}</span>`;
   }
 
-  const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
-  const CAMERA_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
-  const PAUSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`;
-
-  // Badge no canto do tile indicando se aquele stream e tela compartilhada
-  // ou camera -- necessario pra diferenciar quando o mesmo peer compartilha
-  // as duas coisas ao mesmo tempo (ver ids `cam-<peerId>` vs `<peerId>` em
-  // app.js).
-  // Retorna so o <svg>: o elemento `.tile-kind-badge` ja existe no tile e este
-  // html vai pra dentro dele (envolver num segundo span aninhava dois badges
-  // absolutos, deixando a bolinha de fora vazia e o icone deslocado).
-  function tileKindIcon(kind) {
-    if (kind === 'camera') return CAMERA_ICON;
-    if (kind === 'screen') return SHARE_ICON;
-    return '';
-  }
 
   // ---------- Lobby: lista de salas ----------
 
@@ -2757,6 +2702,27 @@
   const peerListEl = $('peer-list');
   const memberMenuEl = $('member-menu');
   let memberPopover = null;
+  const presenceButtonEl = $('btn-room-presence');
+  const presencePopEl = $('presence-pop');
+
+  presenceButtonEl?.addEventListener('click', () => {
+    const open = presencePopEl.classList.contains('hidden');
+    presencePopEl.classList.toggle('hidden', !open);
+    presenceButtonEl.setAttribute('aria-expanded', String(open));
+    if (open) peerListEl.querySelector('[tabindex="0"]')?.focus();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (presencePopEl.classList.contains('hidden')) return;
+    if (event.target.closest?.('#presence-pop, #btn-room-presence, #member-menu')) return;
+    presencePopEl.classList.add('hidden');
+    presenceButtonEl.setAttribute('aria-expanded', 'false');
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || presencePopEl.classList.contains('hidden')) return;
+    presencePopEl.classList.add('hidden');
+    presenceButtonEl.setAttribute('aria-expanded', 'false');
+    presenceButtonEl.focus({ preventScroll: true });
+  });
 
   // O mesmo id tambem ancora o menu de temas salvo; preserva o fechamento dele.
   function closeMemberMenu() {
@@ -2875,31 +2841,42 @@
     // abre um menu vazio e pior do que botao nenhum.
     const showMenu = !isSelf && (canModerate || canAdd);
     const li = document.createElement('li');
-    if (isSelf) li.classList.add('self');
-    li.classList.add('presenca');
+    if (isSelf) li.dataset.self = '';
+    li.classList.add('person');
     li.tabIndex = 0;
+    const pausado = tilePaused.get(id)?.paused;
+    const noEstado = live ? (pausado ? 'paused' : 'live') : 'present';
+    const coroa = isOwner
+      ? '<svg class="node__crown" viewBox="0 0 12 7" aria-hidden="true"><path d="M1 6 2 1l2.5 2L6 0l1.5 3L10 1l1 5z" fill="currentColor" /></svg>'
+      : '';
+    const extras = [qualityTag, strugglingTag ? 'travando' : ''].filter(Boolean).join(' · ');
+    const linhaEstado = [estado, extras].filter(Boolean).join(' · ');
+    const menuHtml = showMenu
+      ? `<button class="btn btn--quiet btn--icon btn--sm member-menu-btn" type="button"
+           aria-label="Opções de ${escapeHtml(name)}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>`
+      : '';
+    const estadoHtml = linhaEstado
+      ? `<span class="person__state${strugglingTag ? ' tx-warn' : ''}">${escapeHtml(linhaEstado)}</span>`
+      : '';
     li.innerHTML = `
-      <span class="presenca-avatar peer-avatar-wrap" title="${escapeHtml(name)}">
-        <span class="peer-avatar${live ? ' on' : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
+      <span class="node" data-size="24" data-state="${noEstado}" style="--who:${avatarColorFor(String(id))}"
+            title="${isOwner ? 'Líder da sala' : ''}">${avatarInnerHtml(String(id), name, avatar)}${coroa}</span>
+      <span class="person__text">
+        <span class="person__name" title="${escapeHtml(name)}">${escapeHtml(name)}${isSelf ? ' <span class="tx-3">(você)</span>' : ''}</span>
+        ${estadoHtml}
       </span>
-      <span class="presenca-nome peer-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-      ${estado ? `<span class="presenca-estado">${escapeHtml(estado)}</span>` : ''}
-      ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
-      ${isOwner ? '<span class="peer-crown" title="Líder da sala" role="img" aria-label="Líder da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
-      ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
-      ${strugglingTag ? '<span class="member-health-tag">travando</span>' : ''}
-      ${showMenu ? `<button class="member-menu-btn" type="button" aria-label="Opções de ${escapeHtml(name)}">⋮</button>` : ''}
+      <span class="person__actions">${menuHtml}</span>
     `;
     if (live && !watched) {
       const assistir = document.createElement('button');
       assistir.type = 'button';
-      assistir.className = 'presenca-assistir';
+      assistir.className = 'btn btn--quiet btn--sm';
       assistir.textContent = 'Assistir';
       assistir.addEventListener('click', (event) => {
         event.stopPropagation();
         onWatch?.(id, event.shiftKey && canAdd ? 'add' : 'only');
       });
-      li.insertBefore(assistir, li.querySelector('.member-menu-btn'));
+      li.querySelector('.person__actions').prepend(assistir);
     }
     const focar = () => {
       const tela = document.getElementById(`tile-${id}`);
@@ -2965,11 +2942,24 @@
     const pessoas = [];
     if (self) pessoas.push({ ...self, id: 'me', isSelf: true });
     for (const peer of peers.values()) pessoas.push({ ...peer, isSelf: false });
+    const presenceCount = pessoas.length;
+    const presenceNodes = $('presence-nodes');
+    if (presenceNodes) {
+      presenceNodes.innerHTML = pessoas.slice(0, 5).map((pessoa) => {
+        const mesa = mesaPeople?.has(String(pessoa.id));
+        const state = root.GoLive.roomUi?.estadoPessoa({ live: pessoa.live, mesa }) || 'present';
+        return `<span class="node" data-size="16" data-state="${state}"></span>`;
+      }).join('');
+    }
+    $('presence-count').textContent = String(presenceCount);
+    renderBus(pessoas);
+    renderMeNode(self);
+    $('btn-room-presence')?.setAttribute('aria-label', `Pessoas na sala: ${presenceCount}`);
     const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas);
     for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], ['NA SALA', secoes.naSala]]) {
       if (!lista.length) continue;
       const secao = document.createElement('li');
-      secao.className = 'presencas-secao rotulo-mono';
+      secao.className = 'menu__label';
       secao.textContent = titulo;
       peerListEl.appendChild(secao);
       for (const pessoa of lista) {
@@ -2990,6 +2980,130 @@
         }));
       }
     }
+  }
+
+  // ---------- Barramento: fontes ao vivo (05 §3.2) ----------
+  //
+  // Tudo o que se pode assistir e uma fonte: a tela e a camera de cada pessoa
+  // ao vivo. A Mesa e a sua propria fonte sao marcacao fixa do index.html; aqui
+  // so as fontes das outras pessoas, redesenhadas junto com a presenca.
+  const busLiveEl = $('bus-live');
+  const busSourcesEl = $('bus-sources');
+  const tileHealth = new Map(); // tileId -> nivel de recepcao ('ok' | 'atencao' | 'ruim')
+
+  function fontesDoBarramento(pessoas) {
+    const fontes = [];
+    for (const pessoa of pessoas) {
+      if (pessoa.isSelf) continue;
+      if (pessoa.live) fontes.push({ tileId: String(pessoa.id), kind: 'screen', pessoa });
+    }
+    for (const pessoa of pessoas) {
+      if (pessoa.isSelf) continue;
+      if (pessoa.cameraOn || tileRegistry.has(`cam-${pessoa.id}`)) {
+        fontes.push({ tileId: `cam-${pessoa.id}`, kind: 'camera', pessoa });
+      }
+    }
+    return fontes;
+  }
+
+  function fonteHtml({ tileId, kind, pessoa }) {
+    const watched = tileWatch.get(tileId)?.watched !== false && tileRegistry.has(tileId);
+    const paused = Boolean(tilePaused.get(tileId)?.paused);
+    const poor = ['atencao', 'ruim'].includes(tileHealth.get(tileId));
+    const nome = pessoa.name || 'Alguém';
+    const sub = paused ? 'Pausada' : (kind === 'camera' ? 'Câmera' : (tileRegistry.has(tileId) ? 'Tela' : 'Conectando…'));
+    const quem = (tileWatchers.get(tileId) || []).slice(0, 4)
+      .map((w) => `<span class="node" data-size="16" data-state="watching" title="${escapeHtml(w.name || '')}"></span>`)
+      .join('');
+    const podeJunto = kind === 'screen' && !watched && tileWatch.get(tileId)?.opts?.canAdd;
+    const podeLargar = watched && (kind === 'camera' || tileWatch.get(tileId)?.opts?.canDrop);
+    const estado = [paused ? 'pausada' : 'ao vivo', watched ? 'você está assistindo' : ''].filter(Boolean).join(', ');
+    return `
+      <div class="src" role="option" tabindex="-1" data-tile="${escapeHtml(tileId)}" data-kind="${kind}"
+           aria-selected="${watched}" aria-label="${escapeHtml(`${nome}, ${sub}: ${estado}`)}"
+           ${watched ? 'data-watching' : ''} ${paused ? 'data-paused' : ''} ${poor ? 'data-poor' : ''}>
+        <span class="node" data-size="32" data-state="${paused ? 'paused' : 'live'}"
+              style="--who:${avatarColorFor(String(pessoa.id))}">${avatarInnerHtml(String(pessoa.id), nome, pessoa.avatar)}${
+  kind === 'camera' ? '<span class="node__mark"><svg class="i"><use href="#i-video" /></svg></span>' : ''}</span>
+        <span class="src__text"><span class="src__name">${escapeHtml(nome)}</span><span class="src__sub">${sub}</span></span>
+        <span class="cluster__nodes" aria-hidden="true">${quem}</span>
+        ${podeJunto ? `<button class="btn btn--quiet btn--icon btn--sm src__add" type="button" tabindex="-1"
+          data-intent="add" aria-label="Ver ${escapeHtml(nome)} junto" title="Ver junto"><svg class="i i--sm"><use href="#i-plus" /></svg></button>` : ''}
+        ${podeLargar ? `<button class="btn btn--quiet btn--icon btn--sm src__drop" type="button" tabindex="-1"
+          data-intent="remove" aria-label="Parar de assistir ${escapeHtml(nome)}" title="Parar de assistir"><svg class="i i--sm"><use href="#i-x" /></svg></button>` : ''}
+      </div>`;
+  }
+
+  function renderBus(pessoas) {
+    if (!busLiveEl) return;
+    const focado = document.activeElement?.closest?.('#bus-live .src')?.dataset.tile;
+    busLiveEl.innerHTML = fontesDoBarramento(pessoas).map(fonteHtml).join('');
+    const opcoes = [...busSourcesEl.querySelectorAll('[role="option"]')];
+    // Roving tabindex: a lista e um ponto so de Tab; setas andam dentro dela.
+    const alvo = opcoes.find((o) => o.dataset.tile === focado)
+      || opcoes.find((o) => o.hasAttribute('data-watching')) || opcoes[0];
+    for (const o of opcoes) o.tabIndex = o === alvo ? 0 : -1;
+    if (focado && alvo?.dataset.tile === focado) alvo.focus({ preventScroll: true });
+  }
+
+  /** Clique = assistir so esta; Ctrl+clique = somar; o × larga. Estando na
+   * Mesa, escolher uma fonte de video volta para a Transmissao. */
+  function escolherFonte(tileId, intent) {
+    const vista = root.GoLive.salaVista;
+    if (intent !== 'remove' && vista?.isMesa()) vista.setRoomView('tx');
+    onWatchIntent?.(tileId, intent);
+  }
+
+  busLiveEl?.addEventListener('click', (event) => {
+    const src = event.target.closest('.src');
+    if (!src) return;
+    const botao = event.target.closest('button[data-intent]');
+    escolherFonte(src.dataset.tile, botao ? botao.dataset.intent : (event.ctrlKey ? 'add' : 'only'));
+  });
+  busLiveEl?.addEventListener('contextmenu', (event) => {
+    const src = event.target.closest('.src');
+    if (!src) return;
+    event.preventDefault();
+    openTileMenu(src.dataset.tile, event.clientX, event.clientY);
+  });
+  busSourcesEl?.addEventListener('keydown', (event) => {
+    const atual = event.target.closest('[role="option"]');
+    if (!atual) return;
+    const opcoes = [...busSourcesEl.querySelectorAll('[role="option"]')];
+    const i = opcoes.indexOf(atual);
+    let proximo = null;
+    if (event.key === 'ArrowRight') proximo = opcoes[Math.min(opcoes.length - 1, i + 1)];
+    else if (event.key === 'ArrowLeft') proximo = opcoes[Math.max(0, i - 1)];
+    else if (event.key === 'Home') proximo = opcoes[0];
+    else if (event.key === 'End') proximo = opcoes[opcoes.length - 1];
+    if (proximo) {
+      event.preventDefault();
+      for (const o of opcoes) o.tabIndex = o === proximo ? 0 : -1;
+      proximo.focus();
+      proximo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      return;
+    }
+    const tileId = atual.dataset.tile;
+    if (!tileId) return; // a Mesa trata o proprio Enter (app.js)
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      escolherFonte(tileId, event.ctrlKey ? 'add' : 'only');
+    } else if (event.key === 'Delete') {
+      event.preventDefault();
+      escolherFonte(tileId, 'remove');
+    } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      event.preventDefault();
+      const caixa = atual.getBoundingClientRect();
+      openTileMenu(tileId, caixa.left, caixa.top);
+    }
+  });
+
+  /** O no da sua fonte: inicial e cor de voce. */
+  function renderMeNode(self) {
+    const node = $('me-node');
+    if (!node || !self) return;
+    node.style.setProperty('--who', avatarColorFor('me'));
+    node.innerHTML = avatarInnerHtml('me', self.name, self.avatar);
   }
 
   /** Estado curto da linha de presenca, na ordem de prioridade da spec 3.1.
@@ -3052,6 +3166,10 @@
     unban: (actor, target) => `${actor} readmitiu ${target}`,
   };
   const SYSTEM_TONE = { 'stop-share': 'warn', kick: 'danger', ban: 'danger' };
+  // Icone da linha de evento: entrar, sair e moderacao.
+  const SYSTEM_ICON = {
+    join: 'chevron-right', leave: 'log-out', 'stop-share': 'square', kick: 'triangle-alert', ban: 'lock', unban: 'check',
+  };
 
   function formatTime(ts) {
     return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -3080,7 +3198,7 @@
     if (key === lastChatDayKey) return;
     lastChatDayKey = key;
     const div = document.createElement('div');
-    div.className = 'chat-day';
+    div.className = 'msg-day';
     div.textContent = dayLabel(ts);
     chatMessagesEl.appendChild(div);
     lastChatEntry = null;
@@ -3089,10 +3207,10 @@
   function appendSystemLine(entry) {
     const div = document.createElement('div');
     const tone = SYSTEM_TONE[entry.event] || '';
-    div.className = `chat-sys${tone ? ` ${tone}` : ''}`;
+    div.className = `msg-sys${tone ? ` msg-sys--${tone}` : ''}`;
     const label = SYSTEM_LABELS[entry.event]?.(entry.actor, entry.target) || entry.event;
-    const hora = entry.ts ? `<span class="chat-sys-time">${formatTime(entry.ts)}</span>` : '';
-    div.innerHTML = `<span aria-hidden="true">›</span><span>${escapeHtml(label)}</span>${hora}`;
+    const hora = entry.ts ? `<span class="msg__time">${formatTime(entry.ts)}</span>` : '';
+    div.innerHTML = `<svg class="i" aria-hidden="true"><use href="#i-${SYSTEM_ICON[entry.event] || 'info'}" /></svg><span>${escapeHtml(label)}</span>${hora}`;
     chatMessagesEl.appendChild(div);
     lastChatEntry = null;
   }
@@ -3107,10 +3225,10 @@
     if (!chatmedia.isImageDataUrl(entry.image)) return '';
     const box = chatmedia.thumbBox(entry.w, entry.h);
     const dims = box ? ` style="width:${box.w}px;height:${box.h}px"` : '';
-    return `<button class="chat-image" type="button" title="Ver em tela cheia"${dims}><img src="${escapeHtml(entry.image)}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
+    return `<button class="msg__img" type="button" title="Ver em tela cheia"${dims}><img src="${escapeHtml(entry.image)}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
   }
 
-  const PUT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M12 8v6M9 11h6"/></svg>';
+  const PUT_ICON = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>';
 
   /** Os botoes "Pôr na mesa" de uma linha do chat: um por link do YouTube
    * (no maximo 3) e um para a imagem (so com id, que e o que a janela
@@ -3120,11 +3238,11 @@
     const L = root.GoLive.mesaMidiaLinks;
     const lib = root.GoLive.chatImagensLib;
     const links = lib && L ? lib.youtubeLinks(entry.text, L.parseYouTube) : [];
-    const out = links.map((l, i) => `<button type="button" class="chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na mesa"${links.length > 1 ? ` aria-label="Pôr na mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
+    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na mesa"${links.length > 1 ? ` aria-label="Pôr na mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
     if (chatmedia.isImageDataUrl(entry.image) && lib?.isMsgId(entry.id)) {
-      out.push(`<button type="button" class="chat-put" data-put="imagem" title="Pôr esta imagem na mesa">${PUT_ICON}<span>Pôr na mesa</span></button>`);
+      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="Pôr esta imagem na mesa">${PUT_ICON}<span>Pôr na mesa</span></button>`);
     }
-    return out.length ? `<span class="chat-put-row">${out.join('')}</span>` : '';
+    return out.length ? `<span class="msg__put">${out.join('')}</span>` : '';
   }
 
   function wireChatPut(div, entry) {
@@ -3147,19 +3265,19 @@
     const grouped = chatGrouping.deveAgrupar(lastChatEntry, entry);
     lastChatEntry = entry;
     const div = document.createElement('div');
-    div.className = `chat-line${grouped ? ' grouped' : ''}`;
+    // Primeira do grupo leva o no (so identidade: cor da pessoa, sem estado),
+    // nome e hora; as seguintes do mesmo autor em 5 min so o texto.
+    div.className = `msg${grouped ? ' msg--cont' : ''}`;
+    const cor = avatarColorFor(String(entry.from));
     div.innerHTML = `
-      <span class="chat-avatar-slot">${grouped
-        ? `<span class="chat-grouped-time">${formatTime(entry.ts)}</span>`
-        : `<span class="chat-avatar" style="background:${avatarColorFor(entry.from)}">${avatarInnerHtml(entry.from, entry.name, entry.avatar || null)}</span>`}</span>
-      <span class="chat-body">
-        ${grouped ? '' : `<span class="chat-head"><span class="chat-author">${escapeHtml(entry.name)}</span><span class="chat-time">${formatTime(entry.ts)}</span></span>`}
-        ${entry.text ? `<span class="chat-text">${escapeHtml(entry.text)}</span>` : ''}
-        ${chatImageHtml(entry)}
-        ${chatPutHtml(entry)}
-      </span>
-    `;
-    const imgBtn = div.querySelector('.chat-image');
+      ${grouped
+    ? `<span class="msg__gutter" aria-hidden="true">${formatTime(entry.ts)}</span>`
+    : `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>
+      <span class="msg__head"><span class="msg__author" style="color:${cor}">${escapeHtml(entry.name)}</span><span class="msg__time">${formatTime(entry.ts)}</span></span>`}
+      ${entry.text ? `<p class="msg__body">${escapeHtml(entry.text)}</p>` : ''}
+      ${chatImageHtml(entry)}
+      ${chatPutHtml(entry)}`;
+    const imgBtn = div.querySelector('.msg__img');
     if (imgBtn) imgBtn.addEventListener('click', () => openImageLightbox(entry.image));
     wireChatPut(div, entry);
     chatMessagesEl.appendChild(div);
@@ -3507,6 +3625,7 @@
   function setStageHeader({ name, address, pin }) {
     $('stage-header').classList.remove('hidden');
     $('stage-room-name').textContent = name;
+    $('room-screen-title').textContent = name;
     $('stage-room-address').textContent = address || '';
     const pinEl = $('stage-room-pin');
     if (pin) {
@@ -3523,6 +3642,9 @@
     // entre as duas (ver a spec, secao 5). clearStageHeader faz o inverso.
     lobbyViewEl.classList.add('hidden');
     roomViewEl.classList.remove('hidden');
+    $('app').dataset.place = 'room';
+    document.querySelector('.head__group--room')?.removeAttribute('hidden');
+    document.querySelector('.head__room-actions')?.removeAttribute('hidden');
     renderEmptyGrid();
   }
 
@@ -3531,16 +3653,21 @@
    * abriu a tela com o palpite otimista de setStageHeader. */
   function setStageHeaderName(name) {
     $('stage-room-name').textContent = name;
+    $('room-screen-title').textContent = name;
   }
 
   function clearStageHeader() {
     $('stage-header').classList.add('hidden');
     $('stage-room-name').textContent = '';
+    $('room-screen-title').textContent = '';
     $('stage-room-address').textContent = '';
     $('stage-room-pin').classList.add('hidden');
     $('stage-status-badge').classList.add('hidden');
     roomViewEl.classList.add('hidden');
     lobbyViewEl.classList.remove('hidden');
+    $('app').dataset.place = 'lobby';
+    document.querySelector('.head__group--room')?.setAttribute('hidden', '');
+    document.querySelector('.head__room-actions')?.setAttribute('hidden', '');
     // A sala saiu da tela: a vista Mesa (se aberta) desmonta junto.
     document.dispatchEvent(new CustomEvent('golive:room-hidden'));
   }
@@ -4953,7 +5080,7 @@
     pause: 'btn-pause-share',
   };
   const TOGGLE_LABELS = {
-    share: { off: 'Compartilhar tela', on: 'Parar de compartilhar' },
+    share: { off: 'Transmitir tela', on: 'Parar de transmitir' },
     camera: { off: 'Câmera', loading: 'Abrindo…', on: 'Desligar câmera' },
     pause: { off: 'Pausar', on: 'Retomar' },
   };
@@ -4987,6 +5114,14 @@
     btn.disabled = state === 'loading';
     if (state === 'loading') btn.setAttribute('aria-busy', 'true');
     else btn.removeAttribute('aria-busy');
+    // A sua fonte no barramento acompanha a pausa: no tracejado e 'Pausada'.
+    if (id === 'pause') {
+      const node = $('me-node');
+      if (node) node.dataset.state = state === 'on' ? 'paused' : 'live';
+      $('me-source-sub')?.classList.toggle('tx-live', state === 'on');
+      if (state === 'on') $('me-source-sub').textContent = 'Pausada';
+      else if ($('me-source-sub')?.textContent === 'Pausada') $('me-source-sub').textContent = 'ao vivo';
+    }
   }
 
   root.GoLive = root.GoLive || {};
