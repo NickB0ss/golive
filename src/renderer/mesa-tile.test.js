@@ -19,6 +19,12 @@ test('arrastar a janela de video so comeca na barra', () => {
   assert.match(vista, /e\.target\.closest\('\.mesa-bar-btn, \.mesa-resize'\)/, 'os botoes ficam livres');
 });
 
+test('a moldura da janela usa os componentes Sinal para vez e identidade', () => {
+  assert.match(vista, /class="mesa-bar-turn tag tag--wire"/);
+  assert.match(vista, /class="mesa-avatar node"/);
+  assert.match(vista, /data-size="16"/);
+});
+
 test('o menu da janela de video oferece o volume do tile', () => {
   assert.match(vista, /Volume e silenciar/);
   assert.match(vista, /deps\.openTileMenu\(/);

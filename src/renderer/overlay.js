@@ -74,10 +74,9 @@
     ctx.lineJoin = 'round';
     ctx.textBaseline = 'top';
     for (const item of store.items(surfaceId)) {
-      // colorOf, nao colorFor: desde 2026-09-05 quem desenha pode escolher
-      // a cor, e ela viaja no item. Sem cor escolhida (ou com uma que nao
-      // passou na validacao) cai na cor de quem desenhou, como antes.
-      const cor = annotate.colorOf(item);
+      // A sobreposicao e linguagem de presenca: todo traco conserva a cor de
+      // quem o enviou, igual ao laser e as reacoes.
+      const cor = annotate.colorFor(item.from);
       if (item.kind === 'stroke') {
         ctx.strokeStyle = cor;
         ctx.lineWidth = item.width;

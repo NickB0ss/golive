@@ -1,9 +1,15 @@
 'use strict';
 
 const video = document.getElementById('video');
-const state = document.getElementById('state');
 const tileName = document.getElementById('tile-name');
 let tileId = null;
+let controlsTimer = 0;
+
+function showControls() {
+  document.body.classList.add('spy-controls');
+  window.clearTimeout(controlsTimer);
+  controlsTimer = window.setTimeout(() => document.body.classList.remove('spy-controls'), 1800);
+}
 
 /** Aplica as cores do tema da janela principal (ver espiar.js). */
 function setTheme(vars) {
@@ -22,9 +28,9 @@ window.GoLiveSpy = {
     video.play().catch(() => {});
   },
   setTheme,
-  setPaused(paused, opts) {
-    state.textContent = paused ? (opts?.title || 'Transmissão pausada') : '';
-    state.classList.toggle('visible', Boolean(paused));
+  setPaused() {
+    // A janela Espiar e so a imagem: a pausa fica no tile original, sem HUD
+    // sobre o video da janela auxiliar.
   },
 };
 
@@ -38,4 +44,7 @@ try {
 }
 
 document.getElementById('close').addEventListener('click', () => window.close());
+document.addEventListener('pointermove', showControls, { passive: true });
+document.addEventListener('pointerdown', showControls, { passive: true });
+document.addEventListener('focusin', showControls);
 window.addEventListener('pagehide', () => window.opener?.GoLive?.__espiarClosed?.(tileId));

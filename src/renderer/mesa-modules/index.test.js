@@ -138,14 +138,14 @@ test('o registro e o mesmo pelo renderer (GoLive.mesaRegistry)', () => {
 test('size do registro e o retangulo externo: conteudo + barra', () => {
   const r = registry.checkModule(modulo());
   assert.equal(r.ok, true);
-  assert.equal(registry.BAR_H, 36);
+  assert.equal(registry.BAR_H, 32);
   assert.deepEqual(
     { ...r.module.content },
     { w: 200, h: 100, minW: 100, minH: 50, aspect: null },
   );
   assert.deepEqual(
     { ...r.module.size },
-    { w: 200, h: 136, minW: 100, minH: 86, aspect: null, chromeH: 36 },
+    { w: 200, h: 132, minW: 100, minH: 82, aspect: null, chromeH: 32 },
   );
 });
 

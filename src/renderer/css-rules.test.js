@@ -6,8 +6,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DIR = path.join(__dirname, 'sinal');
-const FILES = ['tokens.css', 'themes.css', 'base.css', 'components.css', 'shell.css'];
+const FILES = ['tokens.css', 'themes.css', 'base.css', 'components.css', 'shell.css', 'mesa.css'];
 const cssByFile = new Map(FILES.map((file) => [file, fs.readFileSync(path.join(DIR, file), 'utf8')]));
+const mesaJanelas = fs.readFileSync(path.join(__dirname, 'mesa-janelas.css'), 'utf8');
 
 test('as fontes Sinal apontam para arquivos locais existentes', () => {
   const fonts = [...cssByFile.get('tokens.css').matchAll(/@font-face\s*\{([\s\S]*?)\}/g)];
@@ -24,7 +25,7 @@ test('hidden vence os displays dos componentes', () => {
 });
 
 test('folhas Sinal nao usam cores literais fora dos arquivos de tema', () => {
-  for (const file of ['base.css', 'components.css', 'shell.css']) {
+  for (const file of ['base.css', 'components.css', 'shell.css', 'mesa.css']) {
     const source = cssByFile.get(file).replace(/\/\*[\s\S]*?\*\//g, '');
     assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i, `${file} contem cor literal`);
   }
@@ -44,7 +45,7 @@ test('important fica restrito a hidden e movimento reduzido', () => {
 });
 
 test('live so marca estados ao vivo e a marca', () => {
-  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand)/;
+  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand|\.mesa-map > i\.is-live)/;
   for (const source of cssByFile.values()) {
     for (const match of source.matchAll(/([^{}]+)\{[^{}]*var\(--live\)[^{}]*\}/g)) {
       assert.match(match[1], allowed, `uso indevido de --live em ${match[1].trim()}`);
@@ -59,6 +60,16 @@ test('z-index usa apenas a escala de tokens', () => {
       assert.match(match[1], /^(?:var\(--z-[\w-]+\)|calc\(var\(--z-[\w-]+\)[^)]+\))\s*$/,
         `${file}: z-index fora da escala: ${match[1]}`);
     }
+  }
+});
+
+test('conteudos da Mesa tambem so usam tokens de cor, fonte e profundidade', () => {
+  const source = mesaJanelas.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i);
+  assert.doesNotMatch(source, /var\(--live\)/);
+  assert.doesNotMatch(source, /(?:font|font-size)\s*:[^;}]*\b\d+(?:px|rem)\b/);
+  for (const match of source.matchAll(/z-index\s*:\s*([^;}]*)/g)) {
+    assert.match(match[1], /^var\(--z-[\w-]+\)\s*$/, `mesa-janelas.css: z-index fora da escala: ${match[1]}`);
   }
 });
 

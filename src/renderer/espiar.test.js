@@ -115,6 +115,17 @@ test('espiar.html abre com o tema GoLive e usa cada cor do tema', () => {
   assert.ok(lib > -1 && lib < html.indexOf('src="espiar-page.js"'), 'espiar.js precisa carregar antes de espiar-page.js');
 });
 
+test('Espiar deixa apenas o video e revela a faixa de identidade com o mouse', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'espiar.html'), 'utf8');
+  const page = fs.readFileSync(path.join(__dirname, 'espiar-page.js'), 'utf8');
+  assert.match(html, /<video id="video"/);
+  assert.match(html, /class="spy-node"/);
+  assert.match(html, /body\.spy-controls \.tile-bar/);
+  assert.doesNotMatch(html, /id="state"/);
+  assert.match(page, /function showControls\(\)/);
+  assert.match(page, /pointermove/);
+});
+
 test('espiar recusa fonte com parenteses, barra ou aspas duplas', () => {
   assert.deepEqual(sanitizeSpyTheme({
     '--font-body': "'Instrument Sans', system-ui",

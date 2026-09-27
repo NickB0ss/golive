@@ -95,16 +95,16 @@ test('uma transformacao so para a mesa inteira', () => {
   assert.equal(v.transformFor({ x: 100, y: 50, z: 0.5 }), 'translate3d(-50px, -25px, 0) scale(0.5)');
 });
 
-test('grade: forte a cada 200 e fina a cada 40; a fina some com zoom baixo', () => {
+test('grade: pontos a cada 48 unidades do mundo, escalados e alinhados a vista', () => {
   const perto = v.gridStyle({ x: 0, y: 0, z: 1 });
   assert.equal(perto.showMinor, true);
-  assert.equal(perto.backgroundSize, '200px 200px, 200px 200px, 40px 40px, 40px 40px');
-  assert.match(perto.backgroundImage, /var\(--grid2\).*var\(--grid\)/);
+  assert.equal(perto.backgroundSize, '48px 48px');
+  assert.match(perto.backgroundImage, /radial-gradient.*var\(--grid\)/);
   const longe = v.gridStyle({ x: 0, y: 0, z: 0.3 });
-  assert.equal(longe.showMinor, false, '40 x 0,3 = 12 px: chuvisco');
-  assert.equal(longe.backgroundSize, '60px 60px, 60px 60px');
+  assert.equal(longe.showMinor, true);
+  assert.equal(longe.backgroundSize, '14.4px 14.4px');
   // Alinhada ao mundo: a posicao acompanha a vista.
-  assert.equal(v.gridStyle({ x: 10, y: 20, z: 2 }).backgroundPosition.split(', ')[0], '-20px -40px');
+  assert.equal(v.gridStyle({ x: 10, y: 20, z: 2 }).backgroundPosition, '-20px -40px');
 });
 
 test('mapa: escala do mundo e clique levado de volta ao mundo', () => {
@@ -233,18 +233,18 @@ test('fitRect com safe cabe dentro da area segura', () => {
 
 test('resizeRect com chromeH: a proporcao vale so para o corpo', () => {
   const orig = { x: 0, y: 0, w: 640, h: 396 };
-  const opts = { aspect: 16 / 9, minW: 160, minH: 126, chromeH: 36 };
-  assert.deepEqual(v.resizeRect(orig, 'r', 160, 0, opts), { x: 0, y: 0, w: 800, h: 486 });
-  assert.deepEqual(v.resizeRect(orig, 'b', 0, 90, opts), { x: 0, y: 0, w: 800, h: 486 });
+  const opts = { aspect: 16 / 9, minW: 160, minH: 122, chromeH: 32 };
+  assert.deepEqual(v.resizeRect(orig, 'r', 160, 0, opts), { x: 0, y: 0, w: 800, h: 482 });
+  assert.deepEqual(v.resizeRect(orig, 'b', 0, 90, opts), { x: 0, y: 0, w: 807, h: 486 });
   const min = v.resizeRect(orig, 'br', -9999, -9999, opts);
-  assert.deepEqual({ w: min.w, h: min.h }, { w: 160, h: 126 });
+  assert.deepEqual({ w: min.w, h: min.h }, { w: 160, h: 122 });
 });
 
 test('keyRect repassa chromeH', () => {
   const r = v.keyRect(
     { x: 0, y: 0, w: 640, h: 396 },
     'ArrowRight',
-    { alt: true, aspect: 16 / 9, chromeH: 36 },
+    { alt: true, aspect: 16 / 9, chromeH: 32 },
   );
-  assert.deepEqual(r, { x: 0, y: 0, w: 650, h: 402 });
+  assert.deepEqual(r, { x: 0, y: 0, w: 650, h: 398 });
 });

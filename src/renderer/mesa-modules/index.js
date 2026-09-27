@@ -52,7 +52,7 @@
   const MAX_STATE_BYTES_CAP = 16 * 1024;
   const MIN_STATE_BYTES = 64;
   // Altura da barra de titulo: modulos declaram conteudo, registro devolve a janela inteira.
-  const BAR_H = 36;
+  const BAR_H = 32;
 
   // Janelas de midia: a tela e a camera de alguem ao vivo. Nao tem acao
   // (`act`): o video anda pelo WebRTC, nao pela mesa. O estado so diz de
