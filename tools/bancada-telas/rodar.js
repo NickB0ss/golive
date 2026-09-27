@@ -223,8 +223,17 @@ async function tirarPrint(page, estado, tema, vista) {
   await page.screenshot({ path: path.join(PRINTS, arquivo), fullPage: true });
 }
 
+/** Modais entram e saem com transicao: medir ou fotografar no meio dela pega
+ * o anterior ainda por cima. Animacoes infinitas (pulso, spinner) nao contam. */
+async function esperarAnimacoes(page) {
+  await page.waitForFunction(() => document.getAnimations().every((animacao) => (
+    animacao.playState !== 'running' || !Number.isFinite(animacao.effect?.getComputedTiming().endTime)
+  )));
+}
+
 async function conferirEstado(page, estado, tema, vista) {
   const nome = `${estado} ${tema} ${vista.largura}×${vista.altura}`;
+  await esperarAnimacoes(page);
   await conferirSemRolagemHorizontal(page, nome);
   await conferirControlesAcessiveis(page, nome);
   await tirarPrint(page, estado, tema, vista);
