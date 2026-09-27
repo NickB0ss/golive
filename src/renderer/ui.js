@@ -11,6 +11,7 @@
   const annotate = root.GoLive.annotate;
   const laser = root.GoLive.laser;
   const reactions = root.GoLive.reactions;
+  const tileMenu = root.GoLive.tileMenu;
   const themecode = root.GoLive.themecode;
   const gridLayout = root.GoLive.gridLayout;
   const roomname = root.GoLive.roomname;
@@ -18,24 +19,108 @@
   // O registro de avisos fica no app; esta camada so recebe a lista pronta e
   // mantem teclado, hover e foco consistentes no painel da barra de titulo.
   const warningCenter = root.GoLive.warningcenter.create(document);
-  let tileReactionGlobalListenersWired = false;
+  let popoverAtivo = null;
 
-  function wireTileReactionGlobalListeners() {
-    if (tileReactionGlobalListenersWired) return;
-    tileReactionGlobalListenersWired = true;
-    document.addEventListener('click', (e) => {
-      for (const bar of document.querySelectorAll('.tile-react-bar.is-open')) {
-        if (!bar.contains(e.target)) bar._fecharReacoes?.();
-      }
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape') return;
-      for (const bar of document.querySelectorAll('.tile-react-bar.is-open')) {
-        bar._fecharReacoes?.();
-      }
-    });
+  function closePopover() {
+    popoverAtivo?.close();
   }
-  wireTileReactionGlobalListeners();
+
+  /** Popover comum: ancora no botao ou num ponto e conserva foco e teclado. */
+  function openPopover({ anchor = null, point = null, content, onClose = null, focus = null, onKeydown = null }) {
+    closePopover();
+    const popover = document.createElement('div');
+    popover.className = 'popover';
+    popover.setAttribute('role', 'menu');
+    popover.tabIndex = -1;
+    let pane = { content, focus };
+    const pilha = [];
+    const renderPane = () => {
+      popover.replaceChildren(pane.content);
+    };
+    const focusPane = () => {
+      const selector = pane.focus
+        || '[role^="menuitem"]:not([disabled]):not([aria-disabled="true"])';
+      popover.querySelector(selector)?.focus({ preventScroll: true });
+    };
+    renderPane();
+    document.body.appendChild(popover);
+    const rect = anchor?.getBoundingClientRect();
+    const x = point?.x ?? rect?.left ?? 0;
+    const y = point?.y ?? rect?.bottom ?? 0;
+    const pos = tileMenu.positionPopover({
+      x,
+      y: y + (point ? 0 : 8),
+      width: popover.offsetWidth,
+      height: popover.offsetHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    popover.style.left = `${pos.x}px`;
+    popover.style.top = `${pos.y}px`;
+    let fechado = false;
+    const close = () => {
+      if (fechado) return;
+      fechado = true;
+      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('keydown', keydown, true);
+      popover.remove();
+      if (popoverAtivo?.popover === popover) popoverAtivo = null;
+      onClose?.();
+      anchor?.focus({ preventScroll: true });
+    };
+    const outside = (event) => {
+      if (!popover.contains(event.target) && !anchor?.contains(event.target)) close();
+    };
+    const voltar = () => {
+      if (!pilha.length) return false;
+      const anterior = pilha.pop();
+      pane = anterior.pane;
+      anterior.onReturn?.();
+      renderPane();
+      focusPane();
+      return true;
+    };
+    const keydown = (event) => {
+      const active = document.activeElement;
+      const campo = active?.matches('input, select, textarea');
+      const items = [...popover.querySelectorAll(
+        '[role^="menuitem"]:not([disabled]):not([aria-disabled="true"])'
+      )];
+      const index = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!voltar()) close();
+      } else if (campo && ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        return;
+      } else if (event.key === 'ArrowLeft') {
+        if (voltar()) event.preventDefault();
+      } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && items.length) {
+        event.preventDefault();
+        items[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+      } else if (event.key === 'Home' && items.length) {
+        event.preventDefault();
+        items[0].focus();
+      } else if (event.key === 'End' && items.length) {
+        event.preventDefault();
+        items.at(-1).focus();
+      } else if (event.key === 'ArrowRight' && active?.matches('[aria-haspopup="menu"]')) {
+        event.preventDefault();
+        active.click();
+      }
+      if (!event.defaultPrevented) onKeydown?.(event);
+    };
+    const openSubmenu = ({ content: submenu, focus: submenuFocus = null, onReturn = null }) => {
+      pilha.push({ pane, onReturn });
+      pane = { content: submenu, focus: submenuFocus };
+      renderPane();
+      focusPane();
+    };
+    popoverAtivo = { popover, close };
+    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('keydown', keydown, true);
+    focusPane();
+    return { popover, close, openSubmenu, voltar };
+  }
 
   // Resolucao e taxa em linhas separadas dentro do chip; `tag` marca o
   // padrao do app (1080p60), pra escolha nao ser as cegas.
@@ -324,7 +409,7 @@
         // A lateral acabou de ficar invisivel; foco fora deste tile ficaria
         // preso nela (por exemplo, na busca de emoji).
         if (!tile.contains(document.activeElement)) {
-          tile.querySelector('.tile-fullscreen-btn')?.focus();
+          tile.querySelector('[data-acao="tela-cheia"]')?.focus();
         }
       }
       if (entering) {
@@ -431,7 +516,6 @@
   // tile existir (renegociacao) ou depois dele ter sido recriado.
   const tileWatchers = new Map();
 
-  const EYE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   const EYE_OFF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 
   /** A audiencia virou um OLHO no canto superior esquerdo, com o numero ao
@@ -453,24 +537,7 @@
     }
     el.classList.remove('is-empty');
     const n = watchers.length;
-    const rotulo = `${n} ${n === 1 ? 'pessoa assistindo' : 'pessoas assistindo'}`;
-    el.innerHTML = `
-      <button type="button" class="tile-watchers-eye" title="${rotulo}" aria-label="${rotulo}">
-        ${EYE_ICON}<span class="tile-watchers-count">${n}</span>
-      </button>
-      <div class="tile-watchers-panel">
-        <span class="tile-watchers-label">assistindo</span>
-        <ul class="tile-watchers-list">
-          ${watchers
-            .map(
-              (w) => `<li>
-                <span class="tile-watchers-avatar">${avatarInnerHtml(w.id, w.name, w.avatar)}</span>
-                <span class="tile-watchers-name">${escapeHtml(w.name || '?')}</span>
-              </li>`
-            )
-            .join('')}
-        </ul>
-      </div>`;
+    el.textContent = `${n} vendo`;
   }
 
   /** `tileId` e o id usado em showTile ('me'/'cam-me' pro proprio, peerId ou
@@ -541,6 +608,23 @@
     const ocultarNoPalco = !watched && !naMesa;
     tile.classList.toggle('is-unwatched', !watched);
     tile.hidden = ocultarNoPalco;
+    if (ocultarNoPalco) {
+      tile.querySelector('.tile-bar')?.remove();
+      const video = tile.querySelector('video');
+      if (video) {
+        tile._videoOculto = video;
+        video.remove();
+      }
+      delete tile.dataset.kind;
+    } else {
+      ensureTileBar(tile, tileId);
+      const kind = tileRegistry.get(tileId)?.kind || opts.kind;
+      if (kind) tile.dataset.kind = kind;
+      if (tile._videoOculto) {
+        tile.querySelector('.tile-media').prepend(tile._videoOculto);
+        delete tile._videoOculto;
+      }
+    }
 
     let gate = tile.querySelector('.tile-gate');
     if (watched || !naMesa) {
@@ -653,6 +737,7 @@
    * pra preto preserva contexto ("ainda e esta transmissao") e evita ler o
    * conteudo parado (ver a spec de 2026-09-03, secao 4). */
   function renderPausedOverlay(tile, video, paused, opts) {
+    const media = tile.querySelector('.tile-media') || tile;
     if (!paused) {
       tile.querySelector('.tile-paused-shot')?.remove();
       tile.querySelector('.tile-paused')?.remove();
@@ -674,7 +759,7 @@
       canvas.width = w;
       canvas.height = h;
       canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-      if (!canvas.isConnected) tile.insertBefore(canvas, tile.firstChild);
+      if (!canvas.isConnected) media.insertBefore(canvas, media.firstChild);
     } else {
       // Sem primeiro quadro ainda: pula o bitmap, so o veu escuro + texto.
       tile.querySelector('.tile-paused-shot')?.remove();
@@ -692,7 +777,7 @@
         <span class="tile-paused-icon">${PAUSE_ICON}</span>
         <p class="tile-paused-title"></p>
         <p class="tile-paused-subtitle"></p>`;
-      tile.appendChild(veil);
+      media.appendChild(veil);
     }
     veil.querySelector('.tile-paused-title').textContent = opts?.title || 'Transmissão pausada';
     veil.querySelector('.tile-paused-subtitle').textContent = opts?.subtitle || '';
@@ -783,33 +868,36 @@
       tile.id = `tile-${id}`;
       tile.tabIndex = -1;
       tile.innerHTML = `
-        <video autoplay playsinline></video>
-        <canvas class="tile-annot-canvas"></canvas>
-        <span class="tile-avatar"></span>
-        <span class="tile-kind-badge"></span>
-        <span class="tile-label"></span>
-        <span class="tile-health-chip hidden"></span>
-        <span class="tile-stall-note hidden" role="status"></span>
-        <div class="tile-watchers is-empty"></div>
-        <button class="tile-fullscreen-btn" type="button" title="Tela cheia" aria-label="Tela cheia">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-        </button>
-        <div class="tile-annot-bar" hidden></div>
-        <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">
-          <button class="tile-react-toggle" type="button" aria-expanded="false" aria-label="Reagir" title="Reagir">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-          </button>
-          <span class="tile-react-list" inert>${reactionBarButtonsHtml()}</span>
+        <div class="tile-bar">
+          <div class="tile-bar-titulo">
+            <span class="tally tile-bar-tipo"></span>
+            <span class="tile-bar-nome"></span>
+          </div>
+          <div class="tile-bar-dados">
+            <span class="tile-watchers is-empty"></span>
+            <span class="tile-health-chip hidden"></span>
+            <span class="tile-stall-note hidden" role="status"></span>
+          </div>
+          <div class="tile-bar-acoes">${TILE_BAR_ACOES_HTML}</div>
+          <span class="tile-kind-badge" hidden></span>
         </div>
-        <div class="tile-react-pops"></div>
-        <div class="pip-strip"></div>`;
+        <div class="tile-media">
+          <video autoplay playsinline></video>
+          <canvas class="tile-annot-canvas"></canvas>
+          <div class="tile-annot-bar" hidden></div>
+          <div class="tile-react-bar" role="group" aria-label="Reagir a esta tela">
+            <button class="tile-react-toggle" type="button" aria-expanded="false" aria-label="Reagir" title="Reagir">
+              ☺
+            </button>
+            <span class="tile-react-list" inert>${reactionBarButtonsHtml()}</span>
+          </div>
+          <div class="tile-react-pops"></div>
+          <div class="pip-strip"></div>
+        </div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
       wireTileAnnotations(tile, id);
       wireTileReactions(tile, id);
-      tile.querySelector('.tile-fullscreen-btn').addEventListener('click', (event) => {
-        event.stopPropagation();
-        toggleTileFullscreen(tile, id);
-      });
+      wireTileBar(tile, id);
       if (id !== 'me' && id !== 'cam-me') {
         tile.addEventListener('contextmenu', (event) => {
           event.preventDefault();
@@ -837,7 +925,8 @@
       renderWatchGate(tile, id);
     }
 
-    const video = tile.querySelector('video');
+    if (!tile.hidden) ensureTileBar(tile, id);
+    const video = tile.querySelector('video') || tile._videoOculto;
     if (video.srcObject !== stream) {
       video.srcObject = stream;
     }
@@ -848,16 +937,15 @@
     // reusa o mesmo objeto de stream e passaria pelo `if` de cima sem entrar
     // nele, deixando o video desmutado se essa linha so rodasse ali dentro.
     video.muted = (id === 'me' || id === 'cam-me') ? muted : true;
-    tile.querySelector('.tile-label').textContent = label;
-    // O nome pro avatar vem de `displayName` quando existe: o label dos tiles
-    // locais e "Voce (previa)"/"Voce (camera)", que daria a inicial "V" em vez
-    // da inicial do nome do usuario.
-    const avatarName = displayName || label;
-    tile.querySelector('.tile-avatar').innerHTML = avatarInnerHtml(displayName || id, avatarName, avatar);
+    const barName = tile.querySelector('.tile-bar-nome');
+    const barTipo = tile.querySelector('.tile-bar-tipo');
+    if (barName) barName.textContent = displayName || label;
+    if (barTipo) barTipo.textContent = kind === 'camera' ? 'CAM' : 'AO VIVO';
     // Ordena a grade por CSS (`.tile[data-kind="camera"] { order: 1 }`):
     // tela e o conteudo, camera e o acompanhamento.
     if (kind) tile.dataset.kind = kind;
     else delete tile.dataset.kind;
+    if (tile.hidden) delete tile.dataset.kind;
     const badgeEl = tile.querySelector('.tile-kind-badge');
     badgeEl.innerHTML = tileKindIcon(kind);
     if (kind === 'camera') badgeEl.title = 'Câmera';
@@ -915,11 +1003,11 @@
       <div class="empty">
         <p class="empty-title">Ninguém transmitindo ainda.</p>
         <p class="empty-hint">A tela de quem ficar ao vivo aparece aqui sozinha.</p>
-        <button type="button" class="primary empty-share">Compartilhar tela</button>
+        <p class="empty-icon" aria-hidden="true">◉</p>
       </div>`);
-    // Mesmo caminho do botao da barra: os guardas (sessao aberta, captura
-    // em andamento) moram no handler dele, nao aqui.
-    gridEl.querySelector('.empty-share').addEventListener('click', () => $('btn-toggle-share').click());
+    const empty = gridEl.querySelector(':scope > .empty');
+    empty.querySelector('.empty-title').textContent = 'Ninguém em foco';
+    empty.querySelector('.empty-hint').textContent = 'Escolha alguém ao vivo na coluna ao lado';
   }
 
   function removeTile(id) {
@@ -1322,6 +1410,89 @@
     // nela nao pode disparar o duplo-clique do fullscreen nem o arrasto do PiP.
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
     bar.addEventListener('dblclick', (e) => e.stopPropagation());
+  }
+
+  function openReactionPopover(anchor, tileId) {
+    const list = document.createElement('div');
+    list.className = 'reacoes-popover';
+    list.innerHTML = reactionBarButtonsHtml();
+    // Itens do menu: o popover so navega (setas, Home/End) e poe o foco
+    // inicial em [role^="menuitem"]. Sem o papel, o foco nao ia ao 1o emoji.
+    for (const botao of list.querySelectorAll('.tile-react-btn')) botao.setAttribute('role', 'menuitem');
+    const controller = openPopover({ anchor, content: list });
+    list.addEventListener('click', (event) => {
+      const button = event.target.closest('.tile-react-btn');
+      if (!button) return;
+      emitReactionOp(tileId, button.dataset.emoji);
+      controller.close();
+    });
+  }
+
+  function wireTileBar(tile, tileId) {
+    const bar = tile.querySelector('.tile-bar');
+    bar?.addEventListener('click', (event) => {
+      const button = event.target.closest('.tile-bar-btn');
+      if (!button) return;
+      event.stopPropagation();
+      switch (button.dataset.acao) {
+        case 'reagir':
+          openReactionPopover(button, tileId);
+          break;
+        case 'rabiscar':
+          setAnnotDrawing(tileId, !tile.classList.contains('annot-on'));
+          break;
+        case 'volume':
+          openTileMenu(tileId, button);
+          break;
+        case 'tela-cheia':
+          toggleTileFullscreen(tile, tileId);
+          break;
+        case 'menu':
+          openTileMenu(tileId, button);
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  // Botoes da barra do video (spec 4). Um conjunto de icones so, traco de
+  // 1,75 px; o nome acessivel mora no aria-label/title de cada botao.
+  const TILE_BAR_ICONE = (corpo) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+    + ' stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + corpo + '</svg>';
+  const TILE_BAR_ACOES_HTML = [
+    ['reagir', 'Reagir', '<circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.3 2 3.5 2 3.5-2 3.5-2"/>'
+      + '<path d="M9 9.5h.01M15 9.5h.01"/>'],
+    ['rabiscar', 'Rabisco', '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'],
+    ['volume', 'Volume', '<path d="M11 5 6 9H2v6h4l5 4Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>'
+      + '<path d="M19 5a10 10 0 0 1 0 14"/>'],
+    ['tela-cheia', 'Tela cheia', '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>'
+      + '<path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'],
+    ['menu', 'Mais opções', '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/>'
+      + '<circle cx="19" cy="12" r="1"/>'],
+  ].map(([acao, nome, corpo]) => `<button class="tile-bar-btn" type="button" data-acao="${acao}"`
+    + ` title="${nome}" aria-label="${nome}">${TILE_BAR_ICONE(corpo)}</button>`).join('');
+
+  function ensureTileBar(tile, tileId) {
+    let bar = tile.querySelector('.tile-bar');
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.className = 'tile-bar';
+    bar.innerHTML = `
+      <div class="tile-bar-titulo">
+        <span class="tally tile-bar-tipo"></span>
+        <span class="tile-bar-nome"></span>
+      </div>
+      <div class="tile-bar-dados">
+        <span class="tile-watchers is-empty"></span>
+        <span class="tile-health-chip hidden"></span>
+        <span class="tile-stall-note hidden" role="status"></span>
+      </div>
+      <div class="tile-bar-acoes">${TILE_BAR_ACOES_HTML}</div>`;
+    tile.insertBefore(bar, tile.firstChild);
+    wireTileBar(tile, tileId);
+    return bar;
   }
 
   /** Sobe um emoji sobre o tile e o remove sozinho quando a animacao
@@ -1984,12 +2155,8 @@
     syncPainting();
   }
 
-  let openMenuEl = null;
-
   function closeTileMenu() {
-    openMenuEl?.remove();
-    openMenuEl = null;
-    document.removeEventListener('click', closeTileMenu);
+    closePopover();
   }
 
   /** Menu de contexto do tile: o que e sobre AQUELA TELA -- silenciar e
@@ -2001,9 +2168,12 @@
    * quem?" so viria depois do clique. */
   function openTileMenu(id, x, y, { mesa = false } = {}) {
     closeTileMenu();
+    const anchor = x instanceof Element ? x : null;
+    const point = anchor ? null : { x, y };
     const state = getOrCreateAudioState(id);
     const entry = tileRegistry.get(id);
     const nome = entry?.displayName || entry?.label || 'esta tela';
+    const kind = entry?.kind || (String(id).startsWith('cam-') ? 'camera' : 'screen');
 
     // Parar (ou voltar) de assistir. Camera e opt-out: sem estado
     // registrado ela conta como assistida, entao o menu oferece "parar".
@@ -2022,31 +2192,78 @@
       // (mesa-view `wants`): "parar de assistir" ali nao faria nada.
       watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
     }
-    const spyItem = watched ? '<button type="button" class="tile-menu-spy">Espiar</button>' : '';
+    const items = tileMenu.menuItems({ id, kind, watched, mesa });
+    const qualidadeBloqueada = items.includes('qualidade')
+      && root.GoLive.tetoRecebido.bloqueado(`${id}:screen`);
+    const spyItem = items.includes('espiar')
+      ? '<button type="button" role="menuitem" class="menu-item tile-menu-spy">Espiar em janela</button>'
+      : '';
+    const qualityItem = items.includes('qualidade')
+      ? `<button type="button" role="menuitem" class="menu-item tile-menu-quality"
+          aria-haspopup="menu" aria-expanded="false">
+          Qualidade que você recebe <span class="menu-atalho">›</span>
+        </button>`
+      : '';
+    const pararItem = watchItem
+      ? watchItem.replace('class="tile-menu-watch"', 'class="menu-item tile-menu-watch" role="menuitem"')
+      : '';
+    const abrirGrupoVer = spyItem
+      ? '<div class="menu-separador" role="separator"></div>'
+        + '<div class="menu-grupo" role="group" aria-label="Ver">'
+      : '';
+    const abrirGrupoQualidade = qualityItem
+      ? '<div class="menu-separador" role="separator"></div>'
+        + '<div class="menu-grupo" role="group" aria-label="Qualidade">'
+      : '';
+    const abrirGrupoAssistir = pararItem
+      ? '<div class="menu-separador" role="separator"></div>'
+        + '<div class="menu-grupo" role="group" aria-label="Assistir">'
+      : '';
 
     const menu = document.createElement('div');
     menu.className = 'tile-menu';
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
     menu.innerHTML = `
-      <div class="tile-menu-head">
-        <span class="tile-menu-avatar">${avatarInnerHtml(entry?.displayName || id, nome, entry?.avatar || null)}</span>
+      <div class="tile-menu-head rotulo-mono">
         <span class="tile-menu-name" title="${escapeHtml(nome)}">${escapeHtml(nome)}</span>
       </div>
-      ${watchItem}
-      ${spyItem}
-      <label class="check compact tile-menu-mute-row">
-        <input type="checkbox" class="tile-menu-mute" ${isMuted(id) ? 'checked' : ''} />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text"><span class="check-title">Silenciar</span></span>
-      </label>
+      <div class="menu-grupo" role="group" aria-label="Som">
       <label class="tile-menu-volume">
         <span>Volume: <b class="tile-menu-volume-label">${Math.round(state.volume * 100)}%</b></span>
-        <input type="range" min="0" max="200" step="1" value="${Math.round(state.volume * 100)}" />
-      </label>`;
+        <input type="range" min="0" max="200" step="1"
+          aria-label="Volume" value="${Math.round(state.volume * 100)}" />
+      </label>
+      <label class="check compact tile-menu-mute-row">
+        <input type="checkbox" role="menuitemcheckbox" class="tile-menu-mute"
+          aria-checked="${isMuted(id)}" ${isMuted(id) ? 'checked' : ''} />
+        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="check-text"><span class="check-title">Silenciar</span></span>
+        <span class="menu-atalho">M</span>
+      </label>
+      </div>
+      ${abrirGrupoVer}
+      ${spyItem}
+      ${spyItem ? '</div>' : ''}
+      ${abrirGrupoQualidade}
+      ${qualityItem}
+      ${qualityItem ? '</div>' : ''}
+      ${abrirGrupoAssistir}
+      ${pararItem}
+      ${pararItem ? '</div>' : ''}`;
     menu.addEventListener('click', (event) => event.stopPropagation());
-    document.body.appendChild(menu);
-    openMenuEl = menu;
+    let muteCheckbox;
+    const popoverControl = openPopover({
+      anchor,
+      point,
+      content: menu,
+      onKeydown: (event) => {
+        const texto = event.target.matches?.(
+          'input:not([type="range"]):not([type="checkbox"]), textarea, select'
+        );
+        if (texto || event.key.toLowerCase() !== 'm') return;
+        event.preventDefault();
+        muteCheckbox.click();
+      },
+    });
 
     function applyGain() {
       if (state.gain) state.gain.gain.value = state.muted ? 0 : state.volume;
@@ -2061,13 +2278,53 @@
       openSpyWindow(id);
       closeTileMenu();
     });
+    menu.querySelector('.tile-menu-quality')?.addEventListener('click', () => {
+      const bloqueado = qualidadeBloqueada;
+      const submenu = document.createElement('div');
+      submenu.className = 'tile-quality-menu';
+      const opcoes = root.GoLive.tetoRecebido.OPCOES;
+      const escolha = root.GoLive.tetoRecebido.escolha(`${id}:screen`);
+      const opcoesHtml = opcoes.map((opcao) => {
+        const atual = escolha === opcao.id;
+        return `<button type="button" role="menuitemradio" class="menu-item"`
+          + ` data-quality="${opcao.id}" aria-checked="${atual}" aria-disabled="${bloqueado}">`
+          + `<span aria-hidden="true">${atual ? '✓' : ''}</span>`
+          + `<span>${tileMenu.qualityLabel(opcao.id)}</span></button>`;
+      }).join('');
+      submenu.innerHTML = `
+        <div class="tile-menu-head rotulo-mono">
+          <button type="button" role="menuitem" class="menu-item tile-menu-back">
+            <span aria-hidden="true">‹</span> Qualidade que você recebe
+          </button>
+        </div>
+        <div class="menu-grupo" role="group" aria-label="Qualidade que você recebe">
+          ${opcoesHtml}
+        </div>
+        ${bloqueado ? '<p class="menu-motivo">Você repassa esta tela para outras pessoas</p>' : ''}`;
+      menu.querySelector('.tile-menu-quality').setAttribute('aria-expanded', 'true');
+      popoverControl.openSubmenu({
+        content: submenu,
+        focus: '[role="menuitemradio"][aria-checked="true"]',
+        onReturn: () => menu.querySelector('.tile-menu-quality').setAttribute('aria-expanded', 'false'),
+      });
+      submenu.querySelector('.tile-menu-back').addEventListener('click', () => {
+        popoverControl.voltar();
+      });
+      submenu.addEventListener('click', (click) => {
+        const option = click.target.closest('[data-quality]');
+        if (!option || bloqueado) return;
+        root.GoLive.tetoRecebido.escolher(`${id}:screen`, option.dataset.quality);
+        closeTileMenu();
+      });
+    });
 
-    const muteCheckbox = menu.querySelector('.tile-menu-mute');
+    muteCheckbox = menu.querySelector('.tile-menu-mute');
     muteCheckbox.addEventListener('change', () => {
       // setMuted (e nao `state.muted = ...`) pra que exista UM caminho de
       // codigo pra silenciar, agora que este e o unico lugar da UI que o
       // oferece.
       setMuted(id, muteCheckbox.checked);
+      muteCheckbox.setAttribute('aria-checked', String(muteCheckbox.checked));
     });
 
     const range = menu.querySelector('input[type=range]');
@@ -2083,7 +2340,6 @@
     // quando o clique foi dentro do menu (botao de mute, slider). Em fase de
     // captura isso nao funcionaria -- stopPropagation na fase de bolha nao
     // afeta um listener de captura no document, que ja teria rodado antes.
-    setTimeout(() => document.addEventListener('click', closeTileMenu), 0);
   }
 
   // Tons neutros com um traco de matiz, nao as seis cores saturadas do

@@ -441,11 +441,16 @@ body {
 }
 
 .tally {
+  flex: none;
+  padding: 0 var(--s-15);
   background: var(--live);
   border-radius: 3px;
   color: var(--on-live);
   font-family: var(--font-mono);
+  font-size: var(--fs-micro);
   font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 1.5;
   text-transform: uppercase;
 }
 
@@ -1551,6 +1556,8 @@ button.busy { cursor: default; }
 .tile[hidden] { display: none; }
 .tile {
   position: relative;
+  display: flex;
+  flex-direction: column;
   /* Sobreposicoes do tile nao escapam para a casca da sala. */
   isolation: isolate;
   min-width: 0;
@@ -1641,7 +1648,7 @@ button.busy { cursor: default; }
   border-radius: 50%;
   background: var(--scrim-4);
   box-shadow: 0 0 0 2px var(--scrim-3);
-  display: grid;
+  display: none;
   place-items: center;
   color: var(--on-act);
   z-index: 1;
@@ -3427,7 +3434,7 @@ body[data-chat="recolhido"] #chat-panel { visibility: hidden; border: 0; padding
   right: 76px;
   bottom: 12px;
   z-index: 2;
-  display: flex;
+  display: none;
   align-items: center;
   gap: var(--s-05);
   padding: var(--s-1);
@@ -3809,6 +3816,7 @@ body.mesa-open #grid { display: none; }
   border-radius: inherit;
   box-shadow: none;
   transition: none;
+  display: block;
 }
 .mesa-win .tile-fullscreen-btn,
 .mesa-win .tile-gate,
@@ -3832,7 +3840,7 @@ body.mesa-open #grid { display: none; }
 .mesa-win:focus-within .tile-annot-bar,
 .mesa-win .tile.annot-on .tile-annot-bar,
 .mesa-win:hover .tile-react-bar,
-.mesa-win:focus-within .tile-react-bar { opacity: 1; pointer-events: auto; }
+.mesa-win:focus-within .tile-react-bar { display: flex; opacity: 1; pointer-events: auto; }
 @container mesawin (max-width: 280px) {
   .mesa-win .tile-react-bar { display: none; }
 }
@@ -4163,3 +4171,126 @@ body.mesa-full .room-side { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .mesa-win.is-settling, .mesa-win.is-remote-drag { transition: none; }
 }
+
+/* Componentes reutilizaveis de menus e popovers. */
+.popover {
+  position: fixed;
+  z-index: var(--z-popover);
+  min-width: 200px;
+  padding: var(--s-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-lg);
+  background: var(--s2);
+  box-shadow: var(--elev-3);
+  color: var(--tx);
+}
+.menu-grupo + .menu-grupo {
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.menu-separador {
+  height: 1px;
+  margin: var(--s-2) 0;
+  background: var(--line);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--tx);
+  text-align: left;
+}
+.menu-item:hover { background: var(--s3); }
+.menu-item:focus-visible, .popover input:focus-visible { box-shadow: var(--ring); outline: 0; }
+.menu-atalho, .menu-motivo { color: var(--tx3); font-family: var(--font-mono); font-size: var(--fs-small); }
+.menu-motivo { margin: var(--s-1); max-width: 28ch; }
+.reacoes-popover { display: grid; grid-template-columns: repeat(6, 32px); gap: var(--s-1); }
+.reacoes-popover .tile-react-btn { width: 32px; height: 32px; min-height: 32px; }
+
+/* Barra estrutural: a area de video encolhe dentro do tile. */
+.tile-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-height: 36px;
+  height: 36px;
+  gap: var(--s-2);
+  padding: 0 var(--s-2);
+  background: var(--s2);
+  border-bottom: 1px solid var(--line);
+  color: var(--tx);
+}
+.tile-bar-titulo, .tile-bar-dados, .tile-bar-acoes { display: flex; align-items: center; min-width: 0; }
+.tile-bar-titulo { gap: var(--s-2); overflow: hidden; }
+.tile-bar-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.tile-bar-dados {
+  margin-left: auto;
+  gap: var(--s-1);
+  color: var(--tx3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+.tile-bar-dados .tile-watchers, .tile-bar-dados .tile-health-chip, .tile-bar-dados .tile-stall-note {
+  position: static;
+  display: inline;
+  max-width: 18ch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile-bar-dados .tile-health-chip.is-ruim { color: var(--danger); }
+.tile-bar-acoes { gap: var(--s-05); }
+.tile-bar-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tx2);
+}
+.tile-bar-btn svg { width: 16px; height: 16px; }
+.tile-bar-btn:hover { background: var(--s3); color: var(--tx); }
+.tile-bar-btn:focus-visible { box-shadow: var(--ring); outline: 0; }
+.tile-media { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.tile-media > video { position: absolute; inset: 0; }
+.tile-media .tile-annot-canvas { inset: 0; }
+.tile-media .tile-react-pops { position: absolute; inset: 0; }
+.tile-media .tile-paused, .tile-media .tile-paused-shot { position: absolute; inset: 0; }
+.tile-media .pip-strip { position: absolute; inset: 0; }
+.tile.fullscreen .tile-bar { display: flex; }
+.mesa-win .tile-bar { display: none; }
+/* Vermelho so para "ao vivo" (spec 2.1): o CAM e um rotulo neutro. */
+.tile[data-kind="camera"] .tile-bar-tipo {
+  background: var(--s4);
+  color: var(--tx2);
+}
+/* Rabisco so onde se pode rabiscar; ligado, o botao fica marcado. */
+.tile:not(.annotatable) .tile-bar-btn[data-acao="rabiscar"] { display: none; }
+.tile.annot-on .tile-bar-btn[data-acao="rabiscar"] {
+  background: var(--s4);
+  color: var(--tx);
+}
+/* Na tira os tiles sao estreitos: o nome vem antes dos dados. Ficam reagir e
+   o menu (que ja tem o volume); tela cheia segue no duplo clique. */
+.tile[data-slot="strip"] .tile-bar-dados,
+.tile[data-slot="strip"] .tile-bar-btn[data-acao="volume"],
+.tile[data-slot="strip"] .tile-bar-btn[data-acao="tela-cheia"],
+.tile[data-slot="strip"] .tile-bar-btn[data-acao="rabiscar"] { display: none; }
+.mesa-win .tile-media { height: 100%; }

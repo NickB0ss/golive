@@ -260,22 +260,57 @@ async function abrirMenuDoTile(page, seletor) {
 }
 
 async function conferirQualidadeNosMenus(ana, bia, caio) {
-  const menuRemoto = await abrirMenuDoTile(caio.page, '.tile[data-kind="screen"]');
-  conferir('qualidade aparece na tela de outra pessoa',
-    (await menuRemoto.textContent()).includes('Qualidade que você recebe'));
-  await menuRemoto.locator('.menu-item').filter({ hasText: 'Qualidade que você recebe' }).click();
-  const opcao720 = caio.page.locator('.popover:visible .menu-item').filter({ hasText: /^720p$/ }).last();
-  await opcao720.click();
-  await esperarMensagem(ana.page, (mensagem) => (
-    mensagem.type === 'view-state' && mensagem.from === caio.id && mensagem.kind === 'screen'
-      && mensagem.maxWidth === 1280
-  ));
-  conferir('720p envia view-state maxWidth 1280', true);
-  const menuProprio = await abrirMenuDoTile(ana.page, '.tile[data-kind="screen"]');
+  // Quem repassa uma tela (relay com folhas) nao tem teto: o submenu vem
+  // bloqueado com o motivo. A arvore decide quem repassa, entao a bancada
+  // procura um par espectador/tela livre em vez de fixar um.
+  const pares = [[caio, bia], [ana, bia], [caio, ana], [bia, ana]];
+  let escolhido = null;
+  for (const [espectador, dona] of pares) {
+    const seletor = `#tile-${dona.id}:not([hidden])`;
+    if (!(await espectador.page.locator(seletor).count())) continue;
+    const menu = await abrirMenuDoTile(espectador.page, seletor);
+    const temQualidade = (await menu.textContent()).includes('Qualidade que você recebe');
+    conferir(`qualidade aparece na tela de ${dona.nome} (${espectador.nome})`, temQualidade);
+    if (!temQualidade) {
+      await espectador.page.keyboard.press('Escape');
+      continue;
+    }
+    await menu.locator('.menu-item').filter({ hasText: 'Qualidade que você recebe' }).click();
+    const submenu = espectador.page.locator('.popover:visible').last();
+    const opcao720 = submenu.locator('.menu-item').filter({ hasText: /^720p$/ });
+    const existe = (await opcao720.count()) > 0;
+    const bloqueado = !existe || (await opcao720.getAttribute('aria-disabled')) === 'true';
+    if (bloqueado) {
+      const texto = await submenu.textContent();
+      const motivo = texto.includes('Você repassa esta tela para outras pessoas');
+      const popovers = await espectador.page.locator('.popover:visible').count();
+      conferir(`bloqueio mostra o motivo (${espectador.nome} repassa ${dona.nome})`, motivo,
+        `${popovers} popover(s) visivel(is); ultimo: ${texto.replace(/\s+/g, ' ').trim().slice(0, 140)}`);
+      await espectador.page.keyboard.press('Escape');
+      await espectador.page.keyboard.press('Escape');
+      continue;
+    }
+    escolhido = { espectador, dona };
+    await opcao720.click();
+    break;
+  }
+  if (escolhido) {
+    // O view-state vai para quem serve a tela: a dona ou um relay no meio.
+    const { espectador } = escolhido;
+    const chegou = await Promise.any([ana, bia, caio].filter((p) => p !== espectador).map((p) => (
+      esperarMensagem(p.page, new Function('mensagem', `return mensagem.type === 'view-state'
+        && mensagem.from === ${JSON.stringify(espectador.id)} && /^screen/.test(mensagem.kind)
+        && mensagem.maxWidth === 1280;`))
+    ))).then(() => true, () => false);
+    conferir('720p envia view-state maxWidth 1280', chegou, `${espectador.nome} vendo ${escolhido.dona.nome}`);
+  } else {
+    conferir('720p envia view-state maxWidth 1280', false, 'nenhum par espectador/tela sem bloqueio');
+  }
+  const menuProprio = await abrirMenuDoTile(ana.page, '#tile-me');
   conferir('qualidade não aparece na própria tela',
     !(await menuProprio.textContent()).includes('Qualidade que você recebe'));
   await ana.page.keyboard.press('Escape');
-  const menuCamera = await abrirMenuDoTile(bia.page, '.tile[data-kind="camera"]');
+  const menuCamera = await abrirMenuDoTile(bia.page, `#tile-cam-${ana.id}`);
   conferir('qualidade não aparece na câmera',
     !(await menuCamera.textContent()).includes('Qualidade que você recebe'));
   await bia.page.keyboard.press('Escape');
