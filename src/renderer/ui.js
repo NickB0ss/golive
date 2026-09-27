@@ -3218,11 +3218,11 @@
   }
 
   // Ordem de exibicao dos cartoes de predefinicao (spec 2026-09-03, 5.2):
-  // o padrao (a marca) primeiro, depois do escuro neutro ao unico claro.
+  // o padrao Estudio primeiro, depois do escuro neutro ao unico claro.
   // Array explicito, nao Object.keys(theme.PRESETS) -- a ordem de exibicao
   // nao deveria depender da ordem de insercao de theme.js. O preco e ter de
   // lembrar de acrescentar aqui cada predefinicao nova: theme.test.js cobra.
-  const THEME_PRESET_ORDER = ['marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
+  const THEME_PRESET_ORDER = ['estudio', 'marca', 'signal', 'midnight', 'carvao', 'amber', 'forest', 'paper'];
 
   /** Um cartao por predefinicao: o app EM MINIATURA, com as cores daquela
    * predefinicao aplicadas inline -- nao um quadrado solido com o nome

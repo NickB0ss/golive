@@ -10,9 +10,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const theme = require('./theme');
 
-test('grade da Mesa: --grid e --grid2 dos sete temas ficam entre 1,1:1 e 1,4:1 contra --bg', () => {
+test('grade da Mesa: --grid e --grid2 dos oito temas ficam entre 1,1:1 e 1,4:1 contra --bg', () => {
   const { min, max } = theme.GRID_CONTRAST;
-  assert.equal(Object.keys(theme.PRESETS).length, 7);
+  assert.equal(Object.keys(theme.PRESETS).length, 8);
   for (const [nome, preset] of Object.entries(theme.PRESETS)) {
     const s = preset.surfaces;
     const fina = theme.contrast(theme.blendOver(s.grid, s.bg), s.bg);
@@ -56,7 +56,7 @@ test('grade da Mesa: o CSS de cada tema traz os mesmos --grid/--grid2 do theme.j
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
   const norm = (v) => v.replace(/\s+/g, '').replace(/,0\./g, ',.');
   const bloco = (nome) => {
-    const i = nome === 'marca' ? css.indexOf(':root {') : css.indexOf(`:root[data-theme="${nome}"]`);
+    const i = nome === 'estudio' ? css.indexOf(':root {') : css.indexOf(`:root[data-theme="${nome}"]`);
     assert.ok(i >= 0, `${nome}: bloco CSS`);
     return css.slice(i, css.indexOf('}', i));
   };

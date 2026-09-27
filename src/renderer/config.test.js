@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   DEFAULTS,
+  THEME_PRESETS,
   QUALITY_PRESETS,
   QUALITY_PRESET_ORDER,
   load,
@@ -340,10 +341,19 @@ test('eixo desconhecido cai no padrao em vez de lancar', () => {
 
 // ---------- cfg.theme (spec 2026-09-03, secao 5) ----------
 
-test('theme: signal legado sem acento migra uma vez para marca', () => {
+test('theme: signal legado sem acento segue as duas migracoes ate o estudio', () => {
+  // Era o padrao implicito de antes da marca: passa pela marca e, como a
+  // marca tambem deixou de ser o padrao, chega ao estudio.
   const legado = JSON.stringify({ v: 1, theme: { preset: 'signal' } });
-  assert.deepEqual(load(legado).theme, { preset: 'marca' });
+  assert.deepEqual(load(legado).theme, { preset: 'estudio' });
+});
 
+test('theme: signal legado com so a flag antiga fica no signal', () => {
+  const escolhido = JSON.stringify({ v: 1, themeMigration: true, theme: { preset: 'signal' } });
+  assert.deepEqual(load(escolhido).theme, { preset: 'signal' });
+});
+
+test('theme: signal legado com acento proprio nao migra', () => {
   // A configuracao gravada depois da migracao e uma escolha explicita e nao
   // pode voltar sozinha para outro preset numa abertura futura.
   const escolhido = JSON.stringify({ v: 1, theme: { preset: 'signal', act: '#4F46E5' } });
@@ -360,12 +370,41 @@ test('theme: signal escolhido depois da migracao sobrevive a reabertura (pelo ma
   assert.deepEqual(load(serialize(reaberto)).theme, { preset: 'signal' });
 });
 
-test('theme: default e o preset "marca", config antigo sem theme cai nele', () => {
-  assert.deepEqual(DEFAULTS.theme, { preset: 'marca' });
-  assert.deepEqual(load(null).theme, { preset: 'marca' });
+test('theme: default e o preset "estudio", config antigo sem theme cai nele', () => {
+  assert.deepEqual(DEFAULTS.theme, { preset: 'estudio' });
+  assert.deepEqual(load(null).theme, { preset: 'estudio' });
 
   const antigo = JSON.stringify({ v: 1, name: 'Nicolas' }); // de antes do theme existir
-  assert.deepEqual(load(antigo).theme, { preset: 'marca' });
+  assert.deepEqual(load(antigo).theme, { preset: 'estudio' });
+});
+
+test('theme: config sem tema abre no estudio', () => {
+  assert.deepEqual(load(JSON.stringify({ v: 1, name: 'Nicolas' })).theme, { preset: 'estudio' });
+});
+
+test('theme: marca sem acao migra uma vez para estudio', () => {
+  const cfg = load(JSON.stringify({ v: 1, theme: { preset: 'marca' } }));
+  assert.deepEqual(cfg.theme, { preset: 'estudio' });
+  assert.equal(cfg.themeMigrationEstudio, true);
+});
+
+test('theme: marca com acao personalizada continua marca', () => {
+  const cfg = load(JSON.stringify({ v: 1, theme: { preset: 'marca', act: '#5B4BE8' } }));
+  assert.deepEqual(cfg.theme, { preset: 'marca', act: '#5B4BE8' });
+});
+
+test('theme: marcador da migracao Estudio preserva marca puro', () => {
+  const cfg = load(JSON.stringify({
+    v: 1,
+    theme: { preset: 'marca' },
+    themeMigrationEstudio: true,
+  }));
+  assert.deepEqual(cfg.theme, { preset: 'marca' });
+});
+
+test('theme: estudio abre a lista de predefinicoes e marca continua nela', () => {
+  assert.equal(THEME_PRESETS[0], 'estudio');
+  assert.ok(THEME_PRESETS.includes('marca'));
 });
 
 test('theme: round-trip preserva um preset conhecido', () => {

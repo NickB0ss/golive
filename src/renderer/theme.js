@@ -159,6 +159,18 @@
   // "paper" abaixo pro motivo matematico completo). bg continua sendo a
   // superficie mais clara da rampa, como pede a spec.
   const PRESETS = {
+    estudio: {
+      label: 'Estudio',
+      surfaces: {
+        bg: '#0C0D0F', s1: '#131518', s2: '#1A1D21', s3: '#23272C', s4: '#2E3339',
+        tx: '#ECEDEF', tx2: '#A4ABB4', tx3: '#8B929C',
+        line: 'rgba(236,237,239,.06)', line2: 'rgba(236,237,239,.10)',
+        grid: 'rgba(236,237,239,.06)', grid2: 'rgba(236,237,239,.10)',
+      },
+      act: '#ECEDEF',
+      actHover: '#FFFFFF',
+      onAct: '#0C0D0F',
+    },
     marca: {
       label: 'GoLive',
       surfaces: {
@@ -561,7 +573,7 @@
    *      perde o proprio tema num update.
    *
    * Qualquer outra coisa (preset desconhecido, custom malformado, cfg
-   * ausente) cai em PRESETS.marca sem lancar -- roda no boot do app. */
+   * ausente) cai em PRESETS.estudio sem lancar -- roda no boot do app. */
   function tokensFor(themeCfg) {
     if (isValidCustomCfg(themeCfg)) {
       return { surfaces: deriveSurfaces(themeCfg.base), ...deriveAction(themeCfg.act) };
@@ -571,7 +583,7 @@
       if (isHex(themeCfg.act)) return { surfaces: preset.surfaces, ...deriveAction(themeCfg.act) };
       return preset;
     }
-    return PRESETS.marca;
+    return PRESETS.estudio;
   }
 
   const SURFACE_VAR_MAP = {
@@ -603,7 +615,7 @@
   const CUSTOM_VAR_MAP = { ...SURFACE_VAR_MAP, ...ACTION_VAR_MAP };
 
   /** Aplica um tema no `<html>`. Presets sao so um atributo `data-theme`
-   * (o CSS ja tem o bloco pronto) -- "marca" remove o atributo, pra
+   * (o CSS ja tem o bloco pronto) -- "estudio" remove o atributo, pra
    * bater com o :root de hoje sendo o proprio padrao sem override. Custom
    * seta `data-theme="custom"` e escreve cada variavel via
    * `style.setProperty`, sem tocar em --live/--warn/--danger/os -dim (essa
@@ -635,9 +647,9 @@
     for (const varName of Object.keys(CUSTOM_VAR_MAP)) {
       d.documentElement.style.removeProperty?.(varName);
     }
-    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'marca';
-    const preset = PRESETS[requested] ? requested : 'marca';
-    if (preset === 'marca') {
+    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'estudio';
+    const preset = PRESETS[requested] ? requested : 'estudio';
+    if (preset === 'estudio') {
       d.documentElement.removeAttribute('data-theme');
     } else {
       d.documentElement.setAttribute('data-theme', preset);
@@ -655,12 +667,10 @@
         d.documentElement.style.setProperty(varName, getter(tokens));
       }
     } else {
-      // Preset puro: superficies e acento vem do bloco CSS, mas o texto sobre
-      // o botao preenchido nao -- --on-act e #fff no :root, igual pra todos.
-      // Acento claro (Carvao: branco sobre #9CA3AF da ~2,5:1) pede o texto
-      // escuro que deriveAction calcula, o mesmo que validate ja usava para
-      // aprovar o preset. Sem isto a trava aprovava um botao ilegivel.
-      d.documentElement.style.setProperty('--on-act', deriveAction(PRESETS[preset].act).onAct);
+      // O preset pode fixar o texto quando sua acao e clara. Sem declaracao,
+      // preserva a escolha segura por contraste usada pelos temas existentes.
+      const onAct = PRESETS[preset].onAct || deriveAction(PRESETS[preset].act).onAct;
+      d.documentElement.style.setProperty('--on-act', onAct);
     }
   }
 

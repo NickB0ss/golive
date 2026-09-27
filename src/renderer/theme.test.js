@@ -115,6 +115,44 @@ test('todo preset do catalogo passa em validate', () => {
   }
 });
 
+test('catalogo oferece o preset estudio', () => {
+  assert.ok(PRESETS.estudio);
+});
+
+test('estudio passa na trava de contraste', () => {
+  assert.ok(PRESETS.estudio && validate(PRESETS.estudio).ok);
+});
+
+test('estudio declara texto escuro para sua acao clara', () => {
+  assert.equal(PRESETS.estudio?.onAct, '#0C0D0F');
+});
+
+test('tema personalizado usa texto escuro sobre acao clara', () => {
+  const tokens = tokensFor({
+    preset: 'custom',
+    base: { temp: 0.2, level: 0.1 },
+    act: '#ECEDEF',
+  });
+  assert.notEqual(tokens.onAct.toLowerCase(), '#ffffff');
+});
+
+test('tema personalizado usa branco sobre acao escura', () => {
+  const tokens = tokensFor({
+    preset: 'custom',
+    base: { temp: 0.2, level: 0.1 },
+    act: '#2B59C3',
+  });
+  assert.equal(tokens.onAct.toLowerCase(), '#ffffff');
+});
+
+test('trava mede o texto declarado sobre a acao', () => {
+  const tokens = {
+    ...tokensFor({ preset: 'custom', base: { temp: 0.2, level: 0.1 }, act: '#ECEDEF' }),
+    onAct: '#FFFFFF',
+  };
+  assert.equal(validate(tokens).ok, false);
+});
+
 test('marca usa os tokens do site e passa na trava de contraste', () => {
   const marca = PRESETS.marca;
   assert.deepEqual(marca.surfaces, {
@@ -150,25 +188,25 @@ test('deriveAction com acento escuro comum aceita branco', () => {
   assert.equal(derived.onAct.toLowerCase(), '#ffffff');
 });
 
-test('tokensFor com preset desconhecido cai no padrao (marca)', () => {
+test('tokensFor com preset desconhecido cai no padrao (estudio)', () => {
   const tokens = tokensFor({ preset: 'nao-existe' });
-  assert.deepEqual(tokens, PRESETS.marca);
+  assert.deepEqual(tokens, PRESETS.estudio);
 });
 
 test('tokensFor com custom sem act valido cai no padrao', () => {
   const tokens = tokensFor({ preset: 'custom', base: { temp: 0.5, level: 0.5 }, act: 'nao-e-hex' });
-  assert.deepEqual(tokens, PRESETS.marca);
+  assert.deepEqual(tokens, PRESETS.estudio);
 });
 
 test('tokensFor com custom sem base valida cai no padrao', () => {
   const tokens = tokensFor({ preset: 'custom', base: { temp: 2, level: 0.5 }, act: '#4F46E5' });
-  assert.deepEqual(tokens, PRESETS.marca);
+  assert.deepEqual(tokens, PRESETS.estudio);
 });
 
 test('tokensFor com custom ausente/vazio cai no padrao', () => {
-  assert.deepEqual(tokensFor(undefined), PRESETS.marca);
-  assert.deepEqual(tokensFor({}), PRESETS.marca);
-  assert.deepEqual(tokensFor({ preset: 'custom' }), PRESETS.marca);
+  assert.deepEqual(tokensFor(undefined), PRESETS.estudio);
+  assert.deepEqual(tokensFor({}), PRESETS.estudio);
+  assert.deepEqual(tokensFor({ preset: 'custom' }), PRESETS.estudio);
 });
 
 test('tokensFor com custom valido deriva surfaces e action, nao devolve preset fixo', () => {
@@ -183,15 +221,34 @@ test('hueOf de --live e estavel (regressao simples)', () => {
   assert.ok(h >= 355 || h <= 5, `esperava matiz perto de 0/360 (vermelho), veio ${h}`);
 });
 
-test('apply com preset "marca" remove data-theme; outro preset seta o atributo', () => {
+test('apply com preset "estudio" remove data-theme; outro preset seta o atributo', () => {
   const doc = { documentElement: { attrs: {}, style: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } } };
   doc.documentElement.style.setProperty = function setProperty(k, v) { this[k] = v; };
 
   apply({ preset: 'midnight' }, doc);
   assert.equal(doc.documentElement.attrs['data-theme'], 'midnight');
 
-  apply({ preset: 'marca' }, doc);
+  apply({ preset: 'estudio' }, doc);
   assert.equal(doc.documentElement.attrs['data-theme'], undefined);
+});
+
+test('apply do estudio usa o onAct declarado pelo preset', () => {
+  const props = {};
+  const doc = {
+    documentElement: {
+      attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; },
+      removeAttribute(k) { delete this.attrs[k]; },
+      style: {
+        setProperty(k, v) { props[k] = v; },
+        removeProperty(k) { delete props[k]; },
+      },
+    },
+  };
+
+  apply({ preset: 'estudio' }, doc);
+
+  assert.equal(props['--on-act'], '#0C0D0F');
 });
 
 test('apply com custom valido seta data-theme="custom" e escreve variaveis, sem tocar em tokens semanticos', () => {
@@ -238,7 +295,7 @@ test('apply de um preset APAGA as variaveis inline de um custom anterior', () =>
   apply({ preset: 'custom', base: { temp: 0.3, level: 0.9 }, act: '#4F8EF7' }, doc);
   assert.ok(props['--bg'], 'o custom precisa ter escrito --bg');
 
-  apply({ preset: 'marca' }, doc);
+  apply({ preset: 'estudio' }, doc);
   assert.equal(props['--bg'], undefined);
   assert.equal(props['--act'], undefined);
   assert.equal(doc.documentElement.attrs['data-theme'], undefined);
@@ -300,7 +357,7 @@ test('apply de preset + act escreve SO as variaveis de acao, nunca as superficie
   assert.equal(doc.documentElement.attrs['data-theme'], 'paper');
 });
 
-test('apply de marca + act mantem o acento e nao poe data-theme', () => {
+test('apply de marca + act mantem o acento e poe data-theme', () => {
   const props = {};
   const doc = {
     documentElement: {
@@ -315,7 +372,7 @@ test('apply de marca + act mantem o acento e nao poe data-theme', () => {
   };
 
   apply({ preset: 'marca', act: '#22A06B' }, doc);
-  assert.equal(doc.documentElement.attrs['data-theme'], undefined, 'marca e o :root, sem atributo');
+  assert.equal(doc.documentElement.attrs['data-theme'], 'marca', 'marca vem do bloco CSS');
   assert.equal(props['--act'], '#22A06B');
 });
 

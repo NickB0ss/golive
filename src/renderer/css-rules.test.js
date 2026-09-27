@@ -7,6 +7,20 @@ const path = require('node:path');
 
 const cssPath = path.join(__dirname, 'style.css');
 
+test('cada fonte declarada aponta para um arquivo local existente', () => {
+  const css = fs.readFileSync(cssPath, 'utf8');
+  const fontes = [...css.matchAll(/@font-face\s*\{([\s\S]*?)\}/g)];
+  assert.ok(fontes.length > 0, 'style.css precisa declarar fontes locais');
+  for (const [, bloco] of fontes) {
+    const match = /src:\s*url\('([^']+)'\)/.exec(bloco);
+    assert.ok(match, 'cada @font-face precisa declarar src com url local');
+    assert.ok(
+      fs.existsSync(path.join(__dirname, match[1])),
+      `fonte declarada nao existe: ${match[1]}`,
+    );
+  }
+});
+
 test('botao de novas mensagens nao fica dentro da lista limpa pelo historico', () => {
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   const chatMessages = html.match(/<div id="chat-messages"[^>]*>([\s\S]*?)<\/div>/);
