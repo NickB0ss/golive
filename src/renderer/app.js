@@ -2,7 +2,13 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, conndiag, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, viewhold, warnings: warningsModule } = window.GoLive;
+  const {
+    config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status,
+    autoquality, rxstats, conndiag, peerquality, tetoRecebido, encodehealth, version, emoji, chatmedia,
+    annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession,
+    migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
+    health, audiometer, viewhold, warnings: warningsModule,
+  } = window.GoLive;
   const warningRegistry = warningsModule.create();
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
@@ -1771,6 +1777,7 @@
     }
     tileSource.clear();
     viewerHealth.clear();
+    for (const peerId of watchedScreens) tetoRecebido.limpar(`${peerId}:screen`);
     watchedScreens.clear();
     autoWatchSuppressed = false;
     notifyTracker = livenotify.createTracker();
@@ -5545,8 +5552,10 @@
 
   /** A tela de alguem saiu do ar (parou de transmitir, ou a pessoa saiu). */
   function unwatchScreen(originId) {
-    watchedScreens.delete(String(originId));
-    ui.grid.forgetWatched(String(originId));
+    const id = String(originId);
+    watchedScreens.delete(id);
+    tetoRecebido.limpar(`${id}:screen`);
+    ui.grid.forgetWatched(id);
   }
 
   function maybeNotifyLive(peer, peerId, { bootstrap = false } = {}) {
@@ -5586,6 +5595,9 @@
     }
 
     if (mode === 'only') {
+      for (const watchedId of watchedScreens) {
+        if (watchedId !== id) tetoRecebido.limpar(`${watchedId}:screen`);
+      }
       watchedScreens.clear();
       watchedScreens.add(id);
       autoWatchSuppressed = false;
@@ -5594,6 +5606,7 @@
       autoWatchSuppressed = false;
     } else if (mode === 'remove') {
       watchedScreens.delete(id);
+      tetoRecebido.limpar(`${id}:screen`);
       // Ficou sem nenhuma tela: foi uma escolha explicita de nao ver nada
       // (o menu de botao direito, ou largar a ultima). A auto-escolha para
       // de repor ate o usuario pedir uma tela de novo.
@@ -5808,6 +5821,18 @@
   // minimizada -- um relay que minimizou mas tem espectadores atras nao pode
   // cortar o encode de quem esta assistindo de verdade. Ver a spec de
   // 2026-08-23, secao "Demanda propaga pra cima".
+  /** Sou relay da origem `peerId` naquele tipo, com alguma folha assistindo?
+   * So vale em conexao direta: num kind composto somos folha. */
+  function folhaAssistindo(session, baseKind, peerId) {
+    const state = myRole[baseKind].get(peerId);
+    // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
+    // assim que relayTo as criou) -- consultar isPeerSuspended com o
+    // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
+    const childKind = relayKindFor(baseKind, peerId);
+    return state?.role === 'relay'
+      && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+  }
+
   function broadcastViewState() {
     const session = currentSession;
     if (!session?.mesh || !session.sig.isOpen()) return;
@@ -5819,13 +5844,7 @@
       // direta, `peerId` E a origem -- que e exatamente a chave do estado
       // por-origem, entao a pergunta "sou relay DESTE peer?" vira uma
       // consulta direta.
-      const state = sourceId ? null : myRole[baseKind].get(peerId);
-      // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
-      // assim que relayTo as criou) -- consultar isPeerSuspended com o
-      // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
-      const childKind = relayKindFor(baseKind, peerId);
-      const anyFolhaWatching = state?.role === 'relay'
-        && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+      const anyFolhaWatching = !sourceId && folhaAssistindo(session, baseKind, peerId);
       // A escolha de assistir e por ORIGEM: num kind composto quem esta rio
       // acima e o relay, mas o video continua sendo o de `sourceId`. Tela e
       // camera tem defaults opostos -- tela e opt-in (watchedScreens),
@@ -5860,13 +5879,40 @@
       // Mesa: a largura da janela desta tela (ou camera) na minha vista vira
       // teto de qualidade do lado de quem manda (peerquality.capForWidth e
       // cameraEncodingFor). Fora da Mesa (ou relay com filhos atras de mim),
-      // sem teto.
-      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
-        ? mesaView?.widthFor(baseKind, origem) ?? null
+      // sem teto. Em tela, o teto escolhido no menu do video ("Qualidade que
+      // voce recebe") entra junto: vale o menor dos dois.
+      const larguraMesa = mesaView?.widthFor(baseKind, origem) ?? null;
+      const larguraDaEscolha = baseKind === 'screen'
+        ? tetoRecebido.larguraEscolhida(`${origem}:screen`)
         : null;
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, maxWidth, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
+      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
+        ? tetoRecebido.combinar(larguraDaEscolha, larguraMesa)
+        : null;
+      session.sig.send({
+        type: 'view-state',
+        to: peerId,
+        kind,
+        watching,
+        looking,
+        maxWidth,
+        encodeHealth: myEncodeHealth,
+        receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null,
+        relayLoad: relayLoad(),
+      });
     }
   }
+
+  // O menu do video chama o modulo direto; a troca republica o view-state
+  // pelo mesmo caminho que a Mesa usa ao redimensionar.
+  tetoRecebido.definirAoMudar(() => broadcastViewState());
+  // Repassando a tela para folhas, o teto nao vale (ver broadcastViewState):
+  // o menu mostra o item desabilitado.
+  tetoRecebido.definirBloqueio((tileId) => {
+    const session = currentSession;
+    const chave = String(tileId);
+    if (!session?.mesh || !chave.endsWith(':screen')) return false;
+    return folhaAssistindo(session, 'screen', chave.slice(0, -':screen'.length));
+  });
 
   document.addEventListener('visibilitychange', onVisibilityChanged);
   window.golive.onWindowVisibilityChange?.((visible) => {
