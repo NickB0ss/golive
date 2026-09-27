@@ -479,3 +479,23 @@ select.input { padding-right: var(--s-6); appearance: none;
 .health[data-level='bad'] { color: var(--danger); }
 .health[data-level='bad'] > span:nth-child(n + 2) { background: var(--line2); }
 .health[data-level='none'] > span { background: var(--line2); }
+
+/* Grupos, notas, volume e itens de marcar dentro de menus. */
+.menu__group { display: grid; }
+.menu__note { padding: var(--s-1) var(--s-2) var(--s-2); font: var(--t-meta); color: var(--tx3); max-width: 280px; }
+.menu__item--warn, .menu__item--warn .i { color: var(--warn); }
+.menu__item .menu__item-icon, .menu__item > svg:not(.i) { width: 16px; height: 16px; flex: none; }
+.menu__item--check { cursor: pointer; }
+.menu__item--check::after {
+  content: '';
+  margin-left: var(--s-2);
+  width: 28px;
+  height: 16px;
+  border-radius: var(--r-full);
+  border: 1.5px solid var(--tx3);
+}
+.menu__item--check:has(input:checked)::after { background: var(--act); border-color: var(--act); }
+.menu__item--check:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--wire); }
+.menu__volume { display: grid; gap: var(--s-15); padding: var(--s-2) var(--s-2) var(--s-1); }
+.menu__volume-head { display: flex; justify-content: space-between; font: var(--t-meta); color: var(--tx2); }
+.menu__volume-head b { color: var(--tx); }

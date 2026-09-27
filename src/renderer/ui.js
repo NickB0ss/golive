@@ -34,7 +34,7 @@
   function bindDockTooltips() {
     const atalhos = { 'btn-pause-share': 'Ctrl+Alt+P' };
     const dica = document.createElement('div');
-    dica.className = 'popover dock-tooltip';
+    dica.className = 'tip';
     dica.setAttribute('role', 'tooltip');
     dica.hidden = true;
     document.body.appendChild(dica);
@@ -43,13 +43,11 @@
     };
     const mostrar = (botao) => {
       const texto = document.createElement('span');
-      texto.className = 'dock-tooltip-text';
       texto.textContent = botao.querySelector('.btn-label')?.textContent || botao.getAttribute('aria-label') || '';
       dica.replaceChildren(texto);
       const atalho = atalhos[botao.id];
       if (atalho) {
         const tecla = document.createElement('kbd');
-        tecla.className = 'dock-tooltip-key';
         tecla.textContent = atalho;
         dica.appendChild(tecla);
       }
@@ -66,12 +64,19 @@
       dica.style.left = `${pos.x}px`;
       dica.style.top = `${pos.y}px`;
     };
-    for (const botao of document.querySelectorAll('.control-bar .control-btn')) {
-      // O Compartilhar ja mostra o rotulo escrito no proprio botao.
-      if (botao.id === 'btn-toggle-share') continue;
-      botao.addEventListener('mouseenter', () => mostrar(botao));
+    // Botoes so de icone do barramento e da cabeca (os com rotulo ja dizem o que fazem).
+    let espera = null;
+    for (const botao of document.querySelectorAll('.bus .btn--icon, .head .btn--icon, .bus__end .btn')) {
+      botao.removeAttribute('title');
+      botao.addEventListener('mouseenter', () => {
+        clearTimeout(espera);
+        espera = setTimeout(() => mostrar(botao), 500);
+      });
       botao.addEventListener('focus', () => mostrar(botao));
-      botao.addEventListener('mouseleave', esconder);
+      botao.addEventListener('mouseleave', () => {
+        clearTimeout(espera);
+        esconder();
+      });
       botao.addEventListener('blur', esconder);
       botao.addEventListener('click', esconder);
     }
@@ -84,7 +89,7 @@
   function openPopover({ anchor = null, point = null, content, onClose = null, focus = null, onKeydown = null }) {
     closePopover();
     const popover = document.createElement('div');
-    popover.className = 'popover';
+    popover.className = 'pop';
     popover.setAttribute('role', 'menu');
     popover.tabIndex = -1;
     let pane = { content, focus };
@@ -859,6 +864,9 @@
     }));
     const n = plan.count;
     if (!n) gridEl.removeAttribute('data-count');
+    // Sem fonte a mostra nao ha onde a reacao aparecer.
+    const reagir = document.getElementById('btn-reactions');
+    if (reagir) reagir.disabled = !visiveis.length;
     else gridEl.dataset.count = n > 6 ? 'many' : String(n);
     gridEl.dataset.layout = plan.layout;
 
@@ -1408,6 +1416,19 @@
       return `<button type="button" class="react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
     }).join('');
   }
+
+  /** Reagir pelo barramento: vai para a fonte principal do palco (a primeira
+   * tela a mostra; sem tela, a primeira camera). */
+  function tileDaReacao() {
+    const visiveis = [...gridEl.querySelectorAll('.tile:not([hidden])')];
+    const alvo = visiveis.find((tile) => tile.dataset.kind !== 'camera') || visiveis[0];
+    return alvo ? alvo.id.slice('tile-'.length) : null;
+  }
+  const btnReacoesEl = $('btn-reactions');
+  btnReacoesEl?.addEventListener('click', () => {
+    const tileId = tileDaReacao();
+    if (tileId) openReactionPopover(btnReacoesEl, tileId);
+  });
 
   function openReactionPopover(anchor, tileId) {
     const list = document.createElement('div');
@@ -2212,48 +2233,46 @@
     const qualidadeBloqueada = items.includes('qualidade')
       && root.GoLive.tetoRecebido.bloqueado(`${id}:screen`);
     const spyItem = items.includes('espiar')
-      ? '<button type="button" role="menuitem" class="menu-item tile-menu-spy">Espiar em janela</button>'
+      ? '<button type="button" role="menuitem" class="menu__item tile-menu-spy">Espiar em janela</button>'
       : '';
     const qualityItem = items.includes('qualidade')
-      ? `<button type="button" role="menuitem" class="menu-item tile-menu-quality"
+      ? `<button type="button" role="menuitem" class="menu__item tile-menu-quality"
           aria-haspopup="menu" aria-expanded="false">
-          Qualidade que você recebe <span class="menu-atalho">›</span>
+          Qualidade que você recebe <span class="menu__hint">›</span>
         </button>`
       : '';
     const pararItem = watchItem
-      ? watchItem.replace('class="tile-menu-watch"', 'class="menu-item tile-menu-watch" role="menuitem"')
+      ? watchItem.replace('class="tile-menu-watch"', 'class="menu__item tile-menu-watch" role="menuitem"')
       : '';
     const abrirGrupoVer = spyItem
-      ? '<div class="menu-separador" role="separator"></div>'
-        + '<div class="menu-grupo" role="group" aria-label="Ver">'
+      ? '<div class="menu__sep" role="separator"></div>'
+        + '<div class="menu__group" role="group" aria-label="Ver">'
       : '';
     const abrirGrupoQualidade = qualityItem
-      ? '<div class="menu-separador" role="separator"></div>'
-        + '<div class="menu-grupo" role="group" aria-label="Qualidade">'
+      ? '<div class="menu__sep" role="separator"></div>'
+        + '<div class="menu__group" role="group" aria-label="Qualidade">'
       : '';
     const abrirGrupoAssistir = pararItem
-      ? '<div class="menu-separador" role="separator"></div>'
-        + '<div class="menu-grupo" role="group" aria-label="Assistir">'
+      ? '<div class="menu__sep" role="separator"></div>'
+        + '<div class="menu__group" role="group" aria-label="Assistir">'
       : '';
 
     const menu = document.createElement('div');
     menu.className = 'tile-menu';
     menu.innerHTML = `
-      <div class="tile-menu-head rotulo-mono">
+      <div class="menu__label">
         <span class="tile-menu-name" title="${escapeHtml(nome)}">${escapeHtml(nome)}</span>
       </div>
-      <div class="menu-grupo" role="group" aria-label="Som">
-      <label class="tile-menu-volume">
-        <span>Volume: <b class="tile-menu-volume-label">${Math.round(state.volume * 100)}%</b></span>
-        <input type="range" min="0" max="200" step="1"
-          aria-label="Volume" value="${Math.round(state.volume * 100)}" />
+      <div class="menu__group" role="group" aria-label="Som">
+      <label class="menu__volume">
+        <span class="menu__volume-head"><span>Volume</span><b class="tile-menu-volume-label tx-data">${Math.round(state.volume * 100)}%</b></span>
+        <input type="range" class="range" min="0" max="200" step="1" aria-label="Volume"
+          value="${Math.round(state.volume * 100)}" style="--pct:${Math.round(state.volume * 50)}%" />
       </label>
-      <label class="check compact tile-menu-mute-row">
-        <input type="checkbox" role="menuitemcheckbox" class="tile-menu-mute"
+      <label class="menu__item menu__item--check">
+        <input type="checkbox" role="menuitemcheckbox" class="sr-only tile-menu-mute"
           aria-checked="${isMuted(id)}" ${isMuted(id) ? 'checked' : ''} />
-        <span class="check-box"><svg class="check-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-        <span class="check-text"><span class="check-title">Silenciar</span></span>
-        <span class="menu-atalho">M</span>
+        Silenciar <span class="menu__hint">M</span>
       </label>
       </div>
       ${abrirGrupoVer}
@@ -2302,21 +2321,21 @@
       const escolha = root.GoLive.tetoRecebido.escolha(`${id}:screen`);
       const opcoesHtml = opcoes.map((opcao) => {
         const atual = escolha === opcao.id;
-        return `<button type="button" role="menuitemradio" class="menu-item"`
+        return `<button type="button" role="menuitemradio" class="menu__item"`
           + ` data-quality="${opcao.id}" aria-checked="${atual}" aria-disabled="${bloqueado}">`
           + `<span aria-hidden="true">${atual ? '✓' : ''}</span>`
           + `<span>${tileMenu.qualityLabel(opcao.id)}</span></button>`;
       }).join('');
       submenu.innerHTML = `
-        <div class="tile-menu-head rotulo-mono">
-          <button type="button" role="menuitem" class="menu-item tile-menu-back">
+        <div class="menu__label">
+          <button type="button" role="menuitem" class="menu__item tile-menu-back">
             <span aria-hidden="true">‹</span> Qualidade que você recebe
           </button>
         </div>
-        <div class="menu-grupo" role="group" aria-label="Qualidade que você recebe">
+        <div class="menu__group" role="group" aria-label="Qualidade que você recebe">
           ${opcoesHtml}
         </div>
-        ${bloqueado ? '<p class="menu-motivo">Você repassa esta tela para outras pessoas</p>' : ''}`;
+        ${bloqueado ? '<p class="menu__note">Você repassa esta tela para outras pessoas</p>' : ''}`;
       menu.querySelector('.tile-menu-quality').setAttribute('aria-expanded', 'true');
       popoverControl.openSubmenu({
         content: submenu,
@@ -2344,10 +2363,16 @@
     });
 
     const range = menu.querySelector('input[type=range]');
+    range.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      range.value = String(Math.max(0, Math.min(200, Number(range.value) + (event.deltaY < 0 ? 5 : -5))));
+      range.dispatchEvent(new Event('input'));
+    }, { passive: false });
     const volumeLabel = menu.querySelector('.tile-menu-volume-label');
     range.addEventListener('input', () => {
       state.volume = Number(range.value) / 100;
       volumeLabel.textContent = `${range.value}%`;
+      range.style.setProperty('--pct', `${Number(range.value) / 2}%`);
       applyGain();
     });
 
@@ -2776,13 +2801,13 @@
     memberMenuEl.classList.remove('hidden', 'in-modal');
     memberMenuEl.removeAttribute('role');
     memberMenuEl.innerHTML = `
-      ${canAdd ? '<button class="menu-item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
-      ${live ? `<button class="menu-item warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</button>` : ''}
-      ${targetIsOwner ? '' : `<button class="menu-item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</button>`}
-      ${live || !targetIsOwner ? '<div class="menu-separador"></div>' : ''}
-      <button class="menu-item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</button>
-      <button class="menu-item danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</button>
-      <div class="menu-motivo">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
+      ${canAdd ? '<button class="menu__item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
+      ${live ? `<button class="menu__item menu__item--warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</button>` : ''}
+      ${targetIsOwner ? '' : `<button class="menu__item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</button>`}
+      ${live || !targetIsOwner ? '<div class="menu__sep"></div>' : ''}
+      <button class="menu__item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</button>
+      <button class="menu__item menu__item--danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</button>
+      <div class="menu__note">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
     `;
     if (!canModerate) {
       const moderacao = memberMenuEl.querySelectorAll(
@@ -3137,10 +3162,11 @@
     bannedListEl.innerHTML = '';
     for (const entry of list || []) {
       const li = document.createElement('li');
+      li.className = 'person';
       li.innerHTML = `
-        <span class="peer-avatar" style="background:${avatarColorFor(entry.key)}">${avatarInnerHtml(entry.key, entry.name, null)}</span>
-        <span class="peer-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span>
-        <button class="banned-readmit" type="button">Readmitir</button>
+        <span class="node" data-size="24" style="--who:${avatarColorFor(String(entry.key))}">${avatarInnerHtml(String(entry.key), entry.name, null)}</span>
+        <span class="person__text"><span class="person__name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span></span>
+        <span class="person__actions"><button class="btn btn--secondary btn--sm banned-readmit" type="button">Readmitir</button></span>
       `;
       li.querySelector('.banned-readmit').addEventListener('click', () => onUnban?.(entry.key));
       bannedListEl.appendChild(li);
@@ -3341,7 +3367,31 @@
   function append(entry, { received = false } = {}) {
     appendEntry(entry);
     // Historico, eco proprio e sistema nao sao mensagem nova de outra pessoa.
-    if (received) document.dispatchEvent(new CustomEvent('golive:chat-received'));
+    if (received) {
+      document.dispatchEvent(new CustomEvent('golive:chat-received'));
+      if (!entry.system) espiarMensagem(entry);
+    }
+  }
+
+  // Conversa espiando (05 §3.6): sem a coluna, a mensagem nova surge sobre o
+  // programa e some sozinha em 6 s; no maximo 3 de uma vez. Clique abre a
+  // conversa fixada.
+  const chatPeekEl = $('chat-peek');
+  const PEEK_MAX = 3;
+
+  function espiarMensagem(entry) {
+    if (!chatPeekEl || $('app')?.dataset.conv !== 'peek') return;
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'peek__msg';
+    const cor = avatarColorFor(String(entry.from));
+    const texto = entry.text || (entry.image ? 'mandou uma imagem' : '');
+    item.innerHTML = `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>`
+      + `<span class="peek__text"><b style="color:${cor}">${escapeHtml(entry.name)}</b>${escapeHtml(texto)}</span>`;
+    item.addEventListener('click', () => document.dispatchEvent(new CustomEvent('golive:conv-open')));
+    item.addEventListener('animationend', () => item.remove());
+    chatPeekEl.appendChild(item);
+    while (chatPeekEl.children.length > PEEK_MAX) chatPeekEl.firstElementChild.remove();
   }
 
   function setHistory(entries) {
@@ -3975,7 +4025,7 @@
     const rect = anchorEl.getBoundingClientRect();
     memberMenuEl.classList.toggle('in-modal', Boolean(anchorEl.closest('.modal')));
     memberMenuEl.innerHTML = itens.map((item, index) => `
-      <button type="button" class="menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
+      <button type="button" class="menu__item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
     `).join('');
     memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
     memberMenuEl.style.top = `${rect.bottom + 4}px`;

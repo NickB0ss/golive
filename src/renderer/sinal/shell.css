@@ -637,3 +637,112 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .stage-empty .blank__art { color: var(--line2); }
 .stage-empty__acoes { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); margin-top: var(--s-2); }
 .bus__live:empty + .bus__sep { display: none; }
+
+/* ============ Central de avisos (popover da cabeca) ============ */
+.warn-center-wrap { position: relative; display: flex; }
+#warn-center { gap: var(--s-15); }
+#warn-center.warn-center-grave { color: var(--danger); }
+#warn-center.warn-center-atencao { color: var(--warn); }
+#warn-center.warn-center-info { color: var(--tx2); }
+#warn-center svg { width: 16px; height: 16px; }
+#warn-center-panel { position: absolute; top: calc(100% + var(--s-15)); right: 0; width: 360px; padding: var(--s-2); }
+#warn-center-panel:not([hidden]) { display: grid; gap: var(--s-1); }
+.warn-center-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: var(--s-2) var(--s-3);
+  align-items: start;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+}
+.warn-center-item + .warn-center-item { border-top: 1px solid var(--line); border-radius: 0; }
+.warn-center-item-grave .warn-center-icon { color: var(--danger); }
+.warn-center-item-atencao .warn-center-icon { color: var(--warn); }
+.warn-center-item-info .warn-center-icon { color: var(--tx2); }
+.warn-center-icon svg { width: 18px; height: 18px; }
+.warn-center-item-body { display: grid; gap: var(--s-1); }
+.warn-center-item-body strong { font: var(--t-label); }
+.warn-center-item-body p { font: var(--t-meta); color: var(--tx2); }
+.warn-center-action {
+  justify-self: start;
+  height: var(--h-ctl-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-xs);
+  font: var(--t-label);
+}
+.warn-center-action:hover { background: var(--veil); }
+.warn-center-dismiss { width: 24px; height: 24px; border-radius: var(--r-xs); color: var(--tx3); }
+.warn-center-dismiss:hover { background: var(--veil); color: var(--tx); }
+@keyframes warn-pulse { 50% { background: var(--warn-dim); } }
+#warn-center.warn-center-pulse { animation: warn-pulse 1.2s var(--ease-in-out) 2; }
+
+/* ============ Tela cheia: miniaturas das outras fontes (PiP) ============ */
+.pip-strip { position: absolute; inset: 0; pointer-events: none; }
+.tile:not(.fullscreen) .pip-strip { display: none; }
+.pip-thumb {
+  position: absolute;
+  z-index: var(--z-hud);
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--void);
+  box-shadow: 0 0 0 1px var(--line2), var(--shadow-2);
+  pointer-events: auto;
+  cursor: grab;
+}
+.pip-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.pip-thumb-avatar { position: absolute; left: var(--s-1); bottom: var(--s-1); }
+.pip-thumb-avatar .node__initial, .pip-picker-avatar .node__initial { display: grid; place-items: center; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--scrim-6); color: var(--on-video); font: 700 10px/1 var(--font-display); }
+.pip-thumb-remove {
+  position: absolute;
+  top: var(--s-1);
+  right: var(--s-1);
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--on-video);
+  opacity: 0;
+}
+.pip-thumb:hover .pip-thumb-remove, .pip-thumb-remove:focus-visible { opacity: 1; }
+.pip-thumb-resize { position: absolute; left: 0; bottom: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+.pip-add-btn {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-15);
+  height: var(--h-ctl);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--on-video);
+  font: var(--t-label);
+  pointer-events: auto;
+}
+body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
+.pip-picker { display: grid; gap: 2px; min-width: 200px; }
+.pip-picker-item { display: flex; align-items: center; gap: var(--s-2); min-height: 32px; padding: 0 var(--s-2);
+  border-radius: var(--r-xs); font: var(--t-body); }
+.pip-picker-item:hover, .pip-picker-item:focus-visible { background: var(--veil); }
+.pip-picker-empty { padding: var(--s-2); font: var(--t-meta); color: var(--tx3); }
+
+/* ============ Rabisco: campo de texto sobre o video ============ */
+.annot-text-input {
+  position: absolute;
+  z-index: var(--z-hud);
+  min-width: 120px;
+  height: var(--h-ctl-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--wire);
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--on-video);
+  font: var(--t-body);
+}
+
+/* Conversa espiando: a mensagem e um botao que abre a conversa. */
+.peek__msg { text-align: left; font: var(--t-body); }
+.peek__text { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

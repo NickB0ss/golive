@@ -151,7 +151,7 @@
       <div id="presence-pop" class="pop presence hidden" role="dialog" aria-label="Pessoas na sala">
         <div class="pop__head"><span class="tx-tag">Na sala · <span id="presence-count">0</span></span></div>
         <ul id="peer-list" class="presence__list"></ul>
-        <section id="banned-section" class="presence__banned hidden"><h2>Banidos</h2><ul id="banned-list"></ul></section>
+        <section id="banned-section" class="presence__banned hidden"><div class="menu__sep" role="separator"></div><button class="menu__item banned-toggle" type="button" aria-expanded="false" aria-controls="banned-list"><svg class="i i--sm"><use href="#i-lock" /></svg>Banidos<svg class="i i--sm menu__hint"><use href="#i-chevron-down" /></svg></button><ul id="banned-list" class="presence__list" hidden></ul></section>
       </div>
       <button id="btn-room-health" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Conexão"><span class="health" data-level="none"><span></span><span></span><span></span></span></button>
       <button id="btn-room-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
@@ -321,7 +321,7 @@
     <section class="program" aria-labelledby="room-screen-title">
       <h1 id="room-screen-title" class="sr-only"></h1>
       <div id="grid" class="stage"></div>
-      <div id="chat-peek" class="peek" aria-hidden="true"></div>
+      <div id="chat-peek" class="peek" aria-label="Mensagens novas"></div>
     </section>
     <aside id="chat-panel" class="conv" aria-label="Conversa">
       <div class="conv__head">
@@ -419,7 +419,7 @@
 </div>
 
 <!-- ============ MENU DE MODERACAO (flutuante, reposicionado por ui.js) ============ -->
-<div id="member-menu" class="popover member-menu hidden" role="menu"></div>
+<div id="member-menu" class="pop hidden" role="menu"></div>
 
 <!-- ============ PAINEL DE EMOJI (ancorado no compose por ui.js) ============ -->
 <div id="emoji-panel" class="popover emoji-panel hidden">

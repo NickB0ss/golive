@@ -1014,6 +1014,13 @@
   $('btn-open-settings').addEventListener('click', openSettings);
   $('btn-room-settings').addEventListener('click', openSettings);
 
+  /** Diagnostico: os numeros de cada fonte (saude da cabeca, menu da sala). */
+  function openDiagnostics() {
+    openSettings();
+    document.querySelector('.settings-cat[data-cat="stats"]')?.click();
+  }
+  $('btn-room-health').addEventListener('click', openDiagnostics);
+
   async function applyLiveQuality() {
     const track = captureTrack || localStream.getVideoTracks()[0]; // ver reapplyAudienceQuality
     if (track) {
@@ -2947,6 +2954,7 @@
     setConversation($('app').dataset.conv === 'pinned' ? 'closed' : 'pinned', { persist: true });
   });
   $('btn-conv-peek').addEventListener('click', () => setConversation('peek', { persist: true }));
+  document.addEventListener('golive:conv-open', () => setConversation('pinned', { persist: true }));
   $('btn-conv-close').addEventListener('click', () => setConversation('closed', { persist: true }));
   function resetRoomTabs() {
     setConversation(null);
@@ -5921,7 +5929,7 @@
     const action = event.target.closest('[data-room-action]')?.dataset.roomAction;
     if (action) setRoomMoreOpen(false);
     if (action === 'theater') document.getElementById('app').toggleAttribute('data-theater');
-    if (action === 'diagnostics') openSettings();
+    if (action === 'diagnostics') openDiagnostics();
   });
   document.addEventListener('keydown', (event) => {
     const field = event.target?.matches?.('input, textarea, select, [contenteditable="true"]');

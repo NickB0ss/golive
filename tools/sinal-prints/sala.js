@@ -151,6 +151,43 @@ async function rodada(browser, port, [w, h]) {
   await foto(page, '06-menu-sala', w, h);
   await page.keyboard.press('Escape');
 
+  // Voce transmitindo e depois pausado (a UI recebe o estado pelo mesmo setToggleState que o app usa).
+  await page.evaluate(() => {
+    window.GoLive.ui.setToggleState('share', 'on');
+    document.getElementById('btn-pause-share').classList.remove('hidden');
+    document.getElementById('btn-swap-share').classList.remove('hidden');
+  });
+  await foto(page, '08-transmitindo', w, h);
+  await page.evaluate(() => window.GoLive.ui.setToggleState('pause', 'on'));
+  await foto(page, '09-transmitindo-pausado', w, h);
+  await page.evaluate(() => {
+    window.GoLive.ui.setToggleState('pause', 'off');
+    window.GoLive.ui.setToggleState('share', 'off');
+  });
+
+  // Conversa espiando: as mensagens surgem sobre o programa.
+  if (await page.isVisible('#btn-conv-peek')) await page.click('#btn-conv-peek');
+  bia.envia({ type: 'chat', text: 'olha o placar aí' });
+  leo.envia({ type: 'chat', text: 'vou pegar água, já volto' });
+  await espera(500);
+  await foto(page, '10-conversa-espiando', w, h);
+  await page.click('#btn-conv-toggle');
+
+  // Tela cheia e teatro.
+  const alvo = await page.$('#grid .tile:not([hidden])');
+  if (alvo) {
+    await alvo.dblclick();
+    await espera(500);
+    await foto(page, '11-tela-cheia', w, h);
+    await page.keyboard.press('Escape');
+    await alvo.dblclick().catch(() => {});
+    await espera(300);
+  }
+  await page.keyboard.press('t');
+  await espera(300);
+  await foto(page, '12-teatro', w, h);
+  await page.keyboard.press('t');
+
   for (const p of [bia, leo, caio]) p.fecha();
   await espera(600);
   await foto(page, '07-todos-sairam', w, h);
