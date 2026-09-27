@@ -76,7 +76,6 @@
 
   const TIME_SAMPLES = 5;
   const TIME_EVERY_MS = 60000;
-  const TOAST_MS = 2600;
 
   // Espelho do MESMO regex do servidor (server/signaling-core.js,
   // MESA_SURFACE_RE): a superficie do rabisco de uma janela da Mesa.
@@ -302,42 +301,45 @@
       sec.setAttribute('aria-label', 'Mesa da sala');
       sec.setAttribute('aria-describedby', 'mesa-help');
       sec.innerHTML = `
-        <p id="mesa-help" class="visually-hidden">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa.</p>
+        <p id="mesa-help" class="sr-only">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa.</p>
         <div class="mesa-grid" aria-hidden="true"></div>
         <div class="mesa-world"><div class="mesa-edge" aria-hidden="true"></div></div>
         <div class="mesa-over" aria-hidden="true"></div>
-        <p class="mesa-empty" hidden><b>A mesa está vazia.</b> Clique com o botão direito para adicionar uma janela.</p>
-        <p class="mesa-loading" role="status">Abrindo a mesa…</p>
+        <div class="mesa-empty blank" hidden>
+          <p class="blank__title">A Mesa está vazia.</p>
+          <button type="button" class="btn btn--primary" data-mesa-empty-add>Pôr na Mesa</button>
+          <div class="mesa-empty__shortcuts" aria-label="Atalhos para pôr na Mesa"></div>
+        </div>
+        <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>Abrindo a Mesa…</p>
         <div class="mesa-people" role="group" aria-label="Quem está na mesa"></div>
         <div class="mesa-nav">
           <div id="mesa-map" class="mesa-map" hidden aria-label="Mapa da mesa"></div>
           <div class="mesa-zoom" role="group" aria-label="Aproximação">
-            <button type="button" class="mesa-zoom-btn" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
             <output class="mesa-zoom-val" aria-live="off">100%</output>
-            <button type="button" class="mesa-zoom-btn" data-zoom="in" aria-label="Aproximar" title="Aproximar (+)">${ICON.plus}</button>
-            <button type="button" class="mesa-zoom-btn" data-zoom="fit" aria-label="Ver tudo" title="Ver tudo (0)">${ICON.fs}</button>
-            <button type="button" class="mesa-zoom-btn" data-zoom="map" aria-label="Abrir mapa" title="Mapa"
-              aria-expanded="false" aria-controls="mesa-map">${ICON.map}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="in" aria-label="Aproximar" title="Aproximar (+)">${ICON.plus}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="fit" title="Ver tudo (0)">Ver tudo</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="map" title="Mapa"
+              aria-expanded="false" aria-controls="mesa-map">Mapa</button>
           </div>
         </div>
         <p class="mesa-lock-note" hidden></p>
-        <div class="mesa-toast" aria-hidden="true"><span class="mesa-toast-dot"></span><span class="mesa-toast-text"></span></div>
-        <p class="visually-hidden mesa-live" aria-live="polite"></p>
-        <div class="mesa-menu" role="menu" hidden></div>
-        <div class="mesa-menu" role="menu" hidden></div>`;
+        <p class="sr-only mesa-live" aria-live="polite"></p>
+        <div class="mesa-menu pop" role="menu" hidden></div>
+        <div class="mesa-menu pop" role="menu" hidden></div>`;
       const q = (sel) => sec.querySelector(sel);
       S.section = sec;
       S.gridBg = q('.mesa-grid');
       S.world = q('.mesa-world');
       S.over = q('.mesa-over');
       S.emptyEl = q('.mesa-empty');
+      S.emptyShortcuts = q('.mesa-empty__shortcuts');
       S.loadingEl = q('.mesa-loading');
       S.peopleEl = q('.mesa-people');
       S.mapEl = q('.mesa-map');
       S.mapButton = q('[data-zoom="map"]');
       S.zoomVal = q('.mesa-zoom-val');
       S.lockNote = q('.mesa-lock-note');
-      S.toastEl = q('.mesa-toast');
       S.liveEl = q('.mesa-live');
       [S.menuEl, S.subEl] = sec.querySelectorAll('.mesa-menu');
       const edge = q('.mesa-edge');
@@ -364,14 +366,14 @@
       S.vh = S.section.clientHeight || 1;
       const sec = S.section.getBoundingClientRect();
       const nav = S.section.querySelector('.mesa-nav').getBoundingClientRect();
-      const toast = S.toastEl.getBoundingClientRect();
+      const toast = document.getElementById('toast')?.getBoundingClientRect();
       const dock = deps.dockEl?.()?.getBoundingClientRect();
       const margem = 12;
       // Quanto uma caixa ocupa do fundo da Mesa. Caixa sem tamanho (escondida ou antes do
       // layout) tem top 0 e viraria a Mesa inteira: nao conta.
       const doFundo = (r) => (r && r.height > 0 && r.top > sec.top && r.top < sec.bottom ? sec.bottom - r.top : 0);
       S.section.style.setProperty('--dock-h', `${dock?.height || 0}px`);
-      S.section.style.setProperty('--toast-h', `${toast.height}px`);
+      S.section.style.setProperty('--toast-h', `${toast?.height || 0}px`);
       S.safe = {
         top: margem,
         right: margem,
@@ -402,6 +404,13 @@
           else setView(V.zoomStep(S.view, k === 'in' ? 1 : -1, S.vw, S.vh));
         });
       }
+      listen(sec.querySelector('[data-mesa-empty-add]'), 'click', (e) => openAddMenu(e.currentTarget));
+      listen(S.emptyShortcuts, 'click', (e) => {
+        const button = e.target.closest('[data-mesa-quick]');
+        if (!button || !canEdit()) return;
+        S.menu = { at: null, returnFocus: button };
+        addWindow(button.dataset.mesaQuick);
+      });
       listen(document, 'pointerdown', (e) => {
         if (S.menu && !e.target.closest?.('.mesa-menu') && !e.target.closest?.('[data-mesa-add]')) closeMenu();
       }, true);
@@ -992,6 +1001,7 @@
         placeWin(rec);
       }
       S.emptyEl.hidden = list.length > 0 || !S.state;
+      renderEmptyShortcuts();
       applyLocks();
       scheduleMap();
       scheduleWatch();
@@ -1008,16 +1018,17 @@
       el.innerHTML = `
         <div class="mesa-bar">
           ${media ? '<span class="mesa-live-slot"></span>' : ''}
+          <span class="mesa-type" aria-hidden="true">${escapeHtml(typeGlyph(win.type))}</span>
           <span class="mesa-bar-title"></span>
           <span class="mesa-bar-status"></span>
-          <span class="mesa-bar-turn" hidden>Sua vez</span>
+          <span class="mesa-bar-turn tag tag--wire" hidden>Sua vez</span>
           <span class="mesa-moving" hidden></span>
-          <span class="mesa-avatar"></span>
-          <button type="button" class="mesa-bar-btn" data-act="menu" aria-label="Mais ações da janela"
+          <span class="mesa-avatar node" data-size="16"></span>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="menu" aria-label="Mais ações da janela"
             title="Mais ações (Shift+F10)" aria-haspopup="menu">${ICON.more}</button>
-          <button type="button" class="mesa-bar-btn" data-act="full" aria-label="Tela cheia"
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="full" aria-label="Tela cheia"
             title="Tela cheia (F)">${ICON.fs}</button>
-          <button type="button" class="mesa-bar-btn" data-act="remove" aria-label="Tirar da mesa"
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="remove" aria-label="Tirar da mesa"
             title="Tirar da mesa (Delete)">${ICON.x}</button>
         </div>
         <div class="mesa-win-body"></div>
@@ -1121,6 +1132,22 @@
       if (url) return `<img src="${escapeHtml(url)}" alt="" />`;
       const initial = (deps.nameOf(id) || '?').trim().charAt(0).toUpperCase() || '?';
       return `<span class="mesa-avatar-initial">${escapeHtml(initial)}</span>`;
+    }
+
+    function typeGlyph(type) {
+      return ({ youtube: '▶', radio: '◉', nota: '□', lista: '☷', enquete: '◌', imagem: '▧',
+        galeria: '▦', quadro: '✎', placar: '≡', cronometro: '◷', velha: '×', xadrez: '♞',
+        damas: '●', dados: '⚄', roleta: '◉', quiz: '?', domino: '▯', truco: '♠' })[type] || '◇';
+    }
+
+    function renderEmptyShortcuts() {
+      if (!S?.state || !S.emptyShortcuts) return;
+      const common = ['youtube', 'nota', 'enquete', 'placar', 'cronometro', 'velha'];
+      const available = new Map((registry()?.addable() || []).map((mod) => [mod.type, mod]));
+      S.emptyShortcuts.innerHTML = common.map((type) => {
+        const mod = available.get(type);
+        return mod ? `<button type="button" class="menu__item" data-mesa-quick="${type}">${escapeHtml(mod.title)}</button>` : '';
+      }).join('');
     }
 
     function placeWin(rec) {
@@ -1772,7 +1799,7 @@
 
     function row(label, { act, sub, kbd, small, danger, disabled, reason } = {}) {
       const attrs = [
-        'type="button"', 'role="menuitem"', 'class="mesa-menu-row' + (danger ? ' is-danger' : '') + '"',
+        'type="button"', 'role="menuitem"', 'class="mesa-menu-row menu__item' + (danger ? ' menu__item--danger' : '') + '"',
         act ? `data-act="${act}"` : '', sub ? 'data-sub="add" aria-haspopup="menu" aria-expanded="false"' : '',
         disabled ? 'aria-disabled="true"' : '', reason ? `title="${escapeHtml(reason)}"` : '',
       ].filter(Boolean).join(' ');
@@ -2279,22 +2306,23 @@
     // Avisos
     // ------------------------------------------------------------------
 
-    /** Aviso curto no topo da mesa, tambem anunciado com educacao. */
-    function toast(text, who = null) {
+    /** O aviso da Mesa usa o mesmo #toast global da Sala. */
+    function toast(text) {
       if (!S) return;
-      S.toastEl.querySelector('.mesa-toast-text').textContent = text;
-      const dot = S.toastEl.querySelector('.mesa-toast-dot');
-      dot.hidden = who == null;
-      if (who != null) dot.style.setProperty('--who', deps.colorFor(who));
-      S.toastEl.classList.add('is-shown');
-      root.clearTimeout(S.toastTimer);
-      S.toastTimer = later(() => S?.toastEl.classList.remove('is-shown'), TOAST_MS);
+      const globalToast = document.getElementById('toast');
+      const globalText = document.getElementById('toast-text');
+      if (globalToast && globalText) {
+        globalText.textContent = text;
+        globalToast.classList.remove('hidden');
+        root.clearTimeout(S.toastTimer);
+        S.toastTimer = later(() => globalToast.classList.add('hidden'), 5000);
+      }
       S.liveEl.textContent = '';
       S.liveEl.textContent = text;
     }
 
-    function announce(text, who) {
-      toast(text, who);
+    function announce(text) {
+      toast(text);
     }
 
     function onViewers() {

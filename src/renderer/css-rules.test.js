@@ -9,6 +9,7 @@ const DIR = path.join(__dirname, 'sinal');
 // Toda folha do Sinal entra: um arquivo novo nao pode escapar das regras.
 const FILES = fs.readdirSync(DIR).filter((file) => file.endsWith('.css')).sort();
 const cssByFile = new Map(FILES.map((file) => [file, fs.readFileSync(path.join(DIR, file), 'utf8')]));
+const mesaJanelas = fs.readFileSync(path.join(__dirname, 'mesa-janelas.css'), 'utf8');
 
 function declarations(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -105,7 +106,7 @@ test('important fica restrito a hidden e movimento reduzido', () => {
 });
 
 test('live so marca estados ao vivo e a marca', () => {
-  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand|\.theme-mini__live)/;
+  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand|\.theme-mini__live|\.mesa-map > i\.is-live)/;
   for (const source of cssByFile.values()) {
     for (const match of source.matchAll(/([^{}]+)\{[^{}]*var\(--live\)[^{}]*\}/g)) {
       assert.match(match[1], allowed, `uso indevido de --live em ${match[1].trim()}`);
@@ -120,6 +121,16 @@ test('z-index usa apenas a escala de tokens', () => {
       assert.match(match[1], /^(?:var\(--z-[\w-]+\)|calc\(var\(--z-[\w-]+\)[^)]+\))\s*$/,
         `${file}: z-index fora da escala: ${match[1]}`);
     }
+  }
+});
+
+test('conteudos da Mesa tambem so usam tokens de cor, fonte e profundidade', () => {
+  const source = mesaJanelas.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i);
+  assert.doesNotMatch(source, /var\(--live\)/);
+  assert.doesNotMatch(source, /(?:font|font-size)\s*:[^;}]*\b\d+(?:px|rem)\b/);
+  for (const match of source.matchAll(/z-index\s*:\s*([^;}]*)/g)) {
+    assert.match(match[1], /^var\(--z-[\w-]+\)\s*$/, `mesa-janelas.css: z-index fora da escala: ${match[1]}`);
   }
 });
 

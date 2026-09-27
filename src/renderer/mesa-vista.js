@@ -26,11 +26,9 @@
   const ZOOM_MAX = 2;
   // Um degrau de +/- (teclado e botoes): 5 degraus dobram o zoom.
   const ZOOM_STEP = 1.25;
-  const GRID_MINOR = 40;
-  const GRID_MAJOR = 200;
-  // A grade fina some quando as linhas ficariam a menos disto na tela: com
-  // zoom baixo ela vira um chuvisco que so pesa.
-  const GRID_MINOR_MIN_PX = 14;
+  const GRID_MINOR = 48;
+  const GRID_MAJOR = 48;
+  const GRID_MINOR_MIN_PX = 0;
   const FLY_MS = 420;
   const SETTLE_MS = 260;
   // Janela fora da vista por 2 s (ou menor que 120 px na tela) para de
@@ -220,33 +218,20 @@
   }
 
   // ---------------------------------------------------------------------
-  // Grade (um fundo em linear-gradient, recalculado so quando a vista muda)
+  // Grade (pontos no mundo, recalculada so quando a vista muda)
   // ---------------------------------------------------------------------
 
-  /** Estilo do fundo da grade para a vista: linhas fortes a cada 200
-   * unidades e finas a cada 40, alinhadas ao mundo. Devolve as tres
-   * propriedades de `background-*` prontas. A fina sai quando ficaria a
-   * menos de GRID_MINOR_MIN_PX na tela. */
-  function gridStyle(view, { minorMinPx = GRID_MINOR_MIN_PX } = {}) {
-    const major = GRID_MAJOR * view.z;
-    const minor = GRID_MINOR * view.z;
+  /** Estilo do fundo da grade para a vista: pontos a cada 48 unidades,
+   * alinhados ao mundo. Devolve as propriedades de `background-*` prontas. */
+  function gridStyle(view) {
+    const spacing = GRID_MINOR * view.z;
     const ox = round2(-view.x * view.z);
     const oy = round2(-view.y * view.z);
-    const layers = [
-      'linear-gradient(var(--grid2) 1px, transparent 1px)',
-      'linear-gradient(90deg, var(--grid2) 1px, transparent 1px)',
-    ];
-    const sizes = [`${round2(major)}px ${round2(major)}px`, `${round2(major)}px ${round2(major)}px`];
-    const showMinor = minor >= minorMinPx;
-    if (showMinor) {
-      layers.push('linear-gradient(var(--grid) 1px, transparent 1px)', 'linear-gradient(90deg, var(--grid) 1px, transparent 1px)');
-      sizes.push(`${round2(minor)}px ${round2(minor)}px`, `${round2(minor)}px ${round2(minor)}px`);
-    }
     return {
-      showMinor,
-      backgroundImage: layers.join(', '),
-      backgroundSize: sizes.join(', '),
-      backgroundPosition: layers.map(() => `${ox}px ${oy}px`).join(', '),
+      showMinor: true,
+      backgroundImage: 'radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.25px)',
+      backgroundSize: `${round2(spacing)}px ${round2(spacing)}px`,
+      backgroundPosition: `${ox}px ${oy}px`,
     };
   }
 
