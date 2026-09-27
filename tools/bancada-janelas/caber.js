@@ -45,7 +45,8 @@ function conferirTeto(tipos) {
   for (const tipo of tipos) {
     const mod = registro.get(tipo);
     conferir(mod.size.w <= 1000, `${tipo}/teto: largura ${mod.size.w} passa de 1000`);
-    conferir(mod.size.h + 36 <= 620, `${tipo}/teto: altura externa ${mod.size.h + 36} passa de 620`);
+    // O `size` do registro ja e o externo (conteudo + barra), ver mesa-modules/index.js.
+    conferir(mod.size.h <= 620, `${tipo}/teto: altura externa ${mod.size.h} passa de 620`);
   }
 }
 
