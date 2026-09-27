@@ -413,7 +413,7 @@ function createWindow() {
     // duplicar a logica de storage de config.js so pra isso (fora do
     // escopo da Frente C -- ver plano C7). O preco e um flash escuro breve
     // so no boot, ate o CSS do renderer carregar e repintar o body.
-    backgroundColor: '#0C0D0F',
+    backgroundColor: '#0E0E14',
     title: 'GoLive LAN',
     // No pacote Windows o ícone do .exe (build.win.icon) já vira o ícone da
     // janela; isto cobre o `npm start`, que senão mostra o ícone padrão do
@@ -486,7 +486,7 @@ function createWindow() {
         movable: true,
         minimizable: false,
         maximizable: false,
-        backgroundColor: '#0C0D0F',
+        backgroundColor: '#0E0E14',
         webPreferences: {
           preload: path.join(__dirname, 'espiar-preload.js'),
           contextIsolation: true,
@@ -611,13 +611,13 @@ function createWindow() {
  * flash da cor padrao do Electron antes do CSS carregar. */
 function createSplashWindow() {
   splashWin = new BrowserWindow({
-    width: 300,
-    height: 360,
+    width: 360,
+    height: 240,
     resizable: false,
     frame: false,
     show: false,
     center: true,
-    backgroundColor: '#0C0D0F',
+    backgroundColor: '#0E0E14',
     icon: path.join(__dirname, 'renderer', 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'splash', 'preload-splash.js'),
