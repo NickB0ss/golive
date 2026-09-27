@@ -5225,6 +5225,142 @@
     }
   }
 
+
+  // ---------- Painel de comando (Ctrl+K, 05 §4) ----------
+  //
+  // Atalho para quem ja sabe o que quer. Cada acao aciona o MESMO controle da
+  // tela (botao, fonte, menu), entao nao existe um segundo caminho de logica.
+  const cmdLayerEl = $('command-palette');
+  const cmdInputEl = $('command-input');
+  const cmdListEl = $('command-list');
+  let cmdAcoes = [];
+  let cmdAtiva = 0;
+  let cmdFocoAntes = null;
+
+  function estadoParaComando() {
+    const app = $('app');
+    const fontes = [...document.querySelectorAll('#bus-live .src')].map((src) => ({
+      tileId: src.dataset.tile,
+      nome: src.querySelector('.src__name')?.textContent || 'Alguém',
+      assistindo: src.hasAttribute('data-watching'),
+    }));
+    const salas = [...document.querySelectorAll('#room-list-live .room-row:not(:disabled)')].map((row, indice) => ({
+      indice,
+      nome: row.querySelector('.room-row__name')?.textContent || 'sala',
+    }));
+    return {
+      lugar: app?.dataset.place === 'room' ? 'room' : 'lobby',
+      fontes,
+      salas,
+      transmitindo: $('btn-toggle-share')?.getAttribute('aria-pressed') === 'true',
+      pausado: $('btn-pause-share')?.getAttribute('aria-pressed') === 'true',
+      cameraLigada: $('btn-toggle-camera')?.getAttribute('aria-pressed') === 'true',
+      naMesa: Boolean(root.GoLive.salaVista?.isMesa()),
+      conversaAberta: app?.dataset.conv === 'pinned',
+    };
+  }
+
+  function executarComando(acao) {
+    const clicar = (sel) => document.querySelector(sel)?.click();
+    const naSala = $('app')?.dataset.place === 'room';
+    switch (acao.id) {
+      case 'assistir': escolherFonte(acao.alvo, 'only'); break;
+      case 'ver-junto': escolherFonte(acao.alvo, 'add'); break;
+      case 'parar-assistir': escolherFonte(acao.alvo, 'remove'); break;
+      case 'transmitir':
+      case 'parar-transmitir': clicar('#btn-toggle-share'); break;
+      case 'pausar': clicar('#btn-pause-share'); break;
+      case 'trocar-fonte': clicar('#btn-swap-share'); break;
+      case 'camera': clicar('#btn-toggle-camera'); break;
+      case 'mesa': clicar('#view-mesa'); break;
+      case 'por-na-mesa': clicar('#btn-mesa-add'); break;
+      case 'conversa': clicar('#btn-conv-toggle'); break;
+      case 'teatro': $('app')?.toggleAttribute('data-theater'); break;
+      case 'copiar-endereco': clicar('#room-more [data-copy="address"]'); break;
+      case 'diagnostico': clicar('#btn-room-health'); break;
+      case 'configuracoes': clicar(naSala ? '#btn-room-settings' : '#btn-open-settings'); break;
+      case 'sair': clicar('#btn-disconnect'); break;
+      case 'entrar':
+        document.querySelectorAll('#room-list-live .room-row:not(:disabled)')[acao.alvo]?.click();
+        break;
+      case 'criar-sala': clicar('#btn-create-room'); break;
+      case 'procurar': clicar('#btn-refresh-discovery'); break;
+      default: break;
+    }
+  }
+
+  function renderComando() {
+    const visiveis = root.GoLive.comando.filtrar(cmdAcoes, cmdInputEl.value);
+    cmdAtiva = Math.min(cmdAtiva, Math.max(0, visiveis.length - 1));
+    cmdListEl.innerHTML = visiveis.length
+      ? visiveis.map((acao, i) => `<li id="cmd-${i}" class="menu__item${i === cmdAtiva ? ' is-active' : ''}" role="option"
+          aria-selected="${i === cmdAtiva}" data-i="${i}">${escapeHtml(acao.rotulo)}${acao.dica
+  ? `<span class="menu__hint">${escapeHtml(acao.dica)}</span>` : ''}</li>`).join('')
+      : '<li class="menu__note" role="presentation">Nada com esse nome.</li>';
+    cmdInputEl.setAttribute('aria-activedescendant', visiveis.length ? `cmd-${cmdAtiva}` : '');
+    cmdListEl._visiveis = visiveis;
+    cmdListEl.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function abrirComando() {
+    if (!cmdLayerEl || !cmdLayerEl.classList.contains('hidden')) return;
+    cmdFocoAntes = document.activeElement;
+    cmdAcoes = root.GoLive.comando.acoesDisponiveis(estadoParaComando());
+    cmdAtiva = 0;
+    cmdInputEl.value = '';
+    cmdLayerEl.classList.remove('hidden');
+    renderComando();
+    cmdInputEl.focus();
+  }
+
+  function fecharComando({ devolverFoco = true } = {}) {
+    if (!cmdLayerEl || cmdLayerEl.classList.contains('hidden')) return;
+    cmdLayerEl.classList.add('hidden');
+    if (devolverFoco) cmdFocoAntes?.focus?.({ preventScroll: true });
+  }
+
+  function escolherComando(i) {
+    const acao = cmdListEl._visiveis?.[i];
+    if (!acao) return;
+    fecharComando({ devolverFoco: false });
+    executarComando(acao);
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      if (cmdLayerEl?.classList.contains('hidden')) abrirComando();
+      else fecharComando();
+    }
+  });
+  cmdInputEl?.addEventListener('input', () => {
+    cmdAtiva = 0;
+    renderComando();
+  });
+  cmdInputEl?.addEventListener('keydown', (event) => {
+    const total = cmdListEl._visiveis?.length || 0;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!total) return;
+      cmdAtiva = (cmdAtiva + (event.key === 'ArrowDown' ? 1 : total - 1)) % total;
+      renderComando();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      escolherComando(cmdAtiva);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      fecharComando();
+    }
+  });
+  cmdListEl?.addEventListener('click', (event) => {
+    const item = event.target.closest('[data-i]');
+    if (item) escolherComando(Number(item.dataset.i));
+  });
+  cmdLayerEl?.addEventListener('click', (event) => {
+    if (event.target === cmdLayerEl) fecharComando();
+  });
+
   root.GoLive = root.GoLive || {};
   root.GoLive.ui = {
     escapeHtml,

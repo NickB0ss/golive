@@ -340,3 +340,23 @@ Atalhos de uma letra nunca disparam com foco em campo de texto.
 - Configurações como tela: viraram folha.
 - Controles permanentes sobre o vídeo: viraram HUD que some.
 - Vermelho para qualquer coisa além de ao vivo (inclusive "sua vez", erro e botão de sair).
+
+## 13. Desvios da implementação (registrados em 2026-09-27)
+
+Decisões tomadas ao implementar, com o motivo — a spec acima segue valendo no resto.
+
+- **Destaque automático, sem o seletor Grade/Destaque.** O app já decide a hierarquia (`gridlayout.js`): telas
+  assistidas no principal, câmeras numa tira centrada embaixo; sem tela, grade. Um controle manual a mais não
+  pagava o que custava em ruído sobre o vídeo.
+- **Configurações em abas, não página única rolável.** O segmentado alterna Perfil · Aparência · Câmera e sons ·
+  Diagnóstico. O Diagnóstico mora dentro das Configurações (a saúde da cabeça e o menu da sala abrem direto nele)
+  em vez de uma segunda folha.
+- **Som do seletor em duas alternâncias** ("Som do PC" e "Incluir o Discord"), porque é o modelo funcional que o
+  app captura hoje; um menu de 4 opções prometeria combinações que a captura não distingue.
+- **Qualidade em dois eixos** (resolução × fluidez) no segmentado: são 6 combinações válidas, e os dois eixos
+  mostram a ordem crescente melhor que 6 botões.
+- **Nome padrão de sala** vem do servidor como "sala de <host>"; a tela capitaliza na exibição, sem mexer no
+  protocolo.
+- **Entrar por endereço é direto**: o diálogo só aparece quando a sala pede PIN.
+- **Cancelar a entrada** numa sala não existe no app; a linha mostra "Conectando…" e as outras ficam
+  desabilitadas, sem um Cancelar de mentira.

@@ -177,6 +177,12 @@ async function rodada(browser, port, [w, h]) {
     await page.keyboard.press('Escape');
   }
 
+  // Painel de comando.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('ass');
+  await foto(page, '20-comando', w, h);
+  await page.keyboard.press('Escape');
+
   // Configuracoes como folha sobre a sala.
   await page.click('#btn-room-settings');
   await espera(400);

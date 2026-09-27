@@ -557,6 +557,20 @@
   </div>
 </div>
 
+<!-- ============ PAINEL DE COMANDO (Ctrl+K) ============ -->
+<div id="command-palette" class="dlg-layer command hidden">
+  <div class="dlg command__box" role="dialog" aria-modal="true" aria-label="Painel de comando">
+    <div class="command__search">
+      <svg class="i" aria-hidden="true"><use href="#i-command" /></svg>
+      <input id="command-input" class="command__input" type="text" role="combobox" aria-expanded="true"
+             aria-controls="command-list" aria-autocomplete="list" placeholder="O que você quer fazer?"
+             spellcheck="false" autocomplete="off" />
+      <kbd>Esc</kbd>
+    </div>
+    <ul id="command-list" class="command__list" role="listbox" aria-label="Ações"></ul>
+  </div>
+</div>
+
 </div><!-- /#app -->
 <script src="config.js"></script>
 <script src="emoji.js"></script>
@@ -589,6 +603,7 @@
 <script src="chatimagens.js"></script>
 <script src="warnings.js"></script>
 <script src="warningcenter.js"></script>
+<script src="comando.js"></script>
 <script src="ui.js"></script>
 <script src="soundevents.js"></script>
 <script src="sound.js"></script>
