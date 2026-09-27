@@ -1137,7 +1137,8 @@ button.busy { cursor: default; }
   color: var(--on-act); font-weight: 700; font-size: var(--fs-micro);
 }
 .peer-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.peer-avatar.on { box-shadow: 0 0 0 2px var(--live); }
+/* Anel de quem esta ao vivo (spec 2.3): 1,5 px --live, separado por 2 px de --bg. */
+.peer-avatar.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--live); }
 .banned-list .peer-avatar { opacity: .5; }
 
 /* flex: 0 1 auto e o que autoriza o nome a encolher: sem base declarada,
@@ -1149,13 +1150,6 @@ button.busy { cursor: default; }
 .peer-you-tag { color: var(--tx3); font-weight: 400; font-size: var(--fs-micro); flex: none; }
 .peer-crown { display: inline-flex; align-items: center; color: var(--warn); flex: none; }
 .peer-crown svg { width: 14px; height: 14px; }
-.peer-live-badge {
-  display: inline-flex; align-items: center; gap: var(--s-1); flex: none;
-  background: var(--live-dim); color: var(--live-soft);
-  border-radius: var(--r-xs); padding: var(--s-05) var(--s-15); font-size: var(--fs-micro); font-weight: 700;
-  letter-spacing: .03em; margin-left: auto;
-}
-.peer-live-badge svg { width: 9px; height: 9px; }
 
 .member-menu-btn {
   margin-left: auto; width: 28px; height: 28px; min-height: 0; padding: 0;
@@ -1316,9 +1310,6 @@ button.busy { cursor: default; }
    precisa saltar pra quem esqueceu que pausou. Por isso --warn, nao a
    superficie neutra do .is-on -- o seletor por id vence a regra generica. */
 #btn-pause-share.is-on { background: var(--warn); color: var(--surface-1); box-shadow: none; }
-/* O <em>AO VIVO</em> mora dentro de .peer-live-badge, que ja carrega a
-   pilula inteira -- aqui so tira o italico do <em>. */
-.peer-list li em { font-style: normal; }
 /* Preset menor que estamos mandando pra ESTE espectador porque a conexao
    dele nao esta aguentando. Neutro de proposito -- nao e um alerta nem um
    estado "ao vivo", so um dado. Ver a regra do tema no topo. */
@@ -3380,7 +3371,9 @@ body[data-chat="recolhido"] #chat-panel { visibility: hidden; border: 0; padding
 
 .presenca-avatar { flex: none; }
 .presenca-estado { color: var(--tx3); font-size: var(--fs-micro); white-space: nowrap; }
+/* O nome encolhe primeiro (ellipsis); o Assistir nunca e cortado. */
 .presenca-assistir {
+  flex: none;
   min-height: 28px;
   margin-left: auto;
   padding: 0 var(--s-2);

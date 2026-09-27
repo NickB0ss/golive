@@ -2486,7 +2486,6 @@
     avatar,
     live,
     isSelf,
-    pulsing = false,
     qualityTag,
     strugglingTag,
     isOwner,
@@ -2515,11 +2514,7 @@
       ${isOwner ? '<span class="peer-crown" title="Líder da sala" role="img" aria-label="Líder da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
       ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
       ${strugglingTag ? '<span class="member-health-tag">travando</span>' : ''}
-      ${live
-        ? `<span class="peer-live-badge live-pulse${pulsing ? ' pulsing' : ''}" title="Compartilhando tela">${SHARE_ICON}<em>AO VIVO</em></span>`
-        : ''
-      }
-      ${showMenu ? `<button class="member-menu-btn" type="button" aria-label="Moderar ${escapeHtml(name)}">⋮</button>` : ''}
+      ${showMenu ? `<button class="member-menu-btn" type="button" aria-label="Opções de ${escapeHtml(name)}">⋮</button>` : ''}
     `;
     if (live && !watched) {
       const assistir = document.createElement('button');
@@ -2616,6 +2611,9 @@
   function estadoPresenca(pessoa, assistido, mesaPeople) {
     const pausado = tilePaused.get(pessoa.id)?.paused || tilePaused.get(`cam-${pessoa.id}`)?.paused;
     if (pausado) return 'pausado';
+    // Ao vivo e nao assistido: o botao Assistir ja diz o estado, e na coluna
+    // de 232 px o texto a mais espremia o nome ate uma letra.
+    if (pessoa.live && !assistido && !pessoa.isSelf) return '';
     if (pessoa.live && assistido && !pessoa.isSelf) return 'vendo';
     if (tileRegistry.has(`cam-${pessoa.id}`)) return 'câmera';
     if (mesaPeople?.has(String(pessoa.id))) return 'na Mesa';
