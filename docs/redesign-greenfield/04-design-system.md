@@ -136,6 +136,13 @@ Toda pessoa é um nó circular com a inicial (ou a cor escolhida no perfil) dent
 Tamanhos: 16 (aglomerado), 24 (linha), 32 (fonte), 56 (perfil). Todo nó tem `aria-label` com o estado por
 extenso — a forma nunca é a única pista.
 
+Decisões do protótipo (2026-09-27):
+- **Nó sem estado = identidade.** Na conversa, no perfil e na barra das janelas da Mesa o nó não diz "ao vivo":
+  anel e inicial na cor da pessoa (`--who`). Um avatar vermelho sólido na conversa gritava "ao vivo" onde só
+  importava quem falou.
+- **Aglomerado com anéis separados** (3 px de vão), como os dois anéis do ícone. Anéis sobrepostos liam como
+  letras ("CO").
+
 ## 7. Iconografia
 
 Traço de 1,75 px, pontas e junções arredondadas (as do ícone), grade de 20 px, `currentColor`. Um sprite SVG
