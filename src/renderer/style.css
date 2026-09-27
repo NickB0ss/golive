@@ -1095,6 +1095,7 @@ button.busy { cursor: default; }
   padding: var(--s-2);
   gap: var(--s-2);
 }
+.room-side[hidden] { display: none; }
 /* O chevron do botao de recolher gira pra apontar pra onde a coluna vai. */
 #btn-toggle-side svg { transition: transform var(--dur-fast) var(--ease-in-out); }
 #btn-toggle-side.collapsed svg { transform: rotate(180deg); }
@@ -1555,6 +1556,8 @@ button.busy { cursor: default; }
   font-size: var(--fs-lead);
 }
 
+/* Tela ao vivo nao assistida, na Transmissao: fica na coluna de pessoas. */
+.tile[hidden] { display: none; }
 .tile {
   position: relative;
   /* Sobreposicoes do tile nao escapam para a casca da sala. */
@@ -3254,7 +3257,14 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 }
 
 /* O dock e um filho normal do palco: a grade nunca fica encoberta. */
-#room-view { gap: var(--s-2); padding: var(--s-2); background: var(--bg); }
+#room-view {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) 304px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--s-2);
+  padding: var(--s-2);
+  background: var(--bg);
+}
 .stage-header #btn-room-settings { display: none; }
 .stage-room-address, .stage-room-pin, .stage-status-badge { background: var(--s2); border: 1px solid var(--line); border-radius: var(--r-full); padding: var(--s-1) var(--s-2); }
 .stage-copy { flex: none; position: relative; width: 44px; min-width: 44px; padding: 0; }
@@ -3307,11 +3317,88 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
    INTEIRO (secao de pessoas + secao de banidos), aninhado com o
    overflow-y proprio do .peer-list -- as duas brigavam. Quem rola agora e
    so o .peer-list; ver A2 no style.css historico. */
-#people-panel { display: flex; flex-direction: column; }
+#people-panel {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--s1);
+}
 .room-side-section:has(#peer-list) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-#chat-panel { display: flex; }
+#chat-panel {
+  grid-column: 3;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--s1);
+  padding: var(--s-2);
+}
 #chat-panel[hidden], #people-panel[hidden] { display: none; }
 #chat-panel .members-title { padding-top: var(--s-2); }
+
+/* Sala em tres trilhos: painel, palco e conversa nao competem por largura.
+   A linha e explicita: no HTML o palco vem antes das pessoas, e o
+   posicionamento automatico mandaria a coluna 1 para uma segunda linha. */
+#room-view > .stage,
+#people-panel,
+#chat-panel { grid-row: 1; }
+#room-view > .stage { grid-column: 2; }
+body[data-pessoas="recolhido"] #room-view { grid-template-columns: 56px minmax(0, 1fr) 304px; }
+body[data-chat="recolhido"] #room-view { grid-template-columns: 232px minmax(0, 1fr) 0; }
+body[data-pessoas="recolhido"][data-chat="recolhido"] #room-view {
+  grid-template-columns: 56px minmax(0, 1fr) 0;
+}
+
+body[data-pessoas="recolhido"] #people-panel { padding: var(--s-2); }
+body[data-pessoas="recolhido"] .presencas-secao,
+body[data-pessoas="recolhido"] .presenca-nome,
+body[data-pessoas="recolhido"] .presenca-estado,
+body[data-pessoas="recolhido"] .presenca-assistir,
+body[data-pessoas="recolhido"] .member-menu-btn,
+body[data-pessoas="recolhido"] .peer-you-tag,
+body[data-pessoas="recolhido"] .peer-crown,
+body[data-pessoas="recolhido"] .member-quality-tag,
+body[data-pessoas="recolhido"] .member-health-tag,
+body[data-pessoas="recolhido"] #banned-section { display: none; }
+body[data-pessoas="recolhido"] .peer-list { padding: 0; }
+body[data-pessoas="recolhido"] .presenca { justify-content: center; padding: 0; }
+body[data-chat="recolhido"] #chat-panel { visibility: hidden; border: 0; padding: 0; }
+
+.presencas-secao {
+  min-height: 28px;
+  display: flex;
+  align-items: end;
+  padding: var(--s-2) var(--s-2) var(--s-1);
+}
+
+.presenca-avatar { flex: none; }
+.presenca-estado { color: var(--tx3); font-size: var(--fs-micro); white-space: nowrap; }
+.presenca-assistir {
+  min-height: 28px;
+  margin-left: auto;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--act);
+  color: var(--on-act);
+  font-size: var(--fs-micro);
+}
+
+.presenca:focus-visible,
+.member-menu-btn:focus-visible,
+.presenca-assistir:focus-visible,
+.banned-toggle:focus-visible { outline: none; box-shadow: var(--ring); }
+.banned-toggle { width: 100%; min-height: 28px; background: transparent; color: var(--tx3); text-align: left; }
+.banned-list[hidden] { display: none; }
+#btn-toggle-people,
+#btn-toggle-side { min-width: 28px; min-height: 28px; position: relative; }
+#btn-toggle-side .chat-unread-dot { position: absolute; top: 3px; right: 3px; }
 
 @media (max-width: 900px) {
   .control-bar #btn-toggle-share { min-width: 148px; }

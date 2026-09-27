@@ -1884,6 +1884,7 @@
       myId: 'me',
       onModerate: (action, targetId, targetName) => sendModerate(action, targetId, targetName),
       healthTags,
+      mesaPeople: new Set(mesaViewers),
     });
     const people = (session ? session.mesh.peers.size : 0) + (currentSelfInfo() ? 1 : 0);
     $('room-people-count').textContent = String(people);
@@ -2826,26 +2827,70 @@
     window.golive.sendFxOverlay?.({ kind: 'drop-author', from: String(peerId) });
   }
 
-  // Recolher a coluna direita (membros + banidos + chat). O CSS de
-  // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
-  // por teclado enquanto invisiveis); aqui a affordance do botao acompanha o
-  // estado -- title e o chevron giram.
+  const SALA_PREFS = {
+    pessoas: 'golive.sala.pessoas',
+    chat: 'golive.sala.chat',
+  };
+  const salaManual = {};
+
+  function lerPreferenciaSala(nome) {
+    try {
+      const valor = localStorage.getItem(SALA_PREFS[nome]);
+      return ['aberto', 'recolhido'].includes(valor) ? valor : null;
+    } catch (error) {
+      console.warn('Não foi possível ler a preferência da sala.', error);
+      return null;
+    }
+  }
+
+  function salvarPreferenciaSala(nome, valor) {
+    salaManual[nome] = valor;
+    try {
+      localStorage.setItem(SALA_PREFS[nome], valor);
+    } catch (error) {
+      console.warn('Não foi possível salvar a preferência da sala.', error);
+    }
+  }
+
+  function aplicarColunasSala() {
+    const sala = $('room-view');
+    const estados = window.GoLive.salaLayout.recolhimentoAutomatico(sala.clientWidth, salaManual);
+    document.body.dataset.pessoas = estados.pessoas;
+    document.body.dataset.chat = estados.chat;
+    const chatRecolhido = estados.chat === 'recolhido';
+    // Chat de volta a vista: o que chegou enquanto estava fechado ja aparece.
+    if (!chatRecolhido) $('chat-unread-dot').classList.add('hidden');
+    const chatBtn = $('btn-toggle-side');
+    chatBtn.classList.toggle('collapsed', chatRecolhido);
+    chatBtn.title = chatRecolhido ? 'Expandir chat' : 'Recolher chat';
+    chatBtn.setAttribute('aria-label', chatBtn.title);
+  }
+
+  salaManual.pessoas = lerPreferenciaSala('pessoas');
+  salaManual.chat = lerPreferenciaSala('chat');
+  if (!salaManual.pessoas) delete salaManual.pessoas;
+  if (!salaManual.chat) delete salaManual.chat;
+  new ResizeObserver(aplicarColunasSala).observe($('room-view'));
+  aplicarColunasSala();
+
+  $('btn-toggle-people').addEventListener('click', () => {
+    const proximo = document.body.dataset.pessoas === 'aberto' ? 'recolhido' : 'aberto';
+    salvarPreferenciaSala('pessoas', proximo);
+    aplicarColunasSala();
+  });
   $('btn-toggle-side').addEventListener('click', () => {
-    const collapsed = $('room-side').classList.toggle('collapsed');
-    const btn = $('btn-toggle-side');
-    btn.classList.toggle('collapsed', collapsed);
-    btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
-    btn.setAttribute('aria-label', btn.title);
+    const proximo = document.body.dataset.chat === 'aberto' ? 'recolhido' : 'aberto';
+    salvarPreferenciaSala('chat', proximo);
+    aplicarColunasSala();
   });
 
-  // As abas mantem um painel por vez para a coluna continuar utilizavel em janela baixa.
+  // As abas continuam acessíveis para atalhos antigos, sem esconder as colunas.
   const roomTabs = [...document.querySelectorAll('.room-tab')];
   function selectRoomTab(tab) {
     for (const candidate of roomTabs) {
       const selected = candidate === tab;
       candidate.setAttribute('aria-selected', String(selected));
       candidate.tabIndex = selected ? 0 : -1;
-      $(`${candidate.getAttribute('aria-controls')}`).hidden = !selected;
     }
     if (tab.id === 'tab-chat') $('chat-unread-dot').classList.add('hidden');
   }
@@ -2864,7 +2909,7 @@
     });
   });
   document.addEventListener('golive:chat-received', () => {
-    if ($('tab-people').getAttribute('aria-selected') === 'true') $('chat-unread-dot').classList.remove('hidden');
+    if (document.body.dataset.chat === 'recolhido') $('chat-unread-dot').classList.remove('hidden');
   });
 
   // ---------- Desconectar ----------
@@ -5715,6 +5760,7 @@
 
   function renderViewSwitch() {
     const naMesa = Boolean(mesaView?.isOpen());
+    ui.grid.refreshWatchGates();
     for (const b of viewButtons) {
       const on = (b.dataset.view === 'mesa') === naMesa;
       b.setAttribute('aria-checked', String(on));

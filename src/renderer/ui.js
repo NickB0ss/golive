@@ -537,10 +537,13 @@
     // nao e tela de outra pessoa (o proprio, as cameras).
     const watched = !state || state.watched;
     const opts = state?.opts || {};
+    const naMesa = document.body.classList.contains('mesa-open');
+    const ocultarNoPalco = !watched && !naMesa;
     tile.classList.toggle('is-unwatched', !watched);
+    tile.hidden = ocultarNoPalco;
 
     let gate = tile.querySelector('.tile-gate');
-    if (watched) {
+    if (watched || !naMesa) {
       gate?.remove();
     } else {
       if (!gate) {
@@ -598,6 +601,9 @@
     // O card de "ver junto" tambem ocupa a tira: a troca de assistida nao
     // pode esperar a proxima track pra redesenhar a hierarquia do palco.
     syncGridCount();
+    // Na Transmissao o tile nao assistido some: o palco vazio entra ou sai
+    // junto com a troca, sem esperar outro tile.
+    renderEmptyGrid();
   }
 
   /** `watched` false poe o card de "está ao vivo" no lugar do video. `opts`
@@ -606,11 +612,19 @@
   function setWatched(tileId, watched, opts = {}) {
     tileWatch.set(tileId, { watched: Boolean(watched), opts });
     renderWatchGate(document.getElementById(`tile-${tileId}`), tileId);
+    redesenharUltimasPresencas();
   }
 
   function forgetWatched(tileId) {
     tileWatch.delete(tileId);
     syncGridCount();
+    redesenharUltimasPresencas();
+  }
+
+  function redesenharPortoesAssistir() {
+    for (const tileId of tileWatch.keys()) {
+      renderWatchGate(document.getElementById(`tile-${tileId}`), tileId);
+    }
   }
 
   function setWatchIntentHandler(fn) {
@@ -701,7 +715,14 @@
    * tenha sua propria rolagem sem alargar ou apertar as colunas principais. */
   function syncGridCount() {
     const tiles = Array.from(gridEl.querySelectorAll('.tile'));
-    const plan = gridLayout.gridLayout(tiles.map((tile) => {
+    const visiveis = tiles.filter((tile) => !tile.hidden);
+    // Tela ao vivo nao assistida fica escondida mas viva, esperando o
+    // Assistir da coluna: estacionada direto na grade, nunca dentro de
+    // .grid-main/.grid-strip, que somem quando o layout muda.
+    for (const tile of tiles) {
+      if (tile.hidden && tile.parentElement !== gridEl) gridEl.appendChild(tile);
+    }
+    const plan = gridLayout.gridLayout(visiveis.map((tile) => {
       const id = tile.id.slice('tile-'.length);
       return {
         id,
@@ -728,14 +749,14 @@
       main.dataset.count = plan.main.length > 6 ? 'many' : String(plan.main.length);
 
       const stripIds = new Set(plan.strip);
-      for (const tile of tiles) {
+      for (const tile of visiveis) {
         const slot = stripIds.has(tile.id.slice('tile-'.length)) ? strip : main;
         if (tile.parentElement !== slot) slot.appendChild(tile);
         if (slot === strip) tile.dataset.slot = 'strip';
         else delete tile.dataset.slot;
       }
     } else {
-      for (const tile of tiles) {
+      for (const tile of visiveis) {
         if (tile.parentElement !== gridEl) gridEl.appendChild(tile);
         delete tile.dataset.slot;
       }
@@ -864,7 +885,7 @@
    * tira o cartao de "ninguem transmitindo" que um removeTile possa ter
    * posto enquanto os tiles estavam fora, reorganiza e religa a pintura. */
   function resyncGrid() {
-    if (gridEl.querySelector('.tile')) gridEl.querySelector(':scope > .empty')?.remove();
+    if (gridEl.querySelector('.tile:not([hidden])')) gridEl.querySelector(':scope > .empty')?.remove();
     syncGridCount();
     renderEmptyGrid();
     syncPainting();
@@ -882,13 +903,20 @@
   // redesenhava isto. E tem acao: o caso comum de sala vazia e ninguem ter
   // comecado ainda, e o botao de compartilhar la embaixo passa batido.
   function renderEmptyGrid() {
-    if (gridEl.querySelector('.tile')) return;
-    gridEl.innerHTML = `
+    const vazio = gridEl.querySelector(':scope > .empty');
+    if (gridEl.querySelector('.tile:not([hidden])')) {
+      vazio?.remove();
+      return;
+    }
+    if (vazio) return;
+    // Acrescenta sem apagar a grade: tiles escondidos (telas ao vivo ainda
+    // nao assistidas) continuam no DOM ate a pessoa escolher assistir.
+    gridEl.insertAdjacentHTML('beforeend', `
       <div class="empty">
         <p class="empty-title">Ninguém transmitindo ainda.</p>
         <p class="empty-hint">A tela de quem ficar ao vivo aparece aqui sozinha.</p>
         <button type="button" class="primary empty-share">Compartilhar tela</button>
-      </div>`;
+      </div>`);
     // Mesmo caminho do botao da barra: os guardas (sessao aberta, captura
     // em andamento) moram no handler dele, nao aqui.
     gridEl.querySelector('.empty-share').addEventListener('click', () => $('btn-toggle-share').click());
@@ -2404,10 +2432,18 @@
    * Todo item daqui passa pelo servidor, entao todo item chama `onModerate`.
    * Quem nao e dono nao chega ate aqui -- `buildMemberRow` nem desenha o
    * botao ⋮ (menu sem item nao abre). */
-  function openMemberMenu(btn, id, name, { live = false, targetIsOwner = false, onModerate } = {}) {
+  function openMemberMenu(btn, id, name, {
+    live = false,
+    targetIsOwner = false,
+    onModerate,
+    canModerate = false,
+    canAdd = false,
+    onWatch,
+  } = {}) {
     const rect = btn.getBoundingClientRect();
     memberMenuEl.classList.remove('in-modal');
     memberMenuEl.innerHTML = `
+      ${canAdd ? '<button class="member-menu-item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
       ${live ? `<div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>` : ''}
       ${targetIsOwner ? '' : `<div class="member-menu-item" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</div>`}
       ${live || !targetIsOwner ? '<div class="member-menu-sep"></div>' : ''}
@@ -2415,6 +2451,14 @@
       <div class="member-menu-item danger" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</div>
       <div class="member-menu-hint">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
     `;
+    if (!canModerate) {
+      const moderacao = memberMenuEl.querySelectorAll(
+        '[data-action], .member-menu-sep, .member-menu-hint'
+      );
+      for (const item of moderacao) {
+        item.remove();
+      }
+    }
     memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
     memberMenuEl.style.top = `${rect.bottom + 4}px`;
     memberMenuEl.classList.remove('hidden');
@@ -2424,24 +2468,49 @@
         closeMemberMenu();
       });
     }
+    for (const item of memberMenuEl.querySelectorAll('[data-watch]')) {
+      item.addEventListener('click', () => {
+        onWatch?.(id, item.dataset.watch);
+        closeMemberMenu();
+      });
+    }
     memberMenuEl.querySelector('[role="menuitem"]')?.focus();
   }
 
   // `live` liga `.peer-avatar.on` (anel --live via box-shadow, o unico sinal
   // saturado do tema). Sem anel no estado normal -- "conectado" e "ao vivo"
   // sao a mesma afirmacao neste tema.
-  function buildMemberRow({ id, name, avatar, live, isSelf, pulsing, qualityTag, strugglingTag, isOwner, canModerate, onModerate }) {
+  function buildMemberRow({
+    id,
+    name,
+    avatar,
+    live,
+    isSelf,
+    pulsing = false,
+    qualityTag,
+    strugglingTag,
+    isOwner,
+    canModerate,
+    onModerate,
+    watched,
+    canAdd,
+    estado,
+    onWatch,
+  }) {
     // O ⋮ so existe quando ha o que fazer: pra quem nao e dono da sala, o
     // menu inteiro ficou vazio quando "Silenciar" saiu dele, e um botao que
     // abre um menu vazio e pior do que botao nenhum.
-    const showMenu = !isSelf && canModerate;
+    const showMenu = !isSelf && (canModerate || canAdd);
     const li = document.createElement('li');
     if (isSelf) li.classList.add('self');
+    li.classList.add('presenca');
+    li.tabIndex = 0;
     li.innerHTML = `
-      <span class="peer-avatar-wrap">
+      <span class="presenca-avatar peer-avatar-wrap" title="${escapeHtml(name)}">
         <span class="peer-avatar${live ? ' on' : ''}" style="background:${avatarColorFor(id)}">${avatarInnerHtml(id, name, avatar)}</span>
       </span>
-      <span class="peer-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+      <span class="presenca-nome peer-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+      ${estado ? `<span class="presenca-estado">${escapeHtml(estado)}</span>` : ''}
       ${isSelf ? '<span class="peer-you-tag">você</span>' : ''}
       ${isOwner ? '<span class="peer-crown" title="Líder da sala" role="img" aria-label="Líder da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 4.5 5L12 4l4.5 8L21 7l-2 13H5L3 7Z"/><path d="M5 20h14"/></svg></span>' : ''}
       ${qualityTag ? `<span class="member-quality-tag">${escapeHtml(qualityTag)}</span>` : ''}
@@ -2452,65 +2521,118 @@
       }
       ${showMenu ? `<button class="member-menu-btn" type="button" aria-label="Moderar ${escapeHtml(name)}">⋮</button>` : ''}
     `;
+    if (live && !watched) {
+      const assistir = document.createElement('button');
+      assistir.type = 'button';
+      assistir.className = 'presenca-assistir';
+      assistir.textContent = 'Assistir';
+      assistir.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onWatch?.(id, event.shiftKey && canAdd ? 'add' : 'only');
+      });
+      li.insertBefore(assistir, li.querySelector('.member-menu-btn'));
+    }
+    const focar = () => {
+      const tela = document.getElementById(`tile-${id}`);
+      const camera = document.getElementById(`tile-cam-${id}`);
+      const alvo = tela || camera;
+      alvo?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      alvo?.focus({ preventScroll: true });
+    };
+    li.addEventListener('click', (event) => {
+      if (!event.target.closest('button')) focar();
+    });
+    li.addEventListener('keydown', (event) => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      focar();
+    });
     if (showMenu) {
-      li.querySelector('.member-menu-btn').addEventListener('click', (e) => {
+      const menuBtn = li.querySelector('.member-menu-btn');
+      menuBtn.title = 'Opções';
+      menuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openMemberMenu(e.currentTarget, id, name, { live, targetIsOwner: isOwner, onModerate });
+        openMemberMenu(e.currentTarget, id, name, {
+          live,
+          targetIsOwner: isOwner,
+          onModerate,
+          canModerate,
+          canAdd,
+          onWatch,
+        });
       });
     }
     return li;
   }
 
-  function renderMembers(peers, self, qualityTags, { ownerId, myId, onModerate, healthTags } = {}) {
+  let ultimasPresencas = null;
+
+  function redesenharUltimasPresencas() {
+    if (!ultimasPresencas) return;
+    renderMembers(...ultimasPresencas);
+  }
+
+  function renderMembers(peers, self, qualityTags, opcoes = {}) {
+    ultimasPresencas = [peers, self, qualityTags, opcoes];
+    const { ownerId, myId, onModerate, healthTags, mesaPeople } = opcoes;
     peerListEl.innerHTML = '';
     if (!self && !peers.size) {
       peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
       return;
     }
-    let pulseTaken = false;
-    const claimPulse = (live) => {
-      if (!live || pulseTaken) return false;
-      pulseTaken = true;
-      return true;
-    };
     const iAmOwner = ownerId != null && myId != null && ownerId === myId;
-
-    if (self) {
-      peerListEl.appendChild(
-        buildMemberRow({
-          id: 'me',
-          name: self.name || 'anônimo',
-          avatar: self.avatar,
-          live: self.live,
-          isSelf: true,
-          pulsing: claimPulse(self.live),
-          isOwner: iAmOwner,
-        })
-      );
-    }
-    for (const peer of peers.values()) {
-      peerListEl.appendChild(
-        buildMemberRow({
-          id: peer.id,
-          name: peer.name,
-          avatar: peer.avatar,
-          live: peer.live,
-          pulsing: claimPulse(peer.live),
-          qualityTag: qualityTags?.get(peer.id) || '',
-          // P4: "travando" ao lado do preset degradado -- so do lado de
-          // quem transmite (ou repassa) pra aquela pessoa.
-          strugglingTag: Boolean(healthTags?.has(peer.id)),
-          isOwner: ownerId != null && peer.id === ownerId,
+    const pessoas = [];
+    if (self) pessoas.push({ ...self, id: 'me', isSelf: true });
+    for (const peer of peers.values()) pessoas.push({ ...peer, isSelf: false });
+    const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas);
+    for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], ['NA SALA', secoes.naSala]]) {
+      if (!lista.length) continue;
+      const secao = document.createElement('li');
+      secao.className = 'presencas-secao rotulo-mono';
+      secao.textContent = titulo;
+      peerListEl.appendChild(secao);
+      for (const pessoa of lista) {
+        const assistido = tileWatch.get(pessoa.id)?.watched !== false;
+        const estado = estadoPresenca(pessoa, assistido, mesaPeople);
+        peerListEl.appendChild(buildMemberRow({
+          ...pessoa,
+          live: Boolean(pessoa.live),
+          qualityTag: qualityTags?.get(pessoa.id) || '',
+          strugglingTag: Boolean(healthTags?.has(pessoa.id)),
+          isOwner: ownerId != null && pessoa.id === ownerId,
           canModerate: iAmOwner,
           onModerate,
-        })
-      );
+          watched: assistido,
+          canAdd: Boolean(pessoa.live && !assistido && tileWatch.get(pessoa.id)?.opts?.canAdd),
+          estado,
+          onWatch: onWatchIntent,
+        }));
+      }
     }
+  }
+
+  /** Estado curto da linha de presenca, na ordem de prioridade da spec 3.1.
+   * "vendo" e sobre voce assistir a pessoa: na propria linha nao se aplica. */
+  function estadoPresenca(pessoa, assistido, mesaPeople) {
+    const pausado = tilePaused.get(pessoa.id)?.paused || tilePaused.get(`cam-${pessoa.id}`)?.paused;
+    if (pausado) return 'pausado';
+    if (pessoa.live && assistido && !pessoa.isSelf) return 'vendo';
+    if (tileRegistry.has(`cam-${pessoa.id}`)) return 'câmera';
+    if (mesaPeople?.has(String(pessoa.id))) return 'na Mesa';
+    return '';
   }
 
   // ---------- Banidos ----------
   const bannedSectionEl = $('banned-section');
   const bannedListEl = $('banned-list');
+  // Amarrado uma vez so: renderBanned roda a cada mudanca da lista, e um
+  // listener por chamada fazia cliques pares se anularem.
+  const bannedToggleEl = bannedSectionEl.querySelector('.banned-toggle');
+  bannedToggleEl?.addEventListener('click', () => {
+    const aberto = bannedToggleEl.getAttribute('aria-expanded') === 'true';
+    bannedToggleEl.setAttribute('aria-expanded', String(!aberto));
+    bannedListEl.hidden = aberto;
+  });
 
   function renderBanned(list, { onUnban } = {}) {
     bannedSectionEl.classList.toggle('hidden', !list || !list.length);
@@ -4435,7 +4557,9 @@
   root.GoLive.ui = {
     escapeHtml,
     grid: {
-      showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched, onWatchIntent: setWatchIntentHandler, framesShown, setHealthChip, setStallNote,
+      showTile, removeTile, setPainting, setWatchers, setPaused, setWatched, forgetWatched,
+      refreshWatchGates: redesenharPortoesAssistir, onWatchIntent: setWatchIntentHandler, framesShown,
+      setHealthChip, setStallNote,
       element: () => gridEl,
       tileEl: (id) => document.getElementById(`tile-${id}`),
       returnTile,

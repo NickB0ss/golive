@@ -234,8 +234,12 @@
           <label class="room-more-row"><input id="opt-mesa-cursors" type="checkbox" checked />Mostrar o ponteiro das pessoas</label>
         </div>
       </div>
+      <button id="btn-toggle-people" class="icon-btn-inline" title="Recolher pessoas" aria-label="Recolher pessoas" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 18l-6-6 6-6"/></svg>
+      </button>
       <button id="btn-toggle-side" class="icon-btn-inline" title="Recolher coluna" aria-label="Recolher coluna" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <span id="chat-unread-dot" class="chat-unread-dot hidden" aria-hidden="true"></span>
       </button>
     </header>
     <div id="grid" class="grid"></div>
@@ -283,22 +287,23 @@
   </main>
 
   <!-- ============ COLUNA: MEMBROS + BANIDOS + CHAT ============ -->
-  <aside id="room-side" class="room-side">
+  <aside id="room-side" class="room-side" hidden>
     <div class="room-tabs" role="tablist" aria-label="Painel lateral">
       <button id="tab-people" class="room-tab" type="button" role="tab" aria-selected="false" aria-controls="people-panel" tabindex="-1">Pessoas · <span id="room-people-count">0</span></button>
-      <button id="tab-chat" class="room-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel"><span>Chat</span><span id="chat-unread-dot" class="chat-unread-dot hidden" aria-hidden="true"></span></button>
+      <button id="tab-chat" class="room-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel"><span>Chat</span></button>
     </div>
-    <div id="people-panel" class="room-tab-panel" role="tabpanel" aria-labelledby="tab-people" hidden>
+  </aside>
+  <aside id="people-panel" class="room-tab-panel" role="tabpanel" aria-labelledby="tab-people">
       <div class="room-side-section">
       <h2 class="members-title visually-hidden">Na sala</h2>
       <ul id="peer-list" class="peer-list"></ul>
       </div>
       <div id="banned-section" class="room-side-section hidden">
-      <h2 class="members-title">Banidos</h2>
+      <button class="members-title banned-toggle" type="button" aria-expanded="true">Banidos</button>
       <ul id="banned-list" class="banned-list"></ul>
       </div>
-    </div>
-    <div id="chat-panel" class="room-tab-panel chat-section" role="tabpanel" aria-labelledby="tab-chat">
+  </aside>
+  <aside id="chat-panel" class="room-tab-panel chat-section" role="tabpanel" aria-labelledby="tab-chat">
       <h2 class="members-title visually-hidden">Chat</h2>
       <div class="chat-messages-wrap">
         <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
@@ -329,7 +334,6 @@
         </button>
         <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="visually-hidden" tabindex="-1" aria-hidden="true" />
       </form>
-    </div>
   </aside>
 </div>
 
@@ -497,6 +501,7 @@
 <script src="broadcastguards.js"></script>
 <script src="espiar.js"></script>
 <script src="gridlayout.js"></script>
+<script src="sala-layout.js"></script>
 <script src="themecode.js"></script>
 <script src="chatlimit.js"></script>
 <script src="chatimagens.js"></script>
