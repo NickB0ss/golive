@@ -416,6 +416,31 @@ tela não escolhida corta o texto em cima quando fica na tira de miniaturas.
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
 
+## Redesign, fase 1 — fundação e Mesa (branch feat/redesign-mesa)
+
+Esta fase mudou a fundação visual e tirou os controles de cima do conteúdo das
+janelas da Mesa. A janela agora tem uma barra de 36 px com título, estado, "Sua vez", quem pôs, menu,
+tela cheia e "Tirar da mesa"; só essa barra arrasta. Em zoom abaixo de 60%,
+fica só o título e o clique duplo abre a tela cheia. O tamanho de cada janela
+mede o conteúdo e soma a barra.
+
+A Mesa ganhou uma área segura. Janelas novas e "Ver tudo" ficam fora da pílula
+de zoom e mapa, dos avisos e do dock. A navegação fica embaixo à esquerda, o
+mapa abre quando pedido e as pessoas na Mesa aparecem no cabeçalho. As camadas
+e sombras agora usam escalas próprias, com a forma "Macio".
+
+A roleta já nasce inteira em 640×440. Os 13 jogos mostram placar e vez na
+barra. A bancada carrega os 30 tipos e mostra a `view` dos secretos.
+
+Os números da verificação foram: `npm test` com 1869 passando; lint com 0
+erros e 9 avisos antigos; harness `checar` sem erros; `rodar.js` 350/0;
+`mesa-real.js` 31/0; `festa-real.js` 14/0; `leva2-real.js` 97/0;
+`poquer-rodar.js` 47/0; `rodar-blackjack.js` 131/0; `caber.js` 516/0; e boot
+no Electron real sem erros de console.
+
+Faltam a fase 2, com a casca da sala, e a fase 3, com lobby, Configurações e
+diálogos. Também falta testar com pessoas de verdade.
+
 ## Lançado na 0.21.0 (2026-09-24)
 
 Quatro frentes em paralelo sobre o que a análise de 23/09 e a auditoria de

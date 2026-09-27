@@ -197,6 +197,8 @@ itens, …), ele confere:
    o próprio elemento ou um descendente dele.
 4. O padrão com a barra cabe em 1000×620.
 
+Resultado em 2026-09-27: `caber` conferiu os 30 tipos em 516 casos, com 0 falhas.
+
 Sai com código diferente de 0 quando falha e grava prints dos casos que falharam em `docs/prints/<data>-caber/`.
 Tela e câmera dependem do tile de vídeo e não montam na bancada. Elas são conferidas na passada visual do app real
 (seção 7).

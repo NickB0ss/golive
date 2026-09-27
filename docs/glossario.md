@@ -21,6 +21,8 @@ pessoa menos quer decifrar sinônimo. Este arquivo fixa um termo por conceito;
 | Pôr / tirar uma janela | **Adicionar janela** / **Tirar da mesa** | inserir, fechar, remover |
 | Ocupar a tela toda com uma janela | **Tela cheia** | maximizar |
 | Para onde você olha dentro da Mesa | sem nome na interface: os botões dizem **Ver tudo** e **Ir até** | câmera (é a webcam), viewport |
+| Indicação de que é a vez da pessoa | **Sua vez** | — |
+| Faixa superior de uma janela da Mesa | **barra da janela** | — |
 
 ### A Mesa (2026-09-24)
 
