@@ -1,15 +1,23 @@
 As fontes em assets/fonts/ estao sob a SIL Open Font License 1.1:
 
-  Outfit     -- Copyright 2021 The Outfit Project Authors
-               https://github.com/Outfitio/Outfit-Fonts
-  Work Sans  -- Copyright 2019 The Work Sans Project Authors
-               https://github.com/weiweihuanghuang/Work-Sans
+  Instrument Sans -- Copyright 2022 The Instrument Sans Project Authors
+                     https://github.com/Instrument/instrument-sans
+  IBM Plex Mono   -- Copyright (c) 2017 IBM Corp.
+                     https://github.com/IBM/plex
+                     Reserved Font Name "Plex" (os arquivos vem sem modificacao,
+                     subconjuntos latin/latin-ext servidos pelo Google Fonts)
+  Outfit          -- Copyright 2021 The Outfit Project Authors
+                     https://github.com/Outfitio/Outfit-Fonts
+  Work Sans       -- Copyright 2019 The Work Sans Project Authors
+                     https://github.com/weiweihuanghuang/Work-Sans
 
-Texto integral da licenca. As duas linhas de copyright abaixo sao as
-declaradas nos respectivos OFL.txt upstream; o corpo da licenca que segue e
-identico nos dois (SIL Open Font License 1.1 padrao, sem Reserved Font
-Name declarado por nenhum dos dois projetos):
+Texto integral da licenca. As linhas de copyright abaixo sao as declaradas
+nos respectivos OFL.txt upstream; o corpo da licenca que segue e identico nos
+quatro (SIL Open Font License 1.1 padrao). So o IBM Plex declara Reserved
+Font Name ("Plex"); os outros tres nao declaram nenhum:
 
+Copyright 2022 The Instrument Sans Project Authors (https://github.com/Instrument/instrument-sans)
+Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex"
 Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
 Copyright 2019 The Work Sans Project Authors (https://github.com/weiweihuanghuang/Work-Sans)
 
