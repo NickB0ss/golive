@@ -194,10 +194,12 @@
 <div id="room-view" class="room hidden">
   <main class="stage">
     <header id="stage-header" class="stage-header hidden">
+      <div class="stage-header-left">
       <span id="stage-status-dot" class="stage-status-dot"></span>
       <div class="stage-title-group">
         <h1 id="stage-room-name" class="stage-room-name"></h1>
         <span id="stage-member-count" class="stage-member-count">0 pessoas</span>
+      </div>
       </div>
       <!-- Vista de CADA pessoa (nao da sala): trocar nao afeta ninguem. -->
       <div id="view-switch" class="view-switch" role="radiogroup" aria-label="Vista">
@@ -212,12 +214,15 @@
         </button>
       </div>
       <div id="stage-mesa-people" class="stage-mesa-people" role="group" aria-label="Quem está na mesa" hidden></div>
+      <div class="stage-room-meta">
       <span id="stage-room-address" class="stage-room-address"></span>
       <span id="stage-room-pin" class="stage-room-pin hidden"></span>
       <span id="stage-status-badge" class="stage-status-badge hidden"></span>
       <button id="btn-copy-address" class="icon-btn-inline stage-copy" title="Copiar endereço" aria-label="Copiar endereço" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       </button>
+      </div>
+      <div class="stage-header-right">
       <button class="icon-btn-inline room-settings-header" title="Configurações" aria-label="Configurações" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -241,21 +246,22 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         <span id="chat-unread-dot" class="chat-unread-dot hidden" aria-hidden="true"></span>
       </button>
+      </div>
     </header>
     <div id="grid" class="grid"></div>
     <div class="control-bar">
-      <button id="btn-toggle-share" class="primary control-btn" type="button" aria-pressed="false">
+      <button id="btn-toggle-share" class="primary control-btn" type="button" title="Compartilhar tela" aria-label="Compartilhar tela" aria-pressed="false">
         <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         <svg class="icon-on hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
         <span class="btn-label">Compartilhar tela</span>
       </button>
-      <button id="btn-toggle-camera" class="secondary control-btn" type="button" aria-pressed="false">
+      <button id="btn-toggle-camera" class="secondary control-btn" type="button" title="Câmera" aria-label="Câmera" aria-pressed="false">
         <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         <svg class="icon-on hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
         <svg class="btn-spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="28 56"/></svg>
         <span class="btn-label">Câmera</span>
       </button>
-      <button id="btn-pause-share" class="secondary control-btn hidden" type="button" title="Ctrl+Alt+P" aria-pressed="false">
+      <button id="btn-pause-share" class="secondary control-btn hidden" type="button" title="Pausar" aria-label="Pausar" aria-pressed="false">
         <svg class="icon-off" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="5" width="4" height="14" rx="1"/><rect x="13" y="5" width="4" height="14" rx="1"/></svg>
         <svg class="icon-on hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         <span class="btn-label">Pausar</span>
@@ -269,11 +275,11 @@
         <span class="sound-meter-bar"></span>
         <span class="sound-meter-bar"></span>
       </div>
-      <button id="btn-swap-share" class="secondary control-btn hidden" type="button" aria-label="Trocar de tela ou janela">
+      <button id="btn-swap-share" class="secondary control-btn hidden" type="button" title="Trocar de tela ou janela" aria-label="Trocar de tela ou janela">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span class="btn-label">Trocar</span>
       </button>
-      <button id="btn-mesa-add" class="secondary control-btn hidden" type="button" aria-haspopup="menu" data-mesa-add>
+      <button id="btn-mesa-add" class="secondary control-btn hidden" type="button" title="Adicionar janela" aria-label="Adicionar janela" aria-haspopup="menu" data-mesa-add>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         <span class="btn-label">Adicionar janela</span>
       </button>
@@ -282,7 +288,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span class="btn-label">Configurações</span>
       </button>
-      <button id="btn-disconnect" class="control-btn control-btn-end" type="button" aria-label="Sair da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg><span class="btn-label">Sair da sala</span></button>
+      <button id="btn-disconnect" class="control-btn control-btn-end" type="button" title="Sair da sala" aria-label="Sair da sala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg><span class="btn-label">Sair da sala</span></button>
     </div>
   </main>
 
@@ -483,6 +489,7 @@
 <script src="config.js"></script>
 <script src="emoji.js"></script>
 <script src="chatmedia.js"></script>
+<script src="chat-grouping.js"></script>
 <script src="annotate.js"></script>
 <script src="laser.js"></script>
 <script src="reactions.js"></script>

@@ -306,7 +306,7 @@ test('a casca da sala fica escondida com um tile em tela cheia', () => {
   }
 });
 
-test('o campo do chat tem a mesma altura dos botoes da caixa', () => {
+test('o compose preserva o alvo minimo de 28px', () => {
   const css = fs.readFileSync(cssPath, 'utf8');
   const rules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose textarea');
   const byProp = Object.fromEntries(rules.map(({ property, value }) => [property, value]));
@@ -318,7 +318,7 @@ test('o campo do chat tem a mesma altura dos botoes da caixa', () => {
   assert.equal(byProp['min-height'], '28px', 'o textarea precisa casar com os 28px do botao');
   assert.equal(byProp.padding, '5px 0', '17.5px de linha + 10 de padding = 27.5 ~ 28');
   assert.equal(buttonByProp.height, '28px', 'o botao da caixa precisa ter 28px de altura');
-  assert.equal(buttonByProp['min-height'], '0', 'o minimo global de 44px nao pode esticar o botao da caixa');
+  assert.equal(buttonByProp['min-height'], '28px', 'o alvo minimo do compose precisa ser explicito');
 });
 
 test('estado vazio da grade nao vaza para outros elementos', () => {

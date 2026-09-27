@@ -956,24 +956,46 @@ button.busy { cursor: default; }
   align-items: center;
   background: transparent;
   border: 0;
-  min-height: 56px;
+  min-height: 48px;
   padding: 0 var(--s-3);
   gap: var(--s-2);
 }
 .stage-status-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--tx3); flex: none; }
 .stage-status-dot[data-level="live"] { background: var(--live); }
-.stage-status-dot[data-level="degraded"] { background: var(--warn); }
-.stage-status-dot[data-level="paused"] { background: var(--tx3); }
+.stage-header-left,
+.stage-header-right,
+.stage-room-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--s-2);
+}
+.stage-header-left,
+.stage-room-meta { order: 1; }
+#view-switch { order: 2; margin: 0 auto; }
+.stage-header-right { order: 3; }
+.stage-mesa-people,
+.stage-status-badge,
+.room-settings-header,
+.room-more-wrap,
+#btn-toggle-people,
+#btn-toggle-side { order: 3; }
+.stage-header-left { flex: none; }
 .stage-room-name {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 650;
-  margin-right: auto;
   font-size: var(--fs-lead);
   line-height: 1.1;
 }
-.stage-room-address { font-size: var(--fs-small); color: var(--tx2); font-variant-numeric: tabular-nums; }
-.stage-room-pin { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-small); color: var(--warn); }
+.stage-room-address,
+.stage-room-pin {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--tx2);
+  font-variant-numeric: tabular-nums;
+}
+.stage-room-pin { display: inline-flex; align-items: center; gap: var(--s-1); }
 .stage-room-pin svg { width: 14px; height: 14px; flex: none; }
 .stage-status-badge {
   font-size: var(--fs-micro); font-weight: 700; padding: var(--s-05) var(--s-2); border-radius: var(--r-full);
@@ -1253,9 +1275,7 @@ button.busy { cursor: default; }
   display: flex; align-items: center; gap: 7px; padding: var(--s-1) var(--s-3);
   font-size: var(--fs-micro); line-height: 1.4; color: var(--tx3);
 }
-.chat-sys svg { width: 12px; height: 12px; flex: none; }
-.chat-sys.warn { color: var(--warn); }
-.chat-sys.danger { color: var(--danger-soft); }
+.chat-sys-time { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-micro); }
 
 .chat-compose {
   margin: var(--s-2);
@@ -1267,7 +1287,7 @@ button.busy { cursor: default; }
   position: relative;
   transition: border-color var(--dur-fast) var(--ease-in-out), box-shadow var(--dur-fast) var(--ease-in-out);
   margin-top: auto;
-  border-radius: var(--r-full);
+  border-radius: var(--r-md);
   background: var(--s2);
 }
 .chat-compose:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px var(--act-focus-ring); }
@@ -2769,10 +2789,11 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   border-radius: var(--r-sm);
   overflow: hidden;
   background: var(--video-bg);
-  max-width: 100%;
+  max-width: 240px;
+  max-height: 180px;
   line-height: 0;
 }
-.chat-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chat-image img { width: 100%; height: 100%; max-height: 180px; object-fit: cover; display: block; }
 .chat-image:hover { border-color: var(--line2); }
 
 /* "Pôr na mesa": link do YouTube ou imagem do chat vira janela da Mesa.
@@ -2782,7 +2803,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   display: inline-flex;
   align-items: center;
   gap: var(--s-1);
-  min-height: 24px;
+  min-height: 28px;
   padding: 0 var(--s-2);
   background: transparent;
   border: 1px solid var(--line);
@@ -2793,7 +2814,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 }
 .chat-put svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .chat-put:hover { background: var(--s3); border-color: var(--line2); color: var(--tx); }
-.chat-put:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.chat-put:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .chat-attachment {
   display: flex;
@@ -2821,7 +2842,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   width: 28px; height: 28px; flex: none;
   /* Como .tile-watchers-eye: anula o alvo global de 44px; aqui os 28px
      precisam casar exatamente com o textarea para texto e icones alinharem. */
-  min-height: 0;
+  min-height: 28px;
   display: grid; place-items: center;
   padding: 0;
   border: none; border-radius: var(--r-sm);
@@ -2834,7 +2855,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 /* Apagado ate haver o que mandar: um botao de enviar sempre aceso promete
    uma acao que nao acontece. */
 .chat-send-btn { color: var(--tx3); }
-.chat-send-btn:not(:disabled) { color: var(--act); }
+.chat-send-btn:not(:disabled) { background: var(--act); color: var(--on-act); }
 .chat-send-btn:disabled { cursor: default; }
 .chat-send-btn:not(:disabled):hover { background: var(--s3); }
 
@@ -2957,7 +2978,7 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   align-items: center;
   gap: 7px;
   padding: 7px 9px;
-  background: var(--s1);
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 .theme-preview-badge {
@@ -3197,8 +3218,8 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 .titlebar-btn svg { width: 16px; height: 16px; }
 .titlebar-btn:hover { background: var(--s3); color: var(--tx); }
 .titlebar-btn:active { background: var(--s4); }
-.titlebar-btn-close:hover { background: #e81123; color: #fff; }
-.titlebar-btn-close:active { background: #f1707a; color: #fff; }
+.titlebar-btn-close:hover { background: var(--danger); color: var(--on-live); }
+.titlebar-btn-close:active { background: var(--danger-soft); color: var(--on-live); }
 /* O botao maximizar mostra so um dos dois icones conforme o estado. */
 .titlebar-btn .icon-restore { display: none; }
 .titlebar-btn.is-maximized .icon-maximize { display: none; }
@@ -3270,9 +3291,9 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 .control-btn-end:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); color: var(--on-act); }
 
 /* Segunda passada da sala: o video e o foco, controles viram uma chamada. */
-.stage-title-group { min-width: 0; display: grid; gap: 1px; margin-right: auto; }
+.stage-title-group { min-width: 0; display: grid; gap: 1px; margin-right: 0; }
 .stage-member-count { color: var(--tx2); font-size: var(--fs-small); line-height: 1.1; }
-.stage-room-address, .stage-room-pin { flex: none; }
+.stage-room-address, .stage-room-pin, .stage-copy { flex: none; order: 1; }
 .room-settings-header { display: none; }
 .stage-copy.copied-flash svg { opacity: 0; }
 .stage-copy.copied-flash::after { content: '✓'; position: absolute; color: var(--act); font-size: var(--fs-title); }
@@ -3294,9 +3315,23 @@ body:has(.tile.fullscreen) .room-side { visibility: hidden; }
 
 .control-bar .control-btn { position: relative; width: 48px; min-width: 48px; min-height: 48px; padding: 0; border-radius: var(--r-full); }
 .control-bar #btn-toggle-share { width: auto; min-width: 164px; padding: 0 var(--s-4); }
-.control-bar .btn-label { position: absolute; bottom: calc(100% + var(--s-2)); left: 50%; z-index: var(--z-popover); transform: translateX(-50%); opacity: 0; pointer-events: none; white-space: nowrap; padding: 5px var(--s-2); border-radius: var(--r-xs); background: var(--s3); color: var(--tx); border: 1px solid var(--line2); font-size: var(--fs-small); line-height: 1.2; }
-.control-bar .control-btn:hover .btn-label, .control-bar .control-btn:focus-visible .btn-label { opacity: 1; }
-.control-bar #btn-toggle-share .btn-label { position: static; transform: none; opacity: 1; pointer-events: auto; padding: 0; border: 0; background: transparent; color: inherit; }
+.control-bar .btn-label { display: none; }
+/* Dica do dock: popover pequeno --s3 que nao recebe ponteiro (a dica nao
+   pode ficar entre o mouse e o botao). */
+.popover.dock-tooltip {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: var(--s-1) var(--s-2);
+  background: var(--s3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.popover.dock-tooltip[hidden] { display: none; }
+.dock-tooltip-text { font-size: var(--fs-small); }
+.dock-tooltip-key { color: var(--tx2); font-family: var(--font-mono); font-size: var(--fs-micro); }
+.control-bar #btn-toggle-share .btn-label { display: inline; position: static; transform: none; opacity: 1; pointer-events: auto; padding: 0; border: 0; background: transparent; color: inherit; }
 .control-settings { margin-left: 0 !important; }
 .control-bar .control-settings { background: var(--s3); border-color: var(--line2); color: var(--tx); }
 .control-bar .control-settings:hover:not(:disabled) { background: var(--s4); }

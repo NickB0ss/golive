@@ -16,6 +16,7 @@
   const gridLayout = root.GoLive.gridLayout;
   const roomname = root.GoLive.roomname;
   const chatlimit = root.GoLiveChatLimit;
+  const chatGrouping = root.GoLive.chatGrouping;
   // O registro de avisos fica no app; esta camada so recebe a lista pronta e
   // mantem teclado, hover e foco consistentes no painel da barra de titulo.
   const warningCenter = root.GoLive.warningcenter.create(document);
@@ -23,6 +24,59 @@
 
   function closePopover() {
     popoverAtivo?.close();
+  }
+
+  /** Dicas do dock (spec 6): uma dica de verdade (role=tooltip), nao o menu do
+   * openPopover -- esse fecha os outros popovers e devolve o foco ao botao ao
+   * fechar, e a dica roubava o foco da janela que o "+" da Mesa acabara de
+   * abrir. Uma so, reposicionada a cada botao; nao mexe no foco. */
+  function bindDockTooltips() {
+    const atalhos = { 'btn-pause-share': 'Ctrl+Alt+P' };
+    const dica = document.createElement('div');
+    dica.className = 'popover dock-tooltip';
+    dica.setAttribute('role', 'tooltip');
+    dica.hidden = true;
+    document.body.appendChild(dica);
+    const esconder = () => {
+      dica.hidden = true;
+    };
+    const mostrar = (botao) => {
+      const texto = document.createElement('span');
+      texto.className = 'dock-tooltip-text';
+      texto.textContent = botao.querySelector('.btn-label')?.textContent || botao.getAttribute('aria-label') || '';
+      dica.replaceChildren(texto);
+      const atalho = atalhos[botao.id];
+      if (atalho) {
+        const tecla = document.createElement('kbd');
+        tecla.className = 'dock-tooltip-key';
+        tecla.textContent = atalho;
+        dica.appendChild(tecla);
+      }
+      dica.hidden = false;
+      const caixa = botao.getBoundingClientRect();
+      const pos = tileMenu.positionPopover({
+        x: caixa.left + (caixa.width - dica.offsetWidth) / 2,
+        y: caixa.top - dica.offsetHeight - 8,
+        width: dica.offsetWidth,
+        height: dica.offsetHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      });
+      dica.style.left = `${pos.x}px`;
+      dica.style.top = `${pos.y}px`;
+    };
+    for (const botao of document.querySelectorAll('.control-bar .control-btn')) {
+      // O Compartilhar ja mostra o rotulo escrito no proprio botao.
+      if (botao.id === 'btn-toggle-share') continue;
+      botao.addEventListener('mouseenter', () => mostrar(botao));
+      botao.addEventListener('focus', () => mostrar(botao));
+      botao.addEventListener('mouseleave', esconder);
+      botao.addEventListener('blur', esconder);
+      botao.addEventListener('click', esconder);
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') esconder();
+    });
   }
 
   /** Popover comum: ancora no botao ou num ponto e conserva foco e teclado. */
@@ -140,6 +194,8 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
     );
   }
+
+  bindDockTooltips();
 
   const gridEl = $('grid');
 
@@ -2909,18 +2965,10 @@
   const chatInputEl = $('chat-input');
   const chatCountEl = $('chat-input-count');
   const chatOfflineBarEl = $('chat-offline-bar');
-  let lastChatAuthorId = null; // pra saber quando agrupar (mesmo autor em sequencia)
+  let lastChatEntry = null;
   let onChatSend = null;
   let onChatPut = null; // "Pôr na mesa" de um link do YouTube ou de uma imagem
 
-  const SYSTEM_ICONS = {
-    join: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
-    leave: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
-    'stop-share': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="2" x2="22" y2="18"/></svg>',
-    kick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>',
-    ban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
-    unban: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>',
-  };
   const SYSTEM_LABELS = {
     join: (actor) => `${actor} entrou`,
     leave: (actor) => `${actor} saiu`,
@@ -2961,7 +3009,7 @@
     div.className = 'chat-day';
     div.textContent = dayLabel(ts);
     chatMessagesEl.appendChild(div);
-    lastChatAuthorId = null;
+    lastChatEntry = null;
   }
 
   function appendSystemLine(entry) {
@@ -2969,9 +3017,10 @@
     const tone = SYSTEM_TONE[entry.event] || '';
     div.className = `chat-sys${tone ? ` ${tone}` : ''}`;
     const label = SYSTEM_LABELS[entry.event]?.(entry.actor, entry.target) || entry.event;
-    div.innerHTML = `${SYSTEM_ICONS[entry.event] || ''} ${escapeHtml(label)}`;
+    const hora = entry.ts ? `<span class="chat-sys-time">${formatTime(entry.ts)}</span>` : '';
+    div.innerHTML = `<span aria-hidden="true">›</span><span>${escapeHtml(label)}</span>${hora}`;
     chatMessagesEl.appendChild(div);
-    lastChatAuthorId = null; // proxima mensagem de texto nao agrupa com o que veio antes de uma linha de sistema
+    lastChatEntry = null;
   }
 
   /** Miniatura de imagem da linha do chat. As dimensoes viajam na mensagem
@@ -3021,8 +3070,8 @@
   }
 
   function appendMessage(entry) {
-    const grouped = lastChatAuthorId === entry.from;
-    lastChatAuthorId = entry.from;
+    const grouped = chatGrouping.deveAgrupar(lastChatEntry, entry);
+    lastChatEntry = entry;
     const div = document.createElement('div');
     div.className = `chat-line${grouped ? ' grouped' : ''}`;
     div.innerHTML = `
@@ -3105,7 +3154,7 @@
 
   function setHistory(entries) {
     chatMessagesEl.innerHTML = '';
-    lastChatAuthorId = null;
+    lastChatEntry = null;
     lastChatDayKey = null;
     for (const entry of entries || []) {
       if (entry.ts) appendDaySeparatorIfNeeded(entry.ts);
@@ -3370,7 +3419,7 @@
   function setStageStatus({ level, label }) {
     const dot = $('stage-status-dot');
     const badge = $('stage-status-badge');
-    dot.dataset.level = level;
+    dot.dataset.level = level === 'live' ? 'live' : 'idle';
     if (label) {
       badge.textContent = label;
       badge.classList.remove('hidden');
@@ -4785,6 +4834,10 @@
     if (!btn) return;
     const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
     btn.querySelector('.btn-label').textContent = label;
+    // O .btn-label do dock fica com display:none (sai da arvore de
+    // acessibilidade): o nome do botao mora no aria-label e acompanha o estado.
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
     // classe `.hidden`, NAO o atributo/propriedade `hidden`: estes tres nos
     // sao <svg>, e `hidden` e um atributo de HTMLElement -- `svg.hidden = x`
     // grava uma propriedade solta que nao vira atributo, e nem o atributo no
