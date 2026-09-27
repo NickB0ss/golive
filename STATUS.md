@@ -441,6 +441,56 @@ no Electron real sem erros de console.
 Faltam a fase 2, com a casca da sala, e a fase 3, com lobby, Configurações e
 diálogos. Também falta testar com pessoas de verdade.
 
+## Redesign, fases 2 e 3 — identidade Estúdio e o app inteiro (branch feat/redesign-sala)
+
+Esta leva fecha o redesign da sala e leva a identidade Estúdio ao app inteiro.
+A sala agora tem três colunas: pessoas, palco e chat. A coluna de pessoas separa
+"AO VIVO" e "NA SALA", com presença, estado e ações. O palco ganhou barra em
+cada vídeo, reações, menu e o estado vazio "Ninguém em foco". A qualidade que
+você recebe ficou no menu da tela de outra pessoa.
+
+O lobby virou painel de controle, com as navegações Salas e Configurações. As
+Configurações viraram uma tela própria. O seletor de tela, os diálogos, o
+visualizador, o emoji, o splash e o Espiar receberam o mesmo acabamento. O
+tema padrão agora é Estúdio.
+
+Entraram, de `git log --oneline feat/redesign-mesa..HEAD`:
+
+- `33d7884` fix(app): correcoes da revisao final do redesign das fases 2 e 3
+- `430a243` fix(app): acabamento da passada visual no app real
+- `4379b7b` feat(app): seletor de tela, dialogos, menus, splash e Espiar no Estudio
+- `3a9f4fc` feat(config): Configuracoes viram tela propria com secoes na lateral
+- `c8a57c3` fix(bancada): telas espera as transicoes antes de medir e fotografar
+- `b2436b4` feat(lobby): painel de controle com barra lateral e salas em lista
+- `28e4721` feat(sala): chat em lista, cabecalho com endereco mono, dock e faixa no Estudio
+- `b13a86a` test(bancada): telas fora da sala no Estudio
+- `3f40bcb` feat(palco): barra em cada video, reacoes e menu em popover solido, palco vazio
+- `9d8d682` fix(sala): linha de presenca cabe na coluna
+- `dffb256` test(bancada): sala com tres pessoas no servidor real
+- `574cf8f` feat(sala): tres colunas, presencas e colunas recolhiveis
+- `f260e1f` fix(tema): janelas da Mesa com as fontes por token
+- `0ad60ce` feat(transmissao): qualidade que voce recebe, pelo teto que o view-state ja leva
+- `eaa6422` feat(tema): identidade Estudio como padrao, onAct pela luminancia e migracao do GoLive
+- `91e1823` chore(fontes): Instrument Sans e IBM Plex Mono locais (OFL)
+- `843095a` docs(plano): redesign do app inteiro no Estudio — 13 tarefas e jobs do Codex
+- `605bd4b` docs(spec): redesign das fases 2 e 3 juntas — o app inteiro no Estudio
+- `d3d618a` docs(spec): redesign fase 2 — sala em tres colunas e identidade Estudio
+
+Os números da verificação foram: `npm test` com 1914 passando; lint com 0
+erros e 9 avisos; harness `checar` sem erros; `bancada-janelas/rodar` 350/0;
+`mesa-real` 31/0; `festa-real` 14/0; `leva2-real` 97/0; `blackjack` 131/0;
+`pôquer` 47/0; `bancada-sala` 19/0; `teto-recebido` e `config-aberta` passam;
+`bancada-telas` 145/0; `caber` 516/0.
+
+Pendências:
+
+- **"N AO VIVO"** na lista de salas do lobby: a descoberta (beacon e `probe-ok`)
+  só leva o total de pessoas; exige um campo novo e opcional no protocolo — decisão do Nicolas.
+- **Avatares da linha de sala no lobby são marcadores sem iniciais**: a descoberta não diz quem está na sala.
+- **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
+  anterior a estas fases, contra a regra de não usar `filter`.
+- **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
 ## Lançado na 0.21.0 (2026-09-24)
 
 Quatro frentes em paralelo sobre o que a análise de 23/09 e a auditoria de
