@@ -32,6 +32,17 @@
     return out;
   }
 
+  function textoBarra(state) {
+    if (state.phase === 'writing') return `Letra ${state.letter || '—'} · escrevendo`;
+    if (state.phase === 'review') return 'Corrigindo respostas';
+    return 'Prepare as categorias';
+  }
+
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const b = C.base(elRoot, api, TYPE);
@@ -156,6 +167,7 @@
 
     function update(next) {
       state = next;
+      atualizarBarra(api, textoBarra(state), Boolean(state.phase === 'writing' && state.me?.canStop));
       if (state.phase !== 'review') page = 0;
       render();
       if (timer) root.clearInterval(timer);
@@ -166,10 +178,13 @@
         }, 500);
       }
     }
-    return { update, destroy() { if (timer) root.clearInterval(timer); b.destruir(); } };
+    return {
+      update,
+      destroy() { if (timer) root.clearInterval(timer); atualizarBarra(api, '', false); b.destruir(); },
+    };
   }
 
-  const api = { type: TYPE, mount, tempo, linhas };
+  const api = { type: TYPE, mount, tempo, linhas, textoBarra, atualizarBarra };
   function registrar() {
     const G = (root.GoLive = root.GoLive || {});
     G.mesaJanelas = G.mesaJanelas || {};

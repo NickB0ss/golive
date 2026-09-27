@@ -5,6 +5,16 @@ const assert = require('node:assert/strict');
 
 const janela = require('./stop');
 
+test('Stop envia estado proprio e alheio para a barra', () => {
+  const chamadas = [];
+  const api = { setStatus: (v) => chamadas.push(['status', v]), setTurn: (v) => chamadas.push(['turn', v]) };
+  janela.atualizarBarra(api, 'Letra A · escrevendo', true);
+  janela.atualizarBarra(api, 'Corrigindo respostas', false);
+  assert.deepEqual(chamadas, [
+    ['status', 'Letra A · escrevendo'], ['turn', true], ['status', 'Corrigindo respostas'], ['turn', false],
+  ]);
+});
+
 test('registra a janela Stop e calcula o relogio da rodada', () => {
   assert.equal(globalThis.GoLive.mesaJanelas.stop, janela);
   assert.equal(janela.type, 'stop');

@@ -33,6 +33,11 @@
     return Math.max(0, Math.ceil((deadline - now) / 1000));
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const b = C.base(elRoot, api, TYPE);
@@ -138,6 +143,7 @@
     function update(novo) {
       state = novo || {};
       status.textContent = textoStatus();
+      atualizarBarra(api, status.textContent, Boolean(state.phase === 'play' && state.me?.seat === state.turn));
       C.ligado(nova, state.me?.can?.start ? true : 'Nova mão indisponível');
       C.ligado(reiniciar, state.me?.can?.reset ? true : 'Só quem está sentado ou o líder da sala recomeça');
       C.ligado(comprar, state.me?.can?.draw ? true : 'Sem compra agora');
@@ -154,6 +160,7 @@
       update,
       destroy() {
         root.clearInterval(timer);
+        atualizarBarra(api, '', false);
         b.destruir();
       },
       focus() { status.focus(); },
@@ -166,7 +173,7 @@
     G.mesaJanelas[TYPE] = api;
   }
 
-  const api = { type: TYPE, mount, pedraSvg, podeJogar, segundos };
+  const api = { type: TYPE, mount, pedraSvg, podeJogar, segundos, atualizarBarra };
   registrar(api);
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

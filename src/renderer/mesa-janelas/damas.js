@@ -59,6 +59,11 @@
     return r && r.reason === 'damas' ? 'Empate: 20 lances só de damas' : 'Empate';
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   // ---------- DOM ----------
 
   function mount(elRoot, api) {
@@ -169,6 +174,7 @@
     function update(novo, meta) {
       state = novo;
       mold.update(state, meta);
+      atualizarBarra(api, mold.status.textContent, state.turn === api.me() && !state.result);
       g.virar(T.virado(state, api.me()));
       lances = m.legalMoves(state);
       const eu = T.minhaCadeira(state, api.me());
@@ -179,7 +185,11 @@
       pintar();
     }
 
-    return { update, destroy: b.destruir, focus() { g.casas[g.tecl.atual].focus(); } };
+    return {
+      update,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
+      focus() { g.casas[g.tecl.atual].focus(); },
+    };
   }
 
   // ---------- Registro ----------
@@ -232,7 +242,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, pecasQueMexem, destinos, nomePeca, empate, LABELS };
+  const api = { type: TYPE, mount, pecasQueMexem, destinos, nomePeca, empate, atualizarBarra, LABELS };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

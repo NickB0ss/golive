@@ -73,6 +73,11 @@
     return `Vez de ${nome(view.hand?.turn)}`;
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function acoesDaView(view, index) {
     if (!view?.me?.can?.play || !view.hand || !Number.isInteger(index)) {
       return [];
@@ -115,8 +120,8 @@
     const minhas = criar(doc, 'div', 'mj-tr-minhas');
     const acoes = criar(doc, 'div', 'mj-tr-acoes');
     const topo = criar(doc, 'div', 'mj-tr-topo');
-    topo.append(titulo, placar, vira);
-    base.raiz.append(topo, resumo, lugares, mesa, minhas, status, acoes);
+    topo.append(titulo, vira);
+    base.raiz.append(topo, resumo, lugares, mesa, minhas, acoes);
     let view = null;
 
     function nome(seat) {
@@ -203,6 +208,11 @@
       }
       resumo.textContent = resumoMao(view, api.serverNow());
       status.textContent = textoStatus(view, nome);
+      atualizarBarra(
+        api,
+        `${view.scores?.[0] || 0} × ${view.scores?.[1] || 0} · ${status.textContent}`,
+        Boolean(view.hand && !view.hand.result && (view.me?.can?.play || view.me?.can?.answer)),
+      );
       desenharLugares();
       desenharMesa();
       desenharCartas();
@@ -220,7 +230,7 @@
 
     return {
       update: desenhar,
-      destroy: base.destruir,
+      destroy() { atualizarBarra(api, '', false); base.destruir(); },
       focus() {
         (acoes.querySelector('button') || status).focus();
       },
@@ -288,6 +298,7 @@
     acoesPrincipais,
     rotuloCanto,
     resumoMao,
+    atualizarBarra,
   };
   registrar(api, ['comum.js', 'cartas.js']);
   if (typeof module !== 'undefined') module.exports = api;

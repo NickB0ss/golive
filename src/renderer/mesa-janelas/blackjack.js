@@ -135,6 +135,11 @@
 
   // ---------- DOM ----------
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const K = root.GoLive.mesaJanelasCartas;
@@ -409,6 +414,7 @@
         apostaCampo.dataset.tocado = '';
       }
       status.textContent = textoStatus(v, (x) => C.nomeDe(api, x));
+      atualizarBarra(api, status.textContent, Boolean(v.me?.hand !== null && v.me?.hand !== undefined && !v.finished));
       sapato.textContent = `Sapato: ${v.shoeLeft}`;
       sapato.title = `${v.shoeLeft} de ${v.shoeTotal} cartas no sapato`;
       sapato.setAttribute('aria-label', `${v.shoeLeft} cartas no sapato`);
@@ -430,7 +436,11 @@
       alvo.focus();
     }
 
-    return { update, destroy: b.destruir, focus };
+    return {
+      update,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
+      focus,
+    };
   }
 
   // ---------- Registro ----------
@@ -482,7 +492,10 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, textoTotal, textoBanca, textoResultado, textoStatus, anuncio, segundos, esperaTimeout, milhar };
+  const api = {
+    type: TYPE, mount, textoTotal, textoBanca, textoResultado, textoStatus, anuncio, segundos, esperaTimeout,
+    milhar, atualizarBarra,
+  };
 
   registrar(api, ['comum.js', 'cartas.js']);
 

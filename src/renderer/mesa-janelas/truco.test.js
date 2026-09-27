@@ -3,6 +3,16 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const J = require('./truco');
 
+test('Truco envia estado proprio e alheio para a barra', () => {
+  const chamadas = [];
+  const api = { setStatus: (v) => chamadas.push(['status', v]), setTurn: (v) => chamadas.push(['turn', v]) };
+  J.atualizarBarra(api, '1 × 0 · Sua vez', true);
+  J.atualizarBarra(api, '1 × 0 · Vez de Bia', false);
+  assert.deepEqual(chamadas, [
+    ['status', '1 × 0 · Sua vez'], ['turn', true], ['status', '1 × 0 · Vez de Bia'], ['turn', false],
+  ]);
+});
+
 test('textoStatus explica espera, mao de onze e canto pendente', () => {
   assert.equal(J.textoStatus({ phase: 'waiting', me: { seat: -1 } }, () => 'Ana'), 'Escolha um lugar para sentar');
   assert.equal(

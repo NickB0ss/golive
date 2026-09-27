@@ -24,6 +24,11 @@
   const FOLGA_DESENHISTA_MS = 3000; // o desenhista espera, dando chance ao resto
   const REPETE_MS = 2000;
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const A = root.GoLive.annotate;
@@ -275,6 +280,11 @@
       state = novo && typeof novo === 'object' ? novo : null;
       renderPlacar();
       renderStatus();
+      atualizarBarra(
+        api,
+        status.textContent,
+        Boolean((state?.phase === 'choosing' || state?.phase === 'drawing') && state?.me?.isDrawer),
+      );
       renderPalavra();
       mostrarEvento();
       mostrarRevelacao();
@@ -368,6 +378,7 @@
       destroy() {
         ro.disconnect();
         store.drop(LOCAL);
+        atualizarBarra(api, '', false);
         b.destruir();
       },
       focus() {
@@ -427,7 +438,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount };
+  const api = { type: TYPE, mount, atualizarBarra };
   registrar(api, ['comum.js']);
 
   if (typeof module !== 'undefined') module.exports = api;

@@ -65,6 +65,11 @@
     return (r && t[r.reason]) || 'Empate';
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   // ---------- DOM ----------
 
   function mount(elRoot, api) {
@@ -236,6 +241,7 @@
     function update(novo, meta) {
       state = novo;
       mold.update(state, meta);
+      atualizarBarra(api, mold.status.textContent, state.turn === api.me() && !state.result);
       const eu = T.minhaCadeira(state, api.me());
       g.virar(eu === 1);
       minhaCor = corDaCadeira(eu);
@@ -253,7 +259,11 @@
       pintar();
     }
 
-    return { update, destroy: b.destruir, focus() { g.casas[g.tecl.atual].focus(); } };
+    return {
+      update,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
+      focus() { g.casas[g.tecl.atual].focus(); },
+    };
   }
 
   // ---------- Registro ----------
@@ -306,7 +316,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, nomePeca, glifo, alvos, corDaCadeira, empate, LABELS };
+  const api = { type: TYPE, mount, nomePeca, glifo, alvos, corDaCadeira, empate, atualizarBarra, LABELS };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

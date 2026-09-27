@@ -92,6 +92,11 @@
     }
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   // ---------- DOM ----------
 
   function mount(elRoot, apiVista) {
@@ -220,6 +225,7 @@
         st = ult && !state.result ? `${ult}. ${base}` : base;
       }
       if (mold.status.textContent !== st) mold.status.textContent = st;
+      atualizarBarra(api, st, !posicionando && !state.result && state.turn === eu);
       tique();
     }
 
@@ -253,7 +259,7 @@
 
     return {
       update,
-      destroy: b.destruir,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
       focus() {
         const alvo = lados[1].alvo ? lados[1] : null;
         if (alvo) alvo.casas[alvo.tecl.atual].focus();
@@ -310,7 +316,10 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, nomeCasa, marcas, rotuloCasa, textoUltimo, textoPosicionando, podeDaView, LABELS };
+  const api = {
+    type: TYPE, mount, nomeCasa, marcas, rotuloCasa, textoUltimo, textoPosicionando, podeDaView,
+    atualizarBarra, LABELS,
+  };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

@@ -23,6 +23,11 @@
     return 'Deu velha';
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   // ---------- DOM ----------
 
   function mount(elRoot, api) {
@@ -52,6 +57,7 @@
     function update(novo, meta) {
       state = novo;
       mold.update(state, meta);
+      atualizarBarra(api, mold.status.textContent, state.turn === api.me() && !state.result);
       const linha = new Set(state.line || []);
       casas.forEach((bt, i) => {
         const v = state.board[i];
@@ -65,7 +71,11 @@
       tecl.marcar();
     }
 
-    return { update, destroy: b.destruir, focus() { casas[tecl.atual].focus(); } };
+    return {
+      update,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
+      focus() { casas[tecl.atual].focus(); },
+    };
   }
 
   // ---------- Registro ----------
@@ -118,7 +128,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, rotuloCasa, empate, LABELS };
+  const api = { type: TYPE, mount, rotuloCasa, empate, atualizarBarra, LABELS };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 
