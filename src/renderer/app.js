@@ -965,6 +965,7 @@
         cfg = { ...cfg, themes: lista };
         persist();
       },
+      isLive: () => Boolean(localStream),
       onToast: showToast,
     });
   }

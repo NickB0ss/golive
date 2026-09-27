@@ -2196,66 +2196,186 @@ button.busy { cursor: default; }
 }
 .modal-close:hover { background: var(--surface-3); color: var(--text-1); }
 
-.settings-box { width: min(880px, 90vw); height: min(600px, 85vh); display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); padding: 0; overflow: hidden; }
-.settings-header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; min-height: 60px; padding: 0 var(--s-5); border-bottom: 1px solid var(--line); }
+.settings-underlay {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.settings-view {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
+  background: var(--bg);
+}
+
+/* A faixa so ocupa espaco quando o processo principal a habilita. */
+body:has(#titlebar:not([hidden])) .settings-view {
+  inset: var(--s-6) 0 0;
+}
+
+.settings-view.hidden {
+  display: none;
+}
+
+.settings-header {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 720px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 56px;
+  padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--s1);
+}
+
 .settings-header h2 {
   margin: 0;
+  color: var(--tx);
   font-family: var(--font-display);
   font-size: var(--fs-title);
 }
-.settings-header .modal-close { position: static; flex: none; }
-.settings-nav {
-  background: var(--surface-1);
-  border-right: 1px solid var(--line-subtle);
-  padding: 20px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-05);
-  /* Ancora do indicador deslizante (motion #8): UM indicador que desliza
-     entre as categorias, em vez de um fundo que acende e apaga. As
-     variaveis sao escritas por ui.js. */
-  position: relative;
-}
-.settings-nav::before {
-  content: '';
-  position: absolute;
-  left: 10px; right: 10px;
-  top: 0;
-  height: var(--nav-ind-h, 0px);
-  transform: translateY(var(--nav-ind-y, 0px));
-  border-radius: var(--r-sm);
-  background: var(--surface-4);
-  opacity: var(--nav-ind-o, 0);
-  /* So transform e opacity. `height` fica FORA da transicao de proposito:
-     e propriedade de layout, e como todas as categorias tem a mesma altura
-     ela nunca muda enquanto o indicador desliza. */
-  transition: transform var(--t-move) var(--ease-move),
-              opacity var(--t-move) var(--ease-move);
-  pointer-events: none;
-}
-.settings-cat {
+
+.settings-back {
+  justify-self: start;
+  min-height: 28px;
+  padding: 0 var(--s-2);
+  border: 0;
   background: transparent;
-  text-align: left;
-  padding: var(--s-2) var(--s-3);
+  color: var(--tx2);
   font-size: var(--fs-body);
-  color: var(--text-2);
+  text-align: left;
+}
+
+.settings-back:hover {
+  color: var(--tx);
+}
+
+.settings-header .tally {
+  justify-self: end;
+}
+
+.settings-nav {
+  min-width: 0;
+  padding: var(--s-3);
+  border-right: 1px solid var(--line);
+  background: var(--s1);
+}
+
+.settings-cat {
   position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
+  /* O button global centraliza; a lateral le da esquerda. */
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 48px;
   gap: var(--s-2);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--tx2);
+  font-size: var(--fs-body);
+  text-align: left;
 }
-.settings-cat:hover { color: var(--text-1); }
-.settings-cat.active { color: var(--text-1); font-weight: 650; }
-.settings-content { min-height: 0; padding: 26px; overflow-y: auto; }
-.settings-pane h3 { font-size: var(--fs-small); text-transform: uppercase; color: var(--muted); margin: 18px 0 var(--s-2); }
-.settings-pane h3:first-child { margin-top: 0; }
-.settings-field { margin-bottom: 14px; }
-.settings-field label { display: block; font-weight: 600; font-size: var(--fs-body); margin-bottom: var(--s-15); }
-.settings-field small { display: block; font-weight: 400; color: var(--muted); margin-top: 5px; }
-.settings-field input[type="range"] { width: 100%; accent-color: var(--live); }
-.settings-field video { width: 100%; max-width: 280px; border-radius: var(--r-md); background: var(--video-bg); aspect-ratio: 4/3; }
-.settings-profile-field { display: flex; }
+
+.settings-cat:hover {
+  background: var(--s2);
+  color: var(--tx);
+}
+
+.settings-cat.active {
+  background: var(--s3);
+  color: var(--tx);
+  font-weight: 650;
+}
+
+.settings-cat.active::before {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--tx);
+  content: '';
+}
+
+.settings-content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-5);
+}
+
+.settings-pane {
+  width: min(100%, 720px);
+}
+
+.settings-group {
+  margin-bottom: var(--s-4);
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line2);
+}
+
+.settings-pane h3 {
+  margin: 0 0 var(--s-3);
+  font-size: var(--fs-micro);
+}
+
+.settings-field {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  margin: 0;
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-pane h3 + .settings-field {
+  border-top: 0;
+}
+
+.settings-field label {
+  flex: 1 1 180px;
+  margin: 0 var(--s-3) 0 0;
+  color: var(--tx);
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.settings-field input,
+.settings-field select {
+  flex: 0 1 340px;
+}
+
+.settings-field small {
+  display: block;
+  margin-top: var(--s-1);
+  color: var(--tx3);
+  font-weight: 400;
+}
+
+.settings-field input[type="range"] {
+  width: min(100%, 340px);
+  accent-color: var(--act);
+}
+
+.settings-field video {
+  width: min(100%, 280px);
+  border-radius: var(--r-md);
+  background: var(--video-bg);
+  aspect-ratio: 4 / 3;
+}
+
+.settings-profile-field {
+  display: flex;
+}
 .user-avatar-lg {
   width: 84px; height: 84px;
   font-size: var(--fs-hero);
@@ -2267,14 +2387,35 @@ button.busy { cursor: default; }
    de acao com o nome escrito (spec 2026-09-03, 5.6). O anel de ".active"
    usa --act do tema JA APLICADO (nao o do cartao) -- e o tema atual que
    deve indicar qual cartao esta selecionado. */
-.theme-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-2); margin-bottom: var(--s-4); }
-.theme-preset-card {
-  display: flex; flex-direction: column; gap: var(--s-2);
-  padding: var(--s-2); border: 1px solid var(--line2); border-radius: var(--r-md);
-  background: var(--s2); cursor: pointer; text-align: left;
+.theme-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 120px);
+  gap: var(--s-2);
+  margin: 0;
 }
-.theme-preset-card:hover { border-color: var(--tx3); }
-.theme-preset-card.active { border-color: var(--act); box-shadow: 0 0 0 1px var(--act); }
+
+.theme-preset-card {
+  display: flex;
+  flex-direction: column;
+  width: 120px;
+  min-height: 80px;
+  gap: var(--s-1);
+  padding: var(--s-1);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.theme-preset-card:hover {
+  border-color: var(--tx3);
+}
+
+.theme-preset-card.active {
+  border-color: var(--tx);
+  box-shadow: 0 0 0 2px var(--tx);
+}
 /* Miniatura do app por predefinicao -- substitui a rampa de faixas, que
    num tema escuro era um retangulo aparentemente vazio (as cinco
    superficies sao quase o mesmo preto). Ver renderThemePresetCard. */
@@ -2286,7 +2427,7 @@ button.busy { cursor: default; }
      miniatura nasce com a largura do conteudo e fica uma tirinha no meio
      do cartao (mesma armadilha documentada na 0.5.0). */
   align-self: stretch;
-  height: 54px;
+  height: 48px;
   border-radius: var(--r-xs);
   overflow: hidden;
 }

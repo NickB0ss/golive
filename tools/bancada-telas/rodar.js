@@ -240,6 +240,9 @@ async function conferirEstado(page, estado, tema, vista) {
 }
 
 async function conferirConfiguracoes(page, tema, vista) {
+  await page.locator('#titlebar').evaluate((titulo) => {
+    titulo.hidden = false;
+  });
   await montarConfiguracoes(page);
   for (const secao of SECOES) {
     await page.locator(`.settings-cat[data-cat="${secao}"]`).click();
@@ -258,20 +261,30 @@ async function conferirConfiguracoes(page, tema, vista) {
       ocupaJanela: modal.top >= titulo.bottom - 1 && modal.width >= window.innerWidth - 1
         && modal.height >= window.innerHeight - titulo.bottom - 1,
       lobbyExiste: Boolean(lobby),
-      lobbyEscondido: lobby?.classList.contains('hidden'),
+      lobbyInerte: lobby?.inert,
+      lobbyInvisivel: Boolean(lobby) && getComputedStyle(lobby).visibility === 'hidden',
       salaExiste: Boolean(sala),
-      salaEscondida: sala?.classList.contains('hidden'),
+      salaInerte: sala?.inert,
+      salaInvisivel: Boolean(sala) && getComputedStyle(sala).visibility === 'hidden',
+      salaMensuravel: sala?.getBoundingClientRect().width > 0,
     };
   });
   conferir(`configurações ocupam a janela abaixo da faixa ${tema} ${vista.largura}×${vista.altura}`,
     estrutura.ocupaJanela, JSON.stringify(estrutura));
-  conferir(`configurações preservam lobby e sala no DOM ${tema} ${vista.largura}×${vista.altura}`,
-    estrutura.lobbyExiste && estrutura.lobbyEscondido && estrutura.salaExiste && estrutura.salaEscondida,
+  // A vista anterior fica fora do Tab (inert) e invisivel, mas continua no
+  // layout: display:none zeraria as medidas que a Mesa usa para o view-state.
+  const lobbyIsolado = estrutura.lobbyInerte && estrutura.lobbyInvisivel;
+  const salaIsolada = estrutura.salaInerte && estrutura.salaInvisivel && estrutura.salaMensuravel;
+  conferir(`configurações isolam a vista anterior sem desmontar a sala ${tema} ${vista.largura}×${vista.altura}`,
+    estrutura.lobbyExiste && estrutura.salaExiste && (lobbyIsolado || salaIsolada),
     JSON.stringify(estrutura));
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('#settings-modal')?.classList.contains('hidden'));
   conferir(`Esc volta das Configurações ${tema} ${vista.largura}×${vista.altura}`,
     await page.locator('#settings-modal').evaluate((elemento) => elemento.classList.contains('hidden')));
+  await page.locator('#titlebar').evaluate((titulo) => {
+    titulo.hidden = true;
+  });
 }
 
 async function conferirDialogo(page, estado, primeiroCampo, tema, vista) {

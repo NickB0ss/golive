@@ -160,7 +160,7 @@
   // superficie mais clara da rampa, como pede a spec.
   const PRESETS = {
     estudio: {
-      label: 'Estudio',
+      label: 'Estúdio',
       surfaces: {
         bg: '#0C0D0F', s1: '#131518', s2: '#1A1D21', s3: '#23272C', s4: '#2E3339',
         tx: '#ECEDEF', tx2: '#A4ABB4', tx3: '#8B929C',

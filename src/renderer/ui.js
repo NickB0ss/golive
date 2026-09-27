@@ -3518,6 +3518,9 @@
     voice: $('settings-voice'),
     stats: $('settings-stats'),
   };
+  const settingsTitleEl = $('settings-section-title');
+  const settingsLiveTallyEl = $('settings-live-tally');
+  let settingsUnderlayEl = null;
 
   // Indicador deslizante (motion #8). O CSS desenha UM retangulo em
   // ::before/::after e o JS so escreve onde ele fica; a transicao acontece
@@ -3557,20 +3560,29 @@
     moveIndicator(settingsNavEl, settingsCatButtons.find((b) => b.classList.contains('active')), 'y', animate);
   }
 
+  function selectSettingsCategory(btn, animate = true) {
+    const category = btn.dataset.cat;
+    settingsCatButtons.forEach((item) => {
+      const active = item === btn;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-selected', String(active));
+      item.tabIndex = active ? 0 : -1;
+    });
+    Object.entries(settingsPanes).forEach(([key, pane]) => {
+      pane.classList.toggle('hidden', key !== category);
+    });
+    settingsTitleEl.textContent = btn.textContent.trim();
+    syncSettingsIndicator(animate);
+  }
+
   settingsCatButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
-      settingsCatButtons.forEach((b) => b.classList.toggle('active', b === btn));
-      Object.entries(settingsPanes).forEach(([cat, pane]) =>
-        pane.classList.toggle('hidden', cat !== btn.dataset.cat)
-      );
-      syncSettingsIndicator();
+      selectSettingsCategory(btn);
+      btn.focus();
     });
   });
 
   $('btn-close-settings').addEventListener('click', closeSettings);
-  settingsModalEl.addEventListener('click', (event) => {
-    if (event.target === settingsModalEl) closeSettings();
-  });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape'
       && !settingsModalEl.classList.contains('hidden')
@@ -3615,8 +3627,11 @@
 
   function closeSettings() {
     settingsModalEl.classList.add('hidden');
-    restoreFocusAfterModal();
+    settingsUnderlayEl?.classList.remove('settings-underlay');
+    if (settingsUnderlayEl) settingsUnderlayEl.inert = false;
+    settingsUnderlayEl = null;
     stopSettingsCameraPreview();
+    restoreFocusAfterModal();
   }
 
   // Gestao de foco dos modais (§5.6). Antes nao havia nenhuma: abrir um
@@ -3640,6 +3655,29 @@
   function restoreFocusAfterDialog() {
     lastFocusedBeforeDialog?.focus?.();
     lastFocusedBeforeDialog = null;
+  }
+
+  function esconderVistaAnterior() {
+    const salaVisivel = !roomViewEl.classList.contains('hidden');
+    settingsUnderlayEl = salaVisivel ? roomViewEl : lobbyViewEl;
+    settingsUnderlayEl.classList.add('settings-underlay');
+    settingsUnderlayEl.inert = true;
+  }
+
+  function agruparConfiguracoes() {
+    for (const pane of Object.values(settingsPanes)) {
+      const headings = Array.from(pane.querySelectorAll(':scope > h3'));
+      for (const heading of headings) {
+        const group = document.createElement('section');
+        group.className = 'settings-group';
+        heading.classList.add('rotulo-mono');
+        heading.before(group);
+        group.append(heading);
+        while (group.nextElementSibling && group.nextElementSibling.tagName !== 'H3') {
+          group.append(group.nextElementSibling);
+        }
+      }
+    }
   }
 
   function bandwidthLine(quality) {
@@ -3933,10 +3971,13 @@
   }
 
   async function openSettings(config, deps) {
+    const estavaFechada = settingsModalEl.classList.contains('hidden');
+    if (estavaFechada) lastFocusedBeforeModal = document.activeElement;
     settingsPanes.profile.innerHTML = `
       <h3>Perfil</h3>
       <div class="settings-field settings-profile-field">
-        <button id="settings-profile-avatar" class="user-avatar user-avatar-lg" type="button" title="Alterar foto de perfil">
+        <button id="settings-profile-avatar" class="user-avatar user-avatar-lg" type="button"
+          title="Alterar foto de perfil" aria-label="Alterar foto de perfil">
           <img id="settings-profile-avatar-img" class="hidden" alt="" />
           <span id="settings-profile-avatar-fallback"></span>
         </button>
@@ -4064,6 +4105,7 @@
       </div>`;
 
     settingsPanes.stats.innerHTML = `
+      <h3>Estatísticas</h3>
       <div id="settings-stats-body" class="stats"></div>
       <div class="settings-field">
         <button id="btn-open-logs" type="button" class="ghost small">Abrir pasta de logs</button>
@@ -4281,12 +4323,15 @@
       /* sem permissao de midia ainda, dropdowns ficam vazios */
     }
 
+    agruparConfiguracoes();
+    if (estavaFechada) esconderVistaAnterior();
+    settingsLiveTallyEl.classList.toggle('hidden', !deps.isLive?.());
     settingsModalEl.classList.remove('hidden');
     // Sem animar: o indicador aparece ja no lugar em vez de deslizar sozinho
     // toda vez que o dialogo abre. offsetTop/offsetHeight so valem depois de
     // o modal sair de display:none, dai a leitura ser aqui.
-    syncSettingsIndicator(false);
-    focusFirstInteractive(settingsModalEl);
+    selectSettingsCategory(settingsCatButtons.find((btn) => btn.classList.contains('active')), false);
+    settingsCatButtons.find((btn) => btn.classList.contains('active'))?.focus();
     void startSettingsCameraPreview($('settings-camera-device').value);
   }
 
