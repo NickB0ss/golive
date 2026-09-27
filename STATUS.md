@@ -17,7 +17,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   salas da rede já marca a sala incompatível e desliga o botão antes do
   clique. Direção do aviso vem de `src/renderer/version.js` (quem tem de
   atualizar: você ou quem criou a sala).
-- PIN opcional de 4 dígitos na sala (opt-in em "Criar sala"): corta o
+- PIN opcional de 6 dígitos na sala (opt-in em "Criar sala"): corta o
   entrar-por-acidente numa rede compartilhada. Não é cripto.
 - Liberação de porta no firewall do Windows automática, com botão
   "Permitir acesso à rede" quando a elevação falha.
@@ -416,6 +416,35 @@ tela não escolhida corta o texto em cima quando fica na tira de miniaturas.
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
 
+## Redesign "Sinal" — a interface refeita do zero (branch feat/redesign-greenfield)
+
+Pedido de 2026-09-27: redesenhar a experiência inteira como se a interface anterior não existisse. Substitui a
+identidade "Estúdio" das fases 2 e 3 (abaixo), que ficou como histórico. Docs em `docs/redesign-greenfield/`:
+`01`/`02` brief funcional (sem nada da UI antiga), `03` conceitos e a escolha, `04` design system, `05`
+arquitetura (spec congelada + desvios registrados no §13), prints em `prints/`.
+
+- **Conceito "Sinal" (mesa de corte)**: tudo o que se assiste é uma **fonte** num barramento embaixo (a tela e a
+  câmera de cada pessoa, e a Mesa); o palco é o programa. Clique assiste só aquela; Ctrl+clique soma; o × larga.
+  A sua fonte vira o bloco ao vivo com pausar/trocar/parar. Presença, menu da sala, avisos e saúde moram na
+  cabeça (que é a barra de título). Conversa fixada, espiando (mensagens surgem sobre o programa) ou fechada.
+  Modo teatro (T), painel de comando (Ctrl+K), atalhos C e M.
+- **Identidade do ícone**: tinta `#0E0E14`, giz `#EDEDF2`, vermelho-sinal `#FF4D4F` **só para ao vivo**; "fio"
+  `#8C92FF` (a matiz do fundo clareada) para foco, seleção e "você está assistindo"; perigo em laranja. Pessoas
+  são nós na geometria do ícone (anel = na sala, ponto = assistindo, disco vermelho = ao vivo, tracejado =
+  pausado). Fontes locais OFL: Sora (voz), Atkinson Hyperlegible Next (interface), Geist Mono (dados).
+- **Temas**: preset `sinal` é o novo padrão e `sinal-claro` foi criado; `marca` sem acento e o `estudio` não
+  lançado migram uma vez para `sinal` (`themeMigrationSinal`). O motor marca `data-tone` claro/escuro.
+- **Código**: CSS antigo (`style.css`, 4,8 mil linhas) apagado; o design system mora em `src/renderer/sinal/`
+  (`tokens`, `themes`, `base`, `components`, `shell`, `sheets`). `css-rules.test.js` trava: nenhuma cor solta
+  fora dos tokens, `--live` só em estado ao vivo, `z-index` só pela escala, `!important` só em `[hidden]`.
+  `comando.js` (puro, testado) monta o painel de comando.
+- **Ferramentas**: `tools/sinal-boot/rodar.js` sobe o app real e falha com erro de console;
+  `tools/sinal-prints/{inicio,sala}.js` fotografam os estados com servidor real (a da Sala audita o teclado);
+  `SINAL_TEMA=sinal-claro` fotografa no tema claro; `classes-orfas.js` lista classe sem estilo.
+- **Bugs achados no caminho**: `theme.js` atribuía a `dataset` (lança no DOM real); botão Reagir do barramento
+  sem ação; medidor de som sem barras; soltar imagem só funcionava na lista; teste e2e do Quiz lia um retrato
+  antigo da Mesa sob carga (intermitente).
+
 ## Redesign, fase 1 — fundação e Mesa (branch feat/redesign-mesa)
 
 Esta fase mudou a fundação visual e tirou os controles de cima do conteúdo das
@@ -441,7 +470,7 @@ no Electron real sem erros de console.
 Faltam a fase 2, com a casca da sala, e a fase 3, com lobby, Configurações e
 diálogos. Também falta testar com pessoas de verdade.
 
-## Redesign, fases 2 e 3 — identidade Estúdio e o app inteiro (branch feat/redesign-sala)
+## Redesign, fases 2 e 3 — identidade Estúdio (substituída pelo Sinal, acima; fica como histórico)
 
 Esta leva fecha o redesign da sala e leva a identidade Estúdio ao app inteiro.
 A sala agora tem três colunas: pessoas, palco e chat. A coluna de pessoas separa
