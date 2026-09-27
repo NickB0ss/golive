@@ -1237,7 +1237,7 @@ button.busy { cursor: default; }
    sem custo de layout nenhum. So no hover: em toda linha viraria ruido. */
 .chat-grouped-time {
   display: block; width: 28px; text-align: right;
-  font-size: var(--fs-micro); line-height: 1.5; color: var(--tx3);
+  font-family: var(--font-mono); font-size: var(--fs-micro); line-height: 1.5; color: var(--tx3);
   opacity: 0; transition: opacity var(--dur-fast) var(--ease-in-out);
 }
 .chat-line:hover .chat-grouped-time,
@@ -1268,7 +1268,8 @@ button.busy { cursor: default; }
   font-size: var(--fs-small); font-weight: 650; color: var(--tx);
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.chat-time { font-size: var(--fs-micro); color: var(--tx3); flex: none; }
+/* Hora em mono (spec 5), como tudo que e dado tecnico. */
+.chat-time { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--tx3); flex: none; }
 .chat-text { font-size: var(--fs-small); line-height: 1.5; color: var(--tx-soft); margin-top: 1px; word-break: break-word; }
 
 .chat-sys {
@@ -2486,13 +2487,18 @@ body:has(#titlebar:not([hidden])) .settings-view {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* A coluna rola sozinha quando nao cabe (aviso "Escolha uma tela" + opcoes);
+   as acoes ficam presas embaixo e nunca saem do dialogo (spec 7.3). */
 .picker-side {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
   padding-left: var(--s-4);
   border-left: 1px solid var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .picker-side h3:not(:first-child) { margin-top: 0; }
 
@@ -2592,6 +2598,23 @@ body:has(#titlebar:not([hidden])) .settings-view {
 /* Selecionado e um anel que cresce, nao uma borda que troca de cor: a
    borda mudando de cor nao muda a espessura e passa despercebida. */
 .source-card.selected { box-shadow: 0 0 0 2px var(--text-1); border-color: transparent; }
+/* Marca da escolhida (spec 7.3), no canto oposto ao selo de resolucao. O
+   estado ja chega ao leitor de tela pelo botao; o ✓ e so visual. */
+.source-card.selected .source-thumb::after {
+  position: absolute;
+  top: var(--s-1);
+  left: var(--s-1);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--act);
+  color: var(--on-act);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  content: '✓';
+}
 .source-thumb { position: relative; min-width: 0; }
 .source-card img.source-shot { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-xs); background: var(--video-bg); display: block; }
 
@@ -2702,6 +2725,8 @@ body:has(#titlebar:not([hidden])) .settings-view {
 /* A .picker-box e o container que rola; o rodape fica disponivel sem tirar
    o espaco que o ultimo controle precisa quando chega ao fim. */
 .picker-actions {
+  position: sticky;
+  bottom: 0;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -2709,10 +2734,19 @@ body:has(#titlebar:not([hidden])) .settings-view {
   margin-top: auto;
   padding-top: var(--s-3);
   border-top: 1px solid var(--line);
+  background: var(--s1);
+}
+/* Os dois botoes dividem a linha: somados pela largura do texto, nao cabem
+   nos ~216 px uteis da coluna e quebravam um sobre o outro. */
+.picker-actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 var(--s-2);
 }
 
-/* D3: por que o "Ir ao vivo" esta apagado. Empurra os botoes pra direita. */
-.picker-go-live-hint { margin-right: auto; align-self: center; color: var(--tx3); font-size: var(--fs-small); }
+/* D3: por que o "Ir ao vivo" esta apagado. Na coluna de 240 px ele ocupa a
+   propria linha, e Cancelar e Compartilhar ficam lado a lado embaixo. */
+.picker-go-live-hint { flex-basis: 100%; color: var(--tx3); font-size: var(--fs-small); }
 
 /* ---------- Estatisticas ---------- */
 
@@ -4748,6 +4782,16 @@ body.mesa-full .room-side { visibility: hidden; }
 }
 .menu-item:hover { background: var(--s3); }
 .menu-item:focus-visible, .popover input:focus-visible { box-shadow: var(--ring); outline: 0; }
+/* Opcoes de radio (qualidade): o ✓ numa calha fixa e o rotulo logo depois,
+   nao empurrado para a direita pelo space-between do item. */
+.menu-item[role="menuitemradio"] {
+  justify-content: flex-start;
+  gap: var(--s-2);
+}
+.menu-item[role="menuitemradio"] > [aria-hidden="true"] {
+  flex: none;
+  width: 1em;
+}
 .menu-item.warn { color: var(--warn); }
 .menu-item.danger { color: var(--danger-soft); }
 .member-menu .menu-item svg { width: 15px; height: 15px; flex: none; }
