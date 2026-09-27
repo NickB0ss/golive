@@ -838,3 +838,10 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 :root[data-tone='light'] .node:not([data-state]) { --ring: color-mix(in srgb, var(--who, var(--tx3)) 60%, var(--tx)); }
 /* Parar e neutro (nao e selecao): so o hover avisa perigo. */
 .me .me__share[aria-pressed='true'] .i { color: currentColor; }
+
+/* Barramento cheio: a borda com fonte escondida esmaece (a mascara usa so o alfa). */
+.bus__sources[data-over='left'] { mask-image: linear-gradient(to right, transparent, var(--tx) 40px); }
+.bus__sources[data-over='right'] { mask-image: linear-gradient(to left, transparent, var(--tx) 40px); }
+.bus__sources[data-over='left right'] {
+  mask-image: linear-gradient(to right, transparent, var(--tx) 40px, var(--tx) calc(100% - 40px), transparent);
+}

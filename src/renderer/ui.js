@@ -3123,7 +3123,29 @@
       || opcoes.find((o) => o.hasAttribute('data-watching')) || opcoes[0];
     for (const o of opcoes) o.tabIndex = o === alvo ? 0 : -1;
     if (focado && alvo?.dataset.tile === focado) alvo.focus({ preventScroll: true });
+    // Sem foco no barramento, a primeira fonte assistida entra no campo de visao.
+    else busLiveEl.querySelector('[data-watching]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    marcarTransbordo();
   }
+
+  // Barramento cheio: esmaece a borda onde ha fonte escondida, a roda do mouse
+  // rola na horizontal e a fonte assistida fica a vista.
+  function marcarTransbordo() {
+    if (!busSourcesEl) return;
+    const esquerda = busSourcesEl.scrollLeft > 4;
+    const direita = busSourcesEl.scrollLeft + busSourcesEl.clientWidth < busSourcesEl.scrollWidth - 4;
+    const lados = [esquerda ? 'left' : '', direita ? 'right' : ''].filter(Boolean).join(' ');
+    if (lados) busSourcesEl.dataset.over = lados;
+    else delete busSourcesEl.dataset.over;
+  }
+  busSourcesEl?.addEventListener('scroll', marcarTransbordo, { passive: true });
+  busSourcesEl?.addEventListener('wheel', (event) => {
+    if (busSourcesEl.scrollWidth <= busSourcesEl.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    event.preventDefault();
+    busSourcesEl.scrollLeft += event.deltaY;
+  }, { passive: false });
+  if (busSourcesEl) new ResizeObserver(marcarTransbordo).observe(busSourcesEl);
+
 
   /** Clique = assistir so esta; Ctrl+clique = somar; o × larga. Estando na
    * Mesa, escolher uma fonte de video volta para a Transmissao. */
