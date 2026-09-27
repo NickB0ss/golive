@@ -31,9 +31,10 @@
     '--spy-bg': '--bg',
     '--spy-fg': '--tx',
     '--spy-muted': '--tx2',
-    '--spy-control': '--s2',
-    '--spy-hover': '--s4',
+    '--spy-s2': '--s2',
+    '--spy-s3': '--s3',
     '--spy-act': '--act',
+    '--spy-on-act': '--on-act',
   });
 
   // So cor: `#rgb`..`#rrggbbaa` ou rgb()/rgba() com numeros. A janela nao

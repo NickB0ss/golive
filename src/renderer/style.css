@@ -255,6 +255,7 @@
      da fonte). */
   --scrim-tint-1: rgba(12, 13, 15, 0.72);
   --scrim-tint-2: rgba(12, 13, 15, 0.82);
+  --scrim-tint-3: rgba(12, 13, 15, 0.92);
 
   /* Veus CLAROS -- barra de rolagem e a alca de redimensionar do PiP, as
      unicas superficies translucidas de branco fora de --line/--line2 (que
@@ -1186,8 +1187,7 @@ button.busy { cursor: default; }
 .member-menu-btn:hover { background: var(--s3); color: var(--tx); }
 
 .member-menu {
-  position: fixed; z-index: var(--z-popover); background: var(--s2); border: 1px solid var(--line2);
-  border-radius: var(--r-md); padding: 5px; width: 210px; box-shadow: var(--shadow-3);
+  width: 210px;
 }
 .member-menu.in-modal { z-index: var(--z-modal-popover); }
 .member-menu-item {
@@ -2169,7 +2169,7 @@ button.busy { cursor: default; }
   background: var(--surface-modal);
   border: 1px solid var(--line-subtle);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--elev-3);
   padding: var(--s-5);
   /* O modal fica no centro da tela: nao ha gatilho pra ancorar, entao a
      origem e o proprio centro. Popover seria o caso contrario. */
@@ -2453,17 +2453,48 @@ body:has(#titlebar:not([hidden])) .settings-view {
 #theme-warning:not(:empty) { color: var(--warn); }
 
 .picker-box {
-  width: min(920px, 92vw);
-  max-height: 88vh;
-  overflow-y: auto;
-  overflow-x: clip;
+  width: min(880px, calc(100vw - var(--s-7)));
+  height: min(560px, calc(100vh - var(--s-7)));
+  max-height: 560px;
+  padding: var(--s-4);
+  overflow: hidden;
 }
 .picker-box h2 {
   font-family: var(--font-display);
-  font-size: 17px;
-  margin-bottom: 18px;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  margin: 0 0 var(--s-3);
 }
-.picker-box h3 { font-size: var(--fs-small); text-transform: uppercase; color: var(--muted); margin: 18px 0 10px; }
+.picker-box h3 {
+  margin: 0 0 var(--s-2);
+  color: var(--tx3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.picker-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: var(--s-4);
+  height: calc(100% - 34px);
+  min-height: 0;
+}
+.picker-main {
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.picker-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--line);
+}
+.picker-side h3:not(:first-child) { margin-top: 0; }
 
 .picker-tabs {
   display: flex;
@@ -2526,7 +2557,7 @@ body:has(#titlebar:not([hidden])) .settings-view {
 
 .picker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s-3);
   margin-bottom: var(--s-2);
 }
@@ -2590,9 +2621,9 @@ body:has(#titlebar:not([hidden])) .settings-view {
 .quality-axes { display: flex; flex-direction: column; gap: var(--s-2); }
 /* Rotulo em coluna de largura fixa: as duas trilhas comecam no mesmo x, o
    que e o que faz os dois eixos lerem como um controle so. */
-.quality-axis { display: flex; align-items: center; gap: var(--s-3); }
+.quality-axis { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-1); }
 .quality-axis-label {
-  flex: none; width: 74px;
+  flex: none;
   font-size: var(--fs-small); font-weight: 600; color: var(--tx2);
 }
 
@@ -2610,7 +2641,7 @@ body:has(#titlebar:not([hidden])) .settings-view {
   justify-self: start;
   min-width: 0;
 }
-.quality-axis > .quality-seg { flex: none; }
+.quality-axis > .quality-seg { flex: 1; }
 
 /* Polegar deslizante -- selecionado por elevacao + contraste, nunca por cor
    (regra do tema). Desliza por translateX puro sobre colunas iguais: nao
@@ -2639,7 +2670,7 @@ body:has(#titlebar:not([hidden])) .settings-view {
 .quality-seg-opt {
   position: relative; /* acima do polegar */
   justify-content: center;
-  min-height: 44px; padding: 0 var(--s-4);
+  min-height: 28px; padding: 0 var(--s-2);
   background: transparent; border: 0; border-radius: 7px;
   color: var(--tx2); font-size: var(--fs-body); font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -2653,19 +2684,31 @@ body:has(#titlebar:not([hidden])) .settings-view {
    medida -- por isso recua um degrau de contraste em vez de virar tag. */
 .quality-bandwidth-note { color: var(--tx3); }
 
-.audio-mode { margin-bottom: 10px; }
+.picker-side .check-group {
+  padding: 0;
+  background: var(--s2);
+}
+.picker-side .check {
+  min-height: 28px;
+  padding: var(--s-1);
+}
+.picker-side .check input[type="checkbox"] {
+  top: var(--s-1);
+  left: var(--s-1);
+}
+.picker-side .check-desc { display: none; }
+.audio-mode { margin-bottom: 0; }
 
 /* A .picker-box e o container que rola; o rodape fica disponivel sem tirar
    o espaco que o ultimo controle precisa quando chega ao fim. */
 .picker-actions {
-  /* O sticky gruda na borda do padding da caixa, e o conteudo rolado
-     aparecia por baixo do rodape nessa faixa. O rodape desce sobre o padding
-     (bottom/margem negativos) e o devolve por dentro (padding-bottom). */
-  position: sticky; bottom: calc(var(--s-5) * -1);
-  display: flex; justify-content: flex-end; gap: 10px;
-  margin-top: var(--s-4); margin-bottom: calc(var(--s-5) * -1);
-  padding-top: var(--s-4); padding-bottom: var(--s-5);
-  background: var(--surface-modal); border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: auto;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
 }
 
 /* D3: por que o "Ir ao vivo" esta apagado. Empurra os botoes pra direita. */
@@ -3003,7 +3046,11 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
 /* Arrastar imagem sobre a coluna do chat. */
 .chat-section.dropping { outline: 2px dashed var(--act); outline-offset: -4px; border-radius: var(--r-sm); }
 
-.image-lightbox { display: grid; place-items: center; background: var(--scrim-6); }
+.image-lightbox {
+  display: grid;
+  place-items: center;
+  background: var(--scrim-tint-3);
+}
 .image-lightbox img {
   max-width: 92vw;
   max-height: 92vh;
@@ -3020,11 +3067,13 @@ body.no-paint .live-pulse.pulsing::after { animation-play-state: paused; }
   height: 320px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-2);
+  background: var(--s2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-3);
   overflow: hidden;
+  min-width: 0;
+  padding: 0;
 }
 .emoji-search {
   display: flex;
@@ -4699,6 +4748,9 @@ body.mesa-full .room-side { visibility: hidden; }
 }
 .menu-item:hover { background: var(--s3); }
 .menu-item:focus-visible, .popover input:focus-visible { box-shadow: var(--ring); outline: 0; }
+.menu-item.warn { color: var(--warn); }
+.menu-item.danger { color: var(--danger-soft); }
+.member-menu .menu-item svg { width: 15px; height: 15px; flex: none; }
 .menu-atalho, .menu-motivo { color: var(--tx3); font-family: var(--font-mono); font-size: var(--fs-small); }
 .menu-motivo { margin: var(--s-1); max-width: 28ch; }
 .reacoes-popover { display: grid; grid-template-columns: repeat(6, 32px); gap: var(--s-1); }

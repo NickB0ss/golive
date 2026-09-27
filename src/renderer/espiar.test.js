@@ -38,7 +38,8 @@ const { PRESETS, tokensFor } = require('./theme');
 function readerFor(tokens) {
   const vars = {
     '--bg': tokens.surfaces.bg, '--tx': tokens.surfaces.tx, '--tx2': tokens.surfaces.tx2,
-    '--s2': tokens.surfaces.s2, '--s4': tokens.surfaces.s4, '--act': tokens.act,
+    '--s2': tokens.surfaces.s2, '--s3': tokens.surfaces.s3, '--act': tokens.act,
+    '--on-act': tokens.onAct || '#FFFFFF',
   };
   return (name) => ` ${vars[name] ?? ''}`;
 }
@@ -74,7 +75,7 @@ test('espiar ignora token vazio e valor que nao e cor', () => {
 
 test('espiar.html abre com o tema GoLive e usa cada cor do tema', () => {
   const html = fs.readFileSync(path.join(__dirname, 'espiar.html'), 'utf8');
-  const defaults = spyThemeVars(readerFor(PRESETS.marca));
+  const defaults = spyThemeVars(readerFor(PRESETS.estudio));
   for (const [name, value] of Object.entries(defaults)) {
     const declared = html.match(new RegExp(`${name}:\\s*(#[0-9a-f]+)`, 'i'));
     assert.ok(declared, `espiar.html precisa declarar ${name}`);

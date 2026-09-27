@@ -413,7 +413,7 @@ function createWindow() {
     // duplicar a logica de storage de config.js so pra isso (fora do
     // escopo da Frente C -- ver plano C7). O preco e um flash escuro breve
     // so no boot, ate o CSS do renderer carregar e repintar o body.
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#0C0D0F',
     title: 'GoLive LAN',
     // No pacote Windows o ícone do .exe (build.win.icon) já vira o ícone da
     // janela; isto cobre o `npm start`, que senão mostra o ícone padrão do
@@ -486,7 +486,7 @@ function createWindow() {
         movable: true,
         minimizable: false,
         maximizable: false,
-        backgroundColor: '#0A0A0F',
+        backgroundColor: '#0C0D0F',
         webPreferences: {
           preload: path.join(__dirname, 'espiar-preload.js'),
           contextIsolation: true,
@@ -617,7 +617,7 @@ function createSplashWindow() {
     frame: false,
     show: false,
     center: true,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#0C0D0F',
     icon: path.join(__dirname, 'renderer', 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'splash', 'preload-splash.js'),

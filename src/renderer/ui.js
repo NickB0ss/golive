@@ -2634,12 +2634,9 @@
     setCreateRoomBusy(false);
     onCreateConfirm = onConfirm;
     dlgCreateEl.classList.remove('hidden');
-    // focusFirstInteractive so guarda o foco anterior (pro restore no
-    // close) -- o campo que ela focaria de fato (nome da sala) ja vem com
-    // um padrao razoavel, e a linha de baixo redireciona pro "Criar":
-    // Enter cria a sala sem exigir Tab nenhum.
+    // O nome e o primeiro campo: abrir um dialogo nunca pode pular direto
+    // para uma acao que muda o estado da sala.
     focusFirstInteractive(dlgCreateEl);
-    btnCreateConfirmEl.focus();
   }
   function closeCreateRoom() {
     setCreateRoomBusy(false);
@@ -2671,6 +2668,9 @@
     }
   });
   dlgCreateEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !creatingRoom) closeCreateRoom(); });
+  dlgCreateEl.addEventListener('click', (event) => {
+    if (event.target === dlgCreateEl && !creatingRoom) closeCreateRoom();
+  });
 
   // ---------- Dialogo: Entrar numa sala ----------
   const dlgJoinEl = $('dialog-join-room');
@@ -2746,6 +2746,9 @@
     }
   });
   dlgJoinEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !connectingRoom) closeJoinRoom(); });
+  dlgJoinEl.addEventListener('click', (event) => {
+    if (event.target === dlgJoinEl && !connectingRoom) closeJoinRoom();
+  });
 
   // ---------- Lista de membros / moderacao ----------
 
@@ -2793,17 +2796,17 @@
     const rect = btn.getBoundingClientRect();
     memberMenuEl.classList.remove('in-modal');
     memberMenuEl.innerHTML = `
-      ${canAdd ? '<button class="member-menu-item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
-      ${live ? `<div class="member-menu-item warn" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</div>` : ''}
-      ${targetIsOwner ? '' : `<div class="member-menu-item" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</div>`}
-      ${live || !targetIsOwner ? '<div class="member-menu-sep"></div>' : ''}
-      <div class="member-menu-item" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</div>
-      <div class="member-menu-item danger" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</div>
-      <div class="member-menu-hint">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
+      ${canAdd ? '<button class="menu-item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
+      ${live ? `<button class="menu-item warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</button>` : ''}
+      ${targetIsOwner ? '' : `<button class="menu-item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</button>`}
+      ${live || !targetIsOwner ? '<div class="menu-separador"></div>' : ''}
+      <button class="menu-item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</button>
+      <button class="menu-item danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</button>
+      <div class="menu-motivo">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
     `;
     if (!canModerate) {
       const moderacao = memberMenuEl.querySelectorAll(
-        '[data-action], .member-menu-sep, .member-menu-hint'
+        '[data-action], .menu-separador, .menu-motivo'
       );
       for (const item of moderacao) {
         item.remove();
@@ -3811,7 +3814,7 @@
     const rect = anchorEl.getBoundingClientRect();
     memberMenuEl.classList.toggle('in-modal', Boolean(anchorEl.closest('.modal')));
     memberMenuEl.innerHTML = itens.map((item, index) => `
-      <button type="button" class="member-menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
+      <button type="button" class="menu-item${item.tom === 'danger' ? ' danger' : ''}" role="menuitem" data-theme-action="${index}">${escapeHtml(item.rotulo)}</button>
     `).join('');
     memberMenuEl.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
     memberMenuEl.style.top = `${rect.bottom + 4}px`;
@@ -4718,6 +4721,9 @@
   }
 
   $('picker-cancel').addEventListener('click', closePicker);
+  pickerEl.addEventListener('click', (event) => {
+    if (event.target === pickerEl) closePicker();
+  });
 
   // Esc fecha o dialogo (sem iniciar nada) e Enter inicia a transmissao --
   // so quando o dialogo esta aberto e (pro Enter) ja tem uma fonte
@@ -4746,7 +4752,7 @@
     pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
     const swapping = mode === 'swap';
     pickerEl.querySelector('h2').textContent = swapping ? 'Trocar para qual fonte?' : 'O que você quer compartilhar?';
-    btnGoLiveEl.textContent = swapping ? 'Trocar' : 'Ir ao vivo';
+    btnGoLiveEl.textContent = swapping ? 'Trocar' : 'Compartilhar';
     pickerQualityTitleEl.classList.toggle('hidden', swapping);
     pickerQualityEl.classList.toggle('hidden', swapping);
     pickerQualityBandwidthEl.classList.toggle('hidden', swapping);
@@ -4820,6 +4826,9 @@
       closeConfirm();
     }
   });
+  dlgConfirmEl.addEventListener('click', (event) => {
+    if (event.target === dlgConfirmEl) closeConfirm();
+  });
 
   const dlgTextEl = $('dialog-text');
   let onTextAccept = null;
@@ -4851,6 +4860,9 @@
       e.stopPropagation();
       closeText();
     }
+  });
+  dlgTextEl.addEventListener('click', (event) => {
+    if (event.target === dlgTextEl) closeText();
   });
 
   function openBan({ name, onConfirm }) {
