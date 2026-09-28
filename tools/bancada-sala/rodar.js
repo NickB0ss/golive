@@ -171,15 +171,10 @@ async function conferirVideoRecebeClique(page) {
 }
 
 async function abrirPopover(page, acao) {
-  // Reagir tem entrada fixa no barramento; o resto vive no HUD, que so
-  // aparece com o mouse sobre o tile.
-  if (acao === 'reagir') {
-    await page.click('#btn-reactions');
-  } else {
-    const tile = page.locator('#grid .tile:not([hidden])').first();
-    await tile.hover();
-    await tile.locator(`[data-acao="${acao}"]`).click();
-  }
+  // Todo popover da fonte nasce no HUD do proprio tile.
+  const tile = page.locator('#grid .tile:not([hidden])').first();
+  await tile.hover();
+  await tile.locator(`[data-acao="${acao}"]`).click();
   const popover = page.locator('.pop:visible').last();
   await popover.waitFor();
   return popover;

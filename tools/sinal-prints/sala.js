@@ -143,8 +143,8 @@ async function rodada(browser, port, [w, h]) {
   const leo = await pessoa(port, 'Leo');
   const caio = await pessoa(port, 'Caio');
   await espera(300);
-  bia.envia({ type: 'broadcast-state', live: true, annotate: true });
-  leo.envia({ type: 'broadcast-state', live: true });
+  bia.envia({ type: 'broadcast-state', live: true, annotate: true, reactions: true });
+  leo.envia({ type: 'broadcast-state', live: true, reactions: false });
   caio.envia({ type: 'camera-state', on: true });
   await espera(300);
   await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');

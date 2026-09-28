@@ -301,7 +301,8 @@
         <div class="mesa-over" aria-hidden="true"></div>
         <div class="mesa-empty blank" hidden>
           <p class="blank__title">A Mesa está vazia.</p>
-          <button type="button" class="btn btn--primary" data-mesa-empty-add>Pôr na Mesa</button>
+          <!-- Sem botao proprio: "Pôr na Mesa" ja esta na barra de baixo (mesma regra do Início). -->
+          <p class="blank__text">Comece por um destes ou veja todos em <b>Pôr na Mesa</b>, na barra de baixo.</p>
           <div class="mesa-empty__shortcuts" aria-label="Atalhos para pôr na Mesa"></div>
         </div>
         <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>Abrindo a Mesa…</p>
@@ -398,7 +399,6 @@
           else setView(V.zoomStep(S.view, k === 'in' ? 1 : -1, S.vw, S.vh));
         });
       }
-      listen(sec.querySelector('[data-mesa-empty-add]'), 'click', (e) => openAddMenu(e.currentTarget));
       listen(S.emptyShortcuts, 'click', (e) => {
         const button = e.target.closest('[data-mesa-quick]');
         if (!button || !canEdit()) return;
@@ -1141,7 +1141,10 @@
       const available = new Map((registry()?.addable() || []).map((mod) => [mod.type, mod]));
       S.emptyShortcuts.innerHTML = common.map((type) => {
         const mod = available.get(type);
-        return mod ? `<button type="button" class="menu__item" data-mesa-quick="${type}">${escapeHtml(mod.title)}</button>` : '';
+        return mod
+          ? `<button type="button" class="btn btn--secondary btn--sm" data-mesa-quick="${type}">
+              ${escapeHtml(mod.title)}</button>`
+          : '';
       }).join('');
     }
 
@@ -1842,6 +1845,8 @@
       if (first) first.focus({ preventScroll: true });
       if (!keyboard && !winId) {
         const addRow = m.querySelector('[data-sub]');
+        // Hover abre sem roubar foco; assim o menu continua navegavel. Se a
+        // pessoa digitar, wireMenu leva o texto para a busca do painel aberto.
         addRow?.addEventListener('pointerenter', () => openSub(addRow, false));
         m.querySelector('[data-act="fit"]')?.addEventListener('pointerenter', () => closeSub());
       }
@@ -1892,6 +1897,11 @@
         menuAction(b.dataset.act);
       };
       m.onkeydown = (e) => {
+        const subAbertoPorHover = !S.subEl.hidden && document.activeElement?.dataset.sub;
+        if (subAbertoPorHover && deveRedirecionarBusca(e.key, true, e)) {
+          enviarTeclaParaBusca(e);
+          return;
+        }
         const rows = [...m.querySelectorAll('.mesa-menu-row')];
         const i = rows.indexOf(document.activeElement);
         if (e.key === 'ArrowDown') {
@@ -1950,17 +1960,8 @@
       if (rowEl.getAttribute('aria-disabled') === 'true') return;
       rowEl.classList.add('is-open');
       rowEl.setAttribute('aria-expanded', 'true');
-      const sub = S.subEl;
-      sub.innerHTML = addMenuHtml();
-      sub.setAttribute('aria-label', 'Adicionar janela');
-      sub.classList.add('is-open');
       const r = rowEl.getBoundingClientRect();
-      placeMenu(sub, r.right + 4, r.top - 6, r.left - 4);
-      wireMenu(sub, () => {
-        closeSub();
-        rowEl.focus();
-      });
-      if (focus) sub.querySelector('.mesa-menu-row')?.focus({ preventScroll: true });
+      openAddPanel(S.subEl, r.right + 4, r.top - 6, r.left - 4, focus);
     }
 
     function addMenuHtml() {
@@ -1981,25 +1982,183 @@
       return out.join('');
     }
 
+    function openAddPanel(panel, x, y, flipFrom, focus) {
+      const state = {
+        termo: '',
+        grupo: 'tudo',
+        recentes: readRecentes(),
+        mods: registry()?.addable() || [],
+        catalogo: G.mesaCatalogo,
+      };
+      panel.setAttribute('aria-label', 'Adicionar janela');
+      panel.setAttribute('role', 'dialog');
+      panel.style.setProperty('--mesa-add-max-h', `${Math.max(160, menuFloor() - 16)}px`);
+      if (!state.catalogo) {
+        panel.innerHTML = addMenuHtml();
+        panel.classList.add('is-open');
+        placeMenu(panel, x, y, flipFrom);
+        wireMenu(panel, null);
+        return;
+      }
+      panel.innerHTML = addPanelHtml(state);
+      panel.classList.add('is-open');
+      placeMenu(panel, x, y, flipFrom);
+      wireAddPanel(panel, state);
+      if (focus) root.requestAnimationFrame(() => panel.querySelector('[data-add-search]')?.focus());
+    }
+
+    function addPanelHtml(state) {
+      const tabs = [['tudo', 'Tudo'], ...GROUP_ORDER.map((g) => [g, GROUP_LABELS[g]])];
+      const tabHtml = tabs.map(([group, label]) => `<button type="button" class="seg__opt" role="tab"
+        data-add-group="${group}" aria-selected="${group === state.grupo}">${label}</button>`).join('');
+      return `<section class="mesa-add-panel">
+        <header class="mesa-add-head"><h2>Adicionar janela</h2></header>
+        <input class="input" data-add-search type="search" autocomplete="off" placeholder="Buscar janelas"
+          aria-label="Buscar janelas">
+        <p id="mesa-add-aviso" class="mesa-add-aviso" role="alert" hidden></p>
+        <div class="seg mesa-add-tabs" role="tablist" aria-label="Grupo de janela">${tabHtml}</div>
+        <div class="mesa-add-scroll" data-add-results></div>
+      </section>`;
+    }
+
+    function wireAddPanel(panel, state) {
+      const search = panel.querySelector('[data-add-search]');
+      const render = () => renderAddCards(panel, state);
+      // S.subEl e reutilizado em cada abertura; atribuicoes substituem os
+      // handlers anteriores e impedem que um cartao adicione varias janelas.
+      search.oninput = () => {
+        state.termo = search.value;
+        render();
+      };
+      panel.onclick = (e) => {
+        const group = e.target.closest('[data-add-group]');
+        if (group) {
+          state.grupo = group.dataset.addGroup;
+          panel.querySelectorAll('[data-add-group]').forEach((tab) => {
+            tab.setAttribute('aria-selected', String(tab === group));
+          });
+          render();
+          return;
+        }
+        if (e.target.closest('[data-add-clear]')) {
+          state.termo = '';
+          search.value = '';
+          render();
+          search.focus();
+          return;
+        }
+        const card = e.target.closest('[data-add-card]');
+        if (!card) return;
+        if (card.getAttribute('aria-disabled') === 'true') {
+          toast(panel.querySelector('#mesa-add-aviso')?.textContent || 'Indisponivel agora.');
+          return;
+        }
+        rememberRecent(card.dataset.addCard);
+        addWindow(card.dataset.addCard);
+      };
+      panel.onkeydown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          closeMenu();
+          return;
+        }
+        const focoNaGrade = Boolean(e.target.closest?.('[data-add-card]'));
+        if (deveRedirecionarBusca(e.key, focoNaGrade, e)) {
+          enviarTeclaParaBusca(e);
+          return;
+        }
+        const cards = [...panel.querySelectorAll('[data-add-card]')];
+        const i = cards.indexOf(document.activeElement);
+        if (i < 0) return;
+        const delta = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1
+          : e.key === 'ArrowUp' ? -2 : e.key === 'ArrowDown' ? 2 : 0;
+        if (!delta) return;
+        e.preventDefault();
+        cards[Math.max(0, Math.min(cards.length - 1, i + delta))]?.focus();
+      };
+      render();
+    }
+
+    function deveRedirecionarBusca(tecla, focoNaGrade, e) {
+      return !e.ctrlKey && !e.metaKey && !e.altKey
+        && G.mesaCatalogo?.deveRedirecionarParaBusca(tecla, focoNaGrade);
+    }
+
+    function enviarTeclaParaBusca(e) {
+      const search = S.subEl.querySelector('[data-add-search]');
+      if (!search) return;
+      e.preventDefault();
+      search.focus();
+      search.value += e.key;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function renderAddCards(panel, state) {
+      const result = panel.querySelector('[data-add-results]');
+      const catalogo = state.catalogo;
+      const filtered = catalogo?.filtrar ? catalogo.filtrar(state.mods, state.termo, state.grupo) : state.mods;
+      const reason = !canEdit() ? 'Só o líder mexe na Mesa agora.'
+        : windows().length >= M.MAX_WINDOWS ? 'A Mesa já tem 32 janelas.' : '';
+      const aviso = panel.querySelector('#mesa-add-aviso');
+      aviso.hidden = !reason;
+      aviso.textContent = reason;
+      if (!filtered.length) {
+        result.innerHTML = `<p class="mesa-add-empty">Nada com “${escapeHtml(state.termo)}”.
+          <button class="btn btn--quiet btn--sm" type="button" data-add-clear>Ver tudo</button></p>`;
+        return;
+      }
+      const card = (mod) => {
+        const meta = catalogo?.itens?.[mod.type] || {};
+        return `<button class="mesa-add-card" type="button" data-add-card="${escapeHtml(mod.type)}"
+          ${reason ? `aria-disabled="true" aria-describedby="mesa-add-aviso"` : ''}>
+          <svg aria-hidden="true"><use href="#${escapeHtml(meta.icone || 'i-app-window')}"></use></svg>
+          <span><b>${escapeHtml(mod.title)}</b><small>${escapeHtml(meta.desc || mod.title)}</small></span>
+        </button>`;
+      };
+      const sections = [];
+      if (!state.termo && state.grupo === 'tudo') {
+        const recentes = state.recentes.map((type) => state.mods.find((mod) => mod.type === type)).filter(Boolean);
+        if (recentes.length) sections.push(`<h3>Recentes</h3><div class="mesa-add-grid">${recentes.map(card).join('')}</div>`);
+      }
+      if (state.grupo === 'tudo') {
+        for (const group of GROUP_ORDER) {
+          const list = filtered.filter((mod) => mod.group === group);
+          if (list.length) sections.push(`<h3>${GROUP_LABELS[group]}</h3><div class="mesa-add-grid">${list.map(card).join('')}</div>`);
+        }
+      } else {
+        sections.push(`<div class="mesa-add-grid">${filtered.map(card).join('')}</div>`);
+      }
+      result.innerHTML = sections.join('');
+    }
+
+    function readRecentes() {
+      try {
+        const saved = JSON.parse(root.localStorage.getItem('golive.mesa.recentes') || '[]');
+        return Array.isArray(saved) ? saved.filter((type) => typeof type === 'string').slice(0, 4) : [];
+      } catch (err) {
+        console.warn('[mesa] nao deu para ler recentes:', err);
+        return [];
+      }
+    }
+
+    function rememberRecent(type) {
+      try {
+        const list = G.mesaCatalogo?.lembrarRecente?.(readRecentes(), type) || [type];
+        root.localStorage.setItem('golive.mesa.recentes', JSON.stringify(list));
+      } catch (err) {
+        console.warn('[mesa] nao deu para guardar recente:', err);
+      }
+    }
+
     /** O + do dock: o mesmo submenu, e a janela nasce no meio da vista. */
     function openAddMenu(anchor) {
       if (!S) return;
       closeMenu();
       S.menu = { winId: null, at: null, returnFocus: anchor || document.activeElement, dock: true };
-      const sub = S.subEl;
-      sub.innerHTML = addMenuHtml();
-      sub.setAttribute('aria-label', 'Adicionar janela');
       const r = anchor ? anchor.getBoundingClientRect() : { left: root.innerWidth / 2, top: root.innerHeight - 80 };
       const floor = Math.min(r.top, menuFloor());
-      sub.hidden = false;
-      sub.classList.add('is-open');
-      sub.style.maxHeight = `${Math.max(160, floor - 16)}px`;
-      sub.style.left = '0px';
-      sub.style.top = '0px';
-      const h = sub.getBoundingClientRect().height;
-      placeMenu(sub, r.left, floor - h - 8);
-      wireMenu(sub, null);
-      sub.querySelector('.mesa-menu-row')?.focus({ preventScroll: true });
+      openAddPanel(S.subEl, r.left, floor - 440, null, true);
     }
 
     function addWindow(type) {

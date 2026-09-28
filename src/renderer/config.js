@@ -220,6 +220,10 @@
     // `network.advertise` guarda a ultima escolha do dialogo de criar sala.
     // Desmarcada por padrao: deixar a sala escrever na sua tela e opt-in.
     annotations: { allow: false },
+    // Reacoes na tela (spec de 2026-09-28). Igual a anotacao, guarda a
+    // ULTIMA escolha do dialogo de compartilhar; ligada por padrao porque
+    // nao altera a tela, so mostra um efeito efemero por cima dela.
+    reactions: { allow: true },
     // Emoji usados por ultimo, do mais recente pro mais antigo. Validado
     // aqui so como "lista de strings" -- quais emoji existem e assunto do
     // emoji.js, que este arquivo tambem nao importa.
@@ -390,6 +394,7 @@
       themeMigration: true,
       themeMigrationSinal: true,
       annotations: { allow: parsed.annotations?.allow === true },
+      reactions: { allow: parsed.reactions?.allow !== false },
       emojiRecents: loadStringList(parsed.emojiRecents, 24),
     };
   }

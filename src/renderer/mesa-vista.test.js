@@ -95,16 +95,25 @@ test('uma transformacao so para a mesa inteira', () => {
   assert.equal(v.transformFor({ x: 100, y: 50, z: 0.5 }), 'translate3d(-50px, -25px, 0) scale(0.5)');
 });
 
-test('grade: pontos a cada 48 unidades do mundo, escalados e alinhados a vista', () => {
+test('grade: pontos menores e maiores ficam alinhados ao mundo', () => {
   const perto = v.gridStyle({ x: 0, y: 0, z: 1 });
   assert.equal(perto.showMinor, true);
-  assert.equal(perto.backgroundSize, '48px 48px');
-  assert.match(perto.backgroundImage, /radial-gradient.*var\(--grid\)/);
+  assert.equal(perto.backgroundSize, '48px 48px, 240px 240px');
+  assert.match(perto.backgroundImage, /var\(--grid\).*var\(--grid2\)/);
+  const centros = [...perto.backgroundImage.matchAll(/circle at ([\d.]+px) ([\d.]+px)/g)];
+  assert.deepEqual(centros.map((centro) => centro.slice(1)), [
+    ['1.25px', '1.25px'],
+    ['1.25px', '1.25px'],
+  ]);
   const longe = v.gridStyle({ x: 0, y: 0, z: 0.3 });
   assert.equal(longe.showMinor, true);
-  assert.equal(longe.backgroundSize, '14.4px 14.4px');
+  assert.equal(longe.backgroundSize, '14.4px 14.4px, 72px 72px');
+  const baixo = v.gridStyle({ x: 0, y: 0, z: 0.2 });
+  assert.equal(baixo.showMinor, false);
+  assert.equal(baixo.backgroundSize, '48px 48px');
+  assert.match(baixo.backgroundImage, /var\(--grid2\)/);
   // Alinhada ao mundo: a posicao acompanha a vista.
-  assert.equal(v.gridStyle({ x: 10, y: 20, z: 2 }).backgroundPosition, '-20px -40px');
+  assert.equal(v.gridStyle({ x: 10, y: 20, z: 2 }).backgroundPosition, '-20px -40px, -20px -40px');
 });
 
 test('mapa: escala do mundo e clique levado de volta ao mundo', () => {

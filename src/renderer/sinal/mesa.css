@@ -50,7 +50,7 @@
   gap: var(--s-3);
 }
 .mesa-empty__shortcuts { display: flex; flex-wrap: wrap; justify-content: center; max-width: 420px; gap: var(--s-1); }
-.mesa-empty__shortcuts .menu__item { width: auto; min-height: var(--h-ctl-sm); font: var(--t-meta); }
+.mesa-empty__shortcuts .btn { font: var(--t-meta); }
 
 .mesa-nav {
   position: absolute;
@@ -268,13 +268,47 @@ body.mesa-open #grid { display: none; }
 .mesa-win .tile__hud [data-acao]:not([data-acao='rabiscar']):not([data-acao='reagir']) { display: none; }
 /* A regua de rabisco nao encolhe com o zoom da Mesa. */
 .mesa-win .draw-bar { transform: translateX(-50%) scale(var(--mesa-inv, 1)); transform-origin: 50% 100%; }
-/* "Adicionar janela": 30 tipos em duas colunas, com o titulo do grupo de ponta a
- * ponta -- numa coluna so a lista passava da altura da janela. */
+/* Painel de janelas: busca e grupos ficam fixos; so os cartoes rolam. */
 .mesa-menu[aria-label='Adicionar janela'] {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 2px;
-  width: min(420px, calc(100vw - 24px));
-  max-width: min(420px, calc(100vw - 24px));
+  width: min(560px, calc(100vw - 24px));
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: min(520px, var(--mesa-add-max-h, calc(100vh - 24px)));
+  padding: 0;
+  overflow: hidden;
 }
-.mesa-menu[aria-label='Adicionar janela'] .mesa-menu-head { grid-column: 1 / -1; }
+.mesa-add-panel {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  height: min(520px, var(--mesa-add-max-h, calc(100vh - 24px)));
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+.mesa-add-head h2 { margin: 0; font: var(--t-heading); }
+.mesa-add-aviso {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-xs);
+  background: var(--warn-dim);
+  color: var(--warn);
+  font: var(--t-meta);
+}
+.mesa-add-tabs { width: 100%; overflow-x: auto; }
+.mesa-add-tabs .seg__opt { flex: 1 0 auto; justify-content: center; }
+.mesa-add-scroll { min-height: 0; overflow: auto; padding-right: var(--s-1); }
+.mesa-add-scroll h3 { margin: var(--s-3) 0 var(--s-1); color: var(--tx3); font: var(--t-tag); letter-spacing: 0.06em; text-transform: uppercase; }
+.mesa-add-scroll h3:first-child { margin-top: 0; }
+.mesa-add-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1); }
+.mesa-add-card { display: flex; min-width: 0; min-height: 58px; align-items: center; gap: var(--s-2); padding: var(--s-2); border: 1px solid transparent; border-radius: var(--r-xs); color: var(--tx); text-align: left; }
+.mesa-add-card:hover:not([aria-disabled='true']) { background: var(--veil); }
+.mesa-add-card:focus-visible { border-color: var(--wire); box-shadow: var(--ring); outline: none; }
+.mesa-add-card[aria-disabled='true'] { color: var(--tx3); cursor: not-allowed; }
+.mesa-add-card > svg { flex: none; width: 20px; height: 20px; color: var(--tx2); fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.mesa-add-card > span { display: grid; min-width: 0; gap: 2px; }
+.mesa-add-card > span > :is(b, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mesa-add-card b { font: var(--t-label); }
+.mesa-add-card small { color: var(--tx3); font: var(--t-meta); }
+.mesa-add-empty { display: grid; justify-items: start; gap: var(--s-2); margin: var(--s-4) 0; color: var(--tx2); font: var(--t-body); }
+@media (max-height: 640px) {
+  .mesa-menu[aria-label='Adicionar janela'], .mesa-add-panel { max-height: var(--mesa-add-max-h, calc(100vh - 16px)); height: var(--mesa-add-max-h, calc(100vh - 16px)); }
+  .mesa-add-card { min-height: 48px; }
+}

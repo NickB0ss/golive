@@ -171,7 +171,7 @@
         bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
         tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',
         line: 'rgba(237,237,242,.09)', line2: 'rgba(237,237,242,.17)',
-        grid: 'rgba(237,237,242,.06)', grid2: 'rgba(237,237,242,.10)',
+        grid: 'rgba(237,237,242,.13)', grid2: 'rgba(237,237,242,.24)',
       },
       act: '#EDEDF2',
       actHover: '#FFFFFF',
@@ -183,7 +183,7 @@
         bg: '#F4F4F7', s1: '#FFFFFF', s2: '#FFFFFF', s3: '#EBEBF0', s4: '#E0E0E8',
         tx: '#0E0E14', tx2: '#4A4A5C', tx3: '#666678',
         line: 'rgba(14,14,20,.09)', line2: 'rgba(14,14,20,.18)',
-        grid: 'rgba(14,14,20,.06)', grid2: 'rgba(14,14,20,.10)',
+        grid: 'rgba(14,14,20,.13)', grid2: 'rgba(14,14,20,.24)',
       },
       act: '#0E0E14',
       actHover: '#26262F',
@@ -195,7 +195,7 @@
         bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
         tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
         line: 'rgba(237,237,242,.08)', line2: 'rgba(237,237,242,.14)',
-        grid: 'rgba(237,237,242,.065)', grid2: 'rgba(237,237,242,.11)',
+        grid: 'rgba(237,237,242,.13)', grid2: 'rgba(237,237,242,.24)',
       },
       act: '#5B4BE8',
       actHover: '#6D5CF6',
@@ -206,7 +206,7 @@
         bg: '#0E0F13', s1: '#16181D', s2: '#1D2026', s3: '#262A32', s4: '#323742',
         tx: '#E8EAED', tx2: '#9AA0AA', tx3: '#868D9B',
         line: 'rgba(255,255,255,.08)', line2: 'rgba(255,255,255,.14)',
-        grid: 'rgba(255,255,255,.055)', grid2: 'rgba(255,255,255,.095)',
+        grid: 'rgba(255,255,255,.13)', grid2: 'rgba(255,255,255,.24)',
       },
       act: '#4F46E5',
       actHover: '#6257EB',
@@ -217,7 +217,7 @@
         bg: '#080B14', s1: '#0D1220', s2: '#121A2C', s3: '#1A2438', s4: '#243149',
         tx: '#E7ECF7', tx2: '#98A3BE', tx3: '#7C87A3',
         line: 'rgba(160,185,255,.08)', line2: 'rgba(160,185,255,.14)',
-        grid: 'rgba(160,185,255,.08)', grid2: 'rgba(160,185,255,.14)',
+        grid: 'rgba(160,185,255,.13)', grid2: 'rgba(160,185,255,.24)',
       },
       act: '#4F8EF7',
       actHover: '#6FA3F9',
@@ -228,7 +228,7 @@
         bg: '#111111', s1: '#181818', s2: '#202020', s3: '#2A2A2A', s4: '#363636',
         tx: '#EDEDED', tx2: '#A3A3A3', tx3: '#8C8C8C',
         line: 'rgba(255,255,255,.08)', line2: 'rgba(255,255,255,.14)',
-        grid: 'rgba(255,255,255,.05)', grid2: 'rgba(255,255,255,.09)',
+        grid: 'rgba(255,255,255,.13)', grid2: 'rgba(255,255,255,.24)',
       },
       act: '#9CA3AF',
       actHover: '#B0B7C3',
@@ -239,7 +239,7 @@
         bg: '#15100C', s1: '#1D1712', s2: '#261E17', s3: '#332821', s4: '#42352B',
         tx: '#F1E7DD', tx2: '#B8A697', tx3: '#9C8C7E',
         line: 'rgba(255,220,180,.08)', line2: 'rgba(255,220,180,.14)',
-        grid: 'rgba(255,220,180,.06)', grid2: 'rgba(255,220,180,.10)',
+        grid: 'rgba(255,220,180,.13)', grid2: 'rgba(255,220,180,.24)',
       },
       act: '#C4AB31',
       actHover: '#D4BF54',
@@ -250,7 +250,7 @@
         bg: '#0A120E', s1: '#0F1913', s2: '#16231B', s3: '#1F2F25', s4: '#2A3D31',
         tx: '#E6F0EA', tx2: '#9DB5A8', tx3: '#84998C',
         line: 'rgba(180,255,200,.08)', line2: 'rgba(180,255,200,.14)',
-        grid: 'rgba(180,255,200,.06)', grid2: 'rgba(180,255,200,.10)',
+        grid: 'rgba(180,255,200,.13)', grid2: 'rgba(180,255,200,.24)',
       },
       act: '#5FA37E',
       actHover: '#72B491',
@@ -299,7 +299,7 @@
         bg: '#FCFAF7', s1: '#FBF8F4', s2: '#F0ECE4', s3: '#DFD6C6', s4: '#CBBEA4',
         tx: '#1C1A16', tx2: '#47423A', tx3: '#5C564B',
         line: 'rgba(30,25,15,.10)', line2: 'rgba(30,25,15,.18)',
-        grid: 'rgba(30,25,15,.06)', grid2: 'rgba(30,25,15,.11)',
+        grid: 'rgba(30,25,15,.13)', grid2: 'rgba(30,25,15,.24)',
       },
       act: '#4338CA',
       actHover: '#3730A3',
@@ -317,9 +317,9 @@
 
   // Grade da Mesa (spec 2026-09-24, secao 6): linha fina a cada 40
   // unidades (--grid) e forte a cada 200 (--grid2). Tem de aparecer sem
-  // competir com as janelas: contraste contra --bg entre 1,1:1 e 1,4:1
+  // competir com as janelas: contraste contra --bg entre 1,1:1 e 2,2:1
   // (checagem 6 de `validate`). Os alvos ficam no meio da faixa.
-  const GRID_CONTRAST = Object.freeze({ min: 1.1, max: 1.4, minor: 1.12, major: 1.25 });
+  const GRID_CONTRAST = Object.freeze({ min: 1.1, max: 2.2, minor: 1.3, major: 1.9 });
 
   /** `rgba(r, g, b, a)` (ou `rgba(r,g,b,a)`) pintado sobre um fundo hex ->
    * a cor opaca que aparece na tela. `null` se nao for rgba. */

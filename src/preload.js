@@ -171,8 +171,8 @@ contextBridge.exposeInMainWorld('golive', {
    * mandar pra quem for investigar um bug depois. */
   openLogsFolder: () => ipcRenderer.invoke('logs:openFolder'),
 
-  /** Janela transparente que desenha o rabisco da sala na tela REAL de quem
-   * esta compartilhando. `startAnnotOverlay` devolve `{ ok: true }` ou
+  /** Janela transparente que desenha rabiscos e reacoes da sala na tela REAL
+   * de quem esta compartilhando. `startAnnotOverlay` devolve `{ ok: true }` ou
    * `{ ok: false, reason }` -- 'window' quando a fonte e uma janela (nao da
    * pra acompanhar o retangulo dela) e 'display' quando o monitor sumiu
    * entre a escolha e o ao vivo. */

@@ -1,8 +1,10 @@
 'use strict';
 
 (function (root) {
-  function menuItems({ id, kind, watched, mesa }) {
-    const items = ['volume'];
+  function menuItems({ id, kind, watched, mesa, parte = 'menu' }) {
+    const items = [];
+    if (parte === 'volume' || mesa) items.push('volume');
+    if (parte === 'volume') return items;
     if (watched) items.push('espiar');
     if (kind === 'screen' && id !== 'me') items.push('qualidade');
     if (!mesa && watched) items.push('parar');

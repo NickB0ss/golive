@@ -293,5 +293,5 @@ test('a extracao de texto visivel realmente encontra strings (controle de sanida
   assert.ok(appTexts.some((t) => t === 'ws://'), 'uma string com "//" dentro (ws://) precisa sobreviver inteira');
 
   const html = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
-  assert.match(html, />Sair da sala</, 'o rotulo do botao de sair precisa existir no HTML');
+  assert.match(html, /id="btn-disconnect"[^>]*>Sair</, 'o botao principal de sair precisa existir no HTML');
 });

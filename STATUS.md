@@ -1033,10 +1033,11 @@ revisão de código; o roteiro é a validação pendente.
 - **Pausa vale para todo sender novo** (P1 da avaliação de 2026-09-07): toda
   criação de sender de tela passa por `offerOwnStreamTo()`, que já nasce
   pausado — reeleição do relay, entrada tardia, reconexão e troca de fonte.
-- **Ponteiro laser e reações** sobre a tela (`laser.js`, `reactions.js`): no
-  tile de quem assiste e na tela real de quem transmite, só com "Deixar a
-  sala rabiscar". Mensagens `laser`/`reaction` validadas campo a campo e com
-  limite no servidor (laser 30/s; reação: rajada de 5, depois 1 a cada 300 ms).
+- **Ponteiro laser e reações** sobre a tela (`laser.js`, `reactions.js`): laser
+  continua com "Deixar a sala rabiscar"; reações são liberadas separadamente
+  no diálogo de compartilhar (ligadas por padrão), aparecem no tile e no
+  overlay da tela real. Mensagens `laser`/`reaction` validadas campo a campo e
+  com limite no servidor (laser 30/s; reação: rajada de 5, depois 1 a cada 300 ms).
 - **Notificação "fulano ficou ao vivo"** do Windows com o app fora de foco
   (interruptor em Configurações, ligado por padrão; sem repetir em rajada nem
   ao entrar numa sala com gente já ao vivo) e **janela espiar** sempre no topo

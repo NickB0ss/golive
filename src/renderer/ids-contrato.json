@@ -1,5 +1,6 @@
 [
   "allow-annotations",
+  "allow-reactions",
   "app",
   "app-head",
   "app-version",

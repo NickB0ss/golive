@@ -564,6 +564,14 @@ test('annotations.allow nasce desmarcado e so `true` liga', () => {
   assert.equal(load(JSON.stringify({ annotations: null })).annotations.allow, false);
 });
 
+test('reactions.allow nasce ligado e so `false` desliga', () => {
+  assert.equal(load(null).reactions.allow, true);
+  assert.equal(load(JSON.stringify({ reactions: { allow: false } })).reactions.allow, false);
+  assert.equal(load(JSON.stringify({ reactions: { allow: 'nao' } })).reactions.allow, true);
+  assert.equal(load(JSON.stringify({ reactions: 'nao' })).reactions.allow, true);
+  assert.equal(load(JSON.stringify({ reactions: null })).reactions.allow, true);
+});
+
 test('emojiRecents sobrevive ao round-trip e limpa lixo do config', () => {
   assert.deepEqual(load(null).emojiRecents, []);
   const cfg = load(JSON.stringify({ emojiRecents: ['🍕', '🍕', 42, '', null, '🎉'] }));

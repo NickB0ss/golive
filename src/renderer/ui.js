@@ -890,10 +890,7 @@
     }), { focus: destaqueId });
     const n = plan.count;
     if (!n) gridEl.removeAttribute('data-count');
-    // Sem fonte a mostra nao ha onde a reacao aparecer.
-    const reagir = document.getElementById('btn-reactions');
-    if (reagir) reagir.disabled = !visiveis.length;
-    else gridEl.dataset.count = n > 6 ? 'many' : String(n);
+    gridEl.dataset.count = n > 6 ? 'many' : String(n);
     gridEl.dataset.layout = plan.layout;
 
     const mainEl = gridEl.querySelector(':scope > .grid-main');
@@ -986,7 +983,12 @@
       // entao o setSurface daquele instante nao achou tile pra marcar.
       const annotInfo = annotSurfaces.get(id);
       if (annotInfo) {
-        setAnnotSurface(id, { surfaceId: annotInfo.surfaceId, allowed: true, canClearAll: annotInfo.canClearAll });
+        setAnnotSurface(id, {
+          surfaceId: annotInfo.surfaceId,
+          allowed: true,
+          canClearAll: annotInfo.canClearAll,
+          canDraw: annotInfo.canDraw,
+        });
       }
       // E pelo mesmo motivo de novo: a escolha de assistir (ou nao) aquela
       // tela e anterior a chegada da primeira track.
@@ -1019,6 +1021,8 @@
     if (!tilePaused.get(id)?.paused) applyPainting(video);
 
     tileRegistry.set(id, { label, stream, avatar, kind, displayName });
+    syncAnnotButton(id);
+    syncReactionButton(id);
     redesenharUltimasPresencas();
     // `kind` chega junto da track e pode mudar numa renegociacao. A escolha
     // de palco precisa ver o kind novo, nao o que havia antes no DOM.
@@ -1132,6 +1136,7 @@
     syncGridCount();
     releaseTileAudio(id);
     tileRegistry.delete(id);
+    reactionSurfaces.delete(id);
     if (destaqueId === id) destaqueId = null;
     tileWatchers.delete(id);
     tilePaused.delete(id);
@@ -1194,6 +1199,9 @@
   const laserStore = laser?.createStore();
   const reactionsStore = reactions?.createStore();
   const reactionLimiter = reactions?.createBurstLimiter();
+  // Tela so aceita reacao quando a dona liberou no dialogo. Camera segue
+  // livre, entao nao precisa de registro: ela sempre usa o padrao abaixo.
+  const reactionSurfaces = new Map();
   let onLaserOp = null;
   let onReactionOp = null;
   let laserRafId = null; // requestAnimationFrame continuo enquanto ha ponto de laser vivo
@@ -1255,6 +1263,7 @@
         tile.querySelector('.draw-bar').hidden = true;
         clearAnnotCanvas(tile);
       }
+      syncAnnotButton(tileId);
       return;
     }
     annotSurfaces.set(tileId, { surfaceId: String(surfaceId), canClearAll, canDraw });
@@ -1264,6 +1273,7 @@
     // esse lapis saiu. Quem some com ela agora e a ociosidade do mouse.
     tile.querySelector('.draw-bar').hidden = false;
     if (!canDraw && annotDrawingTile === tileId) setAnnotDrawing(tileId, false);
+    syncAnnotButton(tileId);
     syncAnnotBar(tileId);
     redrawAnnot(tileId);
   }
@@ -1446,6 +1456,38 @@
     if (bolha) spawnReactionPop(tileId, bolha);
   }
 
+  function syncHudPermission(tileId, acao, permitido, sufixo) {
+    const tile = document.getElementById(`tile-${tileId}`);
+    const button = tile?.querySelector(`[data-acao="${acao}"]`);
+    if (!button) return;
+    // No proprio tile a permissao e sua: "Voce nao liberou" no seu HUD seria cobrar de voce mesmo. Sem
+    // permissao, o botao some; nos tiles dos outros ele fica desabilitado e diz quem nao liberou (05 §3.3).
+    const proprio = tileId === 'me' || tileId === 'cam-me';
+    const nome = tile.querySelector('.tile__name')?.textContent || 'Esta fonte';
+    const label = permitido ? (acao === 'rabiscar' ? 'Rabiscar' : 'Reagir') : `${nome} não liberou ${sufixo}.`;
+    button.hidden = proprio && !permitido;
+    button.disabled = !permitido;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  }
+
+  // Liberado = a superficie esta em annotSurfaces (setAnnotSurface apaga a entrada quando `allowed` cai). Nao e
+  // `canDraw`: no proprio tile ele e false (o dono nao desenha) e o botao abre a barra de "apagar tudo".
+  function syncAnnotButton(tileId) {
+    syncHudPermission(tileId, 'rabiscar', annotSurfaces.has(tileId), 'rabiscos');
+  }
+
+  function syncReactionButton(tileId) {
+    const tile = document.getElementById(`tile-${tileId}`);
+    const isCamera = tile?.dataset.kind === 'camera';
+    syncHudPermission(tileId, 'reagir', isCamera || reactionSurfaces.get(tileId) === true, 'reações');
+  }
+
+  function setReactionSurface(tileId, { allowed = false } = {}) {
+    reactionSurfaces.set(tileId, allowed === true);
+    syncReactionButton(tileId);
+  }
+
   function forgetReactionAuthor(peerId) {
     reactionsStore?.dropAuthor(peerId);
     for (const el of document.querySelectorAll('.react-pop')) {
@@ -1458,6 +1500,8 @@
    * de `emitAnnotOp`) e manda pra rede. */
   function emitReactionOp(tileId, emoji) {
     if (!reactionsStore) return;
+    const tile = document.getElementById(`tile-${tileId}`);
+    if (tile?.dataset.kind !== 'camera' && reactionSurfaces.get(tileId) !== true) return;
     const now = Date.now();
     reactionsStore.prune(now);
     if (reactionLimiter && !reactionLimiter.hit(now)) return;
@@ -1477,19 +1521,6 @@
       return `<button type="button" class="react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
     }).join('');
   }
-
-  /** Reagir pelo barramento: vai para a fonte principal do palco (a primeira
-   * tela a mostra; sem tela, a primeira camera). */
-  function tileDaReacao() {
-    const visiveis = [...gridEl.querySelectorAll('.tile:not([hidden])')];
-    const alvo = visiveis.find((tile) => tile.dataset.kind !== 'camera') || visiveis[0];
-    return alvo ? alvo.id.slice('tile-'.length) : null;
-  }
-  const btnReacoesEl = $('btn-reactions');
-  btnReacoesEl?.addEventListener('click', () => {
-    const tileId = tileDaReacao();
-    if (tileId) openReactionPopover(btnReacoesEl, tileId);
-  });
 
   function openReactionPopover(anchor, tileId) {
     const list = document.createElement('div');
@@ -1524,13 +1555,15 @@
       event.stopPropagation();
       switch (button.dataset.acao) {
         case 'reagir':
+          if (button.disabled) break;
           openReactionPopover(button, tileId);
           break;
         case 'rabiscar':
+          if (button.disabled) break;
           setAnnotDrawing(tileId, !tile.classList.contains('annot-on'));
           break;
         case 'volume':
-          openTileMenu(tileId, button);
+          openTileMenu(tileId, button, { parte: 'volume' });
           break;
         case 'espiar':
           openSpyWindow(tileId);
@@ -2282,7 +2315,7 @@
    * do membro (2026-09-04, secao 3.2) e este virou o unico lugar onde se
    * silencia alguem. Sem dizer de QUEM e o menu, a resposta pra "silenciar
    * quem?" so viria depois do clique. */
-  function openTileMenu(id, x, y, { mesa = false } = {}) {
+  function openTileMenu(id, x, y, { mesa = false, parte = 'menu' } = {}) {
     closeTileMenu();
     const anchor = x instanceof Element ? x : null;
     const point = anchor ? null : { x, y };
@@ -2308,7 +2341,7 @@
       // (mesa-view `wants`): "parar de assistir" ali nao faria nada.
       watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
     }
-    const items = tileMenu.menuItems({ id, kind, watched, mesa });
+    const items = tileMenu.menuItems({ id, kind, watched, mesa, parte });
     const qualidadeBloqueada = items.includes('qualidade')
       && root.GoLive.tetoRecebido.bloqueado(`${id}:screen`);
     const spyItem = items.includes('espiar')
@@ -2336,24 +2369,29 @@
         + '<div class="menu__group" role="group" aria-label="Assistir">'
       : '';
 
+    const audioGroup = items.includes('volume')
+      ? `<div class="menu__group" role="group" aria-label="Som">
+          <label class="menu__volume">
+            <span class="menu__volume-head"><span>Volume</span>
+              <b class="tile-menu-volume-label tx-data">${Math.round(state.volume * 100)}%</b>
+            </span>
+            <input type="range" class="range" min="0" max="200" step="1" aria-label="Volume"
+              value="${Math.round(state.volume * 100)}" style="--pct:${Math.round(state.volume * 50)}%" />
+          </label>
+          <label class="menu__item menu__item--check">
+            <input type="checkbox" role="menuitemcheckbox" class="sr-only tile-menu-mute"
+              aria-checked="${isMuted(id)}" ${isMuted(id) ? 'checked' : ''} />
+            Silenciar <span class="menu__hint">M</span>
+          </label>
+        </div>`
+      : '';
     const menu = document.createElement('div');
     menu.className = 'tile-menu';
     menu.innerHTML = `
       <div class="menu__label">
         <span class="tile-menu-name" title="${escapeHtml(nome)}">${escapeHtml(nome)}</span>
       </div>
-      <div class="menu__group" role="group" aria-label="Som">
-      <label class="menu__volume">
-        <span class="menu__volume-head"><span>Volume</span><b class="tile-menu-volume-label tx-data">${Math.round(state.volume * 100)}%</b></span>
-        <input type="range" class="range" min="0" max="200" step="1" aria-label="Volume"
-          value="${Math.round(state.volume * 100)}" style="--pct:${Math.round(state.volume * 50)}%" />
-      </label>
-      <label class="menu__item menu__item--check">
-        <input type="checkbox" role="menuitemcheckbox" class="sr-only tile-menu-mute"
-          aria-checked="${isMuted(id)}" ${isMuted(id) ? 'checked' : ''} />
-        Silenciar <span class="menu__hint">M</span>
-      </label>
-      </div>
+      ${audioGroup}
       ${abrirGrupoVer}
       ${spyItem}
       ${spyItem ? '</div>' : ''}
@@ -2373,7 +2411,7 @@
         const texto = event.target.matches?.(
           'input:not([type="range"]):not([type="checkbox"]), textarea, select'
         );
-        if (texto || event.key.toLowerCase() !== 'm') return;
+        if (texto || event.key.toLowerCase() !== 'm' || !muteCheckbox) return;
         event.preventDefault();
         muteCheckbox.click();
       },
@@ -2433,7 +2471,7 @@
     });
 
     muteCheckbox = menu.querySelector('.tile-menu-mute');
-    muteCheckbox.addEventListener('change', () => {
+    muteCheckbox?.addEventListener('change', () => {
       // setMuted (e nao `state.muted = ...`) pra que exista UM caminho de
       // codigo pra silenciar, agora que este e o unico lugar da UI que o
       // oferece.
@@ -2442,13 +2480,13 @@
     });
 
     const range = menu.querySelector('input[type=range]');
-    range.addEventListener('wheel', (event) => {
+    range?.addEventListener('wheel', (event) => {
       event.preventDefault();
       range.value = String(Math.max(0, Math.min(200, Number(range.value) + (event.deltaY < 0 ? 5 : -5))));
       range.dispatchEvent(new Event('input'));
     }, { passive: false });
     const volumeLabel = menu.querySelector('.tile-menu-volume-label');
-    range.addEventListener('input', () => {
+    range?.addEventListener('input', () => {
       state.volume = Number(range.value) / 100;
       volumeLabel.textContent = `${range.value}%`;
       range.style.setProperty('--pct', `${Number(range.value) / 2}%`);
@@ -2507,7 +2545,7 @@
   }
 
   function emptyRoomsHint() {
-    return networkEmptyHint || 'Crie uma, ou peça o endereço a quem criou e entre por ele.';
+    return networkEmptyHint || 'Crie uma sala ou peça o endereço a quem criou e entre por ele.';
   }
 
   function renderEmptyRooms(listEl) {
@@ -2522,16 +2560,8 @@
         </g>
       </svg>
       <p class="blank__title">${networkEmptyHint ? 'Nenhuma rede encontrada' : 'Nenhuma sala na sua rede ainda'}</p>
-      <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>
-      <div class="blank__acoes">${networkEmptyHint
-    ? '<button type="button" class="btn btn--secondary" data-vazio="procurar">Procurar de novo</button>'
-    : '<button type="button" class="btn btn--secondary" data-vazio="criar">Criar sala</button>'}</div>`;
-    // Os botoes repetem as acoes do topo, no lugar onde o olho ja esta.
-    empty.addEventListener('click', (event) => {
-      const alvo = event.target.closest('[data-vazio]')?.dataset.vazio;
-      if (alvo === 'procurar') $('btn-refresh-discovery')?.click();
-      if (alvo === 'criar') $('btn-create-room')?.click();
-    });
+      <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>`;
+    // Sem botoes aqui: "Criar sala" e "Procurar de novo" ja estao logo acima, no topo e no cabecalho da lista.
     listEl.appendChild(empty);
   }
 
@@ -4774,8 +4804,7 @@
   const pickerQualityEl = $('picker-quality');
   const pickerQualityBandwidthEl = $('picker-quality-bandwidth');
   const pickerQualityTitleEl = pickerQualityEl.previousElementSibling;
-  const pickerAnnotationsEl = $('allow-annotations').closest('.picker__opt');
-  const pickerAnnotationsTitleEl = pickerAnnotationsEl.querySelector('.tx-tag');
+  const pickerPermissionsEl = $('allow-annotations').closest('.picker__opt');
   const shareSoundEl = $('share-sound');
   const shareDiscordRowEl = $('share-discord-row');
   const shareDiscordEl = $('share-discord');
@@ -5130,7 +5159,9 @@
     }
   });
 
-  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange, allowAnnotations = false, mode = 'start', currentShareSound = true, currentIncludeDiscord = false }) {
+  async function openPicker({ onGoLive, nativeAudioAvailable = true, quality, onQualityChange,
+    allowAnnotations = false, allowReactions = true, mode = 'start', currentShareSound = true,
+    currentIncludeDiscord = false }) {
     selectedSourceId = null;
     pickerMode = mode;
     setGoLiveEnabled(false);
@@ -5152,13 +5183,13 @@
     pickerQualityTitleEl.classList.toggle('hidden', swapping);
     pickerQualityEl.classList.toggle('hidden', swapping);
     pickerQualityBandwidthEl.classList.toggle('hidden', swapping);
-    pickerAnnotationsTitleEl.classList.toggle('hidden', swapping);
-    pickerAnnotationsEl.classList.toggle('hidden', swapping);
+    pickerPermissionsEl.classList.toggle('hidden', swapping);
     shareSoundEl.checked = swapping ? Boolean(currentShareSound) : true;
     shareSoundEl.disabled = swapping;
     // Vem da ULTIMA escolha (config), nao de um padrao fixo: e a mesma
     // regra do "anunciar na rede" no dialogo de criar sala.
     $('allow-annotations').checked = Boolean(allowAnnotations);
+    $('allow-reactions').checked = Boolean(allowReactions);
     shareDiscordEl.checked = swapping && shareSoundEl.checked && Boolean(currentIncludeDiscord);
     shareDiscordRowEl.classList.toggle('hidden', !shareSoundEl.checked);
     // Sem o addon nativo (Windows apenas), nao ha como excluir o Discord do
@@ -5173,7 +5204,13 @@
       nomeFonteAoVivo = pickerSources.find((s) => s.id === selectedSourceId)?.name || nomeFonteAoVivo;
       closePicker();
       try {
-        await onGoLive(selectedSourceId, shareSoundEl.checked, shareSoundEl.checked && shareDiscordEl.checked, $('allow-annotations').checked);
+        await onGoLive(
+          selectedSourceId,
+          shareSoundEl.checked,
+          shareSoundEl.checked && shareDiscordEl.checked,
+          $('allow-annotations').checked,
+          $('allow-reactions').checked,
+        );
       } catch (err) {
         console.error('[picker] onGoLive falhou:', err);
       }
@@ -5410,7 +5447,7 @@
       case 'por-na-mesa': clicar('#btn-mesa-add'); break;
       case 'conversa': clicar('#btn-conv-toggle'); break;
       case 'teatro': $('app')?.toggleAttribute('data-theater'); break;
-      case 'copiar-endereco': clicar('#room-more [data-copy="address"]'); break;
+      case 'copiar-endereco': clicar('#btn-copy-address'); break;
       case 'diagnostico': clicar('#btn-room-health'); break;
       case 'configuracoes': clicar(naSala ? '#btn-room-settings' : '#btn-open-settings'); break;
       case 'sair': clicar('#btn-disconnect'); break;
@@ -5530,6 +5567,7 @@
       apply: applyRemoteReaction,
       dropAuthor: forgetReactionAuthor,
       render: ({ onOp }) => { onReactionOp = onOp; },
+      setSurface: setReactionSurface,
     },
     rooms: {
       render: renderRooms,

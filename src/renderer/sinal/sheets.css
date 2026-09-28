@@ -53,8 +53,14 @@
   border-top: 1px solid var(--line);
   background: var(--s1);
 }
-.picker__opts { display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-6); }
-.picker__opt { display: grid; align-content: start; gap: var(--s-2); }
+.picker__opts {
+  display: grid;
+  flex: 1 1 100%;
+  grid-template-columns: minmax(0, 1fr) max-content minmax(196px, max-content);
+  gap: var(--s-4) var(--s-6);
+}
+.picker__opt { display: grid; align-content: start; gap: var(--s-2); min-width: 0; }
+.picker__permissions { min-width: 196px; }
 .picker__quality { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .picker__switch { display: flex; align-items: center; gap: var(--s-2); min-height: var(--h-ctl-sm); font: var(--t-body);
   cursor: pointer; }
@@ -86,6 +92,13 @@
   color: var(--on-video-2); font: var(--t-meta); text-align: center; }
 .sound-log summary { width: fit-content; cursor: pointer; color: var(--tx2); font: var(--t-meta); }
 .sound-log[open] summary { margin-bottom: var(--s-2); }
+
+@media (max-width: 1279px) {
+  #settings-modal { width: clamp(440px, calc(100vw - 480px), var(--w-sheet)); }
+  .settings__nav { padding-right: var(--s-3); padding-left: var(--s-3); overflow-x: hidden; }
+  .settings__nav .seg { display: flex; width: 100%; justify-content: space-between; }
+  .settings__nav .seg__opt { padding-right: var(--s-2); padding-left: var(--s-2); }
+}
 
 /* Grade de temas: cada cartao e a sala do Sinal em miniatura. */
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--s-3); }

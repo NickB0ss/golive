@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="../../src/renderer/sinal/base.css" />
 <link rel="stylesheet" href="../../src/renderer/sinal/components.css" />
 <link rel="stylesheet" href="../../src/renderer/sinal/shell.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/sheets.css" />
 <style>
   /* Só do protótipo: quadros falsos de jogo no lugar do vídeo. */
   .fake { width: 100%; height: 100%; }
@@ -69,6 +70,9 @@
                 <span><span class="tile__name">Ana</span> <span class="tile__what">· Valorant</span></span>
               </div>
               <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Rabiscar"><svg class="i i--sm"><use href="#i-pen-line"/></svg></button>
+              <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Reagir">
+                <svg class="i i--sm"><use href="#i-smile-plus"/></svg>
+              </button>
               <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Laser"><svg class="i i--sm"><use href="#i-mouse-pointer-2"/></svg></button>
               <button class="btn btn--icon btn--sm" aria-label="Volume 100%"><svg class="i i--sm"><use href="#i-volume-2"/></svg></button>
               <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Espiar"><svg class="i i--sm"><use href="#i-picture-in-picture-2"/></svg></button>
@@ -167,12 +171,32 @@
       <span class="bus__sep"></span>
       <div class="bus__end">
         <button class="btn btn--quiet" aria-pressed="false"><svg class="i"><use href="#i-video"/></svg><span class="btn__label">Câmera</span></button>
-        <button class="btn btn--quiet btn--icon" aria-label="Reagir"><svg class="i"><use href="#i-smile-plus"/></svg></button>
         <button class="btn btn--quiet" aria-pressed="true"><svg class="i"><use href="#i-message-square"/></svg><span class="btn__label">Conversa</span><span class="count">3</span></button>
       </div>
     </footer>
   </div>
 </div>
 <div class="toast" role="status">Bia ligou a câmera. <button class="btn btn--secondary btn--sm">Ver junto</button></div>
+<template id="picker-layout">
+  <div class="picker__foot">
+    <div class="picker__opts">
+      <div class="picker__opt">
+        <span class="tx-tag">Qualidade</span>
+        <div class="picker__quality"></div>
+      </div>
+      <div class="picker__opt">
+        <span class="tx-tag">Som</span>
+        <label class="picker__switch"><input type="checkbox" class="switch" checked />Som do PC</label>
+        <label class="picker__switch"><input type="checkbox" class="switch" />Incluir o Discord</label>
+      </div>
+      <div class="picker__opt picker__permissions">
+        <span class="tx-tag">Na sua tela</span>
+        <label class="picker__switch"><input type="checkbox" class="switch" />Deixar a sala rabiscar</label>
+        <label class="picker__switch"><input type="checkbox" class="switch" checked />Deixar a sala reagir</label>
+        <small class="tx-meta">As reações aparecem por cima da sua tela.</small>
+      </div>
+    </div>
+  </div>
+</template>
 </body>
 </html>

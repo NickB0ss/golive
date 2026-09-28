@@ -1966,6 +1966,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 // campo vem de um cliente: qualquer coisa que nao seja o
                 // booleano vira false, como ja acontece com `paused`.
                 annotate: msg.annotate === true,
+                // Reacoes seguem a mesma regra do rabisco: a dona da tela
+                // escolhe antes de ir ao vivo, e todo o resto da sala so
+                // pode descobrir a permissao neste estado.
+                reactions: msg.reactions === true,
                 // Estado reapresentado apos migracao: informa o cliente que
                 // recebe para nao tratar a sincronizacao como transicao nova.
                 bootstrap: msg.bootstrap === true,

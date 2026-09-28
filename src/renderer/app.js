@@ -7,7 +7,7 @@
     autoquality, rxstats, conndiag, peerquality, tetoRecebido, encodehealth, version, emoji, chatmedia,
     annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession,
     migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
-    health, audiometer, viewhold, warnings: warningsModule,
+    health, audiometer, viewhold, warnings: warningsModule, reactionsPermission,
   } = window.GoLive;
   const warningRegistry = warningsModule.create();
 
@@ -286,6 +286,9 @@
   // antes de a captura comecar, e valido so enquanto ela durar (spec de
   // 2026-09-04, secao 5.1). Viaja no 'broadcast-state'.
   let shareAnnotations = false;
+  // Reacoes seguem o mesmo ciclo da transmissao de tela, mas nao o da
+  // camera: a permissao e decidida no seletor e some quando a tela para.
+  let shareReactions = false;
   // Funcoes de parada das capturas nativas de audio por processo (WASAPI
   // Process Loopback) ligadas ao compartilhamento de tela atual, se houver
   // -- ver startShare/stopShare. Vazio quando nao ha nenhuma rodando (sem
@@ -1838,7 +1841,9 @@
       stopNativeAudioFns.forEach((stop) => stop());
       stopNativeAudioFns = [];
       shareAnnotations = false;
+      shareReactions = false;
       ui.annotations.setSurface('me', { allowed: false });
+      ui.reactions.setSurface('me', { allowed: false });
       ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
       stopAnnotOverlay();
       ui.grid.removeTile('me');
@@ -2872,7 +2877,7 @@
    * sobre o que esta sendo capturado, do lado que decide. */
   async function startAnnotOverlay() {
     annotOverlayOn = false;
-    if (!shareAnnotations) return;
+    if (!shareAnnotations && !shareReactions) return;
     const r = await window.golive.startAnnotOverlay?.();
     if (r?.ok) {
       annotOverlayOn = true;
@@ -2884,11 +2889,12 @@
       window.golive.sendAnnotOverlayLoad?.({ surface: minhaTela, items: ui.annotations.snapshot(minhaTela) });
       return;
     }
-    if (r?.reason === 'window') {
-      showToast('Compartilhando uma janela: os rabiscos aparecem no app, não na tela.');
-    } else if (r?.reason === 'display') {
-      showToast('Não achei o monitor pra desenhar os rabiscos; eles ficam só no app.');
-    }
+    const toast = reactionsPermission.overlayUnavailableToast({
+      reason: r?.reason,
+      annotations: shareAnnotations,
+      reactions: shareReactions,
+    });
+    if (toast) showToast(toast);
   }
 
   function stopAnnotOverlay() {
@@ -2907,23 +2913,34 @@
    * onde aterrissar -- as coordenadas sao do quadro da camera, nao do
    * monitor. */
   function pushToAnnotOverlay(surfaceId, from, op) {
-    if (!annotOverlayOn) return;
+    if (!annotOverlayOn || !shareAnnotations) return;
     const { ownerId, kind } = annotate.parseSurface(surfaceId);
     if (String(ownerId) !== String(myId) || kind !== 'screen') return;
     window.golive.sendAnnotOverlayOp?.({ surface: String(surfaceId), from: String(from), op });
   }
 
-  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: MESMA
-   * regra (so a MINHA tela, so `kind === 'screen'`, so com o overlay ligado
-   * -- que so liga com `shareAnnotations`, a mesma permissao do rabisco;
-   * ver a spec de 2026-09-12, secao 2). Canal PROPRIO (`overlay:fx`), nao o
-   * `overlay:op` do rabisco: sao efeitos efemeros, sem a semantica de lousa
-   * persistente que aquele canal carrega. */
+  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: os dois
+   * ficam na MINHA tela, mas laser respeita o rabisco e reacao tem permissao
+   * propria. Canal PROPRIO (`overlay:fx`), sem a semantica persistente da
+   * lousa. */
   function pushToFxOverlay(kind, surfaceId, from, payload) {
     if (!annotOverlayOn) return;
+    if (kind === 'laser' && !shareAnnotations) return;
+    if (kind === 'reaction' && !shareReactions) return;
     const { ownerId, kind: surfaceKind } = annotate.parseSurface(surfaceId);
     if (String(ownerId) !== String(myId) || surfaceKind !== 'screen') return;
     window.golive.sendFxOverlay?.({ kind, surface: String(surfaceId), from: String(from), ...payload });
+  }
+
+  // Defesa em profundidade: a acao some do HUD, mas uma mensagem atrasada
+  // ou forjada ainda nao pode produzir reacao numa tela que a dona fechou.
+  function reactionAllowedForSurface(surfaceId) {
+    const { ownerId, kind } = annotate.parseSurface(surfaceId);
+    const isOwner = String(ownerId) === String(myId);
+    const allowed = isOwner
+      ? shareReactions
+      : currentSession?.mesh?.peers.get(String(ownerId))?.reactions === true;
+    return reactionsPermission.canReceiveScreenReaction({ kind, allowed });
   }
 
   function dropOverlayFxAuthor(peerId) {
@@ -3596,7 +3613,9 @@
         // O servidor novo nasce sem estado live. Todo transmissor o anuncia
         // no welcome da migracao para inclusive o ultimo entrar ser visivel.
         if (localStream && sig.isOpen()) {
-          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null });
+          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+            reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+            limit: myEncodeHealth?.limit ?? null });
         }
         // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
         if (!plan.adopt) {
@@ -3714,7 +3733,8 @@
           // enxerga como nao-live. A tree tem de vir depois deste estado.
           if (sig.isOpen()) sig.send({
             type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
-            bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null,
+            reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+            limit: myEncodeHealth?.limit ?? null,
           });
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
@@ -3769,7 +3789,8 @@
         // continua ao vivo, entao reanuncia antes de qualquer reoferta.
         if (localStream && sig.isOpen()) sig.send({
           type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
-          bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null,
+          reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+          limit: myEncodeHealth?.limit ?? null,
         });
         const kinds = await reofferForResumedPeer(session, msg.id);
         console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
@@ -4036,6 +4057,7 @@
       // pra aparecer na tela REAL de quem transmite (mesma checagem de
       // `pushToFxOverlay`, mesma logica de `pushToAnnotOverlay`).
       case 'reaction': {
+        if (!reactionAllowedForSurface(msg.surface)) break;
         ui.reactions.apply(msg.surface, msg.from, msg.emoji);
         pushToFxOverlay('reaction', msg.surface, msg.from, { emoji: msg.emoji });
         break;
@@ -4095,9 +4117,10 @@
         const bootstrap = msg.bootstrap === true;
         if (peer) peer.live = msg.live;
         if (peer) peer.paused = Boolean(msg.paused);
-        // Quem transmite decide se a sala pode rabiscar na tela dele. Peer
-        // em versao antiga nao manda o campo -> undefined -> falso.
+        // Quem transmite decide o que a sala pode fazer na tela dele. Peer
+        // em versao antiga nao manda os campos -> falso.
         if (peer) peer.annotate = msg.live && msg.annotate === true;
+        if (peer) peer.reactions = msg.live && msg.reactions === true;
         // P4: a limitacao de encode que a ORIGEM anunciou sobre a propria
         // tela -- alimenta o culpado do chip de saude de quem assiste (ver
         // updateViewerHealth). Zera quando a tela sai do ar: um `limit`
@@ -4112,6 +4135,7 @@
           canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
           canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
         });
+        ui.reactions.setSurface(msg.id, { allowed: Boolean(peer?.reactions) });
         if (!msg.live) {
           // So soa na transicao live -> parou (wasLive), nunca num
           // broadcast-state repetido nem no estado inicial de quem entra. O
@@ -4600,10 +4624,11 @@
       quality: cfg.quality,
       onQualityChange: onQualityPresetChange,
       allowAnnotations: cfg.annotations.allow,
+      allowReactions: cfg.reactions.allow,
     });
   });
 
-  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false) {
+  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false, allowReactions = true) {
     if (sharing || localStream) return;
     const session = currentSession;
     if (!session || !session.sig.isOpen()) return;
@@ -4783,6 +4808,7 @@
 
       // A escolha vale pra ESTA transmissao e fica lembrada pra proxima.
       shareAnnotations = Boolean(allowAnnotations);
+      shareReactions = Boolean(allowReactions);
       // A permissao mudou: a camera anuncia por conta propria (a tela vai
       // no broadcast-state logo abaixo, no startShare).
       if (cameraStream) sendCameraState();
@@ -4790,10 +4816,15 @@
         cfg = { ...cfg, annotations: { allow: shareAnnotations } };
         persist();
       }
+      if (cfg.reactions.allow !== shareReactions) {
+        cfg = { ...cfg, reactions: { allow: shareReactions } };
+        persist();
+      }
       // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
       ui.annotations.setSurface('me', { surfaceId: annotate.surfaceKey(myId, 'screen'), allowed: shareAnnotations, canClearAll: true, canDraw: false });
+      ui.reactions.setSurface('me', { allowed: shareReactions });
       await startAnnotOverlay();
       if (!canContinue()) return;
 
@@ -4812,7 +4843,8 @@
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
       // O peer precisa conhecer o estado live antes de receber a tree, pois
       // tree de origem que não está ao vivo é descartada como mensagem forjada.
-      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations, limit: null });
+      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations,
+        reactions: shareReactions, limit: null });
       recomputeTree('screen');
       ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
@@ -5034,7 +5066,16 @@
       stopAnnotOverlay();
       ui.annotations.clearSurface('me');
       currentSourceId = newSourceId;
-      if (plan.overlayShouldReopen) await startAnnotOverlay();
+      if (plan.overlayShouldReopen) {
+        await startAnnotOverlay();
+      } else if (!plan.fromIsWindow && plan.toIsWindow) {
+        const toast = reactionsPermission.overlayUnavailableToast({
+          reason: 'window',
+          annotations: shareAnnotations,
+          reactions: shareReactions,
+        });
+        if (toast) showToast(toast);
+      }
       if (!canContinue()) {
         stopNewCapture();
         return;
@@ -5083,7 +5124,9 @@
     // A lousa morre com a tela (spec, secao 8): parar de compartilhar apaga
     // o que estava desenhado, aqui e -- via broadcast-state -- em todo mundo.
     shareAnnotations = false;
+    shareReactions = false;
     ui.annotations.setSurface('me', { allowed: false });
+    ui.reactions.setSurface('me', { allowed: false });
     ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
     stopAnnotOverlay();
     ui.grid.removeTile('me');
@@ -5296,7 +5339,10 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
-    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+    if (session?.sig?.isOpen()) {
+      session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations,
+        reactions: shareReactions, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+    }
     ui.grid.setPaused('me', paused, {
       title: paused ? 'Você pausou' : '',
       subtitle: paused ? 'Ninguém está vendo' : '',
@@ -5320,6 +5366,7 @@
         nativeAudioAvailable,
         quality: cfg.quality,
         allowAnnotations: shareAnnotations,
+        allowReactions: shareReactions,
         currentShareSound,
         currentIncludeDiscord,
       });
@@ -5895,9 +5942,11 @@
     roomMoreItems()[0]?.focus();
   }
 
-  /** Itens do menu da sala que estao a mostra, na ordem, para as setas. */
+  /** Itens do menu da sala que estao a mostra, na ordem, para as setas. `getClientRects` pega tambem o que o CSS
+   * esconde por largura ("Copiar endereço" so existe abaixo de 1024 px), nao so a classe `.hidden`. */
   function roomMoreItems() {
-    return [...$('room-more').querySelectorAll('.menu__item')].filter((el) => !el.classList.contains('hidden'));
+    return [...$('room-more').querySelectorAll('.menu__item')]
+      .filter((el) => !el.classList.contains('hidden') && el.getClientRects().length > 0);
   }
 
   $('btn-room-more').addEventListener('click', (e) => {
@@ -5938,7 +5987,6 @@
       // sem armazenamento: vale so ate fechar o app
     }
   });
-  $('btn-disconnect-menu')?.addEventListener('click', () => $('btn-disconnect').click());
   $('room-more').addEventListener('click', (event) => {
     const copy = event.target.closest('[data-copy]')?.dataset.copy;
     if (copy) {
@@ -6811,7 +6859,8 @@
       const nextLimit = myEncodeHealth?.limit ?? null;
       if (nextLimit !== lastAnnouncedLimit) {
         lastAnnouncedLimit = nextLimit;
-        session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, limit: nextLimit });
+        session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+          reactions: shareReactions, limit: nextLimit });
       }
     }
 

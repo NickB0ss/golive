@@ -227,10 +227,10 @@ async function prints(browser, port, s) {
   // Pelo + do dock: com as janelas ja espalhadas, um clique direito num ponto fixo
   // do mundo pode cair sobre uma janela e abrir o menu dela.
   await page.click('#btn-mesa-add');
-  await page.waitForSelector('.mesa-menu [data-add="nota"]');
+  await page.waitForSelector('.mesa-menu [data-add-card="nota"]');
   await espera(200);
   await page.screenshot({ path: path.join(PRINTS, '04-menu-adicionar-janela.png') });
-  await page.click('.mesa-menu [data-add="nota"]');
+  await page.click('.mesa-menu [data-add-card="nota"]');
   await page.waitForSelector('.mesa-win[data-type="nota"]');
   await page.fill('.mesa-win[data-type="nota"] textarea', 'depois do CS: pizza ou esfiha?');
   await page.click('.mesa-zoom-btn[data-zoom="fit"]');
@@ -347,7 +347,7 @@ async function desempenho(browser, port, s) {
   // Um iframe em branco (conteudo de teste no lugar do placar).
   // Pelo + do dock: a janela nasce no meio da vista.
   await page.click('#btn-mesa-add');
-  await page.click('.mesa-menu [data-add="placar"]');
+  await page.click('.mesa-menu [data-add-card="placar"]');
   await page.waitForSelector('.mesa-win[data-type="placar"] iframe');
   await page.click('.mesa-zoom-btn[data-zoom="fit"]');
   await espera(800);
@@ -421,7 +421,7 @@ async function checar(browser, port, s) {
   await bia.espera((m) => m.type === 'mesa-sync');
   // Pelo + do dock.
   await page.click('#btn-mesa-add');
-  await page.click('.mesa-menu [data-add="nota"]');
+  await page.click('.mesa-menu [data-add-card="nota"]');
   const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add');
   const id = add.win.id;
   await page.waitForSelector(`.mesa-win[data-id="${id}"]`);
@@ -576,7 +576,7 @@ async function acabamento(browser, port, s, { comPrints = false } = {}) {
 
   // 4. Galeria: as imagens do chat, com "Pôr na mesa" em cada uma.
   await page.click('#btn-mesa-add');
-  await page.click('.mesa-menu [data-add="galeria"]');
+  await page.click('.mesa-menu [data-add-card="galeria"]');
   const addGal = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'galeria');
   await page.waitForSelector(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item img[src^="data:image/jpeg"]`);
   ok.galeriaMostra = await page.$$eval(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item`, (l) => l.length);
@@ -618,7 +618,7 @@ async function tileNaMesa(page, bia, erros, foto) {
     return (await r).mesa;
   })();
   for (const w of retrato.windows) bia.envia({ type: 'mesa', op: 'remove', id: w.id });
-  bia.envia({ type: 'broadcast-state', live: true, annotate: true });
+  bia.envia({ type: 'broadcast-state', live: true, annotate: true, reactions: true });
   const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'tela');
   await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');
   const sel = `.mesa-win[data-id="${add.win.id}"]`;

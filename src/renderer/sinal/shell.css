@@ -593,9 +593,11 @@ body.room-idle .tile.fullscreen { cursor: none; }
   /* Estreito: o estado fica (e o que o barramento diz), nome e estado truncam. */
   .src .cluster { display: none; }
   .src__text { max-width: 84px; }
+  .src__sub { display: none; }
   .me__live .src__text { max-width: 116px; }
-  .bus__end .btn__label { display: none; }
+  .bus__end :is(.btn__label, .btn-label) { display: none; }
   .addr { display: none; }
+  .room-menu .room-menu__estreito { display: flex; }
   .me .me__share[aria-pressed='true'] { width: var(--h-ctl-sm); padding: 0; }
   .me .me__share[aria-pressed='true'] .btn-label { display: none; }
 }
@@ -633,10 +635,19 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .room-row__meta .i { flex: none; }
 .room-row__go .spinner { width: 14px; height: 14px; }
 
-.lobby__foot { display: flex; align-items: center; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.lobby__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: auto;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+}
 .room-row__meta.tx-warn { color: var(--warn); }
 
 /* Menu da sala: ancorado no nome da sala, na cabeca. */
+/* "Copiar endereço" no menu so quando o endereco some da cabeca (abaixo de 1024 px). */
+.room-menu__estreito { display: none; }
 .head__room { position: relative; display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
 .room-menu { position: absolute; top: calc(100% + var(--s-15)); left: 0; width: 280px; }
 .room-menu .menu__item { cursor: pointer; }
@@ -839,5 +850,5 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 .bus__sources[data-over='left right'] {
   mask-image: linear-gradient(to right, transparent, var(--tx) 40px, var(--tx) calc(100% - 40px), transparent);
 }
-/* Rabiscar so aparece onde a fonte deixou rabiscar (o app marca .annotatable). */
-.tile:not(.annotatable) .tile__hud [data-acao='rabiscar'] { display: none; }
+/* Sem permissao, os controles continuam visiveis e explicam o bloqueio. */
+.tile__hud .btn:disabled { cursor: not-allowed; }

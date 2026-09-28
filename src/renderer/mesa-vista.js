@@ -27,8 +27,8 @@
   // Um degrau de +/- (teclado e botoes): 5 degraus dobram o zoom.
   const ZOOM_STEP = 1.25;
   const GRID_MINOR = 48;
-  const GRID_MAJOR = 48;
-  const GRID_MINOR_MIN_PX = 0;
+  const GRID_MAJOR = GRID_MINOR * 5;
+  const GRID_MINOR_MIN_PX = 10;
   const FLY_MS = 420;
   const SETTLE_MS = 260;
   // Janela fora da vista por 2 s (ou menor que 120 px na tela) para de
@@ -225,13 +225,19 @@
    * alinhados ao mundo. Devolve as propriedades de `background-*` prontas. */
   function gridStyle(view) {
     const spacing = GRID_MINOR * view.z;
+    const major = GRID_MAJOR * view.z;
     const ox = round2(-view.x * view.z);
     const oy = round2(-view.y * view.z);
+    const showMinor = spacing >= GRID_MINOR_MIN_PX;
+    const minorImage = 'radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)';
+    const majorImage = 'radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)';
     return {
-      showMinor: true,
-      backgroundImage: 'radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.25px)',
-      backgroundSize: `${round2(spacing)}px ${round2(spacing)}px`,
-      backgroundPosition: `${ox}px ${oy}px`,
+      showMinor,
+      backgroundImage: showMinor ? `${minorImage}, ${majorImage}` : majorImage,
+      backgroundSize: showMinor
+        ? `${round2(spacing)}px ${round2(spacing)}px, ${round2(major)}px ${round2(major)}px`
+        : `${round2(major)}px ${round2(major)}px`,
+      backgroundPosition: showMinor ? `${ox}px ${oy}px, ${ox}px ${oy}px` : `${ox}px ${oy}px`,
     };
   }
 

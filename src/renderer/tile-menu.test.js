@@ -4,12 +4,21 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { menuItems, positionPopover } = require('./tile-menu');
 
-test('qualidade entra apenas no menu de tela remota', () => {
-  assert.deepEqual(menuItems({ id: 'bia', kind: 'screen', watched: true, mesa: false }), [
-    'volume', 'espiar', 'qualidade', 'parar',
+test('menu do HUD separa som das acoes da tela remota', () => {
+  assert.deepEqual(menuItems({ id: 'bia', kind: 'screen', watched: true, mesa: false, parte: 'volume' }), [
+    'volume',
+  ]);
+  assert.deepEqual(menuItems({ id: 'bia', kind: 'screen', watched: true, mesa: false, parte: 'menu' }), [
+    'espiar', 'qualidade', 'parar',
   ]);
   assert.ok(!menuItems({ id: 'me', kind: 'screen', watched: true, mesa: false }).includes('qualidade'));
   assert.ok(!menuItems({ id: 'cam-bia', kind: 'camera', watched: true, mesa: false }).includes('qualidade'));
+});
+
+test('menu da janela da Mesa conserva o bloco de som', () => {
+  assert.deepEqual(menuItems({ id: 'bia', kind: 'screen', watched: true, mesa: true, parte: 'menu' }), [
+    'volume', 'espiar', 'qualidade',
+  ]);
 });
 
 test('rotula as opcoes fechadas de qualidade', () => {

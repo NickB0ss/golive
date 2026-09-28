@@ -60,8 +60,9 @@ Janelas auxiliares: Splash · Espiar · Overlay (rabisco no monitor físico)
 
 - Composição ancorada à esquerda que ocupa a janela (revisto em 2026-09-27 a pedido do Nicolas: a coluna
   centrada de 760 px deixava tudo "no meio" e desperdiçava a largura). Abertura com a saudação à esquerda e a rede
-  alinhada à direita; ações logo abaixo; lista de salas de ponta a ponta; rodapé com a versão no pé da janela; sem
-  salas, o grafo do ícone ocupa o espaço que sobra. A saudação usa `--t-display`.
+  alinhada à direita; ações logo abaixo; lista de salas de ponta a ponta; rodapé com a versão no pé da área útil
+  (sem sobrepor o conteúdo quando faltar altura); sem salas, o grafo do ícone ocupa o espaço que sobra. A saudação
+  usa `--t-display`.
 - **Sem apelido**: no lugar da saudação, "Como seus amigos vão te ver?" com campo de nome e o nó de avatar
   (clique troca a foto). Salvar é imediato ao sair do campo/Enter. Não bloqueia nada.
 - **Criar sala** abre o diálogo (seção 7.2). **Endereço**: campo `host:porta` com `Entrar`; Enter envia;
@@ -73,7 +74,8 @@ Janelas auxiliares: Splash · Espiar · Overlay (rabisco no monitor físico)
 - **Entrando**: a linha escolhida vira "Conectando a Sala do Caio…" com o anel tracejado e `Cancelar`;
   as outras ficam desabilitadas. Recusa (PIN, cheia, banido, versão) volta aqui com a frase exata sob as ações.
 - **Estados da lista**: procurando (esqueleto de 2 linhas + "Procurando salas…"), vazia ("Nenhuma sala anunciada
-  na sua rede. Se seus amigos usam Tailscale, peça o endereço e entre por ele."), sem rede ("Nenhuma rede
+  na sua rede. Crie uma sala ou peça o endereço a quem criou e entre por ele."; não repete Criar sala), sem
+  rede ("Nenhuma rede
   encontrada. Conecte o Radmin VPN ou o Tailscale."), só LAN (aviso curto sob o endereço de rede).
 - Cabeça: marca (o grafo do ícone em 18 px) + "GoLive"; rede e IP (`--t-data`) com copiar; à direita o seu nó
   (abre o perfil na folha de Configurações), Configurações, e os controles de janela.
@@ -98,9 +100,9 @@ Janelas auxiliares: Splash · Espiar · Overlay (rabisco no monitor físico)
 
 ### 3.1 Cabeça (44 px, arrastável)
 
-- **Nome da sala ▾** (`--t-heading`) abre o **menu da sala**: Copiar endereço · Copiar PIN · Diagnóstico ·
+- **Nome da sala ▾** (`--t-heading`) abre o **menu da sala**: Copiar PIN · Diagnóstico · Modo teatro ·
   Mostrar ponteiros na Mesa (marca) · [líder] Só o líder mexe na Mesa · [líder] Travar tamanho das janelas ·
-  [criador] Tentar liberar o firewall de novo · Encerrar sala / Sair.
+  [criador] Tentar liberar o firewall de novo. O endereço copia na própria barra, e Sair fica na própria barra.
 - Endereço (`--t-data`, clique copia, confirmação "Copiado" no próprio lugar por 1,5 s) e PIN quando existir.
 - **Presença**: aglomerado dos nós de todos (estado desenhado, seção 6 do `04`) + número. Abre o popover de
   presença (3.5).
@@ -147,7 +149,7 @@ Interação:
   Duplo clique num tile = destacar esse; duplo clique no destacado = tela cheia.
 - **HUD do tile** (aparece com mouse/foco, some 2 s depois de parado; nunca some com foco de teclado dentro):
   - faixa superior sobre um degradê `--c-scrim` curto: nó + nome + o que transmite · à direita: Rabiscar,
-    Laser, Volume (ícone; hover abre o controle deslizante com %), Espiar, Tela cheia, ⋯, × (parar de assistir);
+    Laser, Volume (ícone; abre o controle deslizante, silenciar e %), Espiar, Tela cheia, ⋯, × (parar de assistir);
   - **menu ⋯**: Qualidade que você recebe (Auto / 1080p / 720p / 480p, com o motivo quando travado),
     Estatísticas desta fonte, Destacar, [líder] Pedir para parar.
 - **Estados que não somem** (ocupam o tile, centrados, sobre o último quadro escurecido):
@@ -166,7 +168,8 @@ Interação:
 - **Rabiscar**: ativa a camada de desenho do tile e uma régua flutuante no pé do tile: Caneta · Texto ·
   Desfazer (seu) · Apagar tudo (só a dona) · Concluir. Sua cor é a sua cor de pessoa. Fonte sem permissão: o
   botão fica desabilitado com dica "A Ana não liberou rabiscos."
-- **Reações**: popover de 8 reações a partir do barramento; aparecem subindo no tile da fonte principal.
+- **Reações**: o HUD de cada fonte abre o popover de 8 reações; sem liberação, fica desabilitado com a dica
+  "A Ana não liberou reações." Elas sobem no tile da fonte.
 - **Tela cheia**: o tile ocupa o monitor; HUD igual; Esc sai.
 - **Modo teatro** (`T` fora de campo de texto, ou menu da sala): cabeça, barramento e conversa se recolhem; ao
   encostar o mouse na borda superior/inferior eles voltam por cima. `T` ou Esc volta.
@@ -187,7 +190,8 @@ A Mesa ocupa todo o programa. Os detalhes internos seguem o `02`; aqui, a forma:
   `--c-wire`, ponteiros das pessoas.
 - **Travas ativas**: faixa fina fixa no topo do programa: "Só o Nick mexe nas janelas agora." / "Tamanhos
   travados pelo Nick."
-- **Mesa vazia**: "A Mesa está vazia." + "Pôr na Mesa" + os 6 tipos mais usados como atalhos.
+- **Mesa vazia**: "A Mesa está vazia." + os 6 tipos mais usados como botões secundários compactos + uma linha que
+  aponta para "Pôr na Mesa" na barra de baixo (sem repetir o botão no centro; 2026-09-28).
 - **Pôr na Mesa**: popover do barramento (e `N` com a Mesa em foco) com busca e as categorias do `02` §8
   (Assistir e ouvir · Ferramentas · Noite de jogo · Jogos).
 - **Área segura** para a Mesa = o programa menos os controles da Mesa e a faixa de trava.
@@ -249,7 +253,7 @@ Diálogo grande (até 960 × 640).
 │ └────────┘ └────────┘ └────────┘                                     │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Qualidade [720p30 | 720p60 | 1080p30 | 1080p60]  12 Mb/s             │
-│ Som  [Sem som ▾]     ☐ Deixar rabiscar                               │
+│ Som  [Sem som ▾]     ☐ Deixar rabiscar   ☑ Deixar a sala reagir       │
 │                                      Cancelar   [ Transmitir Tela 1 ] │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -263,7 +267,8 @@ Diálogo grande (até 960 × 640).
 
 ## 6. Folhas
 
-Entram pela direita (560 px), com véu sobre o resto; o resto continua vivo por baixo (medido e tocando).
+Entram pela direita (560 px; Configurações reduz até 440 px abaixo de 1280 px), com véu sobre o resto; o resto
+continua vivo por baixo (medido e tocando).
 Esc/véu fecham; foco volta a quem abriu.
 
 ### 6.1 Configurações
@@ -331,7 +336,8 @@ Atalhos de uma letra nunca disparam com foco em campo de texto.
 ## 11. Tamanhos
 
 - Mínimo 900 × 600 (o app já impõe). Abaixo de 1180 de largura: conversa espiando. Abaixo de 1024: a sua fonte
-  mostra só o nó e os três botões; fontes mostram só nó + nome. Abaixo de 720 de altura: barramento 60 px.
+  mostra só o nó e os três botões; fontes mostram só nó + nome (sem subtítulo); Câmera vira ícone com rótulo
+  acessível. Abaixo de 720 de altura: barramento 60 px.
 - Escala do Windows (125%, 150%): tudo em px CSS; ícones SVG; nada de imagem rasterizada na interface.
 
 ## 12. O que foi deixado de fora, de propósito

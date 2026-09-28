@@ -126,7 +126,7 @@ test('catalogo oferece Sinal como preset padrao', () => {
     bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
     tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',
     line: 'rgba(237,237,242,.09)', line2: 'rgba(237,237,242,.17)',
-    grid: 'rgba(237,237,242,.06)', grid2: 'rgba(237,237,242,.10)',
+    grid: 'rgba(237,237,242,.13)', grid2: 'rgba(237,237,242,.24)',
   });
   assert.equal(PRESETS.sinal.act, '#EDEDF2');
   assert.equal(PRESETS.sinal.actHover, '#FFFFFF');
@@ -173,7 +173,7 @@ test('marca usa os tokens do site e passa na trava de contraste', () => {
     bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
     tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
     line: 'rgba(237,237,242,.08)', line2: 'rgba(237,237,242,.14)',
-    grid: 'rgba(237,237,242,.065)', grid2: 'rgba(237,237,242,.11)',
+    grid: 'rgba(237,237,242,.13)', grid2: 'rgba(237,237,242,.24)',
   });
   assert.equal(marca.act, '#5B4BE8');
   assert.equal(marca.actHover, '#6D5CF6');

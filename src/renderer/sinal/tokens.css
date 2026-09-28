@@ -48,8 +48,8 @@
   --tx3: #8A8A9E;
   --line: rgba(237, 237, 242, 0.09);
   --line2: rgba(237, 237, 242, 0.17);
-  --grid: rgba(237, 237, 242, 0.06);
-  --grid2: rgba(237, 237, 242, 0.10);
+  --grid: rgba(237, 237, 242, 0.13);
+  --grid2: rgba(237, 237, 242, 0.24);
   --act: #EDEDF2;           /* acao principal = giz */
   --act-hover: #FFFFFF;
   --on-act: #0E0E14;
@@ -212,8 +212,8 @@
   --tx3: #666678;
   --line: rgba(14, 14, 20, 0.09);
   --line2: rgba(14, 14, 20, 0.18);
-  --grid: rgba(14, 14, 20, 0.06);
-  --grid2: rgba(14, 14, 20, 0.10);
+  --grid: rgba(14, 14, 20, 0.13);
+  --grid2: rgba(14, 14, 20, 0.24);
   --act: #0E0E14;
   --act-hover: #26262F;
   --on-act: #EDEDF2;

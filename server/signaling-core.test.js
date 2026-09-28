@@ -427,6 +427,38 @@ test('broadcast-state: annotate nao vaza de um cliente que mandou lixo', async (
   }
 });
 
+test('broadcast-state: reactions atravessa saneado pra sala inteira', async () => {
+  const server = await createSignalingServer({ port: 0 });
+  try {
+    const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => a.once('open', r));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
+    await once(a, 'welcome');
+
+    const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
+    await new Promise((r) => b.once('open', r));
+    b.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Bruno' }));
+    await once(b, 'welcome');
+
+    const ligado = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, reactions: true }));
+    assert.equal((await ligado).reactions, true);
+
+    const ausente = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true }));
+    assert.equal((await ausente).reactions, false);
+
+    const lixo = onceWithin(b, 'broadcast-state');
+    a.send(JSON.stringify({ type: 'broadcast-state', live: true, reactions: 'sim' }));
+    assert.equal((await lixo).reactions, false);
+
+    a.close();
+    b.close();
+  } finally {
+    await server.close();
+  }
+});
+
 // P4 (auditoria 2026-09-18): `limit` e o unico campo novo do
 // 'broadcast-state' -- a origem anuncia a propria limitacao de encode pra
 // quem assiste poder nomear o culpado quando a tela trava.
