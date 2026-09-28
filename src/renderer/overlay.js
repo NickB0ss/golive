@@ -19,7 +19,7 @@
  * Ver docs/superpowers/specs/2026-09-05-rabisco-na-tela-real-design.md e
  * docs/superpowers/specs/2026-09-12-laser-e-reacoes-design.md (laser e
  * reacao, que chegam por um canal PROPRIO -- overlay:fx -- ja filtrados
- * pelo app.js: so o que e da MINHA tela e so com a permissao ligada).
+ * pelo app.js: so o que e da MINHA tela e com a permissao de cada efeito).
  */
 
 (function () {
@@ -74,10 +74,9 @@
     ctx.lineJoin = 'round';
     ctx.textBaseline = 'top';
     for (const item of store.items(surfaceId)) {
-      // colorOf, nao colorFor: desde 2026-09-05 quem desenha pode escolher
-      // a cor, e ela viaja no item. Sem cor escolhida (ou com uma que nao
-      // passou na validacao) cai na cor de quem desenhou, como antes.
-      const cor = annotate.colorOf(item);
+      // A sobreposicao e linguagem de presenca: todo traco conserva a cor de
+      // quem o enviou, igual ao laser e as reacoes.
+      const cor = annotate.colorFor(item.from);
       if (item.kind === 'stroke') {
         ctx.strokeStyle = cor;
         ctx.lineWidth = item.width;
@@ -181,7 +180,7 @@
   });
 
   // Laser e reacao chegam por um canal PROPRIO (overlay:fx) -- ja filtrados
-  // pelo app.js (so a MINHA tela, so com a permissao ligada). Nenhum dos
+  // pelo app.js (so a MINHA tela, cada um com a propria permissao). Nenhum dos
   // dois tem `load`/snapshot: nascem e morrem sozinhos (ver spec, secao 3.3).
   window.goliveOverlay.onFx(({ kind, surface, from, ...payload }) => {
     if (kind === 'drop-author') {

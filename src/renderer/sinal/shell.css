@@ -1,0 +1,854 @@
+/* Sinal -- casca: janela, Inicio e Sala (05-arquitetura.md §2 e §3).
+ *
+ * A moldura e tinta (--bg, a cor do icone); o programa e --void, um degrau
+ * mais escuro, para o video saltar. Superficies mais claras so aparecem
+ * para o que flutua ou para hover. */
+
+/* ============ Janela ============ */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+.bands:empty { display: none; }
+.app > .lobby, .app > .room { flex: 1; min-height: 0; }
+/* ============ Cabeca (barra de titulo) ============ */
+.head {
+  flex: none;
+  position: relative;
+  z-index: var(--z-chrome);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--h-head);
+  padding-left: var(--s-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  min-width: 0;
+}
+.head__group { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.head__group--end { margin-left: auto; flex: none; }
+.head__sep { width: 1px; height: 20px; margin: 0 var(--s-1); background: var(--line); flex: none; }
+.app[data-place='lobby'] .head__group--room, .app[data-place='lobby'] .head__room-actions { display: none; }
+.app[data-place='room'] .head__group--lobby, .app[data-place='room'] .head__lobby-only { display: none; }
+.pop__item { display: flex; align-items: center; width: 100%; min-height: 28px; padding: 0 var(--s-3); border-radius: var(--r-xs); font: var(--t-body); text-align: left; }
+.pop__item:hover, .pop__item:focus-visible { background: var(--veil); }
+.pop__item input { position: absolute; opacity: 0; pointer-events: none; }
+.pop__item[aria-checked='true']::after { content: '✓'; margin-left: auto; color: var(--wire); }
+.pop__item--danger { color: var(--danger); }
+.head__room-actions { position: relative; display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.presence { position: absolute; top: calc(100% + var(--s-1)); right: 0; width: 340px; max-height: min(560px, calc(100vh - var(--h-head) - var(--s-4))); overflow: auto; }
+.presence__list, .presence__banned ul { display: grid; gap: 2px; margin: 0; padding: var(--s-2); list-style: none; }
+.presence__banned { border-top: 1px solid var(--line); }
+.presence__banned h2, .pop__head { margin: 0; padding: var(--s-3) var(--s-3) var(--s-1); font: var(--t-tag); color: var(--tx2); }
+
+.brand { display: flex; align-items: center; gap: var(--s-2); padding-right: var(--s-2); font: var(--t-heading); }
+.brand__mark { width: 20px; height: 20px; }
+
+.room-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: var(--h-ctl);
+  max-width: 280px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-xs);
+  font: var(--t-heading);
+}
+.room-name:hover { background: var(--veil); }
+.room-name .i { color: var(--tx3); }
+
+.addr {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-15);
+  height: 26px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-xs);
+  font: var(--t-data);
+  color: var(--tx2);
+}
+.addr:hover { background: var(--veil); color: var(--tx); }
+.addr .i { width: 14px; height: 14px; color: var(--tx3); }
+.addr[data-copied] { color: var(--ok); }
+
+.presence-btn { display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-ctl); padding: 0 var(--s-2);
+  border-radius: var(--r-xs); --cluster-bg: var(--bg); }
+.presence-btn:hover { background: var(--veil); --cluster-bg: color-mix(in srgb, var(--tx) 10%, var(--bg)); }
+.presence-btn .tx-data { color: var(--tx); }
+
+/* Controles da janela (Windows): largos, sem cor de destaque. */
+.winctl { display: flex; align-self: stretch; margin-left: var(--s-2); }
+.winctl__btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  color: var(--tx2);
+}
+.winctl__btn:hover { background: var(--veil); color: var(--tx); }
+.winctl__btn--close:hover { background: var(--s3); }
+.winctl__btn .i { width: 16px; height: 16px; stroke-width: 1.5; }
+
+/* ============ Inicio ============ */
+.lobby { overflow: auto; }
+.hello__title { font: var(--t-display); letter-spacing: -0.02em; }
+.hello__net { display: flex; align-items: center; gap: var(--s-2); flex: none; padding-bottom: var(--s-15); font: var(--t-meta); color: var(--tx2); }
+.hello__net .tx-data { color: var(--tx); }
+
+/* Primeira vez: o nome vem antes de tudo, sem bloquear. */
+.whoami { display: flex; align-items: center; gap: var(--s-4); }
+.whoami__avatar { border-radius: 50%; }
+.whoami__avatar:hover .node { --ring: var(--tx2); }
+.whoami .field { flex: 1; max-width: 360px; }
+
+.lobby__actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-3); }
+.lobby__actions .combo { flex: 0 1 460px; min-width: 260px; max-width: 420px; }
+
+.rooms__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.room-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-4);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--line);
+  --cluster-bg: var(--bg);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.room-row:hover:not(:disabled) { background: var(--s1); --cluster-bg: var(--s1); }
+.room-row:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
+.room-row:disabled { cursor: default; }
+.room-row:disabled .room-row__name { color: var(--tx2); }
+.room-row__main { display: grid; gap: 2px; min-width: 0; }
+.room-row__name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-heading); }
+.room-row__addr { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-data); color: var(--tx3); }
+.room-row__meta { display: flex; align-items: center; gap: var(--s-2); max-width: 300px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--t-meta); color: var(--tx2); }
+.room-row__go { display: inline-flex; align-items: center; gap: var(--s-1); font: var(--t-label); color: var(--tx2); }
+.room-row:hover:not(:disabled) .room-row__go { color: var(--tx); }
+.room-row[aria-busy='true'] .room-row__go { color: var(--tx); }
+.rooms__skel { height: 64px; margin-top: 1px; }
+
+/* Arte dos estados vazios: o grafo do icone, em traco fino. */
+.graph-art .ring { animation: ring-seek 2.4s var(--ease-in-out) infinite; }
+.graph-art .ring:nth-of-type(2) { animation-delay: 0.4s; }
+@keyframes ring-seek { 0%, 100% { opacity: 0.35; } 40% { opacity: 1; } }
+
+/* ============ Sala ============ */
+.room {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) var(--h-bus);
+  min-height: 0;
+}
+.room__main { position: relative; display: flex; min-height: 0; }
+
+/* ---- Programa ---- */
+.program {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: var(--void);
+  overflow: hidden;
+}
+
+/* Arranjo: o app decide (gridlayout.js) e marca data-layout/data-count no #grid.
+ * "spotlight" = telas assistidas no principal, cameras na tira de baixo. */
+.stage {
+  --cols: 1;
+  position: absolute;
+  inset: var(--s-2);
+  display: grid;
+  gap: var(--s-2);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+}
+.stage[data-count='2'], .stage[data-count='3'], .stage[data-count='4'] { --cols: 2; }
+.stage[data-count='5'], .stage[data-count='6'] { --cols: 3; }
+.stage[data-count='many'] { --cols: 4; }
+.stage[data-layout='spotlight'] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 128px; }
+.grid-main {
+  --cols: 1;
+  display: grid;
+  gap: var(--s-2);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.grid-main[data-count='2'], .grid-main[data-count='3'], .grid-main[data-count='4'] { --cols: 2; }
+.grid-main[data-count='5'], .grid-main[data-count='6'], .grid-main[data-count='many'] { --cols: 3; }
+.grid-strip { display: flex; justify-content: center; gap: var(--s-2); min-height: 0; overflow-x: auto; }
+.grid-strip > .tile { flex: 0 0 auto; aspect-ratio: 16 / 9; height: 100%; cursor: pointer; }
+/* Na tira a miniatura inteira destaca; o botao "Destacar" so existe ali. */
+.tile:not([data-slot='strip']) .tile__hud [data-hud-strip] { display: none; }
+
+/* ---- Tile de video ---- */
+.tile {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--r-video);
+  background: var(--void);
+  overflow: hidden;
+  isolation: isolate;
+  container-type: size;
+  container-name: tile;
+}
+.tile:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
+.tile__media { position: absolute; inset: 0; }
+.tile__video { width: 100%; height: 100%; object-fit: contain; background: var(--void); }
+.tile__shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--void); filter: brightness(0.35); }
+.tile__canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.tile.annot-on .tile__canvas { pointer-events: auto; cursor: crosshair; }
+.tile__pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+/* HUD: aparece com o mouse em cima ou com foco de teclado dentro; some
+ * junto com a ociosidade do app (body.room-idle, 3 s parado). */
+.tile__hud {
+  position: absolute;
+  top: var(--vy, 0px); left: var(--vx, 0px); right: auto;
+  width: var(--vw, 100%);
+  z-index: var(--z-hud);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-2) var(--s-5) var(--s-3);
+  background: linear-gradient(to bottom, var(--scrim-4), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-mid) var(--ease-out);
+}
+.tile:hover .tile__hud, .tile:has(:focus-visible) .tile__hud { opacity: 1; pointer-events: auto; }
+body.room-idle .tile:not(:has(:focus-visible)) .tile__hud { opacity: 0; pointer-events: none; }
+body.room-idle .tile.fullscreen { cursor: none; }
+.tile__who { display: flex; align-items: center; gap: var(--s-2); min-width: 0; margin-right: auto; color: var(--on-video); }
+/* O selo e o mesmo das janelas da Mesa; pausada, quem fala e o aviso de pausa. */
+.tile__live { flex: none; }
+.tile.is-paused .tile__live { display: none; }
+.tile__label { display: flex; align-items: baseline; gap: var(--s-15); min-width: 0; overflow: hidden; white-space: nowrap; }
+.tile__name { font: var(--t-label); overflow: hidden; text-overflow: ellipsis; }
+.tile__what, .tile__watchers { font: var(--t-meta); color: var(--on-video-2); white-space: nowrap; }
+.tile__watchers:not(:empty)::before { content: '· '; }
+.tile__actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.tile__hud .btn { color: var(--on-video); }
+.tile__hud .btn:hover { background: var(--on-video-hover); }
+.tile__hud .btn[aria-pressed='true'] { background: var(--wire-on-video); }
+.tile.annot-on .tile__hud [data-acao='rabiscar'] { background: var(--wire-on-video); }
+
+/* Estado que nao some: ocupa o tile, sobre o ultimo quadro escurecido. */
+.tile__state, .tile__stall {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-hud) - 1);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--scrim-4);
+  color: var(--on-video);
+  text-align: center;
+  font: var(--t-body);
+}
+.tile__state strong, .tile__stall strong { font: var(--t-heading); }
+.tile__state-sub { color: var(--on-video-2); }
+.tile__warn {
+  position: absolute;
+  left: calc(var(--vx, 0px) + var(--s-2));
+  bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-2));
+  z-index: var(--z-hud);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-15);
+  height: 24px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--warn-on-video);
+  font: var(--t-meta);
+}
+
+/* Portao (so na Mesa): tela ao vivo que voce ainda nao pediu. */
+.tile__gate { position: absolute; inset: 0; z-index: var(--z-hud); background: var(--void); color: var(--on-video); }
+.tile__gate .blank__text { color: var(--on-video-2); }
+.tile__gate-actions { display: flex; gap: var(--s-2); }
+
+/* Reacoes: sobem no tile e somem. */
+.react-pop {
+  position: absolute;
+  bottom: 12%;
+  font-size: var(--fs-react);
+  animation: react-rise 1.4s var(--ease-out) forwards;
+}
+@keyframes react-rise { from { opacity: 0; transform: translateY(20%) scale(0.8); } 20% { opacity: 1; }
+  to { opacity: 0; transform: translateY(-160%) scale(1.1); } }
+@media (prefers-reduced-motion: reduce) {
+  .react-pop { animation-name: react-fade; }
+  @keyframes react-fade { 0%, 100% { opacity: 0; } 20%, 80% { opacity: 1; } }
+}
+.react-list { display: grid; grid-template-columns: repeat(4, 40px); gap: 2px; }
+.react-btn { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-xs); font-size: 20px; }
+.react-btn:hover, .react-btn:focus-visible { background: var(--veil); }
+
+/* Regua de rabisco: no pe do tile. */
+.draw-bar {
+  position: absolute;
+  left: calc(var(--vx, 0px) + var(--vw, 100%) / 2);
+  bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s-3));
+  z-index: var(--z-hud);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-1);
+  transform: translateX(-50%);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: var(--elev-float);
+}
+/* Quem assiste so ve a regua com o rabisco ligado; a dona ve "Apagar tudo" no hover. */
+.tile:not(.annot-on) .draw-bar:has(.annot-toggle), .tile:not(:hover) .draw-bar { display: none; }
+.tile.annot-on .draw-bar:has(.annot-toggle) { display: flex; }
+.draw-bar__sep { width: 1px; height: 20px; margin: 0 var(--s-1); background: var(--line); }
+.draw-bar .active { background: var(--wire-soft); color: var(--tx); }
+.draw-bar .annot-ink { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.draw-bar .annot-ink::-webkit-color-swatch-wrapper { padding: 3px; }
+.draw-bar .annot-ink::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.draw-bar svg { width: 16px; height: 16px; }
+
+/* Tela cheia: o tile cobre a janela. */
+.tile.fullscreen { position: fixed; inset: 0; z-index: var(--z-dialog); border-radius: 0; }
+
+/* Palco vazio. */
+.stage-empty { position: absolute; inset: 0; }
+
+/* Conversa espiando: mensagens que surgem sobre o programa e somem. */
+.peek {
+  position: absolute;
+  left: auto;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  z-index: var(--z-peek);
+  display: grid;
+  gap: var(--s-15);
+  width: min(340px, calc(100% - 32px));
+  pointer-events: none;
+}
+.peek__msg {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  color: var(--tx);
+  box-shadow: var(--elev-float);
+  pointer-events: auto;
+  cursor: pointer;
+  text-align: left;
+  animation: peek-life 6s var(--ease-out) forwards;
+}
+.peek__who { font: var(--t-label); margin-right: var(--s-15); color: var(--who, var(--tx)); }
+@keyframes peek-life { 0% { opacity: 0; transform: translateY(6px); } 5%, 85% { opacity: 1; transform: none; }
+  100% { opacity: 0; } }
+
+/* ---- Conversa fixada ---- */
+.conv {
+  display: flex;
+  flex-direction: column;
+  width: var(--w-conv);
+  flex: none;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  min-height: 0;
+}
+.app:not([data-conv='pinned']) .conv { display: none; }
+.conv__head { display: flex; align-items: center; gap: var(--s-1); height: 48px; padding: 0 var(--s-2) 0 var(--s-4); }
+.conv__title { font: var(--t-heading); margin-right: auto; }
+.conv__list { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.conv__msgs { flex: 1; overflow-y: auto; padding: 0 var(--s-4) var(--s-3); overscroll-behavior: contain; }
+.conv__jump { position: absolute; left: 50%; bottom: var(--s-2); transform: translateX(-50%); background: var(--s2);
+  box-shadow: var(--elev-float); }
+.conv__offline { margin: 0 var(--s-3) var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-xs);
+  background: var(--warn-dim); color: var(--warn); font: var(--t-meta); }
+
+.msg { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: var(--s-3); padding-top: var(--s-3); }
+.msg > .node { grid-row: 1 / span 4; align-self: start; margin-top: 2px; }
+.msg > :not(.node):not(.msg__gutter) { grid-column: 2; }
+.msg__gutter { grid-row: 1; padding-top: 3px; font: var(--t-data); font-size: var(--fs-micro); color: var(--tx3); opacity: 0; }
+.msg--cont:hover .msg__gutter { opacity: 1; }
+.msg__put { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
+.msg-sys--warn { color: var(--warn); }
+.msg-sys--danger { color: var(--danger); }
+.msg + .msg--cont { padding-top: 2px; }
+.msg__head { display: flex; align-items: baseline; gap: var(--s-2); }
+.msg__author { font: var(--t-label); color: var(--who, var(--tx)); }
+.msg__time { font: var(--t-data); font-size: 11px; color: var(--tx3); }
+.msg__body { font: var(--t-body); overflow-wrap: anywhere; white-space: pre-wrap; }
+.msg__img { justify-self: start; margin-top: var(--s-1); max-width: 100%; border-radius: var(--r-xs); overflow: hidden; cursor: zoom-in; }
+.msg__img img { width: 100%; height: 100%; max-height: 220px; object-fit: cover; }
+.msg-sys {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  font: var(--t-meta);
+  color: var(--tx3);
+}
+.msg-sys .i { width: 14px; height: 14px; }
+.msg-day { display: flex; align-items: center; gap: var(--s-3); padding-top: var(--s-4); font: var(--t-tag);
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--tx3); }
+.msg-day::before, .msg-day::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.msg-new { display: flex; align-items: center; gap: var(--s-2); padding-top: var(--s-3); font: var(--t-tag);
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--wire); }
+.msg-new::after { content: ''; flex: 1; height: 1px; background: var(--wire-line); }
+
+.compose { padding: var(--s-2) var(--s-3) var(--s-3); }
+.compose__box {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 28px;
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-3);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s1);
+}
+.compose__box:focus-within { border-color: var(--wire); box-shadow: 0 0 0 1px var(--wire); }
+.compose__input {
+  flex: 1;
+  min-height: 28px;
+  max-height: 120px;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  resize: none;
+  font: var(--t-body);
+}
+.compose__input:focus-visible { box-shadow: none; }
+.compose__meta { display: flex; justify-content: space-between; min-height: 16px; padding: var(--s-1) var(--s-1) 0;
+  font: var(--t-meta); color: var(--tx3); }
+.compose__attach { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); padding: var(--s-1);
+  border-radius: var(--r-xs); background: var(--s1); }
+.compose__attach img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+
+/* ---- Barramento ---- */
+.bus {
+  position: relative;
+  z-index: var(--z-chrome);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: 0 var(--s-3);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.bus__sources {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.bus__sources::-webkit-scrollbar { display: none; }
+.bus__live { display: contents; }
+.bus__sep { flex: none; width: 1px; height: 32px; margin: 0 var(--s-1); background: var(--line); }
+.bus__end { display: flex; align-items: center; gap: var(--s-1); flex: none; }
+
+/* Fonte: tudo o que se pode assistir. */
+.src {
+  --cluster-bg: var(--bg);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, auto) auto;
+  align-items: center;
+  column-gap: var(--s-3);
+  flex: none;
+  height: 56px;
+  max-width: 280px;
+  padding: 0 var(--s-3) 0 var(--s-2);
+  border-radius: var(--r-xs);
+  scroll-snap-align: start;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.src:hover { background: var(--s1); --cluster-bg: var(--s1); }
+.src:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
+.src__text { display: grid; gap: 1px; min-width: 0; }
+.src__name { font: var(--t-label); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.src__sub { font: var(--t-meta); color: var(--tx2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.src[data-current], .src[data-watching] { background: var(--wire-soft); --cluster-bg: color-mix(in srgb, var(--wire) 16%, var(--bg)); }
+.src[data-current]::after, .src[data-watching]::after {
+  content: '';
+  position: absolute;
+  left: var(--s-2);
+  right: var(--s-2);
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--wire);
+}
+.src[data-paused] .src__sub { color: var(--live-text); }
+.src[data-poor] .node::before {
+  content: '';
+  position: absolute;
+  top: -2px; right: -2px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.src__add, .src__drop {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+}
+.src:hover .src__add, .src:focus-within .src__add { display: inline-flex; }
+.src[data-watching]:hover .src__add { display: none; }
+.src[data-watching]:hover .src__drop, .src[data-watching]:focus-within .src__drop { display: inline-flex; }
+
+.src__glyph {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+.src__glyph::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--tx2);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.src--mesa[data-current] .src__glyph::before { border-color: var(--wire); background: var(--wire-soft); }
+
+/* A sua fonte. */
+/* A sua fonte: sem transmitir e so o botao Transmitir; ao vivo vira o bloco
+ * vermelho-claro com o seu no, o que transmite e pausar/trocar/parar. */
+.me { display: flex; align-items: center; gap: var(--s-2); flex: none; height: 56px; padding: 0 var(--s-1);
+  border-radius: var(--r-xs); }
+.me__live { display: none; align-items: center; gap: var(--s-3); padding-left: var(--s-1); }
+.me__live .src__text { max-width: 180px; }
+.me__ctl { display: flex; gap: 2px; }
+.me:has(.me__share[aria-pressed='true']) { background: var(--live-soft); }
+.me:has(.me__share[aria-pressed='true']) .me__live { display: flex; }
+.me .me__share[aria-pressed='true'] { min-width: 0; height: var(--h-ctl-sm); padding: 0 var(--s-2);
+  background: transparent; color: var(--tx); box-shadow: inset 0 0 0 1px var(--line2); }
+.me .me__share[aria-pressed='true']:hover { background: var(--danger-dim); color: var(--danger); }
+.me:has(#btn-pause-share[aria-pressed='true']) { background: transparent; box-shadow: inset 0 0 0 1px var(--live-soft); }
+.me__meter { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
+
+/* ---- Modo teatro: so o programa; a moldura volta por cima ao encostar. ---- */
+.app[data-theater] .room { grid-template-rows: minmax(0, 1fr) 0; }
+.app[data-theater] .head {
+  position: fixed;
+  left: 0;
+  right: 0;
+  transition: transform var(--dur-mid) var(--ease-out);
+  top: 0;
+  transform: translateY(-100%);
+}
+.app[data-theater] .bus {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--h-bus);
+  transition: transform var(--dur-mid) var(--ease-out);
+  transform: translateY(100%);
+}
+.app[data-theater][data-reveal='top'] .head, .app[data-theater][data-reveal='bottom'] .bus { transform: none; }
+.app[data-theater] .conv { display: none; }
+
+/* ============ Presenca (popover) ============ */
+.person {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 40px;
+  padding: 0 var(--s-1) 0 var(--s-2);
+  border-radius: var(--r-xs);
+  --cluster-bg: var(--s2);
+}
+.person:hover { background: var(--veil); }
+.person__text { display: grid; min-width: 0; }
+.person__name { font: var(--t-label); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.person__state { font: var(--t-meta); color: var(--tx2); }
+.person__actions { display: flex; gap: 2px; }
+
+/* ============ Tamanhos ============ */
+@media (max-width: 1023px) {
+  /* Estreito: o estado fica (e o que o barramento diz), nome e estado truncam. */
+  .src .cluster { display: none; }
+  .src__text { max-width: 84px; }
+  .src__sub { display: none; }
+  .me__live .src__text { max-width: 116px; }
+  .bus__end :is(.btn__label, .btn-label) { display: none; }
+  .addr { display: none; }
+  .room-menu .room-menu__estreito { display: flex; }
+  .me .me__share[aria-pressed='true'] { width: var(--h-ctl-sm); padding: 0; }
+  .me .me__share[aria-pressed='true'] .btn-label { display: none; }
+}
+@media (max-height: 719px) {
+  :root { --h-bus: 60px; }
+  .src, .me__live { height: 48px; }
+}
+
+/* Tile estreito: o HUD fica com nome + volume + ⋯ + ×; o resto mora no ⋯. */
+@container tile (max-width: 460px) {
+  .tile__what, .tile__watchers, .tile__hud [data-hud-extra] { display: none; }
+}
+@container tile (max-width: 260px) {
+  .tile__hud [data-hud-optional], .tile__live { display: none; }
+  .tile__state, .tile__stall { gap: var(--s-2); font-size: 12px; }
+}
+
+/* ============ Inicio: o que o prototipo nao mostrava ============ */
+.head__lobby-only { display: contents; }
+.me-chip { gap: var(--s-2); padding: 0 var(--s-2) 0 var(--s-1); }
+.me-chip .node { overflow: hidden; }
+.me-chip__name { max-width: 160px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.me-chip__name:empty { display: none; }
+
+.winctl__restore { display: none; }
+.winctl__btn.is-maximized .winctl__max { display: none; }
+.winctl__btn.is-maximized .winctl__restore { display: block; }
+
+.hello__net .btn { margin-left: calc(var(--s-1) * -1); }
+.hello__net #home-network:empty { display: none; }
+.lobby__error:empty, .lobby__status:empty { display: none; }
+.lobby__error, .lobby__status { margin-top: calc(var(--s-5) * -1); }
+
+.rooms__list { display: flex; flex: 1; flex-direction: column; align-content: start; }
+.room-row__meta .i { flex: none; }
+.room-row__go .spinner { width: 14px; height: 14px; }
+
+.lobby__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: auto;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+}
+.room-row__meta.tx-warn { color: var(--warn); }
+
+/* Menu da sala: ancorado no nome da sala, na cabeca. */
+/* "Copiar endereço" no menu so quando o endereco some da cabeca (abaixo de 1024 px). */
+.room-menu__estreito { display: none; }
+.head__room { position: relative; display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
+.room-menu { position: absolute; top: calc(100% + var(--s-15)); left: 0; width: 280px; }
+.room-menu .menu__item { cursor: pointer; }
+.room-menu label.menu__item:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
+.stage-empty .blank__art { color: var(--line2); }
+.stage-empty__acoes { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); margin-top: var(--s-2); }
+.bus__live:empty + .bus__sep { display: none; }
+
+/* ============ Central de avisos (popover da cabeca) ============ */
+.warn-center-wrap { position: relative; display: flex; }
+#warn-center { gap: var(--s-15); }
+#warn-center.warn-center-grave { color: var(--danger); }
+#warn-center.warn-center-atencao { color: var(--warn); }
+#warn-center.warn-center-info { color: var(--tx2); }
+#warn-center svg { width: 16px; height: 16px; }
+#warn-center-panel { position: absolute; top: calc(100% + var(--s-15)); right: 0; width: 360px; padding: var(--s-2); }
+#warn-center-panel:not([hidden]) { display: grid; gap: var(--s-1); }
+.warn-center-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: var(--s-2) var(--s-3);
+  align-items: start;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+}
+.warn-center-item + .warn-center-item { border-top: 1px solid var(--line); border-radius: 0; }
+.warn-center-item-grave .warn-center-icon { color: var(--danger); }
+.warn-center-item-atencao .warn-center-icon { color: var(--warn); }
+.warn-center-item-info .warn-center-icon { color: var(--tx2); }
+.warn-center-icon svg { width: 18px; height: 18px; }
+.warn-center-item-body { display: grid; gap: var(--s-1); }
+.warn-center-item-body strong { font: var(--t-label); }
+.warn-center-item-body p { font: var(--t-meta); color: var(--tx2); }
+.warn-center-action {
+  justify-self: start;
+  height: var(--h-ctl-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-xs);
+  font: var(--t-label);
+}
+.warn-center-action:hover { background: var(--veil); }
+.warn-center-dismiss { width: 24px; height: 24px; border-radius: var(--r-xs); color: var(--tx3); }
+.warn-center-dismiss:hover { background: var(--veil); color: var(--tx); }
+@keyframes warn-pulse { 50% { background: var(--warn-dim); } }
+#warn-center.warn-center-pulse { animation: warn-pulse 1.2s var(--ease-in-out) 2; }
+
+/* ============ Tela cheia: miniaturas das outras fontes (PiP) ============ */
+.pip-strip { position: absolute; inset: 0; pointer-events: none; }
+.tile:not(.fullscreen) .pip-strip { display: none; }
+.pip-thumb {
+  position: absolute;
+  z-index: var(--z-hud);
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--void);
+  box-shadow: 0 0 0 1px var(--line2), var(--shadow-2);
+  pointer-events: auto;
+  cursor: grab;
+}
+.pip-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.pip-thumb-avatar { position: absolute; left: var(--s-1); bottom: var(--s-1); }
+.pip-thumb-avatar .node__initial, .pip-picker-avatar .node__initial { display: grid; place-items: center; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--scrim-6); color: var(--on-video); font: 700 10px/1 var(--font-display); }
+.pip-thumb-remove {
+  position: absolute;
+  top: var(--s-1);
+  right: var(--s-1);
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--on-video);
+  opacity: 0;
+}
+.pip-thumb:hover .pip-thumb-remove, .pip-thumb-remove:focus-visible { opacity: 1; }
+.pip-thumb-resize { position: absolute; left: 0; bottom: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+.pip-add-btn {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-15);
+  height: var(--h-ctl);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--on-video);
+  font: var(--t-label);
+  pointer-events: auto;
+}
+body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
+.pip-picker { display: grid; gap: 2px; min-width: 200px; }
+.pip-picker-item { display: flex; align-items: center; gap: var(--s-2); min-height: 32px; padding: 0 var(--s-2);
+  border-radius: var(--r-xs); font: var(--t-body); }
+.pip-picker-item:hover, .pip-picker-item:focus-visible { background: var(--veil); }
+.pip-picker-empty { padding: var(--s-2); font: var(--t-meta); color: var(--tx3); }
+
+/* ============ Rabisco: campo de texto sobre o video ============ */
+.annot-text-input {
+  position: absolute;
+  z-index: var(--z-hud);
+  min-width: 120px;
+  height: var(--h-ctl-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--wire);
+  border-radius: var(--r-xs);
+  background: var(--scrim-6);
+  color: var(--on-video);
+  font: var(--t-body);
+}
+
+/* Conversa espiando: a mensagem e um botao que abre a conversa. */
+.peek__text { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ============ Revisao de design (2026-09-27) ============ */
+/* HUD, aviso e regua ficam sobre a imagem, nao sobre as tarjas do letterbox
+ * (o tile publica o retangulo util do video em --vx/--vy/--vw/--vh). */
+/* O fio do que voce assiste tambem no palco (05 §0.1), sob a imagem. */
+.tile[data-kind='screen']:not(.fullscreen)::after {
+  content: '';
+  position: absolute;
+  z-index: var(--z-hud);
+  left: var(--vx, 0px);
+  width: var(--vw, 100%);
+  top: calc(var(--vy, 0px) + var(--vh, 100%) - 2px);
+  height: 2px;
+  background: var(--wire);
+  pointer-events: none;
+}
+
+/* A sua fonte: pausar e trocar so existem com ela no ar; Parar e solido e
+ * avisa perigo no hover. */
+.me:not(:has(.me__share[aria-pressed='true'])) .me__ctl { display: none; }
+.me .me__share[aria-pressed='true'] .icon-on { fill: currentColor; }
+
+/* Espiando: superficie solida, no canto do botao Conversa, longe da tira. */
+
+/* Entrando numa sala: a escolhida fica em destaque, as outras esmaecem. */
+.room-row:disabled:not([aria-busy='true']) { opacity: 0.55; }
+.room-row[aria-busy='true'] { background: var(--s1); }
+
+/* Conversa: vazia diz o que fazer; a dica do Enter so aparece escrevendo. */
+.conv__msgs:empty::before { content: attr(data-vazio); display: block; padding-top: var(--s-6); text-align: center;
+  font: var(--t-meta); color: var(--tx3); }
+.compose:not(:focus-within) #chat-input-hint { visibility: hidden; }
+.compose__meta .tx-data:not(.hidden) { color: var(--tx2); }
+
+/* ============ Inicio ocupando a janela (retorno do Nicolas, 2026-09-27) ============
+ * Nada centralizado numa coluna estreita: a composicao ancora a esquerda e
+ * usa a largura -- abertura com saudacao e rede em lados opostos, acoes,
+ * lista de salas de ponta a ponta, rodape no pe da janela. */
+.lobby__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  max-width: none;
+  min-height: 100%;
+  margin: 0;
+  padding: var(--s-7) clamp(var(--s-5), 5vw, 72px) var(--s-5);
+}
+.hello {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-6);
+}
+.hello > .hello__title, .hello > .whoami { flex: 1 1 420px; }
+/* Primeira vez: pergunta e rede na primeira linha, o nome logo abaixo da
+ * pergunta -- em qualquer largura, nao tres colunas soltas. */
+.hello > .whoami:not([hidden]) { flex-basis: 100%; order: 3; }
+.rooms__list:has(.blank) { display: grid; place-items: center; }
+.rooms .blank__art { width: clamp(120px, 18vw, 200px); height: auto; aspect-ratio: 1; }
+
+/* Estados pequenos que o JS pendura. */
+.sound-meter-bar { width: 3px; border-radius: 1px; background: var(--line2); }
+.sound-meter-bar:nth-child(1) { height: 4px; }
+.sound-meter-bar:nth-child(2) { height: 8px; }
+.sound-meter-bar:nth-child(3) { height: 12px; }
+.sound-meter-bar:nth-child(4) { height: 16px; }
+.sound-meter-bar.is-lit { background: var(--ok); }
+.conv.dropping, .compose.dropping { box-shadow: inset 0 0 0 2px var(--wire); }
+#chat-input-count.near-limit { color: var(--warn); }
+.spin svg { animation: node-spin 600ms var(--ease-out); }
+.addr.copied-flash, .addr.copied-flash .i { color: var(--ok); }
+.theme-warning-fix { margin-left: var(--s-2); }
+
+/* Cor de identidade como TEXTO: no tom claro ela e misturada a tinta para
+ * passar contraste (a paleta de pessoas e clara, feita para o fundo escuro). */
+:root[data-tone='light'] :is(.msg__author, .node:not([data-state])) { color: color-mix(in srgb, var(--who, var(--tx)) 45%, var(--tx)); }
+:root[data-tone='light'] .node:not([data-state]) { --ring: color-mix(in srgb, var(--who, var(--tx3)) 60%, var(--tx)); }
+/* Parar e neutro (nao e selecao): so o hover avisa perigo. */
+.me .me__share[aria-pressed='true'] .i { color: currentColor; }
+
+/* Barramento cheio: a borda com fonte escondida esmaece (a mascara usa so o alfa). */
+.bus__sources[data-over='left'] { mask-image: linear-gradient(to right, transparent, var(--tx) 40px); }
+.bus__sources[data-over='right'] { mask-image: linear-gradient(to left, transparent, var(--tx) 40px); }
+.bus__sources[data-over='left right'] {
+  mask-image: linear-gradient(to right, transparent, var(--tx) 40px, var(--tx) calc(100% - 40px), transparent);
+}
+/* Sem permissao, os controles continuam visiveis e explicam o bloqueio. */
+.tile__hud .btn:disabled { cursor: not-allowed; }

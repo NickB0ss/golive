@@ -1,17 +1,19 @@
 As fontes em assets/fonts/ estao sob a SIL Open Font License 1.1:
 
-  Outfit     -- Copyright 2021 The Outfit Project Authors
-               https://github.com/Outfitio/Outfit-Fonts
-  Work Sans  -- Copyright 2019 The Work Sans Project Authors
-               https://github.com/weiweihuanghuang/Work-Sans
+  Sora            -- Copyright 2019 The Sora Project Authors
+                     https://github.com/sora-xor/sora-font
+  Atkinson Hyperlegible Next
+                  -- Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors
+                     https://github.com/googlefonts/atkinson-hyperlegible-next
+  Geist Mono      -- Copyright 2024 The Geist Project Authors
+                     https://github.com/vercel/geist-font
 
-Texto integral da licenca. As duas linhas de copyright abaixo sao as
-declaradas nos respectivos OFL.txt upstream; o corpo da licenca que segue e
-identico nos dois (SIL Open Font License 1.1 padrao, sem Reserved Font
-Name declarado por nenhum dos dois projetos):
+Os arquivos vem sem modificacao, nos subconjuntos servidos pelo Fontsource. Nenhuma das tres declara
+Reserved Font Name. Texto integral da licenca abaixo; as linhas de copyright sao as dos OFL.txt upstream:
 
-Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
-Copyright 2019 The Work Sans Project Authors (https://github.com/weiweihuanghuang/Work-Sans)
+Copyright 2019 The Sora Project Authors (https://github.com/sora-xor/sora-font)
+Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors (https://github.com/googlefonts/atkinson-hyperlegible-next)
+Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

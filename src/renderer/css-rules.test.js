@@ -5,27 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const cssPath = path.join(__dirname, 'style.css');
-
-test('botao de novas mensagens nao fica dentro da lista limpa pelo historico', () => {
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  const chatMessages = html.match(/<div id="chat-messages"[^>]*>([\s\S]*?)<\/div>/);
-  assert.ok(chatMessages, 'a lista de mensagens do chat precisa existir');
-  // setHistory limpa #chat-messages com innerHTML; o botao perderia o DOM
-  // junto com o historico se voltasse a ser filho direto da lista.
-  assert.ok(!chatMessages[1].includes('chat-jump-new'), 'o botao de novas mensagens precisa ficar fora da lista');
-});
-
-test('o banner de atualizacao do canto nao voltou', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  // Um so lugar pede pra atualizar: a faixa do lobby. O banner do canto
-  // inferior direito era justamente o que ninguem via (spec 2026-09-15,
-  // decisao 1).
-  assert.ok(!css.includes('.update-banner'), 'o CSS do banner do canto tem de sair');
-  assert.ok(!html.includes('update-banner'), 'a marcacao do banner do canto tem de sair');
-  assert.match(html, /id="update-bar"/, 'a faixa do lobby tem de existir');
-});
+const DIR = path.join(__dirname, 'sinal');
+// Toda folha do Sinal entra: um arquivo novo nao pode escapar das regras.
+const FILES = fs.readdirSync(DIR).filter((file) => file.endsWith('.css')).sort();
+const cssByFile = new Map(FILES.map((file) => [file, fs.readFileSync(path.join(DIR, file), 'utf8')]));
+const mesaJanelas = fs.readFileSync(path.join(__dirname, 'mesa-janelas.css'), 'utf8');
 
 function declarations(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -36,16 +20,17 @@ function declarations(css) {
   let segment = '';
   let line = 1;
 
-  // A ultima declaracao de um bloco pode vir sem ';' (`.x { color: #fff }`):
-  // fechar o bloco tambem conta como fim de declaracao, senao ela escapava.
   const flush = () => {
     const match = segment.match(/^\s*([\w-]+)\s*:\s*([^;{}]+)$/);
-    if (match) found.push({ property: match[1], value: match[2].trim(), stack: [...stack], block: blocks.at(-1), line });
+    if (match) {
+      found.push({
+        property: match[1], value: match[2].trim(), stack: [...stack], block: blocks.at(-1), line,
+      });
+    }
     segment = '';
   };
 
-  for (let i = 0; i < source.length; i += 1) {
-    const char = source[i];
+  for (const char of source) {
     if (char === '\n') line += 1;
     if (char === '{') {
       stack.push(segment.trim());
@@ -83,303 +68,178 @@ function selectorParts(selector) {
 }
 
 function isRootBlock(stack) {
-  return stack.some((entry) => /^:root(?:\[data-theme=(?:"[^"]+"|'[^']+'|[^\]]+)\])?$/.test(entry));
+  return stack.some((entry) => /^:root(?:\[data-(?:theme|tone)=(?:"[^"]+"|'[^']+'|[^\]]+)\])?$/.test(entry));
 }
 
-// Excecao legada documentada: o botao nativo de fechar ainda usa as cores
-// do Windows, e esta frente nao reescreve sua aparencia.
-const ALLOWED_LITERAL_SELECTORS = new Set([
-  '.titlebar-btn-close:hover',
-  '.titlebar-btn-close:active',
-]);
-
-test('style.css respeita piso de 11px e nao usa backdrop-filter', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const rules = declarations(css);
-  // `!important` nao muda o tamanho -- sem aceita-lo, `10px !important` passava.
-  const small = rules.filter(({ property, value }) => property === 'font-size' && /^\d+(?:\.\d+)?px(?:\s*!important)?$/.test(value) && Number.parseFloat(value) < 11);
-  assert.deepEqual(small, [], `font-size abaixo de 11px: ${small.map((rule) => `${rule.line}: ${rule.value}`).join(', ')}`);
-  assert.deepEqual(rules.filter(({ property }) => property === 'backdrop-filter'), [], 'backdrop-filter e proibido');
+test('as fontes Sinal apontam para arquivos locais existentes', () => {
+  const fonts = [...cssByFile.get('tokens.css').matchAll(/@font-face\s*\{([\s\S]*?)\}/g)];
+  assert.ok(fonts.length > 0);
+  for (const [, block] of fonts) {
+    const url = /src:\s*url\('([^']+)'\)/.exec(block)?.[1];
+    assert.ok(url, 'cada fonte precisa de URL local');
+    assert.ok(fs.existsSync(path.join(DIR, url)), `fonte ausente: ${url}`);
+  }
 });
 
-// Tamanhos de fonte fora da escala --fs-*, cada um com o porque. Qualquer
-// font-size literal novo reprova: ou usa um token, ou entra aqui explicado.
-const FONT_SIZE_FORA_DA_ESCALA = new Map([
-  // Relativos ao pai, nao um tamanho: seguem o texto em volta.
-  ['.small', '0.85em'],
-  ['.hint', '0.85em'],
-  // 15px e 17px: juntar com 16/18 (a proposta B2 da auditoria) muda o
-  // pixel, e o acabamento P3 nao podia mudar o visual. Decisao de design.
-  ['.app-brand-name', '15px'],
-  ['.room-badge', '15px'],
-  ['.peer-avatar-fallback', '15px'],
-  ['.tile-paused-title', '15px'],
-  ['.tile-gate-title', '15px'],
-  ['.dialog-box h2', '17px'],
-  ['.picker-box h2', '17px'],
-  ['.tile-gate-avatar', '17px'],
-  ['.room-card .room-badge', '17px'],
-  ['.warn-center-dismiss', '17px'],
-  ['.tile-react-btn', '17px'],
-  // Glifos, nao texto: o emoji da grade e o "+" do PiP.
-  ['.emoji-item', '19px'],
-  ['.pip-add-btn', '20px'],
-  // Titulos grandes de uso unico, entre os degraus 18 e 22 / 22 e 28.
-  ['.rooms-empty-title', '20px'],
-  ['.lobby-title', '26px'],
-  // Cresce com o tile (reacao) e some (feedback de copiado no botao).
-  ['.tile-react-pop', 'clamp(14px, 5vw, 48px)'],
-  ['.my-theme-menu-btn.copied-flash', '0'],
-]);
-
-test('font-size usa a escala de tokens (B2)', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const rules = declarations(css);
-  const tokens = new Map(rules
-    .filter(({ property, stack }) => property.startsWith('--fs-') && isRootBlock(stack))
-    .map(({ property, value }) => [property, value]));
-  assert.ok(tokens.size >= 6, 'a escala --fs-* precisa existir no :root');
-  for (const [name, value] of tokens) {
-    assert.match(value, /^\d+px$/, `${name} precisa ser px inteiro (sem meio-pixel)`);
-    assert.ok(Number.parseInt(value, 10) >= 11, `${name} abaixo do piso de 11px`);
-  }
-
-  const soltos = [];
-  for (const { property, value, stack, line } of rules) {
-    if (property !== 'font-size' || isRootBlock(stack)) continue;
-    const token = value.match(/^var\((--fs-[\w-]+)\)$/)?.[1];
-    if (token) {
-      assert.ok(tokens.has(token), `${line}: ${token} nao existe no :root`);
-      continue;
-    }
-    if (FONT_SIZE_FORA_DA_ESCALA.get(stack.at(-1)) === value) continue;
-    soltos.push(`${line}: ${stack.at(-1)} -> ${value}`);
-  }
-  assert.deepEqual(soltos, [], `font-size sem token (use var(--fs-*) ou explique em FONT_SIZE_FORA_DA_ESCALA): ${soltos.join('; ')}`);
-  assert.ok(!/font-size:\s*\d+\.\d+px/.test(css), 'meio-pixel em font-size voltou');
+test('hidden vence os displays dos componentes', () => {
+  assert.match(cssByFile.get('base.css'), /\[hidden\],\s*\.hidden\s*\{\s*display:\s*none\s*!important/);
 });
 
-test('espacamento em px que bate com a escala usa o token (B3)', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const rules = declarations(css);
-  const escala = new Map(rules
-    .filter(({ property, stack }) => /^--s-\d+$/.test(property) && isRootBlock(stack))
-    .map(({ property, value }) => [Number.parseFloat(value), property]));
-  assert.ok(escala.has(2) && escala.has(6) && escala.has(8), 'a escala --s-* precisa existir no :root');
+test('folhas Sinal nao usam cores literais fora dos arquivos de tema', () => {
+  for (const file of FILES.filter((f) => !['tokens.css', 'themes.css'].includes(f))) {
+    const source = cssByFile.get(file).replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i, `${file} contem cor literal`);
+  }
+});
 
-  const espacamento = /^(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z-]+)?$/;
-  const literais = [];
-  const foraDaEscala = [];
-  for (const { property, value, stack, line } of rules) {
-    if (!espacamento.test(property) || isRootBlock(stack)) continue;
-    for (const [, px] of value.matchAll(/(?:^|[\s(,])(\d+(?:\.\d+)?)px\b/g)) {
-      const token = escala.get(Number(px));
-      if (token) literais.push(`${line}: ${stack.at(-1)} { ${property}: ${value} } -> ${px}px e var(${token})`);
-      else foraDaEscala.push(px);
+test('important fica restrito a hidden e movimento reduzido', () => {
+  for (const [file, source] of cssByFile) {
+    if (file === 'base.css') continue;
+    assert.doesNotMatch(source, /!important/, `${file} nao pode usar !important`);
+  }
+  const base = cssByFile.get('base.css');
+  const stripped = base
+    .replace(/\[hidden\],\s*\.hidden\s*\{[^}]*!important[^}]*\}/g, '')
+    .replace(/\.sr-only\s*\{[^}]*!important[^}]*\}/g, '')
+    .replace(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\}/g, '');
+  assert.doesNotMatch(stripped, /!important/);
+});
+
+test('live so marca estados ao vivo e a marca', () => {
+  const allowed = /(?:\.node\[data-state=['"](?:live|paused)['"]\]|\.tag--live|\.me__live|\.src\[data-paused\]|\.btn--live|\.brand(?:__mark)?|\.app-brand|\.theme-mini__live|\.mesa-map > i\.is-live)/;
+  for (const source of cssByFile.values()) {
+    for (const match of source.matchAll(/([^{}]+)\{[^{}]*var\(--live\)[^{}]*\}/g)) {
+      assert.match(match[1], allowed, `uso indevido de --live em ${match[1].trim()}`);
     }
   }
-  assert.deepEqual(literais, [], `px na mao onde ja existe token: ${literais.join('; ')}`);
-  // Os que nao batem com degrau nenhum (1, 3, 5, 7, 9, 10px...) ficaram
-  // literais no acabamento P3: arredondar muda o pixel. O numero so pode
-  // descer -- espacamento novo nasce da escala.
-  assert.ok(foraDaEscala.length <= 97, `espacamento fora da escala subiu para ${foraDaEscala.length} (maximo 97)`);
 });
 
-// Seletores que ainda aparecem em dois blocos, cada um com o porque. O
-// resto do arquivo segue "um seletor, um bloco" (B1): uma segunda regra pro
-// mesmo seletor e o que deixava `.control-btn-end` com duas aparencias
-// conflitantes e so a ultima valendo.
-const SELETOR_REPETIDO_PERMITIDO = new Set([
-  // box-sizing no topo; a barra de rolagem fina fica junto das regras
-  // ::-webkit-scrollbar, que e onde quem procura a barra vai olhar.
-  '*',
-]);
-
-test('cada seletor e escrito num bloco so (B1)', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const vistos = new Map();
-  for (const { stack, block, line } of declarations(css)) {
-    const selector = stack.at(-1);
-    if (!selector || selector.startsWith('@') || /^(from|to|\d+%)$/.test(selector)) continue;
-    const key = `${stack.slice(0, -1).join(' > ')} || ${selector.replace(/\s+/g, ' ')}`;
-    if (!vistos.has(key)) vistos.set(key, new Map());
-    if (!vistos.get(key).has(block)) vistos.get(key).set(block, line);
+test('z-index usa apenas a escala de tokens', () => {
+  for (const [file, source] of cssByFile) {
+    if (file === 'tokens.css') continue;
+    for (const match of source.matchAll(/z-index\s*:\s*([^;}]*)/g)) {
+      assert.match(match[1], /^(?:var\(--z-[\w-]+\)|calc\(var\(--z-[\w-]+\)[^)]+\))\s*$/,
+        `${file}: z-index fora da escala: ${match[1]}`);
+    }
   }
-  const repetidos = [...vistos]
-    .filter(([key, blocks]) => blocks.size > 1 && !SELETOR_REPETIDO_PERMITIDO.has(key.split(' || ')[1]))
-    .map(([key, blocks]) => `${key.split(' || ')[1]} (linhas ${[...blocks.values()].join(', ')})`);
-  assert.deepEqual(repetidos, [], `seletor escrito em mais de um bloco -- junte no bloco do componente: ${repetidos.join('; ')}`);
 });
 
-test('cores literais ficam restritas aos tokens dos blocos de tema', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const literal = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl)\(/i;
-  const violations = declarations(css).filter(({ value, stack }) => (
-    literal.test(value) && !isRootBlock(stack) && !ALLOWED_LITERAL_SELECTORS.has(stack.at(-1))
+test('conteudos da Mesa tambem so usam tokens de cor, fonte e profundidade', () => {
+  const source = mesaJanelas.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i);
+  assert.doesNotMatch(source, /var\(--live\)/);
+  assert.doesNotMatch(source, /(?:font|font-size)\s*:[^;}]*\b\d+(?:px|rem)\b/);
+  for (const match of source.matchAll(/z-index\s*:\s*([^;}]*)/g)) {
+    assert.match(match[1], /^var\(--z-[\w-]+\)\s*$/, `mesa-janelas.css: z-index fora da escala: ${match[1]}`);
+  }
+});
+
+test('a página carrega a pilha Sinal e nao a folha removida', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  for (const file of FILES) assert.match(html, new RegExp(`href="sinal/${file}"`));
+  assert.match(html, /href="mesa-janelas\.css"/);
+  assert.doesNotMatch(html, /href="style\.css"/);
+});
+
+test('Sinal respeita o piso tipografico e nao usa backdrop-filter', () => {
+  for (const [file, source] of cssByFile) {
+    const rules = declarations(source);
+    const small = rules.filter(({ property, value }) => (
+      property === 'font-size' && /^\d+(?:\.\d+)?px(?:\s*!important)?$/.test(value)
+        && Number.parseFloat(value) < 11
+    ));
+    assert.deepEqual(small, [], `${file}: font-size abaixo de 11px: ${small.map((r) => r.line).join(', ')}`);
+    assert.deepEqual(rules.filter(({ property }) => property === 'backdrop-filter'), [],
+      `${file}: backdrop-filter e proibido`);
+  }
+});
+
+test('font-size do Sinal usa tokens ou valores da escala tipografica', () => {
+  const tokenRules = declarations(cssByFile.get('tokens.css'));
+  const scale = new Set(tokenRules
+    .filter(({ property, stack }) => (/^--(?:t|fs)-/.test(property) && isRootBlock(stack)))
+    .flatMap(({ value }) => [...value.matchAll(/\b(\d+)px\b/g)].map((match) => `${match[1]}px`)));
+  assert.ok(scale.size > 0, 'tokens.css precisa declarar a escala tipografica');
+
+  for (const [file, source] of cssByFile) {
+    const outsideScale = declarations(source).filter(({ property, value, stack }) => (
+      property === 'font-size' && !isRootBlock(stack)
+        && !/^var\(--(?:t|fs)-[\w-]+\)$/.test(value) && !scale.has(value)
+    ));
+    assert.deepEqual(outsideScale, [], `${file}: font-size fora da escala: ${outsideScale
+      .map((rule) => `${rule.line}: ${rule.value}`).join('; ')}`);
+  }
+});
+
+test('cada seletor do Sinal aparece uma vez por contexto', () => {
+  for (const [file, source] of cssByFile) {
+    const seen = new Map();
+    for (const { stack, block, line } of declarations(source)) {
+      const selector = stack.at(-1);
+      if (!selector || selector.startsWith('@') || /^(?:from|to|\d+%)$/.test(selector)) continue;
+      const context = stack.slice(0, -1).join(' > ');
+      for (const part of selectorParts(selector)) {
+        const key = `${context} || ${part.replace(/\s+/g, ' ')}`;
+        if (!seen.has(key)) seen.set(key, new Map());
+        if (!seen.get(key).has(block)) seen.get(key).set(block, line);
+      }
+    }
+    const repeated = [...seen].filter(([, blocks]) => blocks.size > 1)
+      .map(([key, blocks]) => `${key.split(' || ')[1]} (${[...blocks.values()].join(', ')})`);
+    assert.deepEqual(repeated, [], `${file}: seletor repetido: ${repeated.join('; ')}`);
+  }
+});
+
+test('a escala z e crescente e todo token z usado existe', () => {
+  const tokens = declarations(cssByFile.get('tokens.css')).filter(({ property, stack }) => (
+    /^--z-/.test(property) && isRootBlock(stack)
   ));
-  assert.deepEqual(violations, [], `cor literal fora de bloco de tema: ${violations.map((rule) => `${rule.line}: ${rule.stack.at(-1)} -> ${rule.value}`).join('; ')}`);
-});
-
-test('estrutura moderna mantem dock no fluxo e camadas por tokens', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  assert.match(css, /--z-stage:\s*\d+;/, 'falta token da camada do palco');
-  assert.match(css, /--z-popover:\s*\d+;/, 'falta token da camada de popovers');
-  assert.match(css, /--z-modal:\s*\d+;/, 'falta token da camada de dialogos');
-  assert.match(css, /--z-modal-popover:\s*\d+;/, 'falta token do popover aberto em modal');
-  assert.match(css, /--z-dialog:\s*\d+;/, 'falta token da camada de dialogos filhos');
-  assert.match(css, /--z-toast:\s*\d+;/, 'falta token da camada de toasts');
-  assert.match(css, /--z-titlebar:\s*\d+;/, 'falta token da camada da faixa de titulo');
-  assert.match(css, /\.control-bar\s*\{[^}]*position:\s*static;/s, 'o dock deve permanecer no fluxo');
-  assert.match(css, /\.room-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill, minmax\(260px, 1fr\)\)/s, 'a lista de salas deve ser uma grade de cards');
-});
-
-test('cada bloco CSS declara z-index uma unica vez', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const seen = new Set();
-  const duplicates = [];
-  for (const rule of declarations(css).filter(({ property }) => property === 'z-index')) {
-    const key = `${rule.block}:${rule.property}`;
-    if (seen.has(key)) duplicates.push(rule);
-    seen.add(key);
-  }
-  assert.deepEqual(duplicates, [], `z-index duplicado no mesmo bloco: ${duplicates.map((rule) => `${rule.line}: ${rule.stack.at(-1)}`).join(', ')}`);
-});
-
-test('a casca da sala fica escondida com um tile em tela cheia', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  // visibility (e nao display): mata pintura e clique de TODOS os
-  // descendentes, qualquer que seja o z-index deles, e preserva o layout --
-  // tirar o dock do fluxo faria a grade atras recalcular tamanho de tile
-  // pra um layout que ninguem esta vendo.
-  for (const alvo of ['.stage-header', '.control-bar', '.room-side']) {
-    const re = new RegExp(`body:has\\(\\.tile\\.fullscreen\\)[^{]*${alvo.replace('.', '\\.')}` + `[^{]*\\{[^}]*visibility:\\s*hidden`, 's');
-    assert.match(css, re, `${alvo} precisa ser escondido em tela cheia`);
+  const values = tokens.map(({ property, value }) => ({ property, value: Number(value) }));
+  assert.ok(values.length > 0, 'tokens.css precisa declarar a escala --z-*');
+  assert.ok(values.every(({ value }) => Number.isFinite(value)), '--z-* precisa ter valor numerico');
+  assert.ok(values.every(({ value }, index) => index === 0 || value > values[index - 1].value),
+    '--z-* precisa estar em ordem crescente');
+  const names = new Set(values.map(({ property }) => property));
+  for (const [file, source] of cssByFile) {
+    const missing = [...source.matchAll(/var\((--z-[\w-]+)\)/g)]
+      .map((match) => match[1]).filter((name) => !names.has(name));
+    assert.deepEqual(missing, [], `${file}: --z-* sem token: ${missing.join(', ')}`);
   }
 });
 
-test('o campo do chat tem a mesma altura dos botoes da caixa', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const rules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose textarea');
-  const byProp = Object.fromEntries(rules.map(({ property, value }) => [property, value]));
-  const buttonRules = declarations(css).filter(({ stack }) => stack.at(-1) === '.chat-compose-btn');
-  const buttonByProp = Object.fromEntries(buttonRules.map(({ property, value }) => [property, value]));
-  // Os .chat-compose-btn tem 28px. Coladas pela base (align-items: flex-end),
-  // duas caixas de MESMA altura centralizam o texto contra os icones; com
-  // alturas diferentes o placeholder fica ~3px abaixo -- o bug relatado.
-  assert.equal(byProp['min-height'], '28px', 'o textarea precisa casar com os 28px do botao');
-  assert.equal(byProp.padding, '5px 0', '17.5px de linha + 10 de padding = 27.5 ~ 28');
-  assert.equal(buttonByProp.height, '28px', 'o botao da caixa precisa ter 28px de altura');
-  assert.equal(buttonByProp['min-height'], '0', 'o minimo global de 44px nao pode esticar o botao da caixa');
-});
-
-test('estado vazio da grade nao vaza para outros elementos', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const unscoped = declarations(css).filter(({ stack }) => /^\.empty(?:::?(?:before|after))?$/.test(stack.at(-1)));
-  assert.deepEqual(unscoped, [], `seletor .empty sem escopo: ${unscoped.map((rule) => rule.line).join(', ')}`);
-});
-
-test('todo overlay do tile some com o mouse parado', () => {
-  const css = fs.readFileSync(cssPath, 'utf8');
-
-  // Excecoes declaradas, em tres grupos, cada um dispensado por um motivo
-  // diferente (spec 2026-09-15, frente 4.2):
-  //   conteudo -- um rabisco ou uma reacao que chega com o mouse parado
-  //               PRECISA aparecer, senao o recurso so funciona pra quem
-  //               esta mexendo no mouse;
-  //   estado   -- esconder deixaria uma tela preta sem explicacao;
-  //   herdado  -- descendente de quem ja tem a regra, some junto.
-  const EXCECOES = new Set([
-    '.tile-annot-canvas', '.tile-react-pops', '.tile-react-pop', '.pip-strip', // conteudo
-    // .tile-health-chip (P4, auditoria 2026-09-18): e um ALERTA acionavel
-    // (a tela esta travando pra voce, e de quem e a culpa) -- sumir com o
-    // mouse parado esconderia o aviso bem na hora em que ninguem esta
-    // mexendo pra notar sozinho, mesmo racional de .tile-paused abaixo.
-    // .tile-stall-note (H10/D5, analise de 2026-09-23): o porque do quadro
-    // parado -- mesmo racional do chip.
-    '.tile-paused', '.tile-paused-shot', '.tile-gate', '.tile-health-chip',    // estado
-    '.tile-stall-note',                                                        // estado
-    '.tile-watchers-panel',                                                    // herdado
-  ]);
-
-  const rules = declarations(css);
-  const overlays = new Set(
-    rules
-      .filter(({ property, value, stack }) =>
-        property === 'position' && value === 'absolute'
-        && selectorParts(stack.at(-1) || '').some((selector) => /^\.tile-[\w-]+$/.test(selector)))
-      .flatMap(({ stack }) => selectorParts(stack.at(-1) || '').filter((selector) => /^\.tile-[\w-]+$/.test(selector))),
-  );
-
-  const semSumico = [...overlays].filter((sel) => {
-    if (EXCECOES.has(sel)) return false;
-    // As duas sao alcances do MESMO timer (ui.js, IDLE_MS): .tile.fullscreen.idle
-    // cobre o que e so do tile, body.room-idle cobre o que tambem some em janela.
-    // O limite nao aceita hifen: `\\b` tambem aceitaria .tile-watchers-eye.
-    return !rules.some(({ property, value, stack }) => {
-      if (stack.length !== 1 || !(
-        (property === 'opacity' && value === '0')
-        || (property === 'visibility' && value === 'hidden')
-        || (property === 'display' && value === 'none')
-      )) return false;
-      return selectorParts(stack[0]).some((selector) => (
-        (selector.includes('.tile.fullscreen.idle') || selector.includes('.room-idle'))
-        && new RegExp(`${sel.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(?![\\w-])$`).test(selector)
-      ));
-    });
-  });
-
-  assert.deepEqual(semSumico, [], `overlay do tile sem regra de ociosidade: ${semSumico.join(', ')}`);
-});
-
-test('elemento que nasce com o atributo hidden nao reaparece por causa do display da classe', () => {
-  // O `display` de autor vence o `display:none` que o atributo [hidden] traz
-  // da folha do navegador. Ja aconteceu com a `.warn-center` (botao fantasma)
-  // e com a `.titlebar` (faixa aparecendo no macOS/Linux e antes do
-  // titlebar.js rodar no Windows).
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  const rules = declarations(css);
-  const hides = (selector) => rules.some(({ property, value, stack }) => (
-    property === 'display' && /^none\b/.test(value) && selectorParts(stack.at(-1) || '').includes(selector)
-  ));
-  const missing = [];
-  for (const [tag] of html.matchAll(/<[a-z][^>]*>/g)) {
-    if (!/\shidden(?=[\s>/])/.test(tag)) continue;
-    const id = tag.match(/\sid="([^"]+)"/)?.[1];
-    const classes = (tag.match(/\sclass="([^"]+)"/)?.[1] || '').split(/\s+/).filter(Boolean);
-    for (const cls of classes) {
-      const shows = rules.some(({ property, value, stack }) => (
-        property === 'display' && !/^none\b/.test(value) && selectorParts(stack.at(-1) || '').includes(`.${cls}`)
-      ));
-      if (shows && !hides(`.${cls}[hidden]`) && !(id && hides(`#${id}[hidden]`))) missing.push(`.${cls}`);
+test('todo CSS Sinal fecha cada chave que abre', () => {
+  for (const [file, source] of cssByFile) {
+    const clean = source.replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+    let level = 0;
+    for (const char of clean) {
+      if (char === '{') level += 1;
+      if (char === '}') level -= 1;
+      assert.ok(level >= 0, `${file}: fecha chave sem abertura`);
     }
+    assert.equal(level, 0, `${file}: chave sem fechamento`);
   }
-  assert.deepEqual(missing, [], `faltam regras [hidden] { display: none } para: ${missing.join(', ')}`);
 });
 
-test('controle escondido com visually-hidden fica fora da ordem do Tab (A14)', () => {
-  // .visually-hidden esconde mas deixa focavel: o Tab pousava no
-  // #chat-file e o foco sumia da tela (anel dentro de 1x1px recortado). O
-  // botao visivel (#btn-chat-attach) e quem abre o seletor; clique
-  // programatico, Ctrl+V e arrastar nao dependem do foco do input.
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  const focaveis = [];
-  for (const [tag] of html.matchAll(/<(?:input|button|select|textarea|a\s[^>]*href)[^>]*>/g)) {
-    if (!/\sclass="[^"]*\bvisually-hidden\b/.test(tag)) continue;
-    if (!/\stabindex="-1"/.test(tag)) focaveis.push(tag.match(/\sid="([^"]+)"/)?.[1] || tag);
-  }
-  assert.deepEqual(focaveis, [], `controle invisivel alcancavel pelo Tab: ${focaveis.join(', ')}`);
-});
+test('a Sala preserva os contratos de compositor, HUD, tela cheia e h1', () => {
+  const shell = cssByFile.get('shell.css');
+  const compose = declarations(shell).filter(({ stack }) => stack.at(-1) === '.compose__box');
+  const minHeight = compose.find(({ property }) => property === 'min-height')?.value;
+  assert.ok(minHeight && Number.parseFloat(minHeight) >= 28,
+    '.compose__box precisa de alvo minimo de 28px');
+  assert.match(shell, /body\.room-idle[^{}]*\.tile__hud\s*\{[^}]*opacity:\s*0/s,
+    'body.room-idle precisa esconder o HUD do tile');
 
-test('a tela da sala tem um h1 com o nome da sala, sem a margem do navegador (A16)', () => {
-  // O unico h1 era o do lobby, que fica display:none dentro da sala: quem
-  // navega por titulos caia num h2 e nao sabia em que sala estava.
+  const tokens = new Map(declarations(cssByFile.get('tokens.css'))
+    .filter(({ property, stack }) => /^--z-/.test(property) && isRootBlock(stack))
+    .map(({ property, value }) => [property, Number(value)]));
+  const z = declarations(shell)
+    .find(({ stack, property }) => stack.at(-1) === '.tile.fullscreen' && property === 'z-index')?.value;
+  const zToken = z?.match(/^var\((--z-[\w-]+)\)$/)?.[1];
+  assert.ok(zToken && tokens.get(zToken) > tokens.get('--z-chrome'),
+    '.tile.fullscreen precisa ficar acima de --z-chrome');
+
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  const sala = html.slice(html.indexOf('id="room-view"'));
-  const h1s = [...sala.matchAll(/<h1\b[^>]*>/g)].map(([tag]) => tag);
-  assert.equal(h1s.length, 1, 'a sala precisa de exatamente um h1');
-  assert.match(h1s[0], /id="stage-room-name"/, 'o h1 da sala e o nome dela');
-  const css = fs.readFileSync(cssPath, 'utf8');
-  const margem = declarations(css).filter(({ property, stack }) => property === 'margin' && selectorParts(stack.at(-1) || '').includes('.stage-room-name'));
-  assert.ok(margem.some(({ value }) => value === '0'), 'o h1 da sala precisa zerar a margem padrao do navegador');
+  assert.match(html, /<h1\b[^>]*id="room-screen-title"[^>]*>/,
+    'a tela da sala precisa de #room-screen-title em h1');
 });

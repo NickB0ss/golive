@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Sinal — protótipo da sala</title>
+<link rel="stylesheet" href="../../src/renderer/sinal/tokens.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/base.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/components.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/shell.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/sheets.css" />
+<style>
+  /* Só do protótipo: quadros falsos de jogo no lugar do vídeo. */
+  .fake { width: 100%; height: 100%; }
+  .fake--a { background: radial-gradient(120% 90% at 70% 30%, #2d5a7a 0%, #16324a 40%, #0b1622 100%); }
+  .fake--a::after { content: ''; position: absolute; left: 12%; right: 30%; bottom: 18%; height: 22%;
+    background: linear-gradient(90deg, #3f7a4e, #2b5a3a); clip-path: polygon(0 60%, 20% 20%, 45% 50%, 70% 0, 100% 40%, 100% 100%, 0 100%); }
+  .fake--b { background: linear-gradient(160deg, #6b4a2f 0%, #3b2a1d 55%, #1a130d 100%); }
+  .fake--b::after { content: ''; position: absolute; inset: 30% 35% 25% 35%; border-radius: 50%;
+    background: radial-gradient(circle, #d8b98f 0%, #8a6a45 60%, transparent 61%); }
+</style>
+</head>
+<body>
+<!--SPRITE-->
+<div class="app" data-conv="pinned">
+  <header class="head drag">
+    <div class="head__group">
+      <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+        <g fill="none" stroke="var(--tx)" stroke-width="2.5" stroke-linecap="round">
+          <path d="M20.71 14.20 L11.35 9.06" /><path d="M20.71 17.80 L11.35 22.94" />
+          <circle cx="8.5" cy="7.5" r="3.25" /><circle cx="8.5" cy="24.5" r="3.25" />
+        </g>
+        <circle cx="24" cy="16" r="3.75" fill="var(--live)" />
+      </svg>
+      <button class="room-name" aria-haspopup="menu">Sala do Nick <svg class="i i--sm"><use href="#i-chevron-down"/></svg></button>
+      <button class="addr" title="Copiar endereço">26.12.4.8:47800 <svg class="i"><use href="#i-copy"/></svg></button>
+      <span class="tag">PIN <span class="tx-data" style="color:var(--tx)">482193</span></span>
+    </div>
+    <div class="head__group head__group--end">
+      <button class="presence-btn" aria-haspopup="dialog" aria-label="Pessoas na sala: 5">
+        <span class="cluster"><span class="cluster__nodes">
+          <span class="node" data-size="16" data-state="live"></span>
+          <span class="node" data-size="16" data-state="live"></span>
+          <span class="node" data-size="16" data-state="watching"></span>
+          <span class="node" data-size="16" data-state="present"></span>
+          <span class="node" data-size="16" data-state="watching"></span>
+        </span><span class="tx-data">5</span></span>
+      </button>
+      <button class="btn btn--quiet btn--sm" aria-label="1 aviso"><svg class="i i--sm tx-warn"><use href="#i-triangle-alert"/></svg><span class="tx-data tx-warn">1</span></button>
+      <button class="btn btn--quiet btn--icon btn--sm" aria-label="Conexão boa"><span class="health" data-level="ok"><span></span><span></span><span></span></span></button>
+      <span class="head__sep"></span>
+      <button class="btn btn--quiet btn--icon" aria-label="Configurações"><svg class="i"><use href="#i-settings"/></svg></button>
+      <button class="btn btn--quiet">Sair</button>
+      <div class="winctl">
+        <button class="winctl__btn" aria-label="Minimizar"><svg class="i"><use href="#i-minus"/></svg></button>
+        <button class="winctl__btn" aria-label="Maximizar"><svg class="i"><use href="#i-square"/></svg></button>
+        <button class="winctl__btn winctl__btn--close" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+  </header>
+  <div class="bands"></div>
+  <div class="room">
+    <div class="room__main">
+      <section class="program" aria-label="Transmissão">
+        <div class="stage" style="--cols:2">
+          <div class="tile" data-hud tabindex="0">
+            <div class="fake fake--a"></div>
+            <div class="tile__hud">
+              <div class="tile__who">
+                <span class="node" data-state="live" style="--n:24px">A</span>
+                <span><span class="tile__name">Ana</span> <span class="tile__what">· Valorant</span></span>
+              </div>
+              <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Rabiscar"><svg class="i i--sm"><use href="#i-pen-line"/></svg></button>
+              <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Reagir">
+                <svg class="i i--sm"><use href="#i-smile-plus"/></svg>
+              </button>
+              <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Laser"><svg class="i i--sm"><use href="#i-mouse-pointer-2"/></svg></button>
+              <button class="btn btn--icon btn--sm" aria-label="Volume 100%"><svg class="i i--sm"><use href="#i-volume-2"/></svg></button>
+              <button class="btn btn--icon btn--sm" data-hud-extra aria-label="Espiar"><svg class="i i--sm"><use href="#i-picture-in-picture-2"/></svg></button>
+              <button class="btn btn--icon btn--sm" data-hud-optional aria-label="Tela cheia"><svg class="i i--sm"><use href="#i-maximize"/></svg></button>
+              <button class="btn btn--icon btn--sm" aria-label="Mais"><svg class="i i--sm"><use href="#i-ellipsis"/></svg></button>
+              <button class="btn btn--icon btn--sm" aria-label="Parar de assistir"><svg class="i i--sm"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="tile__warn"><svg class="i i--sm"><use href="#i-triangle-alert"/></svg>Recepção instável</div>
+          </div>
+          <div class="tile" tabindex="0">
+            <div class="fake fake--b"></div>
+            <div class="tile__state">
+              <span class="node" data-size="56" data-state="paused">C</span>
+              <strong>Caio pausou a transmissão</strong>
+              <span class="tx-meta" style="color:var(--on-video-2)">A imagem volta quando ele retomar.</span>
+            </div>
+          </div>
+        </div>
+        <div class="peek" hidden></div>
+      </section>
+      <aside class="conv" aria-label="Conversa">
+        <div class="conv__head">
+          <h2 class="conv__title">Conversa</h2>
+          <button class="btn btn--quiet btn--icon btn--sm" aria-label="Espiar em vez de fixar"><svg class="i i--sm"><use href="#i-panel-right"/></svg></button>
+          <button class="btn btn--quiet btn--icon btn--sm" aria-label="Fechar conversa"><svg class="i i--sm"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="conv__list">
+          <div class="msg-day">Hoje</div>
+          <div class="msg-sys"><svg class="i"><use href="#i-log-out"/></svg>Duda entrou na sala</div>
+          <div class="msg">
+            <span class="node" style="--who:#7CC4FF">A</span>
+            <div class="msg__head"><span class="msg__author">Ana</span><span class="msg__time">21:02</span></div>
+            <p class="msg__body">alguém vem de sage? tô cansada de ser a única que cura</p>
+          </div>
+          <div class="msg msg--cont"><span></span><p class="msg__body">e liga o som, tá mudo</p></div>
+          <div class="msg">
+            <span class="node" style="--who:#C7A2FF">N</span>
+            <div class="msg__head"><span class="msg__author">Nick</span><span class="msg__time">21:03</span></div>
+            <p class="msg__body">vou de sage. Caio pausa aí que tua tela tá com o menu aberto</p>
+          </div>
+          <div class="msg-sys"><svg class="i"><use href="#i-pause"/></svg>Caio pausou a transmissão</div>
+          <div class="msg-new">Novas mensagens</div>
+          <div class="msg">
+            <span class="node" style="--who:#FFD166">B</span>
+            <div class="msg__head"><span class="msg__author">Bia</span><span class="msg__time">21:04</span></div>
+            <p class="msg__body">bora mais uma depois dessa? quem perder abre o truco na Mesa 😂</p>
+          </div>
+        </div>
+        <div class="compose">
+          <div class="compose__box">
+            <textarea class="compose__input" rows="1" placeholder="Mensagem para a sala"></textarea>
+            <button class="btn btn--quiet btn--icon btn--sm" aria-label="Emoji"><svg class="i i--sm"><use href="#i-smile"/></svg></button>
+            <button class="btn btn--quiet btn--icon btn--sm" aria-label="Imagem"><svg class="i i--sm"><use href="#i-image"/></svg></button>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <footer class="bus" aria-label="Fontes">
+      <div class="bus__sources" role="listbox" aria-orientation="horizontal" aria-label="Fontes ao vivo">
+        <div class="src" role="option" aria-selected="true" data-watching tabindex="0">
+          <span class="node" data-size="32" data-state="live">A</span>
+          <span class="src__text"><span class="src__name">Ana</span><span class="src__sub">Valorant</span></span>
+          <span class="cluster"><span class="cluster__nodes"><span class="node" data-size="16" data-state="watching"></span><span class="node" data-size="16" data-state="watching"></span></span></span>
+          <button class="btn btn--quiet btn--icon btn--sm src__drop" aria-label="Parar de assistir Ana"><svg class="i i--sm"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="src" role="option" aria-selected="true" data-watching data-paused tabindex="-1">
+          <span class="node" data-size="32" data-state="paused">C</span>
+          <span class="src__text"><span class="src__name">Caio</span><span class="src__sub">Pausada</span></span>
+          <span class="cluster"><span class="cluster__nodes"><span class="node" data-size="16" data-state="watching"></span></span></span>
+        </div>
+        <div class="src" role="option" aria-selected="false" tabindex="-1">
+          <span class="node" data-size="32" data-state="live">B</span>
+          <span class="src__text"><span class="src__name">Bia</span><span class="src__sub">Câmera</span></span>
+          <span></span>
+          <button class="btn btn--quiet btn--icon btn--sm src__add" aria-label="Ver junto"><svg class="i i--sm"><use href="#i-plus"/></svg></button>
+        </div>
+        <span class="bus__sep"></span>
+        <div class="src src--mesa" role="option" aria-selected="false" tabindex="-1">
+          <span class="src__glyph"></span>
+          <span class="src__text"><span class="src__name">Mesa</span><span class="src__sub">4 janelas</span></span>
+          <span class="cluster"><span class="cluster__nodes"><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span></span></span>
+        </div>
+      </div>
+      <span class="bus__sep"></span>
+      <div class="me">
+        <div class="me__live">
+          <span class="node" data-size="32" data-state="live">N</span>
+          <span class="src__text"><span class="src__name">Você</span><span class="src__sub">Tela 1 · 3 vendo</span></span>
+          <span class="me__ctl">
+            <button class="btn btn--quiet btn--icon btn--sm" aria-label="Pausar (Ctrl+Alt+P)"><svg class="i i--sm"><use href="#i-pause"/></svg></button>
+            <button class="btn btn--quiet btn--icon btn--sm" aria-label="Trocar fonte"><svg class="i i--sm"><use href="#i-arrow-left-right"/></svg></button>
+            <button class="btn btn--quiet btn--icon btn--sm" aria-label="Parar de transmitir"><svg class="i i--sm"><use href="#i-square"/></svg></button>
+          </span>
+        </div>
+      </div>
+      <span class="bus__sep"></span>
+      <div class="bus__end">
+        <button class="btn btn--quiet" aria-pressed="false"><svg class="i"><use href="#i-video"/></svg><span class="btn__label">Câmera</span></button>
+        <button class="btn btn--quiet" aria-pressed="true"><svg class="i"><use href="#i-message-square"/></svg><span class="btn__label">Conversa</span><span class="count">3</span></button>
+      </div>
+    </footer>
+  </div>
+</div>
+<div class="toast" role="status">Bia ligou a câmera. <button class="btn btn--secondary btn--sm">Ver junto</button></div>
+<template id="picker-layout">
+  <div class="picker__foot">
+    <div class="picker__opts">
+      <div class="picker__opt">
+        <span class="tx-tag">Qualidade</span>
+        <div class="picker__quality"></div>
+      </div>
+      <div class="picker__opt">
+        <span class="tx-tag">Som</span>
+        <label class="picker__switch"><input type="checkbox" class="switch" checked />Som do PC</label>
+        <label class="picker__switch"><input type="checkbox" class="switch" />Incluir o Discord</label>
+      </div>
+      <div class="picker__opt picker__permissions">
+        <span class="tx-tag">Na sua tela</span>
+        <label class="picker__switch"><input type="checkbox" class="switch" />Deixar a sala rabiscar</label>
+        <label class="picker__switch"><input type="checkbox" class="switch" checked />Deixar a sala reagir</label>
+        <small class="tx-meta">As reações aparecem por cima da sua tela.</small>
+      </div>
+    </div>
+  </div>
+</template>
+</body>
+</html>

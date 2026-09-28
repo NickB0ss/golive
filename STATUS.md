@@ -17,7 +17,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   salas da rede já marca a sala incompatível e desliga o botão antes do
   clique. Direção do aviso vem de `src/renderer/version.js` (quem tem de
   atualizar: você ou quem criou a sala).
-- PIN opcional de 4 dígitos na sala (opt-in em "Criar sala"): corta o
+- PIN opcional de 6 dígitos na sala (opt-in em "Criar sala"): corta o
   entrar-por-acidente numa rede compartilhada. Não é cripto.
 - Liberação de porta no firewall do Windows automática, com botão
   "Permitir acesso à rede" quando a elevação falha.
@@ -292,6 +292,13 @@ mediu:
 
 ## Próximos passos
 
+- **a Mesa está implementada, sem release** (PR #83 já está no `main`; este
+  acabamento saiu de `origin/main` na branch `feat/mesa-acabamento`, ainda sem
+  PR; ver "A Mesa" logo abaixo). A versão continua 0.21.0.
+  **Onde parou e o que falta: `docs/superpowers/plans/2026-09-26-passagem-mesa.md`.**
+  Falta o teste com 2+ PCs reais (`docs/testes/2026-09-25-roteiro-mesa.md`)
+  e o YouTube de verdade (`docs/testes/2026-09-24-roteiro-youtube-na-mesa.md`)
+  antes de virar versão;
 - **noite de teste com 2+ PCs reais, na 0.20.0** -- o teste que mais
   importa e derrubar o PC do lider de verdade, de preferencia no Tailscale
   (e o que a Frente A2 mudou; no laboratorio a migracao leva ~5 s com a
@@ -324,8 +331,203 @@ mediu:
   (selo de sala achada por sonda, aviso de amigo fora do ar) saiu junto com
   os Amigos salvos: a sonda so serve a migracao.
 
+### A Mesa (2026-09-25, sem release)
+
+Spec: `docs/superpowers/specs/2026-09-24-sala-em-dois-modos-design.md`.
+Formatos e decisões: `docs/superpowers/plans/2026-09-24-mesa-contrato.md`
+(a seção 0 manda sobre a spec). Feita por sete times em paralelo
+(Protocolo, Ferramentas, Jogos, Origem local, Vista, Janelas, Mídia) e
+integrada nesta branch.
+
+- **Transmissão e Mesa são vistas de cada pessoa** (decisão do Nicolas): o
+  seletor no topo não afeta ninguém. Na Transmissão nada da Mesa existe no
+  DOM nem chega pela rede; entrar na Mesa pede o retrato (`mesa-view on` →
+  `mesa-sync`).
+- **O líder tem duas travas**: "Só o líder mexe na mesa" e "Travar tamanho".
+  Jogar e dar play continuam livres.
+- **Janelas**: 32 tipos, mais tela e câmera. Ferramentas (nota, lista,
+  imagem e galeria do chat, link), noite de jogo (enquete, placar,
+  cronômetro, sorteio de times, dados e moeda, roleta, sons), jogos com
+  cadeiras (jogo da velha, Lig 4, damas na regra brasileira, xadrez pelo
+  `chess.js` 1.4.0 vendorizado), jogos com informação escondida (batalha
+  naval, pôquer Texas Hold'em, blackjack de cassino, truco, oito, dominó,
+  stop, quiz e Desenha, fichas de mentira) e
+  mídia (Vídeo do YouTube que toca junto, Rádio da sala, Ao vivo da Twitch,
+  Spotify Jam). Regra de cada tipo num módulo puro que roda no
+  servidor e nos clientes (`src/renderer/mesa-modules/`); desenho em
+  `src/renderer/mesa-janelas/`.
+- **Telas e câmeras viram janelas** postas pelo servidor; o mesmo `<video>`
+  do palco muda de casca, sem renegociar. Tela 2 s fora da vista manda
+  `watching:false`; a largura na tela vira teto de qualidade (`maxWidth` no
+  `view-state`).
+- **Origem local**: a janela principal e a Espiar abrem por
+  `http://localhost` (`protocol.handle`, sem porta aberta), para o YouTube
+  aceitar o embed (erro 153) e a Twitch o `parent`. O `localStorage` é
+  copiado uma vez do `file://`; `GOLIVE_ORIGEM=file` volta ao de antes.
+- **Bancos de prova** (rodam aqui, sem PC real): `tools/mesa-prints/harness.js
+  checar|prints|desempenho`, `tools/bancada-janelas/rodar.js`,
+  `mesa-real.js` e `leva2-real.js`, além de `xvfb-run -a npx electron
+  tools/midia/main.js` (YouTube e Twitch falsos).
+
+**Sessão local de 2026-09-26.** A seção 3.1 da passagem foi concluída:
+pôquer e blackjack cabem na janela; foram corrigidas as 25 chaves `}`
+perdidas em `mesa-janelas.css` e criada a regra de teste que fecha cada chave
+do CSS do renderer. Também entraram lugar fantasma do pôquer, e2e de segredo
+das duas cartas, travas no `mesa-count`/`welcome`, o líder muda as travas pelo `⋯` na
+Transmissão, cartão "Assistir" curto e `timeoutAt(state, ctx)` compatível.
+
+A seção 3.2 também foi concluída: `truco`, `oito`, `domino`, `stop`, `quiz`,
+`quadro` e `desenha`; todas secretas menos o Quadro, cada uma com e2e de
+segredo. O dominó segue o clássico de 28 peças; `pedras` e `quiz-perguntas`
+são apoios novos. A revisão final corrigiu permissões do Desenha, migração e
+saída de jogadores, troca de gestão no Stop, reset e trava do Truco e vez/
+abertura do Dominó. Nenhum vazamento de carta, peça ou palavra foi encontrado.
+
+Resultados: `npm test` 1845 passando; lint com 0 erros e 9 avisos antigos;
+`leva2-real.js` 97/0, `mesa-real.js` 31/0, `festa-real.js` 14/0,
+`rodar.js` 350/0, `poquer-rodar.js` 47/0, `rodar-blackjack.js` 131/0 e
+`harness.js checar` sem falhas. Boot do Electron real sem erro de console,
+com 32 módulos. A bancada visual gerou prints em
+`docs/prints/2026-09-26-leva2/`; usou Playwright 1.62.1 já instalado no PC do
+Nicolas.
+
+Riscos novos: a suíte falha cerca de 1 em 5 vezes sob carga (quiz e migração
+de cartas), mas passa isolada; em "Ver tudo", `.mesa-ctrls` cobre controles do
+topo de pôquer, blackjack, oito e dominó; a bancada visual ainda não cobriu
+truco e dominó com 4, oito com 3+ nem o fim do Desenha pelo relógio.
+
+**O que só o PC real prova:** YouTube e Twitch de verdade (o proxy daqui
+bloqueia os dois; contra os falsos, 23/23), a migração do `localStorage` numa
+atualização real da 0.21, "fora da vista para de receber" com WebRTC de
+verdade (log `[assistir] view-state ... watching=false` 2 s depois), o
+desempenho com GPU (no Chromium sem GPU a Mesa parada custa o mesmo que a
+Transmissão; zoom e "Ver tudo" pesam mais: `docs/2026-09-24-spike-desempenho-mesa.md`)
+e a mesa sobrevivendo à queda do líder.
+
+**Ficou de fora** (lista completa e ordem na passagem de 2026-09-26): a seção
+3.3 da pesquisa; PC real com as sete janelas novas (truco e dominó em duplas,
+oito com 3+, stop com votação, Desenha até o fim e Quiz completo); Kick;
+Spotify tocando no app (ver a pesquisa). Também falta decidir o conserto
+global dos controles cobertos em "Ver tudo".
+
+**Defeito antigo visto nos prints (já na 0.21.0):** o cartão "Assistir" da
+tela não escolhida corta o texto em cima quando fica na tira de miniaturas.
+
 Feitos em 2026-09-19: `release.yml` criado, 25 branches mescladas apagadas do
 remoto e os 2 releases-rascunho orfaos removidos.
+
+## Redesign "Sinal" — a interface refeita do zero (branch feat/redesign-greenfield)
+
+Pedido de 2026-09-27: redesenhar a experiência inteira como se a interface anterior não existisse. Substitui a
+identidade "Estúdio" das fases 2 e 3 (abaixo), que ficou como histórico. Docs em `docs/redesign-greenfield/`:
+`01`/`02` brief funcional (sem nada da UI antiga), `03` conceitos e a escolha, `04` design system, `05`
+arquitetura (spec congelada + desvios registrados no §13), prints em `prints/`.
+
+- **Conceito "Sinal" (mesa de corte)**: tudo o que se assiste é uma **fonte** num barramento embaixo (a tela e a
+  câmera de cada pessoa, e a Mesa); o palco é o programa. Clique assiste só aquela; Ctrl+clique soma; o × larga.
+  A sua fonte vira o bloco ao vivo com pausar/trocar/parar. Presença, menu da sala, avisos e saúde moram na
+  cabeça (que é a barra de título). Conversa fixada, espiando (mensagens surgem sobre o programa) ou fechada.
+  Modo teatro (T), painel de comando (Ctrl+K), atalhos C e M.
+- **Identidade do ícone**: tinta `#0E0E14`, giz `#EDEDF2`, vermelho-sinal `#FF4D4F` **só para ao vivo**; "fio"
+  `#8C92FF` (a matiz do fundo clareada) para foco, seleção e "você está assistindo"; perigo em laranja. Pessoas
+  são nós na geometria do ícone (anel = na sala, ponto = assistindo, disco vermelho = ao vivo, tracejado =
+  pausado). Fontes locais OFL: Sora (voz), Atkinson Hyperlegible Next (interface), Geist Mono (dados).
+- **Temas**: preset `sinal` é o novo padrão e `sinal-claro` foi criado; `marca` sem acento e o `estudio` não
+  lançado migram uma vez para `sinal` (`themeMigrationSinal`). O motor marca `data-tone` claro/escuro.
+- **Código**: CSS antigo (`style.css`, 4,8 mil linhas) apagado; o design system mora em `src/renderer/sinal/`
+  (`tokens`, `themes`, `base`, `components`, `shell`, `sheets`). `css-rules.test.js` trava: nenhuma cor solta
+  fora dos tokens, `--live` só em estado ao vivo, `z-index` só pela escala, `!important` só em `[hidden]`.
+  `comando.js` (puro, testado) monta o painel de comando.
+- **Ferramentas**: `tools/sinal-boot/rodar.js` sobe o app real e falha com erro de console;
+  `tools/sinal-prints/{inicio,sala}.js` fotografam os estados com servidor real (a da Sala audita o teclado);
+  `SINAL_TEMA=sinal-claro` fotografa no tema claro; `classes-orfas.js` lista classe sem estilo.
+- **Bugs achados no caminho**: `theme.js` atribuía a `dataset` (lança no DOM real); botão Reagir do barramento
+  sem ação; medidor de som sem barras; soltar imagem só funcionava na lista; teste e2e do Quiz lia um retrato
+  antigo da Mesa sob carga (intermitente).
+- **Revisão de design final (2026-09-28)**, com contexto limpo, sobre os prints do app real. Corrigido: palco
+  vazio ilegível no tema claro (o palco é escuro nos dois tons e redefine as primitivas); multi-fonte com destaque
+  escolhido pela tira e tela cheia que leva as outras fontes em miniatura; estado "no ar" único (câmera entra em
+  AO VIVO, tela pausada não diz "ao vivo", selo AO VIVO no HUD); "N assistindo"/"ninguém assistindo" no bloco
+  Você; estado das fontes mantido abaixo de 1024 px; "Parar" com rótulo; ícones crus da barra das janelas da
+  Mesa pintados de preto (sem `fill: none`); texto (Mesa com maiúscula, "Voltar ao palco", "Twitch", "Seu
+  nome", diálogo de PIN que diz a sala e "Entrar"); entradas/saídas agrupadas na conversa; alternâncias do menu
+  com polegar; estados vazios do Início com ação; prévia da câmera e Diagnóstico com estado honesto. Decisões em
+  `05-arquitetura.md` §13.
+
+## Redesign, fase 1 — fundação e Mesa (branch feat/redesign-mesa)
+
+Esta fase mudou a fundação visual e tirou os controles de cima do conteúdo das
+janelas da Mesa. A janela agora tem uma barra de 36 px com título, estado, "Sua vez", quem pôs, menu,
+tela cheia e "Tirar da mesa"; só essa barra arrasta. Em zoom abaixo de 60%,
+fica só o título e o clique duplo abre a tela cheia. O tamanho de cada janela
+mede o conteúdo e soma a barra.
+
+A Mesa ganhou uma área segura. Janelas novas e "Ver tudo" ficam fora da pílula
+de zoom e mapa, dos avisos e do dock. A navegação fica embaixo à esquerda, o
+mapa abre quando pedido e as pessoas na Mesa aparecem no cabeçalho. As camadas
+e sombras agora usam escalas próprias, com a forma "Macio".
+
+A roleta já nasce inteira em 640×440. Os 13 jogos mostram placar e vez na
+barra. A bancada carrega os 30 tipos e mostra a `view` dos secretos.
+
+Os números da verificação foram: `npm test` com 1869 passando; lint com 0
+erros e 9 avisos antigos; harness `checar` sem erros; `rodar.js` 350/0;
+`mesa-real.js` 31/0; `festa-real.js` 14/0; `leva2-real.js` 97/0;
+`poquer-rodar.js` 47/0; `rodar-blackjack.js` 131/0; `caber.js` 516/0; e boot
+no Electron real sem erros de console.
+
+Faltam a fase 2, com a casca da sala, e a fase 3, com lobby, Configurações e
+diálogos. Também falta testar com pessoas de verdade.
+
+## Redesign, fases 2 e 3 — identidade Estúdio (substituída pelo Sinal, acima; fica como histórico)
+
+Esta leva fecha o redesign da sala e leva a identidade Estúdio ao app inteiro.
+A sala agora tem três colunas: pessoas, palco e chat. A coluna de pessoas separa
+"AO VIVO" e "NA SALA", com presença, estado e ações. O palco ganhou barra em
+cada vídeo, reações, menu e o estado vazio "Ninguém em foco". A qualidade que
+você recebe ficou no menu da tela de outra pessoa.
+
+O lobby virou painel de controle, com as navegações Salas e Configurações. As
+Configurações viraram uma tela própria. O seletor de tela, os diálogos, o
+visualizador, o emoji, o splash e o Espiar receberam o mesmo acabamento. O
+tema padrão agora é Estúdio.
+
+Entraram, de `git log --oneline feat/redesign-mesa..HEAD`:
+
+- `33d7884` fix(app): correcoes da revisao final do redesign das fases 2 e 3
+- `430a243` fix(app): acabamento da passada visual no app real
+- `4379b7b` feat(app): seletor de tela, dialogos, menus, splash e Espiar no Estudio
+- `3a9f4fc` feat(config): Configuracoes viram tela propria com secoes na lateral
+- `c8a57c3` fix(bancada): telas espera as transicoes antes de medir e fotografar
+- `b2436b4` feat(lobby): painel de controle com barra lateral e salas em lista
+- `28e4721` feat(sala): chat em lista, cabecalho com endereco mono, dock e faixa no Estudio
+- `b13a86a` test(bancada): telas fora da sala no Estudio
+- `3f40bcb` feat(palco): barra em cada video, reacoes e menu em popover solido, palco vazio
+- `9d8d682` fix(sala): linha de presenca cabe na coluna
+- `dffb256` test(bancada): sala com tres pessoas no servidor real
+- `574cf8f` feat(sala): tres colunas, presencas e colunas recolhiveis
+- `f260e1f` fix(tema): janelas da Mesa com as fontes por token
+- `0ad60ce` feat(transmissao): qualidade que voce recebe, pelo teto que o view-state ja leva
+- `eaa6422` feat(tema): identidade Estudio como padrao, onAct pela luminancia e migracao do GoLive
+- `91e1823` chore(fontes): Instrument Sans e IBM Plex Mono locais (OFL)
+- `843095a` docs(plano): redesign do app inteiro no Estudio — 13 tarefas e jobs do Codex
+- `605bd4b` docs(spec): redesign das fases 2 e 3 juntas — o app inteiro no Estudio
+- `d3d618a` docs(spec): redesign fase 2 — sala em tres colunas e identidade Estudio
+
+Os números da verificação foram: `npm test` com 1914 passando; lint com 0
+erros e 9 avisos; harness `checar` sem erros; `bancada-janelas/rodar` 350/0;
+`mesa-real` 31/0; `festa-real` 14/0; `leva2-real` 97/0; `blackjack` 131/0;
+`pôquer` 47/0; `bancada-sala` 19/0; `teto-recebido` e `config-aberta` passam;
+`bancada-telas` 145/0; `caber` 516/0.
+
+Pendências:
+
+- **"N AO VIVO"** na lista de salas do lobby: a descoberta (beacon e `probe-ok`)
+  só leva o total de pessoas; exige um campo novo e opcional no protocolo — decisão do Nicolas.
+- **Avatares da linha de sala no lobby são marcadores sem iniciais**: a descoberta não diz quem está na sala.
+- **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
+  anterior a estas fases, contra a regra de não usar `filter`.
+- **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
 
 ## Lançado na 0.21.0 (2026-09-24)
 
@@ -831,10 +1033,11 @@ revisão de código; o roteiro é a validação pendente.
 - **Pausa vale para todo sender novo** (P1 da avaliação de 2026-09-07): toda
   criação de sender de tela passa por `offerOwnStreamTo()`, que já nasce
   pausado — reeleição do relay, entrada tardia, reconexão e troca de fonte.
-- **Ponteiro laser e reações** sobre a tela (`laser.js`, `reactions.js`): no
-  tile de quem assiste e na tela real de quem transmite, só com "Deixar a
-  sala rabiscar". Mensagens `laser`/`reaction` validadas campo a campo e com
-  limite no servidor (laser 30/s; reação: rajada de 5, depois 1 a cada 300 ms).
+- **Ponteiro laser e reações** sobre a tela (`laser.js`, `reactions.js`): laser
+  continua com "Deixar a sala rabiscar"; reações são liberadas separadamente
+  no diálogo de compartilhar (ligadas por padrão), aparecem no tile e no
+  overlay da tela real. Mensagens `laser`/`reaction` validadas campo a campo e
+  com limite no servidor (laser 30/s; reação: rajada de 5, depois 1 a cada 300 ms).
 - **Notificação "fulano ficou ao vivo"** do Windows com o app fora de foco
   (interruptor em Configurações, ligado por padrão; sem repetir em rajada nem
   ao entrar numa sala com gente já ao vivo) e **janela espiar** sempre no topo

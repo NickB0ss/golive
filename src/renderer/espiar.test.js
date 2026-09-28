@@ -38,7 +38,11 @@ const { PRESETS, tokensFor } = require('./theme');
 function readerFor(tokens) {
   const vars = {
     '--bg': tokens.surfaces.bg, '--tx': tokens.surfaces.tx, '--tx2': tokens.surfaces.tx2,
-    '--s2': tokens.surfaces.s2, '--s4': tokens.surfaces.s4, '--act': tokens.act,
+    '--s2': tokens.surfaces.s2, '--s3': tokens.surfaces.s3, '--act': tokens.act,
+    '--on-act': tokens.onAct || '#FFFFFF',
+    '--font-body': tokens.fontBody || "'Atkinson Hyperlegible Next', 'Segoe UI', system-ui, sans-serif",
+    '--font-display': tokens.fontDisplay || "'Sora', 'Segoe UI', system-ui, sans-serif",
+    '--font-data': tokens.fontMono || "'Geist Mono', 'Cascadia Mono', Consolas, monospace",
   };
   return (name) => ` ${vars[name] ?? ''}`;
 }
@@ -61,6 +65,33 @@ test('espiar segue o acento trocado por cima da predefinicao', () => {
   assert.equal(vars['--spy-bg'], PRESETS.paper.surfaces.bg);
 });
 
+test('espiar leva as fontes do tema para a janela auxiliar', () => {
+  // Na janela principal a fonte de dados e --font-data; no Espiar ela chega como --font-mono.
+  const principal = {
+    '--font-body': "'Work Sans', system-ui, sans-serif",
+    '--font-display': "'Outfit', system-ui, sans-serif",
+    '--font-data': "'IBM Plex Mono', monospace",
+  };
+  const vars = spyThemeVars((name) => principal[name] || '#123456');
+  const fontesTransportadas = Object.fromEntries(
+    Object.entries(vars).filter(([name]) => name.startsWith('--font-'))
+  );
+  assert.deepEqual(fontesTransportadas, {
+    '--font-body': principal['--font-body'],
+    '--font-display': principal['--font-display'],
+    '--font-mono': principal['--font-data'],
+  });
+  assert.deepEqual(sanitizeSpyTheme({
+    '--font-body': "'Work Sans', system-ui, sans-serif",
+    '--font-display': "'Outfit', system-ui, sans-serif",
+    '--font-mono': "'IBM Plex Mono', monospace",
+  }), {
+    '--font-body': "'Work Sans', system-ui, sans-serif",
+    '--font-display': "'Outfit', system-ui, sans-serif",
+    '--font-mono': "'IBM Plex Mono', monospace",
+  });
+});
+
 test('espiar ignora token vazio e valor que nao e cor', () => {
   const vars = spyThemeVars((name) => ({ '--bg': '', '--tx': 'red; background: url(x)' })[name] ?? '#123456');
   assert.equal(vars['--spy-bg'], undefined);
@@ -74,13 +105,36 @@ test('espiar ignora token vazio e valor que nao e cor', () => {
 
 test('espiar.html abre com o tema GoLive e usa cada cor do tema', () => {
   const html = fs.readFileSync(path.join(__dirname, 'espiar.html'), 'utf8');
-  const defaults = spyThemeVars(readerFor(PRESETS.marca));
+  const defaults = spyThemeVars(readerFor(PRESETS.sinal));
   for (const [name, value] of Object.entries(defaults)) {
-    const declared = html.match(new RegExp(`${name}:\\s*(#[0-9a-f]+)`, 'i'));
+    const declared = html.match(new RegExp(`${name}:\\s*([^;]+);`, 'i'));
     assert.ok(declared, `espiar.html precisa declarar ${name}`);
-    assert.equal(declared[1].toUpperCase(), value.toUpperCase(), `${name} padrao difere do tema GoLive`);
+    assert.equal(
+      declared[1].trim().toUpperCase(),
+      value.toUpperCase(),
+      `${name} padrao difere do tema GoLive`
+    );
     assert.match(html, new RegExp(`var\\(${name}\\)`), `${name} declarada e nunca usada`);
   }
   const lib = html.indexOf('src="espiar.js"');
   assert.ok(lib > -1 && lib < html.indexOf('src="espiar-page.js"'), 'espiar.js precisa carregar antes de espiar-page.js');
+});
+
+test('Espiar deixa apenas o video e revela a faixa de identidade com o mouse', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'espiar.html'), 'utf8');
+  const page = fs.readFileSync(path.join(__dirname, 'espiar-page.js'), 'utf8');
+  assert.match(html, /<video id="video"/);
+  assert.match(html, /class="spy-node"/);
+  assert.match(html, /body\.spy-controls \.tile-bar/);
+  assert.doesNotMatch(html, /id="state"/);
+  assert.match(page, /function showControls\(\)/);
+  assert.match(page, /pointermove/);
+});
+
+test('espiar recusa fonte com parenteses, barra ou aspas duplas', () => {
+  assert.deepEqual(sanitizeSpyTheme({
+    '--font-body': "'Instrument Sans', system-ui",
+    '--font-display': "url('x.woff2')",
+    '--font-mono': '"Mono", monospace',
+  }), { '--font-body': "'Instrument Sans', system-ui" });
 });

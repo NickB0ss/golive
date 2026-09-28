@@ -11,7 +11,7 @@ test('separador de dia reseta agrupamento quando e inserido', () => {
   const separator = /function appendDaySeparatorIfNeeded\(ts\) \{([\s\S]*?)\n {2}\}/.exec(uiSource);
   assert.ok(separator, 'appendDaySeparatorIfNeeded nao encontrado em ui.js');
   assert.match(separator[1], /if \(key === lastChatDayKey\) return;/);
-  assert.match(separator[1], /lastChatDayKey = key;[\s\S]*lastChatAuthorId = null;/);
+  assert.match(separator[1], /lastChatDayKey = key;[\s\S]*lastChatEntry = null;/);
 
   const appendEntry = /function appendEntry\(entry\) \{([\s\S]*?)\n {2}\}/.exec(uiSource);
   assert.ok(appendEntry, 'appendEntry nao encontrado em ui.js');

@@ -2,7 +2,13 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, conndiag, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, viewhold, warnings: warningsModule } = window.GoLive;
+  const {
+    config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status,
+    autoquality, rxstats, conndiag, peerquality, tetoRecebido, encodehealth, version, emoji, chatmedia,
+    annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession,
+    migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
+    health, audiometer, viewhold, warnings: warningsModule, reactionsPermission,
+  } = window.GoLive;
   const warningRegistry = warningsModule.create();
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
@@ -73,6 +79,22 @@
   let retryTimer = null;
   let myId = null;
   let ownerId = null; // 'me' quando EU sou o dono, ou o id do peer marcado owner:true
+  // Mesa (spec 2026-09-24): a vista e de cada pessoa. `mesaView` e o
+  // controlador de mesa-view.js (criado mais abaixo, junto dos outros
+  // ganchos da grade); `mesaViewers` e quem esta na vista Mesa agora e
+  // `mesaCount` quantas janelas a mesa tem e `mesaLocks` as travas -- as tres
+  // coisas chegam mesmo a quem esta na Transmissao (welcome, mesa-viewers,
+  // mesa-count).
+  let mesaView = null;
+  let mesaPor = null; // "Pôr na mesa" do chat e da Galeria (mesa-por.js)
+  // As imagens que o historico do chat ainda guarda (espelho das regras do
+  // servidor), por id: e onde as janelas `imagem` e `galeria` da Mesa acham
+  // a imagem, que nunca vai no estado da janela.
+  const chatImagens = window.GoLive.chatImagensLib.createStore({ isImage: window.GoLive.chatmedia.isImageDataUrl });
+  window.GoLive.chatImagens = chatImagens;
+  let mesaViewers = [];
+  let mesaCount = 0;
+  let mesaLocks = null;
   let joinedAtMs = null;
   let notifyTracker = livenotify.createTracker();
   let roomId = null;
@@ -264,6 +286,9 @@
   // antes de a captura comecar, e valido so enquanto ela durar (spec de
   // 2026-09-04, secao 5.1). Viaja no 'broadcast-state'.
   let shareAnnotations = false;
+  // Reacoes seguem o mesmo ciclo da transmissao de tela, mas nao o da
+  // camera: a permissao e decidida no seletor e some quando a tela para.
+  let shareReactions = false;
   // Funcoes de parada das capturas nativas de audio por processo (WASAPI
   // Process Loopback) ligadas ao compartilhamento de tela atual, se houver
   // -- ver startShare/stopShare. Vazio quando nao ha nenhuma rodando (sem
@@ -537,8 +562,14 @@
 
     const st = peerQuality.get(`${peerId}:${baseKind}`);
     const steps = st?.steps || 0;
-    if (!steps) return floor;
-    return config.qualityFromPreset(config.degradePreset(floor.preset, steps));
+    const degraded = steps ? config.degradePreset(floor.preset, steps) : floor.preset;
+    // Mesa: a janela desta tela na vista de quem assiste tem N pixels de
+    // largura -- nao ha por que codificar mais que isso (so a resolucao
+    // desce; o fps fica).
+    const width = baseKind === 'screen' ? currentSession?.mesh?.peers.get(peerId)?.viewWidth?.screen ?? null : null;
+    const capped = peerquality.capForWidth(degraded, width, config.QUALITY_PRESETS);
+    if (capped === floor.preset) return floor;
+    return config.qualityFromPreset(capped);
   }
 
   /** Reaplica o teto de encode E o formato da captura nas conexoes abertas
@@ -713,7 +744,30 @@
       }
     }
 
-    if (cameraStream) mesh.applyEncoding(qualityFor('camera'), 'camera');
+    if (cameraStream) {
+      for (const peerId of mesh.peers.keys()) applyCameraEncoding(mesh, peerId);
+    }
+  }
+
+  /** Encode da minha camera para UM espectador: o de sempre, ou com teto
+   * pela largura da janela dela na Mesa dele (peerquality.cameraEncodingFor).
+   * Um sender por conexao, entao o teto de um nao muda o dos outros. */
+  function cameraEncodingForPeer(peerId) {
+    const quality = qualityFor('camera');
+    const width = currentSession?.mesh?.peers.get(peerId)?.viewWidth?.camera ?? null;
+    const settings = cameraStream?.getVideoTracks?.()[0]?.getSettings?.() || {};
+    const e = peerquality.cameraEncodingFor(quality, Number(settings.width) || quality.width, width, config.scaleFactorFor);
+    return { quality: { ...quality, bitrate: e.bitrate }, scaleDownBy: e.scaleDownBy };
+  }
+
+  // Fator que cada sender de camera recebeu por ultimo. Sender novo (offerTo)
+  // nasce em 1: startCamera e a re-oferta do welcome reaplicam logo depois.
+  const cameraScaleApplied = new Map(); // peerId -> scaleDownBy
+
+  function applyCameraEncoding(mesh, peerId) {
+    const e = cameraEncodingForPeer(peerId);
+    cameraScaleApplied.set(peerId, e.scaleDownBy);
+    mesh.applyEncodingToPeer(peerId, e.quality, 'camera', e.scaleDownBy);
   }
 
   /** Liga/desliga o modo malha degradada de um kind. So faz algo na
@@ -784,6 +838,21 @@
       avatarImg.src = '';
       avatarFallback.textContent = (cfg.name || '?').trim().charAt(0).toUpperCase() || '?';
     }
+    renderHomeIdentity();
+  }
+
+  function renderHomeIdentity() {
+    const greeting = $('home-greeting');
+    const whoami = $('home-whoami');
+    const nameInput = $('home-name');
+    if (!greeting || !whoami || !nameInput) return;
+    const name = (cfg.name || '').trim();
+    const hour = new Date().getHours();
+    const salutation = hour >= 5 && hour <= 11 ? 'Bom dia' : hour >= 12 && hour <= 17 ? 'Boa tarde' : 'Boa noite';
+    greeting.textContent = name ? `${salutation}, ${name}.` : 'Como seus amigos vão te ver?';
+    greeting.hidden = false;
+    whoami.hidden = Boolean(name);
+    if (document.activeElement !== nameInput) nameInput.value = name;
   }
   renderUserPanel();
 
@@ -848,6 +917,47 @@
     });
   }
 
+  async function saveAvatar(file) {
+    if (!file) return;
+    if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
+      showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToAvatar(file);
+      cfg = { ...cfg, avatar: dataUrl };
+      persist();
+      renderUserPanel();
+    } catch (err) {
+      showToast(err?.message === AVATAR_TOO_LARGE
+        ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
+        : 'Não consegui processar essa imagem.');
+    }
+  }
+
+  const homeAvatarButton = $('home-avatar');
+  const homeAvatarInput = $('home-avatar-input');
+  const homeNameInput = $('home-name');
+  homeAvatarButton?.addEventListener('click', () => homeAvatarInput?.click());
+  homeAvatarInput?.addEventListener('change', (event) => {
+    const [file] = event.target.files;
+    event.target.value = '';
+    void saveAvatar(file);
+  });
+  function saveHomeName() {
+    const name = homeNameInput?.value.trim() || '';
+    if (name === cfg.name) return;
+    cfg = { ...cfg, name };
+    persist();
+    renderUserPanel();
+  }
+  homeNameInput?.addEventListener('blur', saveHomeName);
+  homeNameInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    saveHomeName();
+  });
+
   function openSettingsOnProfile() {
     openSettings();
     document.querySelector('.settings-cat[data-cat="profile"]')?.click();
@@ -861,22 +971,7 @@
         persist();
         renderUserPanel();
       },
-      onAvatarChange: async (file) => {
-        if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
-          showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
-          return;
-        }
-        try {
-          const dataUrl = await resizeImageToAvatar(file);
-          cfg = { ...cfg, avatar: dataUrl };
-          persist();
-          renderUserPanel();
-        } catch (err) {
-          showToast(err?.message === AVATAR_TOO_LARGE
-            ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
-            : 'Não consegui processar essa imagem.');
-        }
-      },
+      onAvatarChange: saveAvatar,
       onCameraDeviceChange: (deviceId) => {
         cfg = { ...cfg, camera: { ...cfg.camera, deviceId } };
         persist();
@@ -914,12 +1009,20 @@
         cfg = { ...cfg, themes: lista };
         persist();
       },
+      isLive: () => Boolean(localStream),
       onToast: showToast,
     });
   }
 
   $('btn-open-settings').addEventListener('click', openSettings);
   $('btn-room-settings').addEventListener('click', openSettings);
+
+  /** Diagnostico: os numeros de cada fonte (saude da cabeca, menu da sala). */
+  function openDiagnostics() {
+    openSettings();
+    document.querySelector('.settings-cat[data-cat="stats"]')?.click();
+  }
+  $('btn-room-health').addEventListener('click', openDiagnostics);
 
   async function applyLiveQuality() {
     const track = captureTrack || localStream.getVideoTracks()[0]; // ver reapplyAudienceQuality
@@ -968,8 +1071,10 @@
         // o formulario de entrar-por-endereco ja preenchido, com o foco no
         // campo de PIN. Quem criou a sala passa o PIN por fora (voz, chat).
         if (room.protected) {
-          ui.dialogs.openJoinRoom({ address: room.address, showPinField: true, onConnect: handleJoinConnect });
-          $('setup-error').textContent = 'Essa sala pede um PIN — peça pra quem criou.';
+          // O campo de PIN ja explica de onde ele vem; nao e um erro.
+          ui.dialogs.openJoinRoom({
+            address: room.address, showPinField: true, onConnect: handleJoinConnect, roomName: room.name || room.hostName || '',
+          });
           return;
         }
         joinRoom(room.address, cfg.name);
@@ -1114,10 +1219,10 @@
     $('update-bar-title').textContent = titulo;
     $('update-bar-sub').textContent = sub;
     btnUpdateAvailable.textContent = rotulo;
-    btnUpdateAvailable.disabled = estado === 'baixando';
+    btnUpdateAvailable.hidden = estado === 'baixando';
     $('update-bar-progress').classList.toggle('hidden', estado !== 'baixando');
     if (estado === 'baixando') {
-      $('update-bar-fill').style.width = `${Math.max(0, Math.min(100, progress ?? 0))}%`;
+      $('update-bar-progress').style.setProperty('--pct', `${Math.max(0, Math.min(100, progress ?? 0))}%`);
     }
     updateBarEl.classList.remove('hidden');
   }
@@ -1191,15 +1296,31 @@
   }
 
   let toastTimer = null;
-  function showToast(msg, ms = 4000) {
+  let toastDeadline = 0;
+  let toastRemaining = 0;
+  function hideToast() {
+    $('toast').classList.add('hidden');
+    toastTimer = null;
+  }
+  function showToast(msg, ms = 5000) {
     $('toast-text').textContent = msg;
     $('toast').classList.remove('hidden');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      $('toast').classList.add('hidden');
-      toastTimer = null;
-    }, ms);
+    toastRemaining = ms;
+    toastDeadline = Date.now() + ms;
+    toastTimer = setTimeout(hideToast, ms);
   }
+  $('toast').addEventListener('mouseenter', () => {
+    if (!toastTimer) return;
+    toastRemaining = Math.max(0, toastDeadline - Date.now());
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  });
+  $('toast').addEventListener('mouseleave', () => {
+    if ($('toast').classList.contains('hidden') || toastTimer) return;
+    toastDeadline = Date.now() + toastRemaining;
+    toastTimer = setTimeout(hideToast, toastRemaining);
+  });
 
   $('btn-refresh-discovery').addEventListener('click', () => {
     const btn = $('btn-refresh-discovery');
@@ -1231,8 +1352,35 @@
     });
   }
 
-  $('btn-join-address').addEventListener('click', () => {
-    ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
+  $('join-address').addEventListener('input', () => $('join-address').removeAttribute('aria-invalid'));
+  $('join-address-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const address = $('join-address').value.trim();
+    const valido = /^(?:wss?:\/\/)?[^\s:]+:\d+$/.test(address);
+    $('join-address').setAttribute('aria-invalid', String(!valido));
+    if (!address) {
+      showLobbyError('Digite o endereço da sala, no formato IP:porta.');
+      return;
+    }
+    if (!valido) {
+      showLobbyError('Esse endereço não está no formato IP:porta (ex.: 26.0.0.5:47800).');
+      return;
+    }
+    showLobbyError('');
+    // Direto, sem dialogo: ele so aparece se a sala pedir PIN (o joinRoom o
+    // reabre com o campo depois do 'join-denied').
+    handleJoinConnect({ address });
+  });
+
+  $('btn-copy-network')?.addEventListener('click', () => {
+    const address = $('lobby-net-addr')?.textContent?.trim();
+    if (!address) return;
+    navigator.clipboard.writeText(address).then(() => {
+      const button = $('btn-copy-network');
+      button.setAttribute('aria-label', 'Copiado');
+      showToast('Copiado', 1500);
+      setTimeout(() => button.setAttribute('aria-label', 'Copiar endereço'), 1500);
+    }).catch(() => {});
   });
 
   // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto
@@ -1455,6 +1603,9 @@
       initialTransferredTo: migration.newOwnerClientId || null,
       initialBans: migration.bans,
       initialChatHistory: migration.chat.length ? migration.chat : localChatTail,
+      // Mesa: o retrato que o servidor antigo mandou no room-migrating.
+      // Queda abrupta nao tem retrato: a mesa recomeca vazia.
+      initialMesa: migration.mesa || null,
       // P1: o sucessor preserva o nome da sala em vez de a sala nova cair
       // no proprio nome de quem assumiu.
       roomName: migration.roomName || currentRoomName || null,
@@ -1690,7 +1841,9 @@
       stopNativeAudioFns.forEach((stop) => stop());
       stopNativeAudioFns = [];
       shareAnnotations = false;
+      shareReactions = false;
       ui.annotations.setSurface('me', { allowed: false });
+      ui.reactions.setSurface('me', { allowed: false });
       ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
       stopAnnotOverlay();
       ui.grid.removeTile('me');
@@ -1723,6 +1876,7 @@
     }
     tileSource.clear();
     viewerHealth.clear();
+    for (const peerId of watchedScreens) tetoRecebido.limpar(`${peerId}:screen`);
     watchedScreens.clear();
     autoWatchSuppressed = false;
     notifyTracker = livenotify.createTracker();
@@ -1829,6 +1983,7 @@
       myId: 'me',
       onModerate: (action, targetId, targetName) => sendModerate(action, targetId, targetName),
       healthTags,
+      mesaPeople: new Set(mesaViewers),
     });
     const people = (session ? session.mesh.peers.size : 0) + (currentSelfInfo() ? 1 : 0);
     $('room-people-count').textContent = String(people);
@@ -1844,7 +1999,7 @@
     const live = Boolean(localStream)
       || Array.from(session?.mesh.peers.values() ?? []).some((p) => p.live);
     const effective = qualityFor('screen');
-    ui.stageHeader.setStatus(status.roomStatus({
+    const roomHealth = status.roomStatus({
       inRoom: Boolean(session),
       // orphanSession so existe quando a sinalizacao caiu com a midia
       // viva -- e exatamente o estado "reconectando" (H1).
@@ -1857,7 +2012,17 @@
       meshFallback: Boolean(meshFallback.screen),
       softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
       effectivePreset: effective.preset,
-    }));
+    });
+    ui.stageHeader.setStatus(roomHealth);
+    const health = $('btn-room-health')?.querySelector('.health');
+    if (health) {
+      // Saude e da CONEXAO: sala sem ninguem ao vivo ou pausada esta bem.
+      const nivel = { offline: 'none', reconnecting: 'bad', degraded: 'warn' }[roomHealth.level] || 'ok';
+      health.dataset.level = nivel;
+      const rotulo = { none: 'Sem conexão', bad: 'Reconectando…', warn: `Qualidade reduzida: ${roomHealth.label}` };
+      $('btn-room-health').setAttribute('aria-label', rotulo[nivel] || 'Conexão boa');
+      $('btn-room-health').title = rotulo[nivel] || 'Conexão boa';
+    }
     // Chat: o compose so aceita texto enquanto a sinalizacao esta viva. Com a
     // sessao orfa (H1) `currentSession` e null e o `currentSession?.sig.send`
     // do onSend vira no-op silencioso -- entao desabilita o campo e mostra a
@@ -2049,7 +2214,7 @@
               appVersion: appVersion || undefined,
             });
           });
-          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
+          ui.stageHeader.set({ name: `Sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           window.golive.setRoomActive?.(true);
           if (attempts > 0) $('setup-error').textContent = '';
           showLobbyError(''); // limpa erro/countdown de reconexao pendente
@@ -2587,6 +2752,11 @@
         showToast('Não consegui preparar essa imagem.');
       }
     },
+    // "Pôr na mesa" num link do YouTube ou numa imagem do chat.
+    onPut: (what) => {
+      if (what?.type === 'youtube') mesaPor?.put('youtube', { kind: 'load', url: what.url });
+      else if (what?.type === 'imagem') mesaPor?.put('imagem', { kind: 'set', msgId: what.msgId });
+    },
     getEmojiRecents: () => cfg.emojiRecents,
     onEmojiUsed: (char) => {
       cfg = { ...cfg, emojiRecents: emoji.pushRecent(cfg.emojiRecents, char) };
@@ -2707,7 +2877,7 @@
    * sobre o que esta sendo capturado, do lado que decide. */
   async function startAnnotOverlay() {
     annotOverlayOn = false;
-    if (!shareAnnotations) return;
+    if (!shareAnnotations && !shareReactions) return;
     const r = await window.golive.startAnnotOverlay?.();
     if (r?.ok) {
       annotOverlayOn = true;
@@ -2719,11 +2889,12 @@
       window.golive.sendAnnotOverlayLoad?.({ surface: minhaTela, items: ui.annotations.snapshot(minhaTela) });
       return;
     }
-    if (r?.reason === 'window') {
-      showToast('Compartilhando uma janela: os rabiscos aparecem no app, não na tela.');
-    } else if (r?.reason === 'display') {
-      showToast('Não achei o monitor pra desenhar os rabiscos; eles ficam só no app.');
-    }
+    const toast = reactionsPermission.overlayUnavailableToast({
+      reason: r?.reason,
+      annotations: shareAnnotations,
+      reactions: shareReactions,
+    });
+    if (toast) showToast(toast);
   }
 
   function stopAnnotOverlay() {
@@ -2742,23 +2913,34 @@
    * onde aterrissar -- as coordenadas sao do quadro da camera, nao do
    * monitor. */
   function pushToAnnotOverlay(surfaceId, from, op) {
-    if (!annotOverlayOn) return;
+    if (!annotOverlayOn || !shareAnnotations) return;
     const { ownerId, kind } = annotate.parseSurface(surfaceId);
     if (String(ownerId) !== String(myId) || kind !== 'screen') return;
     window.golive.sendAnnotOverlayOp?.({ surface: String(surfaceId), from: String(from), op });
   }
 
-  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: MESMA
-   * regra (so a MINHA tela, so `kind === 'screen'`, so com o overlay ligado
-   * -- que so liga com `shareAnnotations`, a mesma permissao do rabisco;
-   * ver a spec de 2026-09-12, secao 2). Canal PROPRIO (`overlay:fx`), nao o
-   * `overlay:op` do rabisco: sao efeitos efemeros, sem a semantica de lousa
-   * persistente que aquele canal carrega. */
+  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: os dois
+   * ficam na MINHA tela, mas laser respeita o rabisco e reacao tem permissao
+   * propria. Canal PROPRIO (`overlay:fx`), sem a semantica persistente da
+   * lousa. */
   function pushToFxOverlay(kind, surfaceId, from, payload) {
     if (!annotOverlayOn) return;
+    if (kind === 'laser' && !shareAnnotations) return;
+    if (kind === 'reaction' && !shareReactions) return;
     const { ownerId, kind: surfaceKind } = annotate.parseSurface(surfaceId);
     if (String(ownerId) !== String(myId) || surfaceKind !== 'screen') return;
     window.golive.sendFxOverlay?.({ kind, surface: String(surfaceId), from: String(from), ...payload });
+  }
+
+  // Defesa em profundidade: a acao some do HUD, mas uma mensagem atrasada
+  // ou forjada ainda nao pode produzir reacao numa tela que a dona fechou.
+  function reactionAllowedForSurface(surfaceId) {
+    const { ownerId, kind } = annotate.parseSurface(surfaceId);
+    const isOwner = String(ownerId) === String(myId);
+    const allowed = isOwner
+      ? shareReactions
+      : currentSession?.mesh?.peers.get(String(ownerId))?.reactions === true;
+    return reactionsPermission.canReceiveScreenReaction({ kind, allowed });
   }
 
   function dropOverlayFxAuthor(peerId) {
@@ -2766,45 +2948,60 @@
     window.golive.sendFxOverlay?.({ kind: 'drop-author', from: String(peerId) });
   }
 
-  // Recolher a coluna direita (membros + banidos + chat). O CSS de
-  // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
-  // por teclado enquanto invisiveis); aqui a affordance do botao acompanha o
-  // estado -- title e o chevron giram.
-  $('btn-toggle-side').addEventListener('click', () => {
-    const collapsed = $('room-side').classList.toggle('collapsed');
-    const btn = $('btn-toggle-side');
-    btn.classList.toggle('collapsed', collapsed);
-    btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
-    btn.setAttribute('aria-label', btn.title);
-  });
+  const CONV_PREF = 'golive.sala.conversa';
+  let convManual = null;
+  // Declarado antes do primeiro setConversation(null) da carga: com a preferencia salva 'pinned', ele zera o
+  // contador ja na carga, e um `let` mais abaixo dava ReferenceError de TDZ e abortava o resto da inicializacao
+  // (o relayRetry nunca era criado e "Criar sala" quebrava).
+  let naoLidas = 0;
 
-  // As abas mantem um painel por vez para a coluna continuar utilizavel em janela baixa.
-  const roomTabs = [...document.querySelectorAll('.room-tab')];
-  function selectRoomTab(tab) {
-    for (const candidate of roomTabs) {
-      const selected = candidate === tab;
-      candidate.setAttribute('aria-selected', String(selected));
-      candidate.tabIndex = selected ? 0 : -1;
-      $(`${candidate.getAttribute('aria-controls')}`).hidden = !selected;
+  function setConversation(mode, { persist = false } = {}) {
+    const app = $('app');
+    const next = mode || window.GoLive.roomUi.modoConversa($('room-view').clientWidth, convManual);
+    app.dataset.conv = next;
+    $('btn-conv-toggle').setAttribute('aria-pressed', String(next !== 'closed'));
+    if (next === 'pinned') {
+      naoLidas = 0;
+      $('chat-unread-dot').classList.add('hidden');
+      $('btn-conv-toggle').setAttribute('aria-label', 'Conversa');
     }
-    if (tab.id === 'tab-chat') $('chat-unread-dot').classList.add('hidden');
+    // Fixada ou fechada: o que estava espiando some junto.
+    if (next !== 'peek') $('chat-peek').replaceChildren();
+    if (!persist) return;
+    convManual = next;
+    try {
+      localStorage.setItem(CONV_PREF, next);
+    } catch (error) {
+      console.warn('Não foi possível salvar a preferência da conversa.', error);
+    }
   }
+
+  try {
+    const saved = localStorage.getItem(CONV_PREF);
+    if (['pinned', 'peek', 'closed'].includes(saved)) convManual = saved;
+  } catch (error) {
+    console.warn('Não foi possível ler a preferência da conversa.', error);
+  }
+  new ResizeObserver(() => setConversation(null)).observe($('room-view'));
+  setConversation(null);
+
+  // Fixada fecha; espiando ou fechada abre fixada (05 §3.6).
+  $('btn-conv-toggle').addEventListener('click', () => {
+    setConversation($('app').dataset.conv === 'pinned' ? 'closed' : 'pinned', { persist: true });
+  });
+  $('btn-conv-peek').addEventListener('click', () => setConversation('peek', { persist: true }));
+  document.addEventListener('golive:conv-open', () => setConversation('pinned', { persist: true }));
+  $('btn-conv-close').addEventListener('click', () => setConversation('closed', { persist: true }));
   function resetRoomTabs() {
-    selectRoomTab($('tab-chat'));
+    setConversation(null);
     $('chat-unread-dot').classList.add('hidden');
   }
-  roomTabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => selectRoomTab(tab));
-    tab.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? roomTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + roomTabs.length) % roomTabs.length;
-      selectRoomTab(roomTabs[next]);
-      roomTabs[next].focus();
-    });
-  });
   document.addEventListener('golive:chat-received', () => {
-    if ($('tab-people').getAttribute('aria-selected') === 'true') $('chat-unread-dot').classList.remove('hidden');
+    if ($('app').dataset.conv === 'pinned') return;
+    naoLidas += 1;
+    $('chat-unread-dot').textContent = naoLidas > 99 ? '99+' : String(naoLidas);
+    $('chat-unread-dot').classList.remove('hidden');
+    $('btn-conv-toggle').setAttribute('aria-label', `Conversa, ${naoLidas} ${naoLidas === 1 ? 'mensagem nova' : 'mensagens novas'}`);
   });
 
   // ---------- Desconectar ----------
@@ -3096,7 +3293,7 @@
     const origem = sourceId || peerId;
     const tileId = baseKind === 'camera' ? `cam-${origem}` : String(origem);
     const originPeer = session.mesh.peers.get(origem);
-    const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+    const querendo = wantsMedia(baseKind, origem);
     // A decisao pura do vigia separa ausencia legitima de demanda da
     // carencia: nesta ultima o sender ainda esta reservado, mas o relogio
     // pausa para uma piscada nao apagar o progresso acumulado.
@@ -3416,7 +3613,9 @@
         // O servidor novo nasce sem estado live. Todo transmissor o anuncia
         // no welcome da migracao para inclusive o ultimo entrar ser visivel.
         if (localStream && sig.isOpen()) {
-          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null });
+          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+            reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+            limit: myEncodeHealth?.limit ?? null });
         }
         // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
         if (!plan.adopt) {
@@ -3424,6 +3623,7 @@
             ? entry
             : { ...entry, avatar: mesh.peers.get(entry.from)?.avatar || (entry.from === myId ? cfg.avatar : null) }));
           ui.chat.setHistory(chatHistory);
+          chatImagens.setHistory(msg.chat || []);
           localChatTail = chatHistory.slice(-50);
         }
         if (msg.owner) {
@@ -3468,6 +3668,8 @@
               console.error(`[reconexao] re-oferta de camera para ${p.id} falhou:`, err);
             }
           }
+          // Senders novos nascem em fator 1; o teto da Mesa (se houver) volta.
+          for (const p of welcomePeers) if (offerPeerIds.has(String(p.id))) applyCameraEncoding(mesh, String(p.id));
           broadcastWatchers('camera');
           recomputeTree('camera');
         }
@@ -3493,12 +3695,26 @@
         // updateEncoderWarning nunca mais dispara. startStatsLoop chama
         // stopStatsLoop antes, entao e seguro chamar mesmo ja parado.
         if (localStream || cameraStream) startStatsLoop();
+        // Mesa: o welcome nao traz a mesa, so quantas janelas e quem esta
+        // nela. Quem estava na vista Mesa pede o retrato de novo (depois de
+        // QUALQUER welcome -- o servidor tira a pessoa da Mesa ao retomar).
+        mesaCount = Number.isInteger(msg.mesaCount) ? msg.mesaCount : 0;
+        mesaViewers = Array.isArray(msg.mesaViewers) ? msg.mesaViewers.map(String) : [];
+        mesaLocks = typeof msg.mesaLocks?.leaderOnly === 'boolean' && typeof msg.mesaLocks?.lockSize === 'boolean'
+          ? { leaderOnly: msg.mesaLocks.leaderOnly, lockSize: msg.mesaLocks.lockSize }
+          : null;
+        renderViewSwitch();
+        renderRoomMore();
+        mesaView?.afterWelcome();
+        mesaView?.onViewers();
+        mesaView?.onLeaderChange();
         break;
       }
       case 'peer-joined': {
         mesh.addPeer(msg.id, msg.name, msg.avatar);
         if (msg.owner) ownerId = msg.id;
         renderMembersPanel();
+        mesaView?.onPeersChange();
         playSoundEvent('join');
         // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
         // oferta abaixo ja sai com ele (qualityFor le o tamanho da sala,
@@ -3517,13 +3733,15 @@
           // enxerga como nao-live. A tree tem de vir depois deste estado.
           if (sig.isOpen()) sig.send({
             type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
-            bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null,
+            reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+            limit: myEncodeHealth?.limit ?? null,
           });
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
         }
         if (cameraStream) {
           try {
+            cameraScaleApplied.delete(msg.id); // sender novo nasce em fator 1
             await mesh.offerTo(msg.id, cameraStream, qualityFor('camera'), 'camera');
           } catch (err) {
             console.error(`[peer-joined] oferta de camera para ${msg.id} falhou:`, err);
@@ -3571,7 +3789,8 @@
         // continua ao vivo, entao reanuncia antes de qualquer reoferta.
         if (localStream && sig.isOpen()) sig.send({
           type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
-          bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null,
+          reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+          limit: myEncodeHealth?.limit ?? null,
         });
         const kinds = await reofferForResumedPeer(session, msg.id);
         console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
@@ -3581,6 +3800,7 @@
         // Se quem saiu era o dono, zera ownerId -- senao a coroa e o "iAmOwner"
         // ficam presos num id que nao esta mais na sala.
         if (msg.id === ownerId) ownerId = null;
+        mesaViewers = mesaViewers.filter((id) => id !== String(msg.id));
         relayRetry.cancelPeer(msg.id);
         pendingTrees.forgetOrigin(msg.id);
         mesh.removePeer(msg.id);
@@ -3684,6 +3904,38 @@
         applyMigrationInfo(msg);
         break;
       }
+      // ---- Mesa: quem esta nela e quantas janelas tem (chega a todos) ----
+      case 'mesa-viewers': {
+        mesaViewers = Array.isArray(msg.peers) ? msg.peers.map(String) : [];
+        mesaView?.onViewers();
+        break;
+      }
+      case 'mesa-count': {
+        if (Number.isInteger(msg.count) && msg.count >= 0) mesaCount = msg.count;
+        if (typeof msg.leaderOnly === 'boolean' && typeof msg.lockSize === 'boolean') {
+          mesaLocks = { leaderOnly: msg.leaderOnly, lockSize: msg.lockSize };
+        }
+        renderViewSwitch();
+        renderRoomMore();
+        break;
+      }
+      // O resto da Mesa so chega a quem esta na vista Mesa (ou e resposta a
+      // um pedido dela): a vista cuida.
+      case 'mesa':
+      case 'mesa-sync':
+      case 'mesa-denied':
+      case 'mesa-grab':
+      case 'mesa-release':
+      case 'mesa-drag':
+      case 'mesa-ack':
+      case 'cursor':
+      case 'time': {
+        // O "Pôr na mesa" do chat fica com o que e dele (o id da janela que
+        // pediu, a recusa do `add`); o resto segue para a vista.
+        if (mesaPor?.handle(msg)) break;
+        mesaView?.handle(msg);
+        break;
+      }
       case 'room-migrating': {
         clearTimeout(migrationBeaconTimer);
         migrationBeaconTimer = null;
@@ -3704,6 +3956,8 @@
           roomName: currentRoomName,
           bans: Array.isArray(msg.bans) ? msg.bans : [],
           chat: Array.isArray(msg.chat) ? msg.chat : [],
+          // A mesa da sala (retrato + idFloor): o sucessor a semeia.
+          mesa: msg.mesa && typeof msg.mesa === 'object' ? msg.mesa : null,
         }, {
           candidates: migrationCandidates(session),
           announcedSuccessor: typeof msg.successor === 'string' ? msg.successor : null,
@@ -3745,6 +3999,7 @@
           // 'moderated' (abaixo) -- esta linha de sistema e so o registro
           // visivel pra sala inteira, sem acao adicional aqui.
           ui.chat.append(msg);
+          chatImagens.push(msg);
           localChatTail.push(msg);
           if (localChatTail.length > 50) localChatTail.shift();
           break;
@@ -3755,6 +4010,7 @@
         const chatPeer = isMine ? null : mesh.peers.get(msg.from);
         const chatEntry = { ...msg, avatar: isMine ? cfg.avatar : (chatPeer?.avatar || null) };
         ui.chat.append(chatEntry, { received: !isMine });
+        chatImagens.push(msg);
         localChatTail.push(chatEntry);
         if (localChatTail.length > 50) localChatTail.shift();
         playSoundEvent('chat', { isMine });
@@ -3779,6 +4035,11 @@
       // servidor: e dele que sai a cor do pincel, entao nao da pra desenhar
       // com a cor de outra pessoa.
       case 'annotate': {
+        // Rabisco em janela da Mesa (contrato, secao 10, "Quadro"):
+        // superficie 'mesa:<id>', tratada inteiramente pela vista (ela nao
+        // tem tela real pra empurrar pro overlay, nem lousa no annotStore
+        // global de tela/camera).
+        if (mesaView?.handleAnnotate(msg)) break;
         ui.annotations.applyOp(msg.surface, msg.from, msg);
         pushToAnnotOverlay(msg.surface, msg.from, msg);
         break;
@@ -3796,6 +4057,7 @@
       // pra aparecer na tela REAL de quem transmite (mesma checagem de
       // `pushToFxOverlay`, mesma logica de `pushToAnnotOverlay`).
       case 'reaction': {
+        if (!reactionAllowedForSurface(msg.surface)) break;
         ui.reactions.apply(msg.surface, msg.from, msg.emoji);
         pushToFxOverlay('reaction', msg.surface, msg.from, { emoji: msg.emoji });
         break;
@@ -3804,6 +4066,8 @@
       // (`from === surface`): sem esta checagem, qualquer um podia
       // reescrever a lousa inteira de qualquer tela com um sync forjado.
       case 'annotate-sync': {
+        // Janela da Mesa: ver o comentario do caso 'annotate' acima.
+        if (mesaView?.handleAnnotateSync(msg)) break;
         // O dono sai da chave COMPOSTA ('7:screen'), nao da chave inteira --
         // senao um sync legitimo seria descartado. parseSurface aceita
         // tambem a chave sem kind, que e o que um cliente antigo manda.
@@ -3821,6 +4085,8 @@
           showToast(souEu ? 'Você é o líder da sala agora.' : `${msg.name} é o líder da sala agora.`);
         }
         renderMembersPanel();
+        mesaView?.onLeaderChange();
+        renderRoomMore();
         break;
       }
       // Lista de banidos atualizada (so o dono recebe).
@@ -3851,9 +4117,10 @@
         const bootstrap = msg.bootstrap === true;
         if (peer) peer.live = msg.live;
         if (peer) peer.paused = Boolean(msg.paused);
-        // Quem transmite decide se a sala pode rabiscar na tela dele. Peer
-        // em versao antiga nao manda o campo -> undefined -> falso.
+        // Quem transmite decide o que a sala pode fazer na tela dele. Peer
+        // em versao antiga nao manda os campos -> falso.
         if (peer) peer.annotate = msg.live && msg.annotate === true;
+        if (peer) peer.reactions = msg.live && msg.reactions === true;
         // P4: a limitacao de encode que a ORIGEM anunciou sobre a propria
         // tela -- alimenta o culpado do chip de saude de quem assiste (ver
         // updateViewerHealth). Zera quando a tela sai do ar: um `limit`
@@ -3868,6 +4135,7 @@
           canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
           canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
         });
+        ui.reactions.setSurface(msg.id, { allowed: Boolean(peer?.reactions) });
         if (!msg.live) {
           // So soa na transicao live -> parou (wasLive), nunca num
           // broadcast-state repetido nem no estado inicial de quem entra. O
@@ -3932,6 +4200,23 @@
         // Slot por baseKind: um viewer que recebe tela E camera nao pode
         // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
         if (vsPeer) {
+          // Mesa: largura da janela desta tela na vista dele. So reaplica o
+          // encode quando o teto MUDA de preset (andar pela mesa nao pode
+          // reconfigurar o encoder a cada passo).
+          const vsBaseKind = parseKind(msg.kind).baseKind;
+          if (vsBaseKind === 'screen') {
+            const antes = qualityForPeer(msg.from, msg.kind).preset;
+            (vsPeer.viewWidth ||= {}).screen = peerquality.normViewWidth(msg.maxWidth);
+            if (qualityForPeer(msg.from, msg.kind).preset !== antes) reapplyAudienceQuality();
+          } else if (msg.kind === 'camera') {
+            // A minha camera, direto para ele (repasse de camera fica com o
+            // encode que o relayTo escolheu): so mexe no sender dele, e so
+            // quando o fator de escala muda.
+            (vsPeer.viewWidth ||= {}).camera = peerquality.normViewWidth(msg.maxWidth);
+            if (cameraStream && cameraEncodingForPeer(msg.from).scaleDownBy !== (cameraScaleApplied.get(msg.from) ?? 1)) {
+              applyCameraEncoding(mesh, msg.from);
+            }
+          }
           const rh = normalizeReceiveHealth(msg.receiveHealth);
           (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
             rh ? { ...rh, atMs: Date.now() } : null;
@@ -4339,10 +4624,11 @@
       quality: cfg.quality,
       onQualityChange: onQualityPresetChange,
       allowAnnotations: cfg.annotations.allow,
+      allowReactions: cfg.reactions.allow,
     });
   });
 
-  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false) {
+  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false, allowReactions = true) {
     if (sharing || localStream) return;
     const session = currentSession;
     if (!session || !session.sig.isOpen()) return;
@@ -4522,6 +4808,7 @@
 
       // A escolha vale pra ESTA transmissao e fica lembrada pra proxima.
       shareAnnotations = Boolean(allowAnnotations);
+      shareReactions = Boolean(allowReactions);
       // A permissao mudou: a camera anuncia por conta propria (a tela vai
       // no broadcast-state logo abaixo, no startShare).
       if (cameraStream) sendCameraState();
@@ -4529,10 +4816,15 @@
         cfg = { ...cfg, annotations: { allow: shareAnnotations } };
         persist();
       }
+      if (cfg.reactions.allow !== shareReactions) {
+        cfg = { ...cfg, reactions: { allow: shareReactions } };
+        persist();
+      }
       // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
       ui.annotations.setSurface('me', { surfaceId: annotate.surfaceKey(myId, 'screen'), allowed: shareAnnotations, canClearAll: true, canDraw: false });
+      ui.reactions.setSurface('me', { allowed: shareReactions });
       await startAnnotOverlay();
       if (!canContinue()) return;
 
@@ -4551,7 +4843,8 @@
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
       // O peer precisa conhecer o estado live antes de receber a tree, pois
       // tree de origem que não está ao vivo é descartada como mensagem forjada.
-      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations, limit: null });
+      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations,
+        reactions: shareReactions, limit: null });
       recomputeTree('screen');
       ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
@@ -4773,7 +5066,16 @@
       stopAnnotOverlay();
       ui.annotations.clearSurface('me');
       currentSourceId = newSourceId;
-      if (plan.overlayShouldReopen) await startAnnotOverlay();
+      if (plan.overlayShouldReopen) {
+        await startAnnotOverlay();
+      } else if (!plan.fromIsWindow && plan.toIsWindow) {
+        const toast = reactionsPermission.overlayUnavailableToast({
+          reason: 'window',
+          annotations: shareAnnotations,
+          reactions: shareReactions,
+        });
+        if (toast) showToast(toast);
+      }
       if (!canContinue()) {
         stopNewCapture();
         return;
@@ -4822,7 +5124,9 @@
     // A lousa morre com a tela (spec, secao 8): parar de compartilhar apaga
     // o que estava desenhado, aqui e -- via broadcast-state -- em todo mundo.
     shareAnnotations = false;
+    shareReactions = false;
     ui.annotations.setSurface('me', { allowed: false });
+    ui.reactions.setSurface('me', { allowed: false });
     ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
     stopAnnotOverlay();
     ui.grid.removeTile('me');
@@ -5035,7 +5339,10 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
-    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+    if (session?.sig?.isOpen()) {
+      session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations,
+        reactions: shareReactions, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+    }
     ui.grid.setPaused('me', paused, {
       title: paused ? 'Você pausou' : '',
       subtitle: paused ? 'Ninguém está vendo' : '',
@@ -5059,6 +5366,7 @@
         nativeAudioAvailable,
         quality: cfg.quality,
         allowAnnotations: shareAnnotations,
+        allowReactions: shareReactions,
         currentShareSound,
         currentIncludeDiscord,
       });
@@ -5158,6 +5466,8 @@
         for (const peerId of currentSession.mesh.peers.keys()) {
           await currentSession.mesh.offerTo(peerId, cameraStream, quality, 'camera', { waitForStable: true });
         }
+        // Quem ja esta com a minha camera numa janela pequena da Mesa: teto.
+        for (const peerId of currentSession?.mesh?.peers.keys() || []) applyCameraEncoding(currentSession.mesh, peerId);
         broadcastWatchers('camera'); // lista inicial: todo mundo conta como assistindo
         recomputeTree('camera');
       }
@@ -5409,8 +5719,10 @@
 
   /** A tela de alguem saiu do ar (parou de transmitir, ou a pessoa saiu). */
   function unwatchScreen(originId) {
-    watchedScreens.delete(String(originId));
-    ui.grid.forgetWatched(String(originId));
+    const id = String(originId);
+    watchedScreens.delete(id);
+    tetoRecebido.limpar(`${id}:screen`);
+    ui.grid.forgetWatched(id);
   }
 
   function maybeNotifyLive(peer, peerId, { bootstrap = false } = {}) {
@@ -5450,6 +5762,9 @@
     }
 
     if (mode === 'only') {
+      for (const watchedId of watchedScreens) {
+        if (watchedId !== id) tetoRecebido.limpar(`${watchedId}:screen`);
+      }
       watchedScreens.clear();
       watchedScreens.add(id);
       autoWatchSuppressed = false;
@@ -5458,6 +5773,7 @@
       autoWatchSuppressed = false;
     } else if (mode === 'remove') {
       watchedScreens.delete(id);
+      tetoRecebido.limpar(`${id}:screen`);
       // Ficou sem nenhuma tela: foi uma escolha explicita de nao ver nada
       // (o menu de botao direito, ou largar a ultima). A auto-escolha para
       // de repor ate o usuario pedir uma tela de novo.
@@ -5468,6 +5784,259 @@
 
   ui.grid.onWatchIntent(applyWatchIntent);
 
+  /** Quero o video desta tela/camera? Na vista Mesa, manda a mesa: a janela
+   * aparece na tela (com a carencia de 2 s para sair, mesa-vista.js) -- e a
+   * camera que a pessoa largou pelo menu continua largada. Na Transmissao,
+   * a regra de sempre (uma tela por vez, cameras opt-out). */
+  function wantsMedia(baseKind, origem) {
+    const naMesa = mesaView?.wants(baseKind === 'camera' ? 'camera' : 'screen', origem) ?? null;
+    if (naMesa !== null) return naMesa && (baseKind !== 'camera' || watchingCamera(origem));
+    return baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+  }
+
+  // ---------- Mesa: a vista de cada pessoa ----------
+  //
+  // Transmissao e Mesa sao VISTAS (decisoes do dono no contrato da Mesa,
+  // secao 0): cada um troca na propria tela, sem afetar ninguem. Na
+  // Transmissao nada da Mesa existe no DOM nem roda; `mesaView.open()` monta
+  // tudo e pede o retrato, `close()` desmonta e devolve as telas ao palco.
+
+  /** Id do tile do palco para a tela/camera de alguem (o mesmo espaco de
+   * ids de showTile: 'me'/'cam-me' para as minhas). */
+  function mesaTileId(kind, peerId) {
+    const mine = String(peerId) === String(myId);
+    if (kind === 'camera') return mine ? 'cam-me' : `cam-${peerId}`;
+    return mine ? 'me' : String(peerId);
+  }
+
+  function mesaPeerName(id) {
+    if (id == null) return 'Alguém';
+    if (String(id) === String(myId)) return cfg.name || 'Você';
+    const peer = (currentSession || orphanSession)?.mesh?.peers.get(String(id));
+    return peer?.name || 'Alguém';
+  }
+
+  mesaView = window.GoLive.mesaView.create({
+    grid: ui.grid.element(),
+    send: (msg) => {
+      const session = currentSession;
+      if (!session?.sig?.isOpen()) return false;
+      session.sig.send(msg);
+      return true;
+    },
+    me: () => myId,
+    isLeader: () => ownerId === 'me',
+    peers: () => {
+      const out = myId != null ? [{ id: String(myId), name: cfg.name || 'Você' }] : [];
+      for (const p of currentSession?.mesh?.peers.values() || []) out.push({ id: String(p.id), name: p.name });
+      return out;
+    },
+    nameOf: mesaPeerName,
+    colorFor: (id) => annotate.colorFor(id),
+    avatarOf: (id) => (String(id) === String(myId) ? cfg.avatar || null : currentSession?.mesh?.peers.get(String(id))?.avatar || null),
+    viewers: () => mesaViewers,
+    peopleSlot: () => $('stage-mesa-people'),
+    dockEl: () => document.querySelector('.bus'),
+    tileIdFor: mesaTileId,
+    tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
+    returnTile: ui.grid.returnTile,
+    openTileMenu: (id, x, y) => ui.grid.openTileMenu(id, x, y, { mesa: true }),
+    resyncGrid: ui.grid.resync,
+    onWatchChange: () => broadcastViewState(),
+    onOpenChange: (on) => {
+      document.body.classList.toggle('mesa-open', on);
+      $('btn-mesa-add').classList.toggle('hidden', !on);
+      renderViewSwitch();
+      renderRoomMore();
+    },
+    onLocksChange: () => renderRoomMore(),
+    setFullScreen: (on) => window.golive.setFullScreen(on),
+  });
+  ui.grid.onTileShown((id) => mesaView.onTile(id));
+  window.golive.onFullScreenChange((on) => mesaView.onFullScreenChange(on));
+
+  // "Pôr na mesa" (link do YouTube ou imagem do chat, imagem da Galeria):
+  // funciona nas duas vistas; na Transmissao a janela nasce no meio da mesa.
+  mesaPor = window.GoLive.mesaPorLib.create({
+    send: (msg) => {
+      const session = currentSession;
+      if (!session?.sig?.isOpen()) return false;
+      session.sig.send(msg);
+      return true;
+    },
+    me: () => myId,
+    view: { isOpen: () => mesaView.isOpen(), spot: (type) => mesaView.spot(type) },
+    toast: (text) => showToast(text),
+    registry: () => window.GoLive.mesaRegistry,
+  });
+  window.GoLive.mesaPor = { put: (type, action) => mesaPor.put(type, action) };
+
+  // A Mesa e uma fonte do barramento (05 §3.2): escolhe-la troca o programa
+  // para a vista Mesa; escolhe-la de novo (ou qualquer fonte de video) volta
+  // para a Transmissao. A vista e de cada pessoa, nao da sala.
+  function setRoomView(view) {
+    if (view === 'mesa') mesaView.open();
+    else mesaView.close();
+    renderViewSwitch();
+  }
+
+  function renderViewSwitch() {
+    const naMesa = Boolean(mesaView?.isOpen());
+    ui.grid.refreshWatchGates();
+    const mesa = $('view-mesa');
+    mesa.setAttribute('aria-selected', String(naMesa));
+    mesa.toggleAttribute('data-current', naMesa);
+    // Quem esta na Transmissao ve que a mesa tem janelas (mesa-count).
+    const janelas = mesaCount === 1 ? '1 janela' : `${mesaCount} janelas`;
+    const sub = naMesa ? 'Voltar ao palco' : (mesaCount > 0 ? janelas : 'Abrir a Mesa');
+    $('view-mesa-count').textContent = sub;
+    mesa.setAttribute('aria-label', naMesa ? 'Mesa aberta. Voltar ao palco' : `Mesa, ${mesaCount > 0 ? janelas : 'vazia'}`);
+  }
+
+  $('view-mesa').addEventListener('click', () => setRoomView(mesaView.isOpen() ? 'tx' : 'mesa'));
+  $('view-mesa').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    setRoomView(mesaView.isOpen() ? 'tx' : 'mesa');
+  });
+  window.GoLive.salaVista = { setRoomView, isMesa: () => Boolean(mesaView?.isOpen()) };
+
+  $('btn-mesa-add').addEventListener('click', (e) => {
+    e.stopPropagation();
+    mesaView.openAddMenu($('btn-mesa-add'));
+  });
+
+  // Menu "..." da sala: as duas travas do lider (so aparecem para ele) e os
+  // ponteiros das pessoas (de cada um).
+  const MESA_CURSORS_KEY = 'golive.mesa.ponteiros';
+  try {
+    if (localStorage.getItem(MESA_CURSORS_KEY) === '0') mesaView.setShowCursors(false);
+  } catch {
+    // armazenamento indisponivel: fica o padrao (mostrar)
+  }
+
+  function renderRoomMore() {
+    const leader = ownerId === 'me';
+    const locks = mesaView?.locks() || mesaLocks;
+    $('opt-mesa-leader-only-row').classList.toggle('hidden', !leader);
+    $('opt-mesa-lock-size-row').classList.toggle('hidden', !leader);
+    // Servidores antigos nao mandam as travas para a Transmissao: so nesse
+    // caso o motivo ocupa o lugar dos controles.
+    $('opt-mesa-locks-hint').classList.toggle('hidden', !leader || Boolean(locks));
+    for (const [id, key] of [['opt-mesa-leader-only', 'leaderOnly'], ['opt-mesa-lock-size', 'lockSize']]) {
+      const box = $(id);
+      box.disabled = !locks;
+      box.checked = Boolean(locks?.[key]);
+      box.parentElement?.setAttribute('aria-checked', String(box.checked));
+    }
+    $('opt-mesa-cursors').checked = Boolean(mesaView?.showsCursors());
+    $('opt-mesa-cursors').parentElement?.setAttribute('aria-checked', String($('opt-mesa-cursors').checked));
+  }
+
+  function setRoomMoreOpen(open) {
+    $('room-more').classList.toggle('hidden', !open);
+    $('btn-room-more').setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    renderRoomMore();
+    $('room-copy-pin').classList.toggle('hidden', !hostInfo?.pin && !$('stage-room-pin').textContent);
+    roomMoreItems()[0]?.focus();
+  }
+
+  /** Itens do menu da sala que estao a mostra, na ordem, para as setas. `getClientRects` pega tambem o que o CSS
+   * esconde por largura ("Copiar endereço" so existe abaixo de 1024 px), nao so a classe `.hidden`. */
+  function roomMoreItems() {
+    return [...$('room-more').querySelectorAll('.menu__item')]
+      .filter((el) => !el.classList.contains('hidden') && el.getClientRects().length > 0);
+  }
+
+  $('btn-room-more').addEventListener('click', (e) => {
+    e.stopPropagation();
+    setRoomMoreOpen($('room-more').classList.contains('hidden'));
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest?.('#room-more, #btn-room-more')) setRoomMoreOpen(false);
+  });
+  $('room-more').addEventListener('keydown', (e) => {
+    const itens = roomMoreItems();
+    const i = itens.indexOf(document.activeElement);
+    const vai = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: itens.length - 1 }[e.key];
+    if (vai !== undefined) {
+      e.preventDefault();
+      itens[(vai + itens.length) % itens.length]?.focus();
+      return;
+    }
+    // Label com checkbox dentro: Enter/Espaco alterna, como um menuitemcheckbox.
+    if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.matches('label.menu__item')) {
+      e.preventDefault();
+      document.activeElement.querySelector('input')?.click();
+      return;
+    }
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    setRoomMoreOpen(false);
+    $('btn-room-more').focus();
+  });
+  $('opt-mesa-leader-only').addEventListener('change', (e) => mesaView.setLock('leaderOnly', e.target.checked));
+  $('opt-mesa-lock-size').addEventListener('change', (e) => mesaView.setLock('lockSize', e.target.checked));
+  $('opt-mesa-cursors').addEventListener('change', (e) => {
+    mesaView.setShowCursors(e.target.checked);
+    e.target.parentElement?.setAttribute('aria-checked', String(e.target.checked));
+    try {
+      localStorage.setItem(MESA_CURSORS_KEY, e.target.checked ? '1' : '0');
+    } catch {
+      // sem armazenamento: vale so ate fechar o app
+    }
+  });
+  $('room-more').addEventListener('click', (event) => {
+    const copy = event.target.closest('[data-copy]')?.dataset.copy;
+    if (copy) {
+      const texto = copy === 'pin' ? (hostInfo?.pin || $('stage-room-pin').textContent.replace(/\D/g, ''))
+        : $('stage-room-address').textContent;
+      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(copy === 'pin' ? 'PIN copiado' : 'Endereço copiado', 1500)).catch(() => {});
+      setRoomMoreOpen(false);
+      return;
+    }
+    const action = event.target.closest('[data-room-action]')?.dataset.roomAction;
+    if (action) setRoomMoreOpen(false);
+    if (action === 'theater') document.getElementById('app').toggleAttribute('data-theater');
+    if (action === 'diagnostics') openDiagnostics();
+  });
+  document.addEventListener('keydown', (event) => {
+    const field = event.target?.matches?.('input, textarea, select, [contenteditable="true"]');
+    if (field || document.getElementById('app').dataset.place !== 'room') return;
+    if (event.key === 't' || event.key === 'T') document.getElementById('app').toggleAttribute('data-theater');
+    if (event.key === 'Escape' && document.getElementById('app').hasAttribute('data-theater')) {
+      document.getElementById('app').removeAttribute('data-theater');
+    }
+    if (event.key === 'm' || event.key === 'M') setRoomView(mesaView?.isOpen() ? 'transmissao' : 'mesa');
+    if (event.key === 'c' || event.key === 'C') {
+      const app = document.getElementById('app');
+      app.dataset.conv = app.dataset.conv === 'closed' ? window.GoLive.roomUi.modoConversa(window.innerWidth) : 'closed';
+    }
+  });
+  document.addEventListener('pointermove', (event) => {
+    const app = document.getElementById('app');
+    if (!app.hasAttribute('data-theater')) return;
+    if (event.clientY <= 8) app.dataset.reveal = 'top';
+    else if (event.clientY >= window.innerHeight - 8) app.dataset.reveal = 'bottom';
+    else delete app.dataset.reveal;
+  });
+
+  // A sala saiu da tela (Sair da sala, sala fechada, entrada recusada): a
+  // Mesa desmonta sem avisar ninguem e a proxima sala abre na Transmissao.
+  document.addEventListener('golive:room-hidden', () => {
+    mesaView.close({ silent: true });
+    mesaPor.reset();
+    chatImagens.clear();
+    mesaViewers = [];
+    mesaView.onViewers();
+    mesaCount = 0;
+    mesaLocks = null;
+    setRoomMoreOpen(false);
+    renderViewSwitch();
+  });
+  renderViewSwitch();
+
   // Avisa cada transmissor de quem estamos recebendo se ainda estamos ou nao
   // olhando. Peer que nunca recebeu um 'view-state' conta como assistindo --
   // padrao seguro. Quando esta sessao e RELAY do peer em questao (F2), o
@@ -5476,6 +6045,18 @@
   // minimizada -- um relay que minimizou mas tem espectadores atras nao pode
   // cortar o encode de quem esta assistindo de verdade. Ver a spec de
   // 2026-08-23, secao "Demanda propaga pra cima".
+  /** Sou relay da origem `peerId` naquele tipo, com alguma folha assistindo?
+   * So vale em conexao direta: num kind composto somos folha. */
+  function folhaAssistindo(session, baseKind, peerId) {
+    const state = myRole[baseKind].get(peerId);
+    // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
+    // assim que relayTo as criou) -- consultar isPeerSuspended com o
+    // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
+    const childKind = relayKindFor(baseKind, peerId);
+    return state?.role === 'relay'
+      && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+  }
+
   function broadcastViewState() {
     const session = currentSession;
     if (!session?.mesh || !session.sig.isOpen()) return;
@@ -5487,19 +6068,13 @@
       // direta, `peerId` E a origem -- que e exatamente a chave do estado
       // por-origem, entao a pergunta "sou relay DESTE peer?" vira uma
       // consulta direta.
-      const state = sourceId ? null : myRole[baseKind].get(peerId);
-      // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
-      // assim que relayTo as criou) -- consultar isPeerSuspended com o
-      // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
-      const childKind = relayKindFor(baseKind, peerId);
-      const anyFolhaWatching = state?.role === 'relay'
-        && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+      const anyFolhaWatching = !sourceId && folhaAssistindo(session, baseKind, peerId);
       // A escolha de assistir e por ORIGEM: num kind composto quem esta rio
       // acima e o relay, mas o video continua sendo o de `sourceId`. Tela e
       // camera tem defaults opostos -- tela e opt-in (watchedScreens),
       // camera e opt-out (unwatchedCameras) -- mas dos dois da pra sair.
       const origem = sourceId || peerId;
-      const querendo = baseKind === 'camera' ? watchingCamera(origem) : watchingScreen(origem);
+      const querendo = wantsMedia(baseKind, origem);
       // Um relay que nao esta assistindo continua RECEBENDO: cortar aqui
       // cortaria junto os filhos que estao. E o mesmo motivo de a janela
       // minimizada nao poder cortar -- so que agora vale pra duas causas.
@@ -5525,9 +6100,43 @@
         lastViewStateSent.set(vsChave, vsValor);
         console.info(`[assistir] view-state -> #${peerId} kind=${kind} watching=${watching} looking=${looking}`);
       }
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
+      // Mesa: a largura da janela desta tela (ou camera) na minha vista vira
+      // teto de qualidade do lado de quem manda (peerquality.capForWidth e
+      // cameraEncodingFor). Fora da Mesa (ou relay com filhos atras de mim),
+      // sem teto. Em tela, o teto escolhido no menu do video ("Qualidade que
+      // voce recebe") entra junto: vale o menor dos dois.
+      const larguraMesa = mesaView?.widthFor(baseKind, origem) ?? null;
+      const larguraDaEscolha = baseKind === 'screen'
+        ? tetoRecebido.larguraEscolhida(`${origem}:screen`)
+        : null;
+      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
+        ? tetoRecebido.combinar(larguraDaEscolha, larguraMesa)
+        : null;
+      session.sig.send({
+        type: 'view-state',
+        to: peerId,
+        kind,
+        watching,
+        looking,
+        maxWidth,
+        encodeHealth: myEncodeHealth,
+        receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null,
+        relayLoad: relayLoad(),
+      });
     }
   }
+
+  // O menu do video chama o modulo direto; a troca republica o view-state
+  // pelo mesmo caminho que a Mesa usa ao redimensionar.
+  tetoRecebido.definirAoMudar(() => broadcastViewState());
+  // Repassando a tela para folhas, o teto nao vale (ver broadcastViewState):
+  // o menu mostra o item desabilitado.
+  tetoRecebido.definirBloqueio((tileId) => {
+    const session = currentSession;
+    const chave = String(tileId);
+    if (!session?.mesh || !chave.endsWith(':screen')) return false;
+    return folhaAssistindo(session, 'screen', chave.slice(0, -':screen'.length));
+  });
 
   document.addEventListener('visibilitychange', onVisibilityChanged);
   window.golive.onWindowVisibilityChange?.((visible) => {
@@ -6250,7 +6859,8 @@
       const nextLimit = myEncodeHealth?.limit ?? null;
       if (nextLimit !== lastAnnouncedLimit) {
         lastAnnouncedLimit = nextLimit;
-        session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, limit: nextLimit });
+        session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+          reactions: shareReactions, limit: nextLimit });
       }
     }
 
