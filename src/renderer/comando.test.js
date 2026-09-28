@@ -38,7 +38,7 @@ test('transmitindo: pausar ou retomar, trocar e parar; nada de transmitir de nov
 
 test('na Mesa: voltar para a Transmissao e por na Mesa', () => {
   const rotulos = acoesDisponiveis({ lugar: 'room', naMesa: true }).map((a) => a.rotulo);
-  assert.ok(rotulos.includes('Voltar para a Transmissão'));
+  assert.ok(rotulos.includes('Voltar ao palco'));
   assert.ok(rotulos.includes('Pôr na Mesa…'));
 });
 

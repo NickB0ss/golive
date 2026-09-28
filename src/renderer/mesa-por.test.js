@@ -33,7 +33,7 @@ test('na Transmissao: add no meio da mesa, e o mesa-ack leva o act com o conteud
   });
   assert.equal(p.por.handle({ type: 'mesa-ack', op: 'add', id: 'w1', seq: 3 }), true);
   assert.deepEqual(p.sent[1], { type: 'mesa', op: 'act', id: 'w1', action: { kind: 'load', url: 'https://youtu.be/dQw4w9WgXcQ' } });
-  assert.deepEqual(p.toasts, ['Vídeo do YouTube foi para a mesa.']);
+  assert.deepEqual(p.toasts, ['Vídeo do YouTube foi para a Mesa.']);
   assert.equal(p.por.pending(), null);
   // Outro ack (de um remove qualquer) nao manda nada de novo.
   assert.equal(p.por.handle({ type: 'mesa-ack', op: 'add', id: 'w2', seq: 4 }), false);
@@ -78,7 +78,7 @@ test('recusa de verdade (trava do lider) vira aviso e esquece o pedido', () => {
   const p = palco();
   p.por.put('youtube', { kind: 'load', url: 'x' });
   assert.equal(p.por.handle({ type: 'mesa-denied', op: 'add', id: null, reason: 'locked' }), true);
-  assert.deepEqual(p.toasts, ['Só o líder mexe na mesa agora.']);
+  assert.deepEqual(p.toasts, ['Só o líder mexe na Mesa agora.']);
   assert.equal(p.por.handle({ type: 'mesa-ack', op: 'add', id: 'w1' }), false, 'sem pedido, o ack nao e dele');
 });
 

@@ -223,6 +223,12 @@
   const spyState = root.GoLive.espiar.createSpyState();
   let spyWin = null;
   const pinnedPip = new Set();
+  // O destaque que a pessoa escolheu na tira de miniaturas (id ou null). Sem
+  // escolha, gridlayout.js decide sozinho: telas assistidas no palco.
+  let destaqueId = null;
+  // Vira true quando a pessoa poe ou tira uma miniatura a mao: dali em diante a
+  // tela cheia respeita a escolha e para de trazer junto quem estava a mostra.
+  let pipEscolhido = false;
 
   /** Cores do Espiar a partir do tema aplicado agora nesta janela (ver
    * espiar.js). A pagina do Espiar pede isto no boot; as trocas de tema com
@@ -478,6 +484,15 @@
       }
       if (entering) {
         fullscreenTileId = id;
+        // Quem estava a mostra junto (a tira, ou a outra metade da grade) nao
+        // some na tela cheia: vira miniatura, ate a pessoa escolher as suas.
+        if (!pipEscolhido && !pinnedPip.size) {
+          const juntos = Array.from(gridEl.querySelectorAll('.tile'))
+            .filter((outro) => outro !== tile && !outro.hidden)
+            .map((outro) => outro.id.slice('tile-'.length))
+            .filter((outroId) => tileRegistry.has(outroId) && tileWatch.get(outroId)?.watched !== false);
+          for (const outroId of juntos.slice(0, 3)) pinnedPip.add(outroId);
+        }
         renderPipStrip(tile); // ja termina em syncPainting
       } else {
         fullscreenTileId = null;
@@ -594,7 +609,7 @@
     const el = tile?.querySelector('.tile__watchers');
     if (!el) return;
     const n = watchers?.length || 0;
-    el.textContent = n ? `${n} vendo` : '';
+    el.textContent = n ? `${n} assistindo` : '';
     el.title = n ? watchers.map((w) => w.name).filter(Boolean).join(', ') : '';
   }
 
@@ -713,13 +728,16 @@
       }
       const nome = opts.name || 'Alguém';
       const ehCamera = opts.kind === 'camera';
-      const titulo = ehCamera ? escapeHtml(nome) : `${escapeHtml(nome)} está ao vivo`;
+      // O mesmo estado do no no barramento: tela pausada nao diz "ao vivo".
+      const pausada = !ehCamera && tilePaused.get(tileId)?.paused === true;
+      const titulo = ehCamera ? escapeHtml(nome)
+        : `${escapeHtml(nome)} ${pausada ? 'pausou a tela' : 'está ao vivo'}`;
       const sub = ehCamera
         ? 'A câmera só chega quando você pede.'
-        : 'A tela só chega quando você pede — é um encoder a menos rodando na máquina de quem transmite.';
+        : 'A tela só chega quando você pede, e quem transmite economiza enquanto ninguém assiste.';
       const pessoaId = String(tileId).replace(/^cam-/, '');
       gate.innerHTML = `
-        <span class="node" data-size="56" data-state="live" style="--who:${avatarColorFor(pessoaId)}">${avatarInnerHtml(pessoaId, nome, opts.avatar || null)}</span>
+        <span class="node" data-size="56" data-state="${pausada ? 'paused' : 'live'}" style="--who:${avatarColorFor(pessoaId)}">${avatarInnerHtml(pessoaId, nome, opts.avatar || null)}</span>
         <p class="blank__title">${titulo}</p>
         <p class="blank__text">${sub}</p>
         <div class="tile__gate-actions">
@@ -844,6 +862,7 @@
     if (spyState.tileId() === tileId) updateSpyWindow();
     const tile = document.getElementById(`tile-${tileId}`);
     if (!tile) return; // tile pode ja ter sido removido (ex: parou de transmitir)
+    if (tile.querySelector('.tile__gate')) renderWatchGate(tile, tileId);
     renderPausedOverlay(tile, tile.querySelector('video'), paused, opts);
   }
 
@@ -868,7 +887,7 @@
         // dos tiles proprios. So o false explicito vira o card de entrada.
         watched: tileWatch.get(id)?.watched !== false,
       };
-    }));
+    }), { focus: destaqueId });
     const n = plan.count;
     if (!n) gridEl.removeAttribute('data-count');
     // Sem fonte a mostra nao ha onde a reacao aparecer.
@@ -937,6 +956,13 @@
         <span class="tile__warn hidden"></span>
         <div class="tile__stall hidden" role="status"></div>`;
       tile.addEventListener('dblclick', () => toggleTileFullscreen(tile, id));
+      // Na tira, a miniatura inteira e o botao de destacar (o HUD cuida dos seus
+      // proprios botoes; o rabisco e o cartao de assistir tambem ficam de fora).
+      tile.addEventListener('click', (event) => {
+        if (tile.dataset.slot !== 'strip' || tile.classList.contains('annot-on')) return;
+        if (event.target.closest('button, a, input, .draw-bar, .tile__gate')) return;
+        destacar(id);
+      });
       acompanharCaixaDoVideo(tile);
       wireTileAnnotations(tile, id);
       wireTileBar(tile, id);
@@ -1081,8 +1107,8 @@
           </g>
         </svg>
         <p class="blank__title">${escapeHtml(titulo)}</p>
-        <p class="blank__text">${aoVivo.length ? 'Escolha quem assistir aqui ou no barramento, embaixo.'
-    : 'Quando alguém entrar ao vivo, aparece no barramento, embaixo.'}</p>
+        <p class="blank__text">${aoVivo.length ? 'Escolha quem assistir aqui ou nas fontes, embaixo.'
+    : 'Quando alguém transmitir, a tela aparece aqui embaixo.'}</p>
         <div class="stage-empty__acoes">${acoes}</div>
       </div>`);
   }
@@ -1106,6 +1132,7 @@
     syncGridCount();
     releaseTileAudio(id);
     tileRegistry.delete(id);
+    if (destaqueId === id) destaqueId = null;
     tileWatchers.delete(id);
     tilePaused.delete(id);
     tileWatch.delete(id);
@@ -1480,6 +1507,15 @@
     });
   }
 
+  /** Sobe uma miniatura da tira para o palco; quem estava no palco desce para
+   * a tira e volta pelo mesmo gesto. */
+  function destacar(tileId) {
+    if (!tileRegistry.has(tileId)) return;
+    destaqueId = tileId;
+    syncGridCount();
+    document.getElementById(`tile-${tileId}`)?.focus({ preventScroll: true });
+  }
+
   function wireTileBar(tile, tileId) {
     const hud = tile.querySelector('.tile__hud');
     hud?.addEventListener('click', (event) => {
@@ -1498,6 +1534,9 @@
           break;
         case 'espiar':
           openSpyWindow(tileId);
+          break;
+        case 'destacar':
+          destacar(tileId);
           break;
         case 'tela-cheia':
           toggleTileFullscreen(tile, tileId);
@@ -1524,6 +1563,7 @@
     ['reagir', 'Reagir', 'smile-plus', 'data-hud-extra'],
     ['espiar', 'Espiar numa janela por cima', 'picture-in-picture-2', 'data-hud-extra'],
     ['volume', 'Volume', 'volume-2', ''],
+    ['destacar', 'Destacar no palco', 'scan', 'data-hud-strip'],
     ['tela-cheia', 'Tela cheia', 'maximize', 'data-hud-optional'],
     ['menu', 'Mais opções', 'ellipsis', ''],
     ['parar', 'Parar de assistir', 'x', 'hidden'],
@@ -1533,6 +1573,7 @@
       <div class="tile__who">
         <span class="node" data-size="24"></span>
         <span class="tile__label"><span class="tile__name"></span><span class="tile__what"></span></span>
+        <span class="tile__live tag tag--live">AO VIVO</span>
         <span class="tile__watchers"></span>
       </div>
       <div class="tile__actions">${TILE_HUD_ACOES.map(([acao, nome, icone, extra]) => `
@@ -2078,6 +2119,7 @@
     removeBtn.textContent = '×';
     removeBtn.addEventListener('click', (event) => {
       event.stopPropagation();
+      pipEscolhido = true;
       pinnedPip.delete(id);
       pipLayout.delete(id);
       const fsTile = document.getElementById(`tile-${fullscreenTileId}`);
@@ -2170,7 +2212,7 @@
     menu.style.top = `${rect.top}px`;
 
     if (!candidates.length) {
-      menu.innerHTML = '<div class="pip-picker-empty">ninguém mais pra mostrar</div>';
+      menu.innerHTML = '<div class="pip-picker-empty">Todo mundo já está junto.</div>';
     } else {
       for (const [id, entry] of candidates) {
         const item = document.createElement('button');
@@ -2181,6 +2223,7 @@
           <span>${escapeHtml(entry.label)}</span>`;
         item.addEventListener('click', (event) => {
           event.stopPropagation();
+          pipEscolhido = true;
           pinnedPip.add(id);
           closePipMenu();
           const fsTile = document.getElementById(`tile-${fullscreenId}`);
@@ -2211,13 +2254,15 @@
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'pip-add-btn';
-    addBtn.innerHTML = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>Miniatura';
-    addBtn.setAttribute('aria-label', 'Mostrar outra fonte em miniatura');
+    addBtn.innerHTML = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>Ver junto';
+    addBtn.setAttribute('aria-label', 'Ver outra fonte junto, em miniatura');
     addBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       openPipPicker(addBtn, id);
     });
-    strip.appendChild(addBtn);
+    // Sem mais ninguem para trazer, o botao so abriria uma lista vazia.
+    const sobra = Array.from(tileRegistry.keys()).some((outroId) => outroId !== id && !pinnedPip.has(outroId));
+    if (sobra) strip.appendChild(addBtn);
     // As miniaturas sao <video> NOVOS, criados com autoplay: sem isto elas
     // comecariam a tocar mesmo com a janela minimizada (F1.4). Aqui, no fim
     // de renderPipStrip, cobre todos os caminhos que remontam a faixa --
@@ -2462,7 +2507,7 @@
   }
 
   function emptyRoomsHint() {
-    return networkEmptyHint || 'Nenhuma sala anunciada na sua rede. Se seus amigos usam Tailscale, peça o endereço e entre por ele.';
+    return networkEmptyHint || 'Crie uma, ou peça o endereço a quem criou e entre por ele.';
   }
 
   function renderEmptyRooms(listEl) {
@@ -2477,7 +2522,16 @@
         </g>
       </svg>
       <p class="blank__title">${networkEmptyHint ? 'Nenhuma rede encontrada' : 'Nenhuma sala na sua rede ainda'}</p>
-      <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>`;
+      <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>
+      <div class="blank__acoes">${networkEmptyHint
+    ? '<button type="button" class="btn btn--secondary" data-vazio="procurar">Procurar de novo</button>'
+    : '<button type="button" class="btn btn--secondary" data-vazio="criar">Criar sala</button>'}</div>`;
+    // Os botoes repetem as acoes do topo, no lugar onde o olho ja esta.
+    empty.addEventListener('click', (event) => {
+      const alvo = event.target.closest('[data-vazio]')?.dataset.vazio;
+      if (alvo === 'procurar') $('btn-refresh-discovery')?.click();
+      if (alvo === 'criar') $('btn-create-room')?.click();
+    });
     listEl.appendChild(empty);
   }
 
@@ -2584,10 +2638,10 @@
     if (!info) {
       networkEmptyHint = 'Ligue o Radmin ou o Tailscale e procure de novo.';
       dot.dataset.level = 'none';
-      kindEl.textContent = 'Nenhuma rede encontrada.';
+      kindEl.textContent = 'Sem rede';
       addrEl.textContent = '';
       if (copy) copy.hidden = true;
-      if (homeNet) homeNet.textContent = 'Conecte o Radmin VPN ou o Tailscale.';
+      if (homeNet) homeNet.textContent = '';
       updateEmptyRoomsHint();
       return;
     }
@@ -2697,13 +2751,15 @@
     btnJoinCancelEl.disabled = busy;
     btnConnectEl.classList.toggle('busy', busy);
     btnConnectEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
-    btnConnectEl.querySelector('.btn-label').textContent = busy ? 'Conectando…' : 'Conectar';
+    btnConnectEl.querySelector('.btn-label').textContent = busy ? 'Entrando…' : 'Entrar';
     $('in-server').disabled = busy;
     $('in-pin').disabled = busy;
   }
 
-  function openJoinRoom({ onConnect, address, showPinField = false }) {
+  function openJoinRoom({ onConnect, address, showPinField = false, roomName = '' }) {
     $('setup-error').textContent = '';
+    // Veio da lista: o titulo diz em qual sala se esta entrando.
+    $('dialog-join-room-title').textContent = roomName ? `Entrar em ${nomeDeSala(roomName)}` : 'Entrar na sala';
     $('in-server').value = address || '';
     $('in-pin').value = '';
     $('join-pin-field').classList.toggle('hidden', !showPinField);
@@ -3034,7 +3090,10 @@
     renderBus(pessoas);
     renderMeNode(self);
     $('btn-room-presence')?.setAttribute('aria-label', `Pessoas na sala: ${presenceCount}`);
-    const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas);
+    // A mesma leitura dos nos: camera ligada ou tela pausada tambem estao no ar.
+    const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas.map((pessoa) => ({
+      ...pessoa, noAr: ['live', 'paused'].includes(estadoNo(pessoa)),
+    })));
     for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], ['NA SALA', secoes.naSala]]) {
       if (!lista.length) continue;
       const secao = document.createElement('li');
@@ -3090,7 +3149,7 @@
     const paused = Boolean(tilePaused.get(tileId)?.paused);
     const poor = ['atencao', 'ruim'].includes(tileHealth.get(tileId));
     const nome = pessoa.name || 'Alguém';
-    const sub = paused ? 'Pausada' : (kind === 'camera' ? 'Câmera' : (tileRegistry.has(tileId) ? 'Tela' : 'Conectando…'));
+    const sub = paused ? 'Tela pausada' : (kind === 'camera' ? 'Câmera' : (tileRegistry.has(tileId) ? 'Tela' : 'Conectando…'));
     const quem = (tileWatchers.get(tileId) || []).slice(0, 4)
       .map((w) => `<span class="node" data-size="16" data-state="watching" title="${escapeHtml(w.name || '')}"></span>`)
       .join('');
@@ -3206,8 +3265,11 @@
     if (sub) {
       const pausado = $('btn-pause-share')?.getAttribute('aria-pressed') === 'true';
       const vendo = (tileWatchers.get('me') || []).length;
-      sub.textContent = pausado ? 'Pausada'
-        : [nomeFonteAoVivo || 'ao vivo', vendo ? `${vendo} vendo` : ''].filter(Boolean).join(' · ');
+      // Quem transmite precisa saber se alguem esta do outro lado, inclusive
+      // quando ninguem esta.
+      sub.textContent = pausado ? 'Tela pausada'
+        : [nomeFonteAoVivo || 'Ao vivo', vendo ? `${vendo} assistindo` : 'ninguém assistindo'].join(' · ');
+      sub.title = vendo ? (tileWatchers.get('me') || []).map((w) => w.name).filter(Boolean).join(', ') : '';
       sub.classList.toggle('tx-live', pausado);
     }
     if (!node || !self) return;
@@ -3265,7 +3327,7 @@
   const chatOfflineBarEl = $('chat-offline-bar');
   let lastChatEntry = null;
   let onChatSend = null;
-  let onChatPut = null; // "Pôr na mesa" de um link do YouTube ou de uma imagem
+  let onChatPut = null; // "Pôr na Mesa" de um link do YouTube ou de uma imagem
 
   const SYSTEM_LABELS = {
     join: (actor) => `${actor} entrou`,
@@ -3314,7 +3376,32 @@
     lastChatEntry = null;
   }
 
+  // Entradas e saidas seguidas viram uma linha so ("Bia, Leo e Caio entraram"):
+  // quando a sala enche, onze linhas de "entrou" empurravam a conversa pra fora.
+  const SYSTEM_PLURAL = { join: 'entraram', leave: 'saíram' };
+  const JUNTAR_JANELA_MS = 5 * 60 * 1000;
+  let grupoSistema = null; // { event, actors, el, ts }
+
+  function juntarNomes(nomes) {
+    if (nomes.length <= 1) return nomes[0] || '';
+    if (nomes.length > 4) return `${nomes.slice(0, 3).join(', ')} e mais ${nomes.length - 3}`;
+    return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
+  }
+
   function appendSystemLine(entry) {
+    const g = grupoSistema;
+    if (SYSTEM_PLURAL[entry.event] && g && g.event === entry.event && g.el === chatMessagesEl.lastElementChild
+        && Math.abs((entry.ts || 0) - g.ts) < JUNTAR_JANELA_MS) {
+      if (!g.actors.includes(entry.actor)) g.actors.push(entry.actor);
+      const texto = g.actors.length > 1 ? `${juntarNomes(g.actors)} ${SYSTEM_PLURAL[entry.event]}`
+        : SYSTEM_LABELS[entry.event](entry.actor);
+      g.el.querySelector('span').textContent = texto;
+      g.el.title = g.actors.join(', ');
+      const hora = g.el.querySelector('.msg__time');
+      if (hora && entry.ts) hora.textContent = formatTime(entry.ts);
+      g.ts = entry.ts || g.ts;
+      return;
+    }
     const div = document.createElement('div');
     const tone = SYSTEM_TONE[entry.event] || '';
     div.className = `msg-sys${tone ? ` msg-sys--${tone}` : ''}`;
@@ -3323,6 +3410,7 @@
     div.innerHTML = `<svg class="i" aria-hidden="true"><use href="#i-${SYSTEM_ICON[entry.event] || 'info'}" /></svg><span>${escapeHtml(label)}</span>${hora}`;
     chatMessagesEl.appendChild(div);
     lastChatEntry = null;
+    grupoSistema = SYSTEM_PLURAL[entry.event] ? { event: entry.event, actors: [entry.actor], el: div, ts: entry.ts || 0 } : null;
   }
 
   /** Miniatura de imagem da linha do chat. As dimensoes viajam na mensagem
@@ -3348,9 +3436,9 @@
     const L = root.GoLive.mesaMidiaLinks;
     const lib = root.GoLive.chatImagensLib;
     const links = lib && L ? lib.youtubeLinks(entry.text, L.parseYouTube) : [];
-    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na mesa"${links.length > 1 ? ` aria-label="Pôr na mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
+    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na Mesa"${links.length > 1 ? ` aria-label="Pôr na Mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na Mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
     if (chatmedia.isImageDataUrl(entry.image) && lib?.isMsgId(entry.id)) {
-      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="Pôr esta imagem na mesa">${PUT_ICON}<span>Pôr na mesa</span></button>`);
+      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="Pôr esta imagem na Mesa">${PUT_ICON}<span>Pôr na Mesa</span></button>`);
     }
     return out.length ? `<span class="msg__put">${out.join('')}</span>` : '';
   }
@@ -3903,8 +3991,17 @@
     if (video) video.srcObject = null;
   }
 
+  /** Texto sobre a previa enquanto ela nao tem imagem (vazio = some). */
+  function notaDaPrevia(texto) {
+    const nota = $('settings-camera-note');
+    if (!nota) return;
+    nota.textContent = texto;
+    nota.hidden = !texto;
+  }
+
   async function startSettingsCameraPreview(deviceId) {
     stopSettingsCameraPreview();
+    notaDaPrevia('Abrindo a câmera…');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: deviceId ? { deviceId: { exact: deviceId } } : true,
@@ -3919,8 +4016,12 @@
       settingsCameraPreviewStream = stream;
       const video = $('settings-camera-preview');
       if (video) video.srcObject = stream;
-    } catch {
-      /* permissao negada ou sem camera disponivel, preview fica preto */
+      notaDaPrevia('');
+    } catch (err) {
+      // Permissao negada, camera ocupada por outro app ou nenhuma camera: a
+      // previa diz o que houve em vez de ficar um retangulo preto mudo.
+      notaDaPrevia(err?.name === 'NotFoundError' ? 'Nenhuma câmera encontrada.'
+        : 'A câmera não abriu. Veja se outro app está usando ou escolha outro dispositivo.');
     }
   }
 
@@ -4251,7 +4352,7 @@
           </button>
           <input id="settings-profile-avatar-input" type="file" accept="image/*" class="hidden" />
           <div class="field">
-            <label class="field__label" for="settings-profile-name">Apelido</label>
+            <label class="field__label" for="settings-profile-name">Seu nome</label>
             <input id="settings-profile-name" class="input" type="text" placeholder="Como te chamam no grupo"
               spellcheck="false" maxlength="32" />
             <p class="field__help">Aparece para quem está na sala a partir da próxima entrada.</p>
@@ -4262,7 +4363,6 @@
     settingsPanes.appearance.innerHTML = `
       <div class="settings__block">
         <h3 class="settings__h">Tema</h3>
-        <p class="field__help">O vermelho continua sendo só "ao vivo" e o âmbar, só aviso, em qualquer tema.</p>
         <div id="theme-presets" class="theme-grid"></div>
       </div>
 
@@ -4313,7 +4413,10 @@
           <label class="field__label" for="settings-camera-device">Dispositivo</label>
           <select id="settings-camera-device" class="input"></select>
         </div>
-        <video id="settings-camera-preview" class="settings__preview" autoplay playsinline muted></video>
+        <div class="settings__preview">
+          <video id="settings-camera-preview" autoplay playsinline muted></video>
+          <p id="settings-camera-note" class="settings__preview-note">Abrindo a câmera…</p>
+        </div>
       </div>
       <div class="settings__block">
         <h3 class="settings__h">Sons e avisos</h3>
@@ -4335,7 +4438,10 @@
         </div>
         <p id="sound-test-current" class="field__help" aria-live="polite">Toca cada aviso, inclusive o da conversa com a
           janela em foco.</p>
-        <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
+        <details class="sound-log">
+          <summary>Últimas tentativas</summary>
+          <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
+        </details>
       </div>`;
 
     settingsPanes.stats.innerHTML = `
@@ -4650,7 +4756,12 @@
     }
     const empty = document.createElement('p');
     empty.className = 'stats-empty';
-    empty.textContent = 'As estatísticas de envio e recepção aparecem aqui enquanto você está numa sala.';
+    // Dentro da sala o vazio e so espera (as conexoes ainda nao mediram nada);
+    // fora dela, e que nao ha o que medir.
+    const naSala = document.getElementById('app')?.dataset.place === 'room';
+    empty.textContent = naSala
+      ? 'Sem números ainda: aparecem quando você envia ou recebe alguma fonte.'
+      : 'Os números de envio e recepção aparecem aqui quando você está numa sala.';
     body.replaceChildren(empty);
   }
 
@@ -5205,7 +5316,8 @@
     pause: 'btn-pause-share',
   };
   const TOGGLE_LABELS = {
-    share: { off: 'Transmitir tela', on: 'Parar de transmitir' },
+    // `curto`: o texto visivel quando o nome inteiro nao cabe no bloco ao vivo.
+    share: { off: 'Transmitir tela', on: 'Parar de transmitir', curto: { on: 'Parar' } },
     camera: { off: 'Câmera', loading: 'Abrindo…', on: 'Desligar câmera' },
     pause: { off: 'Pausar', on: 'Retomar' },
   };
@@ -5214,7 +5326,7 @@
     const btn = $(TOGGLE_BUTTON_IDS[id]);
     if (!btn) return;
     const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
-    btn.querySelector('.btn-label').textContent = label;
+    btn.querySelector('.btn-label').textContent = TOGGLE_LABELS[id].curto?.[state] || label;
     // O .btn-label do dock fica com display:none (sai da arvore de
     // acessibilidade): o nome do botao mora no aria-label e acompanha o estado.
     btn.setAttribute('aria-label', label);

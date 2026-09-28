@@ -30,9 +30,9 @@
    * texto para a pessoa. */
   const RECUSAS = {
     rate: 'Muitas ações seguidas; espere um instante',
-    locked: 'Só o líder da sala mexe na mesa agora',
+    locked: 'Só o líder da sala mexe na Mesa agora',
     'leader-only': 'Só o líder da sala pode',
-    'not-found': 'Esta janela saiu da mesa',
+    'not-found': 'Esta janela saiu da Mesa',
     'not-viewing': 'Abra a Mesa para mexer aqui',
     'state-too-big': 'Passou do tamanho que a janela guarda',
     'too-big': 'Grande demais para mandar',

@@ -41,17 +41,17 @@
   // resolve sozinha (overlap, out-of-world, held, not-found) nao estao aqui.
   const DENIED_TEXT = {
     rate: 'Calma: muitas mudanças de uma vez.',
-    locked: 'Só o líder mexe na mesa agora.',
+    locked: 'Só o líder mexe na Mesa agora.',
     'size-locked': 'O líder travou o tamanho das janelas.',
     'leader-only': 'Só o líder da sala muda isso.',
-    'not-yours': 'Só a própria pessoa ou o líder tira esta tela da mesa.',
-    full: 'A mesa já tem 32 janelas.',
-    'no-space': 'Não há lugar livre na mesa para esta janela.',
+    'not-yours': 'Só a própria pessoa ou o líder tira esta tela da Mesa.',
+    full: 'A Mesa já tem 32 janelas.',
+    'no-space': 'Não há lugar livre na Mesa para esta janela.',
     'too-small': 'A janela ficaria pequena demais.',
     'too-big': 'A janela ficaria grande demais.',
     'bad-rect': 'Não deu para pôr a janela ali.',
     'unknown-type': 'Esta sala não conhece este tipo de janela.',
-    auto: 'Telas e câmeras entram na mesa sozinhas.',
+    auto: 'Telas e câmeras entram na Mesa sozinhas.',
     'no-act': 'Esta janela não tem ação.',
     'state-too-big': 'A janela ficou cheia demais.',
     invalid: 'Não deu para fazer isso agora.',
@@ -305,9 +305,9 @@
           <div class="mesa-empty__shortcuts" aria-label="Atalhos para pôr na Mesa"></div>
         </div>
         <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>Abrindo a Mesa…</p>
-        <div class="mesa-people" role="group" aria-label="Quem está na mesa"></div>
+        <div class="mesa-people" role="group" aria-label="Quem está na Mesa"></div>
         <div class="mesa-nav">
-          <div id="mesa-map" class="mesa-map" hidden aria-label="Mapa da mesa"></div>
+          <div id="mesa-map" class="mesa-map" hidden aria-label="Mapa da Mesa"></div>
           <div class="mesa-zoom" role="group" aria-label="Aproximação">
             <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
             <output class="mesa-zoom-val" aria-live="off">100%</output>
@@ -674,7 +674,7 @@
             // Tela e camera entram sozinhas (a pessoa foi ao vivo): nao e
             // alguem "pondo" a janela.
             const auto = msg.win && isMedia(msg.win) && String(msg.win.state?.peerId) === String(msg.by);
-            announce(auto ? `${labelOf(msg.win)} entrou na mesa` : `${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na mesa`, msg.by);
+            announce(auto ? `${labelOf(msg.win)} entrou na Mesa` : `${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na Mesa`, msg.by);
           }
           break;
         }
@@ -688,8 +688,8 @@
             const media = old.type === 'tela' || old.type === 'camera';
             // Quem parou de transmitir "perde a janela": nao e alguem
             // tirando da mesa, entao o aviso e outro.
-            if (media && String(old.state?.peerId) === String(msg.by)) announce(`${titleOf(old)} saiu da mesa`, msg.by);
-            else announce(`${deps.nameOf(msg.by)} tirou ${titleOf(old)} da mesa`, msg.by);
+            if (media && String(old.state?.peerId) === String(msg.by)) announce(`${titleOf(old)} saiu da Mesa`, msg.by);
+            else announce(`${deps.nameOf(msg.by)} tirou ${titleOf(old)} da Mesa`, msg.by);
           }
           break;
         }
@@ -724,7 +724,7 @@
           emitLocks();
           if (!mine) {
             const lo = S.state.mesa.leaderOnly;
-            announce(lo ? `${deps.nameOf(msg.by)} travou a mesa: só o líder mexe` : 'A mesa está liberada para todo mundo mexer', msg.by);
+            announce(lo ? `${deps.nameOf(msg.by)} travou a Mesa: só o líder mexe` : 'A Mesa está liberada para todo mundo mexer', msg.by);
           }
           break;
         default:
@@ -905,7 +905,7 @@
     }
 
     function lockReason() {
-      if (!canEdit()) return 'Só o líder mexe na mesa agora.';
+      if (!canEdit()) return 'Só o líder mexe na Mesa agora.';
       if (!canResize()) return 'O líder travou o tamanho das janelas.';
       return null;
     }
@@ -1023,8 +1023,8 @@
             title="Mais ações (Shift+F10)" aria-haspopup="menu">${ICON.more}</button>
           <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="full" aria-label="Tela cheia"
             title="Tela cheia (F)">${ICON.fs}</button>
-          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="remove" aria-label="Tirar da mesa"
-            title="Tirar da mesa (Delete)">${ICON.x}</button>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="remove" aria-label="Tirar da Mesa"
+            title="Tirar da Mesa (Delete)">${ICON.x}</button>
         </div>
         <div class="mesa-win-body"></div>
         <div class="mesa-resize" data-edge="l" aria-hidden="true"></div>
@@ -1096,7 +1096,7 @@
         av.dataset.key = avKey;
         av.innerHTML = owner ? avatarHtml(owner) : '';
         av.hidden = !owner;
-        av.title = owner ? `Pôs na mesa: ${deps.nameOf(owner)}` : '';
+        av.title = owner ? `Pôs na Mesa: ${deps.nameOf(owner)}` : '';
         if (owner) av.style.setProperty('--who', deps.colorFor(owner));
       }
       rec.el.querySelector('[data-act="remove"]').hidden = !canRemove(win);
@@ -1411,7 +1411,7 @@
       const win = findWin(rec.id);
       if (!win || S.fullId) return;
       if (!canEdit()) {
-        toast('Só o líder mexe na mesa agora.');
+        toast('Só o líder mexe na Mesa agora.');
         return;
       }
       const held = holderOf(rec.id);
@@ -1688,7 +1688,7 @@
       const win = findWin(id);
       if (!win) return;
       if (!canRemove(win)) {
-        toast(!canEdit() ? 'Só o líder mexe na mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela da mesa.');
+        toast(!canEdit() ? 'Só o líder mexe na Mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela da Mesa.');
         return;
       }
       const held = holderOf(id);
@@ -1822,15 +1822,15 @@
         const volume = isMedia(win) && deps.openTileMenu && String(win.state?.peerId) !== String(deps.me());
         m.innerHTML = [
           row('Tela cheia', { act: 'full', kbd: 'F' }),
-          row('Centralizar na tela', { act: 'center' }),
+          row('Centralizar na vista', { act: 'center' }),
           volume ? row('Volume e silenciar…', { act: 'volume' }) : '',
           '<hr class="mesa-menu-sep">',
-          row('Tirar da mesa', { act: 'remove', kbd: 'Del', danger: true, disabled: !removable, reason: removable ? '' : (!canEdit() ? 'Só o líder mexe na mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela.') }),
+          row('Tirar da Mesa', { act: 'remove', kbd: 'Del', danger: true, disabled: !removable, reason: removable ? '' : (!canEdit() ? 'Só o líder mexe na Mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela.') }),
         ].join('');
       } else {
         const locked = !canEdit();
         m.innerHTML = [
-          row('Adicionar janela', { sub: true, disabled: locked, reason: locked ? 'Só o líder mexe na mesa agora.' : '' }),
+          row('Adicionar janela', { sub: true, disabled: locked, reason: locked ? 'Só o líder mexe na Mesa agora.' : '' }),
           '<hr class="mesa-menu-sep">',
           row('Ver tudo', { act: 'fit', kbd: '0' }),
         ].join('');
@@ -1973,7 +1973,7 @@
         if (!list.length) continue;
         out.push(`<p class="mesa-menu-head" role="presentation">${escapeHtml(GROUP_LABELS[g])}</p>`);
         for (const mod of list) {
-          const reason = locked ? 'Só o líder mexe na mesa agora.' : full ? 'A mesa já tem 32 janelas.' : '';
+          const reason = locked ? 'Só o líder mexe na Mesa agora.' : full ? 'A Mesa já tem 32 janelas.' : '';
           out.push(row(mod.title, { disabled: Boolean(reason), reason }).replace('<button ', `<button data-add="${escapeHtml(mod.type)}" `));
         }
       }
@@ -2008,7 +2008,7 @@
       const mod = modOf(type);
       if (!mod) return;
       if (!canEdit()) {
-        toast('Só o líder mexe na mesa agora.');
+        toast('Só o líder mexe na Mesa agora.');
         return;
       }
       const { w, h } = mod.size;
@@ -2018,7 +2018,7 @@
       const want = at ? { x: at.x, y: at.y, w, h } : { x: c.x - w / 2, y: c.y - h / 2, w, h };
       const rect = M.nearestFree(windows(), want, { gap: M.GAP });
       if (!rect) {
-        toast('Não há lugar livre na mesa para esta janela.');
+        toast('Não há lugar livre na Mesa para esta janela.');
         return;
       }
       S.focusAfterAdd = true;
@@ -2190,7 +2190,7 @@
     function goTo(id) {
       const p = S.pointers.active(Date.now(), 60000).find((c) => c.from === String(id));
       if (!p) {
-        toast(`${deps.nameOf(id)} ainda não mexeu o ponteiro na mesa.`, id);
+        toast(`${deps.nameOf(id)} ainda não mexeu o ponteiro na Mesa.`, id);
         return;
       }
       flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh, { safe: S.safe }));

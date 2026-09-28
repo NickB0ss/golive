@@ -79,8 +79,13 @@
 .settings__avatar .node { overflow: hidden; }
 .settings__color { width: 56px; height: var(--h-ctl); padding: 2px; border: 1px solid var(--line2); border-radius: var(--r-xs);
   background: var(--s3); cursor: pointer; }
-.settings__preview { width: 100%; max-width: 320px; aspect-ratio: 16 / 9; border-radius: var(--r-xs); background: var(--void); }
-.settings__preview:not([src]):not([srcObject]) { box-shadow: 0 0 0 1px var(--line); }
+.settings__preview { position: relative; width: 100%; max-width: 320px; aspect-ratio: 16 / 9; overflow: hidden;
+  border-radius: var(--r-xs); background: var(--void); box-shadow: 0 0 0 1px var(--line); }
+.settings__preview video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.settings__preview-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: var(--s-4);
+  color: var(--on-video-2); font: var(--t-meta); text-align: center; }
+.sound-log summary { width: fit-content; cursor: pointer; color: var(--tx2); font: var(--t-meta); }
+.sound-log[open] summary { margin-bottom: var(--s-2); }
 
 /* Grade de temas: cada cartao e a sala do Sinal em miniatura. */
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--s-3); }

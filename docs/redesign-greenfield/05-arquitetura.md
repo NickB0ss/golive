@@ -360,3 +360,21 @@ Decisões tomadas ao implementar, com o motivo — a spec acima segue valendo no
 - **Entrar por endereço é direto**: o diálogo só aparece quando a sala pede PIN.
 - **Cancelar a entrada** numa sala não existe no app; a linha mostra "Conectando…" e as outras ficam
   desabilitadas, sem um Cancelar de mentira.
+
+### Depois da revisão de design final (2026-09-28)
+
+- **Destaque escolhido pela tira.** O destaque continua automático, mas clicar numa miniatura da tira (ou no
+  botão "Destacar no palco" do HUD dela) a sobe sozinha ao palco, e quem estava lá desce para a tira
+  (`gridLayout(tiles, { focus })`). A tela cheia leva junto, em miniatura, quem estava à mostra, até a pessoa
+  escolher as suas; o botão do canto chama "Ver junto", o mesmo verbo do barramento.
+- **Um estado só para "no ar".** A seção AO VIVO da presença, o cartão de assistir e o selo das janelas da Mesa
+  leem o mesmo estado dos nós: câmera ligada conta como no ar, tela pausada não diz "ao vivo". O HUD do palco
+  ganhou o selo AO VIVO, que some com a tela pausada.
+- **Quem assiste.** O app só sabe quem assiste as suas próprias fontes; o bloco "Você" diz "N assistindo" ou
+  "ninguém assistindo". Quem assiste as fontes dos outros não é mostrado (o servidor não conta isso a terceiros).
+- **Tema claro: o palco é escuro nos dois tons**, e tudo dentro dele (palco vazio, cartão de assistir, espiada da
+  conversa) volta às primitivas do Sinal escuro.
+- **Mesa sempre com maiúscula** quando é o recurso; "Voltar ao palco" no lugar de "Voltar à Transmissão".
+- **Temas e cor de ação continuam**: são funções que o app já tinha e a mudança manteve.
+- Limites que dependem de protocolo, deixados de fora: a lista de salas não diz quem está ao vivo (o beacon só
+  conta pessoas) e a imagem posta na Mesa some quando sai do histórico de 8 imagens do chat.

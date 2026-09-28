@@ -4,8 +4,10 @@
   function ordenarPresencas(pessoas) {
     const lista = Array.isArray(pessoas) ? pessoas.slice() : [];
     const porNome = (a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR');
-    const aoVivo = lista.filter((pessoa) => pessoa.live).sort(porNome);
-    const naSala = lista.filter((pessoa) => !pessoa.live).sort((a, b) => {
+    // `noAr` e o estado do no (tela, tela pausada ou camera); sem ele, so a tela conta.
+    const noAr = (pessoa) => (pessoa.noAr ?? pessoa.live) === true;
+    const aoVivo = lista.filter(noAr).sort(porNome);
+    const naSala = lista.filter((pessoa) => !noAr(pessoa)).sort((a, b) => {
       if (a.isSelf) return 1;
       if (b.isSelf) return -1;
       return porNome(a, b);

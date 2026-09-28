@@ -10,7 +10,7 @@ test('carregar no Node nao precisa de DOM e registra o apoio', () => {
 
 test('motivoRecusa: invalid mostra o motivo do modulo; o resto vira frase em PT', () => {
   assert.equal(C.motivoRecusa('invalid', 'o placar não fica negativo'), 'O placar não fica negativo');
-  assert.equal(C.motivoRecusa('locked'), 'Só o líder da sala mexe na mesa agora');
+  assert.equal(C.motivoRecusa('locked'), 'Só o líder da sala mexe na Mesa agora');
   assert.equal(C.motivoRecusa('rate'), 'Muitas ações seguidas; espere um instante');
   assert.equal(C.motivoRecusa('coisa-nova'), 'Não deu certo; tente de novo');
   assert.equal(C.motivoRecusa('invalid', ''), 'Não deu certo; tente de novo');

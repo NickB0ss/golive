@@ -31,7 +31,7 @@
         add('parar-transmitir', 'Parar de transmitir');
       }
       add('camera', estado.cameraLigada ? 'Desligar câmera' : 'Ligar câmera');
-      add('mesa', estado.naMesa ? 'Voltar para a Transmissão' : 'Abrir a Mesa', { dica: 'M' });
+      add('mesa', estado.naMesa ? 'Voltar ao palco' : 'Abrir a Mesa', { dica: 'M' });
       if (estado.naMesa) add('por-na-mesa', 'Pôr na Mesa…');
       add('conversa', estado.conversaAberta ? 'Fechar a conversa' : 'Abrir a conversa', { dica: 'C' });
       add('teatro', 'Modo teatro', { dica: 'T' });

@@ -444,6 +444,15 @@ arquitetura (spec congelada + desvios registrados no §13), prints em `prints/`.
 - **Bugs achados no caminho**: `theme.js` atribuía a `dataset` (lança no DOM real); botão Reagir do barramento
   sem ação; medidor de som sem barras; soltar imagem só funcionava na lista; teste e2e do Quiz lia um retrato
   antigo da Mesa sob carga (intermitente).
+- **Revisão de design final (2026-09-28)**, com contexto limpo, sobre os prints do app real. Corrigido: palco
+  vazio ilegível no tema claro (o palco é escuro nos dois tons e redefine as primitivas); multi-fonte com destaque
+  escolhido pela tira e tela cheia que leva as outras fontes em miniatura; estado "no ar" único (câmera entra em
+  AO VIVO, tela pausada não diz "ao vivo", selo AO VIVO no HUD); "N assistindo"/"ninguém assistindo" no bloco
+  Você; estado das fontes mantido abaixo de 1024 px; "Parar" com rótulo; ícones crus da barra das janelas da
+  Mesa pintados de preto (sem `fill: none`); texto (Mesa com maiúscula, "Voltar ao palco", "Twitch", "Seu
+  nome", diálogo de PIN que diz a sala e "Entrar"); entradas/saídas agrupadas na conversa; alternâncias do menu
+  com polegar; estados vazios do Início com ação; prévia da câmera e Diagnóstico com estado honesto. Decisões em
+  `05-arquitetura.md` §13.
 
 ## Redesign, fase 1 — fundação e Mesa (branch feat/redesign-mesa)
 

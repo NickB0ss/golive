@@ -106,6 +106,15 @@
   text-align: center;
   pointer-events: none;
 }
+.mesa-lock-note svg {
+  width: 14px;
+  height: 14px;
+  margin-right: var(--s-1);
+  vertical-align: -2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+}
 
 .mesa-cursor {
   position: absolute;
@@ -175,8 +184,13 @@
 .mesa-avatar { margin-left: auto; }
 .mesa-avatar img { display: block; }
 .mesa-bar-btn { flex: none; cursor: pointer; }
+/* Os icones da barra vem crus do mesa-view.js: sem isto os caminhos saiam preenchidos de preto. */
+.mesa-bar-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round;
+  stroke-linejoin: round; }
 .mesa-live-slot { display: inline-flex; }
 .mesa-live { pointer-events: none; }
+/* Tela pausada nao e "ao vivo": o aviso de pausa dentro da janela fala por ela. */
+.mesa-win:has(.tile.is-paused) .mesa-live { display: none; }
 
 .mesa[data-far] .mesa-bar > :not(.mesa-bar-title) { display: none; }
 .mesa[data-far] .mesa-bar { justify-content: center; padding: 0 var(--s-2); }

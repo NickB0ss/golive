@@ -222,6 +222,48 @@
   --on-text: #0E0E14;
 }
 
+/* O palco e escuro nos dois tons (--void). No tom claro, tudo que mora nele --
+ * palco vazio, cartao de assistir, espiada da conversa -- volta as primitivas
+ * e a semantica do Sinal escuro; senao a tinta do tema claro some no vazio. */
+:root[data-tone='light'] .program {
+  color-scheme: dark;
+  color: var(--tx);  /* sem isto o texto herda a tinta escura do body, computada fora do palco */
+  --bg: #0E0E14;
+  --s1: #15151D;
+  --s2: #1C1C26;
+  --s3: #262632;
+  --s4: #33333F;
+  --tx: #EDEDF2;
+  --tx2: #B4B4C3;
+  --tx3: #8A8A9E;
+  --line: rgba(237, 237, 242, 0.09);
+  --line2: rgba(237, 237, 242, 0.17);
+  --act: #EDEDF2;
+  --act-hover: #FFFFFF;
+  --on-act: #0E0E14;
+  --on-fill: #0E0E14;
+  --on-line: #EDEDF2;
+  --on-text: #EDEDF2;
+  --live-text: #FF4D4F;
+  --live-soft: rgba(255, 77, 79, 0.14);
+  --wire: #8C92FF;
+  --wire-soft: rgba(140, 146, 255, 0.16);
+  --wire-line: rgba(140, 146, 255, 0.55);
+  --on-wire: #0E0E14;
+  --ok: #43D98C;
+  --warn: #F5C04A;
+  --warn-dim: rgba(245, 192, 74, 0.14);
+  --danger: #FF8A3D;
+  --danger-soft: #FF8A3D;
+  --danger-dim: rgba(255, 138, 61, 0.14);
+  --on-danger: #0E0E14;
+  --scrim: rgba(7, 7, 11, 0.72);
+  --veil: rgba(237, 237, 242, 0.10);
+  --veil-hover: rgba(237, 237, 242, 0.16);
+  --veil-strong: rgba(237, 237, 242, 0.55);
+  --elev-float: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line2);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-fast: 0ms;

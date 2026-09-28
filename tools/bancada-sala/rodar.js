@@ -270,6 +270,40 @@ async function conferirQualidadeNosMenus(ana, bia, caio) {
   await bia.page.keyboard.press('Escape');
 }
 
+/** Multi-fonte: a miniatura da tira sobe ao palco com um clique (e a de antes
+ * desce); a tela cheia leva junto, em miniatura, quem estava a mostra. */
+async function conferirDestaque(page) {
+  const estado = () => page.evaluate(() => ({
+    main: [...document.querySelectorAll('#grid .grid-main > .tile')].map((tile) => tile.id),
+    strip: [...document.querySelectorAll('#grid .grid-strip > .tile')].map((tile) => tile.id),
+  }));
+  const antes = await estado();
+  conferir('multi-fonte abre com tira de miniaturas', antes.strip.length > 0, JSON.stringify(antes));
+  if (!antes.strip.length) return;
+  const alvo = antes.strip[0];
+  const caixa = await page.locator(`#${alvo} video`).boundingBox();
+  await page.mouse.click(caixa.x + caixa.width / 2, caixa.y + caixa.height / 2);
+  await page.waitForTimeout(200);
+  const depois = await estado();
+  conferir('clique na miniatura a destaca sozinha no palco',
+    depois.main.length === 1 && depois.main[0] === alvo && antes.main.every((id) => depois.strip.includes(id)),
+    JSON.stringify(depois));
+  const voltar = antes.main[0];
+  await page.locator(`#${voltar}`).hover();
+  await page.locator(`#${voltar} [data-acao="destacar"]`).click();
+  await page.waitForTimeout(200);
+  const troca = await estado();
+  conferir('botão Destacar da miniatura troca o palco', troca.main.length === 1 && troca.main[0] === voltar, JSON.stringify(troca));
+  await page.locator(`#${voltar}`).dblclick({ position: { x: 40, y: 200 } });
+  await page.waitForTimeout(700);
+  const miniaturas = await page.evaluate(() => document.querySelectorAll('.tile.fullscreen .pip-strip .pip-thumb').length);
+  conferir('tela cheia leva as outras fontes em miniatura', miniaturas > 0, String(miniaturas));
+  // Sai pelo mesmo gesto (o Esc e o da janela do Electron, que a bancada nao tem).
+  await page.locator('.tile.fullscreen').dblclick({ position: { x: 40, y: 200 } });
+  await page.waitForTimeout(500);
+  conferir('duplo clique sai da tela cheia', await page.locator('.tile.fullscreen').count() === 0);
+}
+
 async function conferirErros(pessoas) {
   const erros = pessoas.flatMap((pessoa) => pessoa.erros.map((erro) => `${pessoa.nome}: ${erro}`));
   conferir('páginas sem erros de console', erros.length === 0, erros.join(' | '));
@@ -301,6 +335,7 @@ async function main() {
     await caio.page.setViewportSize({ width: 1440, height: 900 });
     await assistirPelaPresenca(caio, { Ana: ana.id, Bia: bia.id });
     await conferirVideoRecebeClique(caio.page);
+    await conferirDestaque(caio.page);
     await conferirPopoversOpacos(caio.page);
     await conferirQualidadeNosMenus(ana, bia, caio);
     await conferirErros(pessoas);

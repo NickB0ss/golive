@@ -1068,8 +1068,10 @@
         // o formulario de entrar-por-endereco ja preenchido, com o foco no
         // campo de PIN. Quem criou a sala passa o PIN por fora (voz, chat).
         if (room.protected) {
-          ui.dialogs.openJoinRoom({ address: room.address, showPinField: true, onConnect: handleJoinConnect });
-          $('setup-error').textContent = 'Essa sala pede um PIN — peça pra quem criou.';
+          // O campo de PIN ja explica de onde ele vem; nao e um erro.
+          ui.dialogs.openJoinRoom({
+            address: room.address, showPinField: true, onConnect: handleJoinConnect, roomName: room.name || room.hostName || '',
+          });
           return;
         }
         joinRoom(room.address, cfg.name);
@@ -5836,9 +5838,9 @@
     mesa.toggleAttribute('data-current', naMesa);
     // Quem esta na Transmissao ve que a mesa tem janelas (mesa-count).
     const janelas = mesaCount === 1 ? '1 janela' : `${mesaCount} janelas`;
-    const sub = naMesa ? 'Voltar à Transmissão' : (mesaCount > 0 ? janelas : 'Abrir a Mesa');
+    const sub = naMesa ? 'Voltar ao palco' : (mesaCount > 0 ? janelas : 'Abrir a Mesa');
     $('view-mesa-count').textContent = sub;
-    mesa.setAttribute('aria-label', naMesa ? 'Mesa aberta. Voltar à Transmissão' : `Mesa, ${mesaCount > 0 ? janelas : 'vazia'}`);
+    mesa.setAttribute('aria-label', naMesa ? 'Mesa aberta. Voltar ao palco' : `Mesa, ${mesaCount > 0 ? janelas : 'vazia'}`);
   }
 
   $('view-mesa').addEventListener('click', () => setRoomView(mesaView.isOpen() ? 'tx' : 'mesa'));

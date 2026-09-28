@@ -72,3 +72,29 @@ test('sete ou mais tiles mantem telas assistidas no palco', () => {
     strip: ['cam-a', 'cam-b', 'cam-c', 'cam-d', 'cam-e', 'screen-b'],
   });
 });
+
+test('destaque escolhido vai sozinho pro palco e o resto desce pra tira', () => {
+  assert.deepEqual(gridLayout([
+    { id: 'screen-a', kind: 'screen', watched: true },
+    { id: 'cam-a', kind: 'camera', watched: true },
+  ], { focus: 'cam-a' }), {
+    layout: 'spotlight', count: 2, main: ['cam-a'], strip: ['screen-a'],
+  });
+});
+
+test('destaque em tela nao assistida ou que saiu e ignorado', () => {
+  const tiles = [
+    { id: 'screen-a', kind: 'screen', watched: true },
+    { id: 'screen-b', kind: 'screen', watched: false },
+    { id: 'cam-a', kind: 'camera', watched: true },
+  ];
+  const auto = gridLayout(tiles);
+  assert.deepEqual(gridLayout(tiles, { focus: 'screen-b' }), auto);
+  assert.deepEqual(gridLayout(tiles, { focus: 'sumiu' }), auto);
+});
+
+test('destaque com um tile so nao cria tira', () => {
+  assert.deepEqual(gridLayout([{ id: 'cam-a', kind: 'camera', watched: true }], { focus: 'cam-a' }), {
+    layout: 'grid', count: 1, main: ['cam-a'], strip: [],
+  });
+});

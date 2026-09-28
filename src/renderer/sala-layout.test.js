@@ -30,3 +30,13 @@ test('recolhe pelas larguras sem substituir escolha manual', () => {
     chat: 'aberto',
   });
 });
+
+test('quem esta no ar (camera ou tela pausada) vai para ao vivo pelo estado do no', () => {
+  const { aoVivo, naSala } = ordenarPresencas([
+    { id: 'c', name: 'Caio', live: false, noAr: true },
+    { id: 'l', name: 'Leo', live: true, noAr: true },
+    { id: 'n', name: 'Nick', live: false, noAr: false, isSelf: true },
+  ]);
+  assert.deepEqual(aoVivo.map((p) => p.id), ['c', 'l']);
+  assert.deepEqual(naSala.map((p) => p.id), ['n']);
+});
