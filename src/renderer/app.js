@@ -2933,6 +2933,10 @@
 
   const CONV_PREF = 'golive.sala.conversa';
   let convManual = null;
+  // Declarado antes do primeiro setConversation(null) da carga: com a preferencia salva 'pinned', ele zera o
+  // contador ja na carga, e um `let` mais abaixo dava ReferenceError de TDZ e abortava o resto da inicializacao
+  // (o relayRetry nunca era criado e "Criar sala" quebrava).
+  let naoLidas = 0;
 
   function setConversation(mode, { persist = false } = {}) {
     const app = $('app');
@@ -2975,7 +2979,6 @@
     setConversation(null);
     $('chat-unread-dot').classList.add('hidden');
   }
-  let naoLidas = 0;
   document.addEventListener('golive:chat-received', () => {
     if ($('app').dataset.conv === 'pinned') return;
     naoLidas += 1;
