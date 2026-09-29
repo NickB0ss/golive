@@ -18,7 +18,7 @@
 
   /** O que dizer no lugar da imagem, ou null quando ha imagem. */
   function textoFalta(state, img) {
-    if (!state || !state.msgId) return 'Nenhuma imagem. Use “Pôr na mesa” numa imagem do chat ou na Galeria.';
+    if (!state || !state.msgId) return 'Nenhuma imagem. Use “Pôr na Mesa” numa imagem do chat ou na Galeria.';
     if (!img) return 'Esta imagem saiu do histórico do chat, que guarda só as 8 mais recentes.';
     return null;
   }

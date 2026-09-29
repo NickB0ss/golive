@@ -3,10 +3,17 @@
 (function (root) {
   /** Decide a hierarquia visual sem conhecer o DOM. Tela assistida e o
    * conteudo principal; o resto so vai pra tira quando existe conteudo e
-   * companhia -- com um tile so a grade continua tendo a altura inteira. */
-  function gridLayout(tiles) {
+   * companhia -- com um tile so a grade continua tendo a altura inteira.
+   * `focus` e o destaque que a pessoa escolheu clicando numa miniatura da
+   * tira: vai sozinho pro palco enquanto estiver a mostra e assistido. */
+  function gridLayout(tiles, { focus = null } = {}) {
     const list = Array.isArray(tiles) ? tiles : [];
-    const main = list.filter((tile) => tile?.kind === 'screen' && tile.watched).map((tile) => tile.id);
+    const escolhido = focus != null && list.length > 1
+      ? list.find((tile) => tile?.id === focus && tile.watched)
+      : null;
+    const main = escolhido
+      ? [escolhido.id]
+      : list.filter((tile) => tile?.kind === 'screen' && tile.watched).map((tile) => tile.id);
     const spotlight = main.length > 0 && main.length < list.length;
 
     if (!spotlight) {

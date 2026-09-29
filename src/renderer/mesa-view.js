@@ -41,17 +41,16 @@
   // resolve sozinha (overlap, out-of-world, held, not-found) nao estao aqui.
   const DENIED_TEXT = {
     rate: 'Calma: muitas mudanças de uma vez.',
-    locked: 'Só o líder mexe na mesa agora.',
+    locked: 'Só o líder mexe na Mesa agora.',
     'size-locked': 'O líder travou o tamanho das janelas.',
     'leader-only': 'Só o líder da sala muda isso.',
-    'not-yours': 'Só a própria pessoa ou o líder tira esta tela da mesa.',
-    full: 'A mesa já tem 32 janelas.',
-    'no-space': 'Não há lugar livre na mesa para esta janela.',
+    full: 'A Mesa já tem 32 janelas.',
+    'no-space': 'Não há lugar livre na Mesa para esta janela.',
     'too-small': 'A janela ficaria pequena demais.',
     'too-big': 'A janela ficaria grande demais.',
     'bad-rect': 'Não deu para pôr a janela ali.',
     'unknown-type': 'Esta sala não conhece este tipo de janela.',
-    auto: 'Telas e câmeras entram na mesa sozinhas.',
+    auto: 'Telas e câmeras entram na Mesa sozinhas.',
     'no-act': 'Esta janela não tem ação.',
     'state-too-big': 'A janela ficou cheia demais.',
     invalid: 'Não deu para fazer isso agora.',
@@ -62,9 +61,12 @@
   const ICON = {
     fs: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
     fsExit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>',
+    more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
     x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     minus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>',
+    map: '<svg viewBox="0 0 24 24" aria-hidden="true">'
+      + '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></svg>',
     chev: '<svg class="mesa-menu-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
     here: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
     lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
@@ -73,7 +75,6 @@
 
   const TIME_SAMPLES = 5;
   const TIME_EVERY_MS = 60000;
-  const TOAST_MS = 2600;
 
   // Espelho do MESMO regex do servidor (server/signaling-core.js,
   // MESA_SURFACE_RE): a superficie do rabisco de uma janela da Mesa.
@@ -180,6 +181,7 @@
         tracker: V.createWatchTracker(),
         widths: new Map(), // id -> largura em pixels da tela (teto de qualidade)
         drag: null,
+        activeId: null,
         fly: 0,
         raf: new Set(),
         timers: new Set(),
@@ -195,6 +197,8 @@
         focusAfterAdd: false,
         watchTimer: 0,
         lastWatchKey: '',
+        safe: null,
+        mapOpen: false,
       };
       build();
       loadJanelas();
@@ -235,7 +239,10 @@
       s.ro?.disconnect();
       for (const rec of s.wins.values()) unmountWin(rec, { returnTile: true });
       s.section.remove();
+      s.menuEl.remove();
+      s.subEl.remove();
       S = null;
+      renderPeople();
       lastAnnotateViewers = new Set();
       deps.resyncGrid?.();
       deps.onOpenChange?.(false);
@@ -289,48 +296,55 @@
       sec.setAttribute('aria-label', 'Mesa da sala');
       sec.setAttribute('aria-describedby', 'mesa-help');
       sec.innerHTML = `
-        <p id="mesa-help" class="visually-hidden">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa.</p>
+        <p id="mesa-help" class="sr-only">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa as janelas que não são tela nem câmera.</p>
         <div class="mesa-grid" aria-hidden="true"></div>
         <div class="mesa-world"><div class="mesa-edge" aria-hidden="true"></div></div>
         <div class="mesa-over" aria-hidden="true"></div>
-        <p class="mesa-empty" hidden><b>A mesa está vazia.</b> Clique com o botão direito para adicionar uma janela.</p>
-        <p class="mesa-loading" role="status">Abrindo a mesa…</p>
-        <div class="mesa-people" role="group" aria-label="Quem está na mesa"></div>
+        <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>Abrindo a Mesa…</p>
+        <div class="mesa-people" role="group" aria-label="Quem está na Mesa"></div>
         <div class="mesa-nav">
-          <p class="mesa-lock-note" hidden></p>
-          <div class="mesa-map" role="button" tabindex="0" aria-label="Mapa da mesa: clique para ir até um ponto; Enter mostra tudo"></div>
+          <div id="mesa-map" class="mesa-map" hidden aria-label="Mapa da Mesa"></div>
           <div class="mesa-zoom" role="group" aria-label="Aproximação">
-            <button type="button" class="mesa-zoom-btn" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
             <output class="mesa-zoom-val" aria-live="off">100%</output>
-            <button type="button" class="mesa-zoom-btn" data-zoom="in" aria-label="Aproximar" title="Aproximar (+)">${ICON.plus}</button>
-            <button type="button" class="mesa-zoom-btn" data-zoom="fit" aria-label="Ver tudo" title="Ver tudo (0)">${ICON.fs}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="in" aria-label="Aproximar" title="Aproximar (+)">${ICON.plus}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="fit" title="Ver tudo (0)">Ver tudo</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="map" title="Mapa"
+              aria-expanded="false" aria-controls="mesa-map">Mapa</button>
           </div>
         </div>
-        <div class="mesa-toast" aria-hidden="true"><span class="mesa-toast-dot"></span><span class="mesa-toast-text"></span></div>
-        <p class="visually-hidden mesa-live" aria-live="polite"></p>
-        <div class="mesa-menu" role="menu" hidden></div>
-        <div class="mesa-menu" role="menu" hidden></div>`;
+        <p class="mesa-lock-note" hidden></p>
+        <p class="sr-only mesa-live" aria-live="polite"></p>`;
       const q = (sel) => sec.querySelector(sel);
       S.section = sec;
       S.gridBg = q('.mesa-grid');
       S.world = q('.mesa-world');
       S.over = q('.mesa-over');
-      S.emptyEl = q('.mesa-empty');
       S.loadingEl = q('.mesa-loading');
       S.peopleEl = q('.mesa-people');
       S.mapEl = q('.mesa-map');
+      S.mapButton = q('[data-zoom="map"]');
       S.zoomVal = q('.mesa-zoom-val');
       S.lockNote = q('.mesa-lock-note');
-      S.toastEl = q('.mesa-toast');
       S.liveEl = q('.mesa-live');
-      [S.menuEl, S.subEl] = sec.querySelectorAll('.mesa-menu');
+      // Os menus moram no body, nao na secao: a secao cria um contexto de empilhamento
+      // (isolation + z-index) e o z-index do menu ficaria preso nele, com a Conversa por cima.
+      S.menuEl = criarMenuFlutuante();
+      S.subEl = criarMenuFlutuante();
       const edge = q('.mesa-edge');
       edge.style.width = `${V.WORLD.w}px`;
       edge.style.height = `${V.WORLD.h}px`;
 
       deps.grid.after(sec);
+      if (deps.peopleSlot) S.peopleEl.remove();
+      try {
+        S.mapOpen = root.localStorage.getItem('golive.mesa.mapa') === 'aberto';
+      } catch (erro) {
+        console.warn('Não foi possível ler o estado do mapa da Mesa:', erro);
+      }
+      setMapOpen(S.mapOpen);
       measure();
-      S.view = V.centerOn(V.WORLD.w / 2, V.WORLD.h / 2, 1, S.vw, S.vh);
+      S.view = V.centerOn(V.WORLD.w / 2, V.WORLD.h / 2, 1, S.vw, S.vh, { safe: S.safe });
       applyView();
       wire();
       renderPeople();
@@ -339,6 +353,22 @@
     function measure() {
       S.vw = S.section.clientWidth || 1;
       S.vh = S.section.clientHeight || 1;
+      const sec = S.section.getBoundingClientRect();
+      const nav = S.section.querySelector('.mesa-nav').getBoundingClientRect();
+      const toast = document.getElementById('toast')?.getBoundingClientRect();
+      const dock = deps.dockEl?.()?.getBoundingClientRect();
+      const margem = 12;
+      // Quanto uma caixa ocupa do fundo da Mesa. Caixa sem tamanho (escondida ou antes do
+      // layout) tem top 0 e viraria a Mesa inteira: nao conta.
+      const doFundo = (r) => (r && r.height > 0 && r.top > sec.top && r.top < sec.bottom ? sec.bottom - r.top : 0);
+      S.section.style.setProperty('--dock-h', `${dock?.height || 0}px`);
+      S.section.style.setProperty('--toast-h', `${toast?.height || 0}px`);
+      S.safe = {
+        top: margem,
+        right: margem,
+        bottom: Math.min(S.vh / 2, Math.max(doFundo(nav), doFundo(toast), doFundo(dock)) + margem),
+        left: margem,
+      };
     }
 
     function wire() {
@@ -353,16 +383,14 @@
       // pega na captura, antes do tile.
       listen(sec, 'dblclick', onDoubleClick, true);
       listen(S.mapEl, 'pointerdown', onMapDown);
-      listen(S.mapEl, 'keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          flyTo(V.fitAll(windows(), S.vw, S.vh));
-        }
-      });
       for (const b of sec.querySelectorAll('.mesa-zoom-btn')) {
         listen(b, 'click', () => {
           const k = b.dataset.zoom;
-          if (k === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh));
+          if (k !== 'map') S.viewTouched = true;
+          if (k === 'fit') {
+            flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
+          }
+          else if (k === 'map') setMapOpen(!S.mapOpen);
           else setView(V.zoomStep(S.view, k === 'in' ? 1 : -1, S.vw, S.vh));
         });
       }
@@ -370,6 +398,12 @@
         if (S.menu && !e.target.closest?.('.mesa-menu') && !e.target.closest?.('[data-mesa-add]')) closeMenu();
       }, true);
       listen(document, 'keydown', (e) => {
+        if (e.key === 'Escape' && S.mapOpen) {
+          e.preventDefault();
+          setMapOpen(false);
+          S.mapButton.focus();
+          return;
+        }
         if (e.key === 'Escape' && S.fullId) {
           e.preventDefault();
           exitFull();
@@ -383,6 +417,21 @@
         });
         S.ro.observe(sec);
       }
+    }
+
+    function setMapOpen(open) {
+      if (!S) return;
+      S.mapOpen = Boolean(open);
+      S.mapEl.hidden = !S.mapOpen;
+      S.mapEl.classList.toggle('is-open', S.mapOpen);
+      S.mapButton.setAttribute('aria-expanded', String(S.mapOpen));
+      S.mapButton.setAttribute('aria-label', S.mapOpen ? 'Fechar mapa' : 'Abrir mapa');
+      try {
+        root.localStorage.setItem('golive.mesa.mapa', S.mapOpen ? 'aberto' : 'fechado');
+      } catch (erro) {
+        console.warn('Não foi possível guardar o estado do mapa da Mesa:', erro);
+      }
+      if (S.mapOpen) scheduleMap();
     }
 
     /** O fullscreen da janela do Electron mudou por qualquer via (Esc do
@@ -408,6 +457,10 @@
       // Controles da janela (avatar, Tela cheia, Tirar) ficam do mesmo
       // tamanho na tela com zoom baixo, ate um teto (janela minuscula).
       S.world.style.setProperty('--mesa-inv', String(Math.min(2.5, Math.max(1, 1 / v.z))));
+      S.section.toggleAttribute('data-far', v.z < 0.6);
+      for (const bar of S.world.querySelectorAll('.mesa-bar')) {
+        bar.title = v.z < 0.6 ? 'Clique duplo: tela cheia · botão direito: mais ações' : '';
+      }
       const g = V.gridStyle(v);
       const st = S.gridBg.style;
       st.backgroundImage = g.backgroundImage;
@@ -454,6 +507,7 @@
       const winEl = e.target.closest?.('.mesa-win');
       if (winEl && !winEl.classList.contains('is-media') && scrollsInside(e.target, winEl, e.deltaY)) return;
       e.preventDefault();
+      S.viewTouched = true;
       const r = S.section.getBoundingClientRect();
       setView(V.wheelZoom(S.view, e.clientX - r.left, e.clientY - r.top, e.deltaY, e.ctrlKey, S.vw, S.vh));
     }
@@ -480,12 +534,13 @@
 
     function isBackground(t) {
       return t === S.section || t === S.gridBg || t === S.world || t === S.over
-        || t.classList?.contains('mesa-edge') || t.classList?.contains('mesa-empty');
+        || t.classList?.contains('mesa-edge');
     }
 
     function onBackgroundDown(e) {
       if (e.button !== 0 || !isBackground(e.target)) return;
       e.preventDefault();
+      S.viewTouched = true;
       closeMenu();
       S.section.focus({ preventScroll: true });
       S.section.setPointerCapture?.(e.pointerId);
@@ -577,9 +632,11 @@
       }
       S.loadingEl.hidden = true;
       renderAll({ refreshContent: true });
-      if (first && !S.fitted) {
+      // Mesa vazia nao conta como enquadrada: numa sala Mesa ela abre antes de qualquer tela existir, e o
+      // enquadramento fica para a primeira janela que chegar (ver onMesa 'add').
+      if (first && !S.fitted && windows().length) {
         S.fitted = true;
-        setView(V.fitAll(windows(), S.vw, S.vh), { quiet: true });
+        setView(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }), { quiet: true });
       }
       scheduleGrabExpiry();
       emitLocks();
@@ -601,6 +658,14 @@
           renderAll();
           const rec = S.wins.get(msg.win?.id);
           if (rec) animateIn(rec);
+          // A Mesa abre vazia numa sala Mesa e as telas chegam depois, uma a uma: enquanto a pessoa nao
+          // mexeu na vista (roda, arrastar o fundo, zoom), cada tela/camera que entra sozinha reenquadra tudo.
+          const autoMedia = !mine && msg.win && isMedia(msg.win)
+            && String(msg.win.state?.peerId) === String(msg.by);
+          if (windows().length && (!S.fitted || (autoMedia && !S.viewTouched))) {
+            S.fitted = true;
+            flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
+          }
           if (mine) S.pendingAdd = null;
           if (mine && S.focusAfterAdd && rec) {
             S.focusAfterAdd = false;
@@ -610,7 +675,7 @@
             // Tela e camera entram sozinhas (a pessoa foi ao vivo): nao e
             // alguem "pondo" a janela.
             const auto = msg.win && isMedia(msg.win) && String(msg.win.state?.peerId) === String(msg.by);
-            announce(auto ? `${labelOf(msg.win)} entrou na mesa` : `${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na mesa`, msg.by);
+            announce(auto ? `${labelOf(msg.win)} entrou na Mesa` : `${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na Mesa`, msg.by);
           }
           break;
         }
@@ -624,8 +689,8 @@
             const media = old.type === 'tela' || old.type === 'camera';
             // Quem parou de transmitir "perde a janela": nao e alguem
             // tirando da mesa, entao o aviso e outro.
-            if (media && String(old.state?.peerId) === String(msg.by)) announce(`${titleOf(old)} saiu da mesa`, msg.by);
-            else announce(`${deps.nameOf(msg.by)} tirou ${titleOf(old)} da mesa`, msg.by);
+            if (media && String(old.state?.peerId) === String(msg.by)) announce(`${titleOf(old)} saiu da Mesa`, msg.by);
+            else announce(`${deps.nameOf(msg.by)} tirou ${titleOf(old)} da Mesa`, msg.by);
           }
           break;
         }
@@ -660,7 +725,7 @@
           emitLocks();
           if (!mine) {
             const lo = S.state.mesa.leaderOnly;
-            announce(lo ? `${deps.nameOf(msg.by)} travou a mesa: só o líder mexe` : 'A mesa está liberada para todo mundo mexer', msg.by);
+            announce(lo ? `${deps.nameOf(msg.by)} travou a Mesa: só o líder mexe` : 'A Mesa está liberada para todo mundo mexer', msg.by);
           }
           break;
         default:
@@ -747,6 +812,8 @@
         const rec = S.wins.get(id);
         if (rec) placeWin(rec);
       }
+      // Tela/camera nao fecham (nem ha botao): recusa 'media' fica sem aviso.
+      if (reason === 'media') return;
       toast(DENIED_TEXT[reason] || 'Não deu para fazer isso agora.');
     }
 
@@ -834,14 +901,12 @@
 
     function canRemove(win) {
       if (!canEdit()) return false;
-      if (win.type === 'tela' || win.type === 'camera') {
-        return String(win.state?.peerId) === String(deps.me()) || deps.isLeader();
-      }
-      return true;
+      // Tela e camera nao fecham: saem sozinhas quando a transmissao acaba.
+      return !isMedia(win);
     }
 
     function lockReason() {
-      if (!canEdit()) return 'Só o líder mexe na mesa agora.';
+      if (!canEdit()) return 'Só o líder mexe na Mesa agora.';
       if (!canResize()) return 'O líder travou o tamanho das janelas.';
       return null;
     }
@@ -931,7 +996,6 @@
         syncControls(rec, win);
         placeWin(rec);
       }
-      S.emptyEl.hidden = list.length > 0 || !S.state;
       applyLocks();
       scheduleMap();
       scheduleWatch();
@@ -946,15 +1010,22 @@
       el.tabIndex = 0;
       el.setAttribute('role', 'group');
       el.innerHTML = `
-        <div class="mesa-win-body"></div>
-        ${media ? '' : '<div class="mesa-handle" aria-hidden="true"></div>'}
-        ${media ? '<p class="mesa-win-label"><span class="mesa-win-name"></span></p>' : ''}
-        <span class="mesa-moving" hidden></span>
-        <div class="mesa-ctrls">
-          <span class="mesa-avatar"></span>
-          <button type="button" class="mesa-ctrl" data-act="full" aria-label="Tela cheia" title="Tela cheia (F)">${ICON.fs}</button>
-          <button type="button" class="mesa-ctrl" data-act="remove" aria-label="Tirar da mesa" title="Tirar da mesa (Delete)">${ICON.x}</button>
+        <div class="mesa-bar">
+          ${media ? '<span class="mesa-live-slot"></span>' : ''}
+          <span class="mesa-type" aria-hidden="true">${escapeHtml(typeGlyph(win.type))}</span>
+          <span class="mesa-bar-title"></span>
+          <span class="mesa-bar-status"></span>
+          <span class="mesa-bar-turn tag tag--wire" hidden>Sua vez</span>
+          <span class="mesa-moving" hidden></span>
+          <span class="mesa-avatar node" data-size="16"></span>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="menu" aria-label="Mais ações da janela"
+            title="Mais ações (Shift+F10)" aria-haspopup="menu">${ICON.more}</button>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="full" aria-label="Tela cheia"
+            title="Tela cheia (F)">${ICON.fs}</button>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="remove" aria-label="Tirar da Mesa"
+            title="Tirar da Mesa (Delete)">${ICON.x}</button>
         </div>
+        <div class="mesa-win-body"></div>
         <div class="mesa-resize" data-edge="l" aria-hidden="true"></div>
         <div class="mesa-resize" data-edge="r" aria-hidden="true"></div>
         <div class="mesa-resize" data-edge="b" aria-hidden="true"></div>
@@ -974,6 +1045,11 @@
         fixTried: false,
       };
       S.world.appendChild(el);
+      el.querySelector('[data-act="menu"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        openMenuAt(r.left, r.bottom + 4, rec.id, { keyboard: e.detail === 0 });
+      });
       el.querySelector('[data-act="full"]').addEventListener('click', (e) => {
         e.stopPropagation();
         toggleFull(rec.id);
@@ -987,13 +1063,18 @@
       // Chegou pelo Tab numa janela fora da vista: a vista vai ate ela (o
       // navegador nao rola a mesa -- ela e overflow: clip).
       el.addEventListener('focus', () => {
+        setActive(rec.id);
         const w = findWin(rec.id);
         // So o foco do teclado: clicar numa janela meio de fora nao voa.
         if (!w || S.fullId || S.drag || !el.matches(':focus-visible')) return;
         const seen = V.watchable(S.view, S.vw, S.vh, rectOf(w), { minPx: 1 });
         const s2 = V.screenRect(S.view, rectOf(w));
         const inteira = s2.x >= 0 && s2.y >= 0 && s2.x + s2.w <= S.vw && s2.y + s2.h <= S.vh;
-        if (!seen.onScreen || !inteira) flyTo(V.centerOn(w.x + w.w / 2, w.y + w.h / 2, S.view.z, S.vw, S.vh));
+        if (!seen.onScreen || !inteira) {
+          flyTo(V.centerOn(w.x + w.w / 2, w.y + w.h / 2, S.view.z, S.vw, S.vh, {
+            safe: S.safe,
+          }));
+        }
       });
       for (const edge of el.querySelectorAll('.mesa-resize')) {
         edge.addEventListener('pointerdown', (e) => onResizeDown(e, rec, edge.dataset.edge));
@@ -1006,31 +1087,38 @@
       const owner = win.owner != null ? String(win.owner) : null;
       const label = labelOf(win);
       rec.el.setAttribute('aria-label', owner ? `${label}, posta por ${deps.nameOf(owner)}` : label);
+      rec.el.querySelector('.mesa-bar-title').textContent = label;
+      rec.el.querySelector('.mesa-bar').title = !canEdit() ? lockReason() || '' : '';
       const av = rec.el.querySelector('.mesa-avatar');
       const avKey = owner || '';
       if (av.dataset.key !== avKey) {
         av.dataset.key = avKey;
         av.innerHTML = owner ? avatarHtml(owner) : '';
         av.hidden = !owner;
-        av.title = owner ? `Pôs na mesa: ${deps.nameOf(owner)}` : '';
+        av.title = owner ? `Pôs na Mesa: ${deps.nameOf(owner)}` : '';
         if (owner) av.style.setProperty('--who', deps.colorFor(owner));
       }
       rec.el.querySelector('[data-act="remove"]').hidden = !canRemove(win);
       if (isMedia(win)) {
-        const name = rec.el.querySelector('.mesa-win-name');
-        if (name) name.textContent = label;
-        const labelEl = rec.el.querySelector('.mesa-win-label');
+        const liveSlot = rec.el.querySelector('.mesa-live-slot');
         const live = win.type === 'tela';
-        let pill = labelEl.querySelector('.mesa-live-pill');
+        let pill = liveSlot.querySelector('.mesa-live');
         if (live && !pill) {
           pill = document.createElement('span');
-          pill.className = 'mesa-live-pill';
+          pill.className = 'mesa-live tag tag--live';
           pill.textContent = 'AO VIVO';
-          labelEl.prepend(pill);
+          liveSlot.append(pill);
         } else if (!live && pill) pill.remove();
         adoptTile(rec, win);
       }
       renderGrab(rec.id);
+    }
+
+    function setActive(id) {
+      if (!S || S.activeId === id) return;
+      S.wins.get(S.activeId)?.el.classList.remove('is-active');
+      S.activeId = id;
+      S.wins.get(id)?.el.classList.add('is-active');
     }
 
     function avatarHtml(id) {
@@ -1038,6 +1126,12 @@
       if (url) return `<img src="${escapeHtml(url)}" alt="" />`;
       const initial = (deps.nameOf(id) || '?').trim().charAt(0).toUpperCase() || '?';
       return `<span class="mesa-avatar-initial">${escapeHtml(initial)}</span>`;
+    }
+
+    function typeGlyph(type) {
+      return ({ youtube: '▶', radio: '◉', nota: '□', lista: '☷', enquete: '◌', imagem: '▧',
+        galeria: '▦', quadro: '✎', placar: '≡', cronometro: '◷', velha: '×', xadrez: '♞',
+        damas: '●', dados: '⚄', roleta: '◉', quiz: '?', domino: '▯', truco: '♠' })[type] || '◇';
     }
 
     function placeWin(rec) {
@@ -1209,6 +1303,21 @@
         nameOf: (id) => deps.nameOf(id),
         colorFor: (id) => deps.colorFor(id),
         serverNow: () => serverNow(),
+        setStatus(texto) {
+          const el = rec.el.querySelector('.mesa-bar-status');
+          el.textContent = String(texto ?? '').slice(0, 60);
+        },
+        setTurn(on) {
+          const el = rec.el.querySelector('.mesa-bar-turn');
+          const antes = !el.hidden;
+          el.hidden = !on;
+          // So o leitor de tela ouve: a pilula na barra ja e o sinal visual, e um aviso
+          // por jogada viraria ruido com varias janelas de jogo.
+          if (on && !antes) {
+            S.liveEl.textContent = '';
+            S.liveEl.textContent = `Sua vez: ${labelOf(findWin(rec.id) || { type: rec.type })}`;
+          }
+        },
         onDenied(fn) {
           if (typeof fn !== 'function') return () => {};
           rec.denied.add(fn);
@@ -1258,7 +1367,11 @@
       }
       if (rec.placeholder) {
         const pid = String(peerId ?? '');
-        rec.placeholder.innerHTML = `<span class="mesa-avatar mesa-wait-avatar">${avatarHtml(pid)}</span><span class="mesa-wait-text">${escapeHtml(win.type === 'tela' ? 'Esperando a tela chegar…' : 'Esperando a câmera chegar…')}</span>`;
+        const espera = win.type === 'tela' ? 'Esperando a tela chegar…' : 'Esperando a câmera chegar…';
+        rec.placeholder.innerHTML = [
+          `<span class="mesa-avatar mesa-wait-avatar node" data-size="56">${avatarHtml(pid)}</span>`,
+          `<span class="mesa-wait-text">${escapeHtml(espera)}</span>`,
+        ].join('');
         rec.placeholder.querySelector('.mesa-avatar').style.setProperty('--who', deps.colorFor(pid));
       }
     }
@@ -1282,18 +1395,12 @@
 
     function onWinDown(e, rec) {
       if (e.button !== 0) return;
-      if (e.target.closest('.mesa-ctrls, .mesa-resize')) return;
+      setActive(rec.id);
+      if (!e.target.closest('.mesa-bar') || e.target.closest('.mesa-bar-btn, .mesa-resize')) return;
       const win = findWin(rec.id);
       if (!win || S.fullId) return;
-      const media = isMedia(win);
-      const onHandle = Boolean(e.target.closest('.mesa-handle'));
-      // Janela de video: arrasta por qualquer ponto. Janela com conteudo:
-      // so pela alca (clicar no tabuleiro nao pode mover a janela).
-      if (!media && !onHandle) return;
-      // Controles do tile (volume, rabisco) continuam do tile.
-      if (media && e.target.closest('button, input, select, textarea, a, .tile-annot-bar, .tile-react-bar')) return;
       if (!canEdit()) {
-        toast('Só o líder mexe na mesa agora.');
+        toast('Só o líder mexe na Mesa agora.');
         return;
       }
       const held = holderOf(rec.id);
@@ -1512,7 +1619,7 @@
         setView(V.zoomStep(S.view, -1, S.vw, S.vh));
       } else if (e.key === '0') {
         e.preventDefault();
-        flyTo(V.fitAll(windows(), S.vw, S.vh));
+          flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
       }
     }
 
@@ -1569,8 +1676,9 @@
     function removeFromMesa(id) {
       const win = findWin(id);
       if (!win) return;
+      if (isMedia(win)) return;
       if (!canRemove(win)) {
-        toast(!canEdit() ? 'Só o líder mexe na mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela da mesa.');
+        toast('Só o líder mexe na Mesa agora.');
         return;
       }
       const held = holderOf(id);
@@ -1583,7 +1691,7 @@
 
     function centerWin(id) {
       const win = findWin(id);
-      if (win) flyTo(V.focusRect(win, S.vw, S.vh));
+      if (win) flyTo(V.focusRect(win, S.vw, S.vh, { safe: S.safe }));
     }
 
     /** Tela cheia de uma janela, so para voce: a janela do Electron vai a
@@ -1640,7 +1748,7 @@
       const b = rec.el.querySelector('[data-act="full"]');
       b.innerHTML = on ? ICON.fsExit : ICON.fs;
       b.setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
-      b.title = on ? 'Sair da tela cheia (Esc)' : 'Tela cheia (F)';
+      b.title = on ? 'Sair da tela cheia (F)' : 'Tela cheia (F)';
     }
 
     function onDoubleClick(e) {
@@ -1649,7 +1757,7 @@
       e.stopPropagation();
       e.preventDefault();
       const win = findWin(winEl.dataset.id);
-      if (win && (isMedia(win) || e.target.closest('.mesa-handle'))) toggleFull(win.id);
+      if (win && e.target.closest('.mesa-bar')) toggleFull(win.id);
     }
 
     // ------------------------------------------------------------------
@@ -1664,6 +1772,16 @@
       openMenuAt(e.clientX, e.clientY, winEl ? winEl.dataset.id : null, { at: worldPoint(e) });
     }
 
+    /** Menu flutuante (position: fixed via .pop), fora da secao da Mesa para ficar acima da Conversa. */
+    function criarMenuFlutuante() {
+      const el = document.createElement('div');
+      el.className = 'mesa-menu pop';
+      el.setAttribute('role', 'menu');
+      el.hidden = true;
+      document.body.appendChild(el);
+      return el;
+    }
+
     function closeMenu() {
       if (!S?.menu) return;
       const back = S.menu.returnFocus;
@@ -1671,6 +1789,8 @@
       S.menu = null;
       S.menuEl.hidden = true;
       S.subEl.hidden = true;
+      S.menuEl.classList.remove('is-open');
+      S.subEl.classList.remove('is-open');
       S.menuEl.textContent = '';
       S.subEl.textContent = '';
       // O foco so volta se estava no menu (clicar fora ja o levou a outro
@@ -1680,7 +1800,7 @@
 
     function row(label, { act, sub, kbd, small, danger, disabled, reason } = {}) {
       const attrs = [
-        'type="button"', 'role="menuitem"', 'class="mesa-menu-row' + (danger ? ' is-danger' : '') + '"',
+        'type="button"', 'role="menuitem"', 'class="mesa-menu-row menu__item' + (danger ? ' menu__item--danger' : '') + '"',
         act ? `data-act="${act}"` : '', sub ? 'data-sub="add" aria-haspopup="menu" aria-expanded="false"' : '',
         disabled ? 'aria-disabled="true"' : '', reason ? `title="${escapeHtml(reason)}"` : '',
       ].filter(Boolean).join(' ');
@@ -1702,15 +1822,22 @@
         const volume = isMedia(win) && deps.openTileMenu && String(win.state?.peerId) !== String(deps.me());
         m.innerHTML = [
           row('Tela cheia', { act: 'full', kbd: 'F' }),
-          row('Centralizar na tela', { act: 'center' }),
+          row('Centralizar na vista', { act: 'center' }),
           volume ? row('Volume e silenciar…', { act: 'volume' }) : '',
-          '<hr class="mesa-menu-sep">',
-          row('Tirar da mesa', { act: 'remove', kbd: 'Del', danger: true, disabled: !removable, reason: removable ? '' : (!canEdit() ? 'Só o líder mexe na mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela.') }),
+          // Tela e camera nao fecham: sem "Tirar da Mesa" (nem o separador).
+          isMedia(win) ? '' : '<hr class="mesa-menu-sep">',
+          isMedia(win) ? '' : row('Tirar da Mesa', {
+            act: 'remove',
+            kbd: 'Del',
+            danger: true,
+            disabled: !removable,
+            reason: removable ? '' : 'Só o líder mexe na Mesa agora.',
+          }),
         ].join('');
       } else {
         const locked = !canEdit();
         m.innerHTML = [
-          row('Adicionar janela', { sub: true, disabled: locked, reason: locked ? 'Só o líder mexe na mesa agora.' : '' }),
+          row('Adicionar janela', { sub: true, disabled: locked, reason: locked ? 'Só o líder mexe na Mesa agora.' : '' }),
           '<hr class="mesa-menu-sep">',
           row('Ver tudo', { act: 'fit', kbd: '0' }),
         ].join('');
@@ -1722,18 +1849,31 @@
       if (first) first.focus({ preventScroll: true });
       if (!keyboard && !winId) {
         const addRow = m.querySelector('[data-sub]');
+        // Hover abre sem roubar foco; assim o menu continua navegavel. Se a
+        // pessoa digitar, wireMenu leva o texto para a busca do painel aberto.
         addRow?.addEventListener('pointerenter', () => openSub(addRow, false));
         m.querySelector('[data-act="fit"]')?.addEventListener('pointerenter', () => closeSub());
       }
     }
 
+    // Onde os menus da Mesa podem chegar embaixo: o bus da sala fica por cima da
+    // Mesa (so a Mesa em tela cheia passa por cima dele).
+    function menuFloor() {
+      if (document.body.classList.contains('mesa-full')) return root.innerHeight;
+      const bus = document.querySelector('.bus');
+      const r = bus ? bus.getBoundingClientRect() : null;
+      return r && r.height > 0 ? Math.min(r.top, root.innerHeight) : root.innerHeight;
+    }
+
     function placeMenu(m, x, y, flipFrom = null) {
+      const H = menuFloor();
       m.hidden = false;
+      m.classList.add('is-open');
+      m.style.maxHeight = `${Math.max(160, H - 16)}px`;
       m.style.left = '0px';
       m.style.top = '0px';
       const r = m.getBoundingClientRect();
       const W = root.innerWidth;
-      const H = root.innerHeight;
       let nx = x;
       let ny = y;
       if (nx + r.width > W - 8) nx = flipFrom != null ? flipFrom - r.width : W - 8 - r.width;
@@ -1761,6 +1901,11 @@
         menuAction(b.dataset.act);
       };
       m.onkeydown = (e) => {
+        const subAbertoPorHover = !S.subEl.hidden && document.activeElement?.dataset.sub;
+        if (subAbertoPorHover && deveRedirecionarBusca(e.key, true, e)) {
+          enviarTeclaParaBusca(e);
+          return;
+        }
         const rows = [...m.querySelectorAll('.mesa-menu-row')];
         const i = rows.indexOf(document.activeElement);
         if (e.key === 'ArrowDown') {
@@ -1795,7 +1940,7 @@
       const winId = S.menu?.winId;
       const { x = 0, y = 0 } = S.menu || {};
       closeMenu();
-      if (act === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh));
+      if (act === 'fit') flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
       else if (act === 'volume' && winId) {
         const win = findWin(winId);
         if (win) deps.openTileMenu(deps.tileIdFor(tileKind(win), String(win.state?.peerId)), x, y);
@@ -1806,6 +1951,7 @@
 
     function closeSub() {
       S.subEl.hidden = true;
+      S.subEl.classList.remove('is-open');
       S.subEl.textContent = '';
       const row0 = S.menuEl.querySelector('[data-sub]');
       row0?.classList.remove('is-open');
@@ -1818,16 +1964,8 @@
       if (rowEl.getAttribute('aria-disabled') === 'true') return;
       rowEl.classList.add('is-open');
       rowEl.setAttribute('aria-expanded', 'true');
-      const sub = S.subEl;
-      sub.innerHTML = addMenuHtml();
-      sub.setAttribute('aria-label', 'Adicionar janela');
       const r = rowEl.getBoundingClientRect();
-      placeMenu(sub, r.right + 4, r.top - 6, r.left - 4);
-      wireMenu(sub, () => {
-        closeSub();
-        rowEl.focus();
-      });
-      if (focus) sub.querySelector('.mesa-menu-row')?.focus({ preventScroll: true });
+      openAddPanel(S.subEl, r.right + 4, r.top - 6, r.left - 4, focus);
     }
 
     function addMenuHtml() {
@@ -1840,7 +1978,7 @@
         if (!list.length) continue;
         out.push(`<p class="mesa-menu-head" role="presentation">${escapeHtml(GROUP_LABELS[g])}</p>`);
         for (const mod of list) {
-          const reason = locked ? 'Só o líder mexe na mesa agora.' : full ? 'A mesa já tem 32 janelas.' : '';
+          const reason = locked ? 'Só o líder mexe na Mesa agora.' : full ? 'A Mesa já tem 32 janelas.' : '';
           out.push(row(mod.title, { disabled: Boolean(reason), reason }).replace('<button ', `<button data-add="${escapeHtml(mod.type)}" `));
         }
       }
@@ -1848,22 +1986,183 @@
       return out.join('');
     }
 
+    function openAddPanel(panel, x, y, flipFrom, focus) {
+      const state = {
+        termo: '',
+        grupo: 'tudo',
+        recentes: readRecentes(),
+        mods: registry()?.addable() || [],
+        catalogo: G.mesaCatalogo,
+      };
+      panel.setAttribute('aria-label', 'Adicionar janela');
+      panel.setAttribute('role', 'dialog');
+      panel.style.setProperty('--mesa-add-max-h', `${Math.max(160, menuFloor() - 16)}px`);
+      if (!state.catalogo) {
+        panel.innerHTML = addMenuHtml();
+        panel.classList.add('is-open');
+        placeMenu(panel, x, y, flipFrom);
+        wireMenu(panel, null);
+        return;
+      }
+      panel.innerHTML = addPanelHtml(state);
+      panel.classList.add('is-open');
+      placeMenu(panel, x, y, flipFrom);
+      wireAddPanel(panel, state);
+      if (focus) root.requestAnimationFrame(() => panel.querySelector('[data-add-search]')?.focus());
+    }
+
+    function addPanelHtml(state) {
+      const tabs = [['tudo', 'Tudo'], ...GROUP_ORDER.map((g) => [g, GROUP_LABELS[g]])];
+      const tabHtml = tabs.map(([group, label]) => `<button type="button" class="seg__opt" role="tab"
+        data-add-group="${group}" aria-selected="${group === state.grupo}">${label}</button>`).join('');
+      return `<section class="mesa-add-panel">
+        <header class="mesa-add-head"><h2>Adicionar janela</h2></header>
+        <input class="input" data-add-search type="search" autocomplete="off" placeholder="Buscar janelas"
+          aria-label="Buscar janelas">
+        <p id="mesa-add-aviso" class="mesa-add-aviso" role="alert" hidden></p>
+        <div class="seg mesa-add-tabs" role="tablist" aria-label="Grupo de janela">${tabHtml}</div>
+        <div class="mesa-add-scroll" data-add-results></div>
+      </section>`;
+    }
+
+    function wireAddPanel(panel, state) {
+      const search = panel.querySelector('[data-add-search]');
+      const render = () => renderAddCards(panel, state);
+      // S.subEl e reutilizado em cada abertura; atribuicoes substituem os
+      // handlers anteriores e impedem que um cartao adicione varias janelas.
+      search.oninput = () => {
+        state.termo = search.value;
+        render();
+      };
+      panel.onclick = (e) => {
+        const group = e.target.closest('[data-add-group]');
+        if (group) {
+          state.grupo = group.dataset.addGroup;
+          panel.querySelectorAll('[data-add-group]').forEach((tab) => {
+            tab.setAttribute('aria-selected', String(tab === group));
+          });
+          render();
+          return;
+        }
+        if (e.target.closest('[data-add-clear]')) {
+          state.termo = '';
+          search.value = '';
+          render();
+          search.focus();
+          return;
+        }
+        const card = e.target.closest('[data-add-card]');
+        if (!card) return;
+        if (card.getAttribute('aria-disabled') === 'true') {
+          toast(panel.querySelector('#mesa-add-aviso')?.textContent || 'Indisponivel agora.');
+          return;
+        }
+        rememberRecent(card.dataset.addCard);
+        addWindow(card.dataset.addCard);
+      };
+      panel.onkeydown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          closeMenu();
+          return;
+        }
+        const focoNaGrade = Boolean(e.target.closest?.('[data-add-card]'));
+        if (deveRedirecionarBusca(e.key, focoNaGrade, e)) {
+          enviarTeclaParaBusca(e);
+          return;
+        }
+        const cards = [...panel.querySelectorAll('[data-add-card]')];
+        const i = cards.indexOf(document.activeElement);
+        if (i < 0) return;
+        const delta = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1
+          : e.key === 'ArrowUp' ? -2 : e.key === 'ArrowDown' ? 2 : 0;
+        if (!delta) return;
+        e.preventDefault();
+        cards[Math.max(0, Math.min(cards.length - 1, i + delta))]?.focus();
+      };
+      render();
+    }
+
+    function deveRedirecionarBusca(tecla, focoNaGrade, e) {
+      return !e.ctrlKey && !e.metaKey && !e.altKey
+        && G.mesaCatalogo?.deveRedirecionarParaBusca(tecla, focoNaGrade);
+    }
+
+    function enviarTeclaParaBusca(e) {
+      const search = S.subEl.querySelector('[data-add-search]');
+      if (!search) return;
+      e.preventDefault();
+      search.focus();
+      search.value += e.key;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function renderAddCards(panel, state) {
+      const result = panel.querySelector('[data-add-results]');
+      const catalogo = state.catalogo;
+      const filtered = catalogo?.filtrar ? catalogo.filtrar(state.mods, state.termo, state.grupo) : state.mods;
+      const reason = !canEdit() ? 'Só o líder mexe na Mesa agora.'
+        : windows().length >= M.MAX_WINDOWS ? 'A Mesa já tem 32 janelas.' : '';
+      const aviso = panel.querySelector('#mesa-add-aviso');
+      aviso.hidden = !reason;
+      aviso.textContent = reason;
+      if (!filtered.length) {
+        result.innerHTML = `<p class="mesa-add-empty">Nada com “${escapeHtml(state.termo)}”.
+          <button class="btn btn--quiet btn--sm" type="button" data-add-clear>Ver tudo</button></p>`;
+        return;
+      }
+      const card = (mod) => {
+        const meta = catalogo?.itens?.[mod.type] || {};
+        return `<button class="mesa-add-card" type="button" data-add-card="${escapeHtml(mod.type)}"
+          ${reason ? `aria-disabled="true" aria-describedby="mesa-add-aviso"` : ''}>
+          <svg aria-hidden="true"><use href="#${escapeHtml(meta.icone || 'i-app-window')}"></use></svg>
+          <span><b>${escapeHtml(mod.title)}</b><small>${escapeHtml(meta.desc || mod.title)}</small></span>
+        </button>`;
+      };
+      const sections = [];
+      if (!state.termo && state.grupo === 'tudo') {
+        const recentes = state.recentes.map((type) => state.mods.find((mod) => mod.type === type)).filter(Boolean);
+        if (recentes.length) sections.push(`<h3>Recentes</h3><div class="mesa-add-grid">${recentes.map(card).join('')}</div>`);
+      }
+      if (state.grupo === 'tudo') {
+        for (const group of GROUP_ORDER) {
+          const list = filtered.filter((mod) => mod.group === group);
+          if (list.length) sections.push(`<h3>${GROUP_LABELS[group]}</h3><div class="mesa-add-grid">${list.map(card).join('')}</div>`);
+        }
+      } else {
+        sections.push(`<div class="mesa-add-grid">${filtered.map(card).join('')}</div>`);
+      }
+      result.innerHTML = sections.join('');
+    }
+
+    function readRecentes() {
+      try {
+        const saved = JSON.parse(root.localStorage.getItem('golive.mesa.recentes') || '[]');
+        return Array.isArray(saved) ? saved.filter((type) => typeof type === 'string').slice(0, 4) : [];
+      } catch (err) {
+        console.warn('[mesa] nao deu para ler recentes:', err);
+        return [];
+      }
+    }
+
+    function rememberRecent(type) {
+      try {
+        const list = G.mesaCatalogo?.lembrarRecente?.(readRecentes(), type) || [type];
+        root.localStorage.setItem('golive.mesa.recentes', JSON.stringify(list));
+      } catch (err) {
+        console.warn('[mesa] nao deu para guardar recente:', err);
+      }
+    }
+
     /** O + do dock: o mesmo submenu, e a janela nasce no meio da vista. */
     function openAddMenu(anchor) {
       if (!S) return;
       closeMenu();
       S.menu = { winId: null, at: null, returnFocus: anchor || document.activeElement, dock: true };
-      const sub = S.subEl;
-      sub.innerHTML = addMenuHtml();
-      sub.setAttribute('aria-label', 'Adicionar janela');
       const r = anchor ? anchor.getBoundingClientRect() : { left: root.innerWidth / 2, top: root.innerHeight - 80 };
-      sub.hidden = false;
-      sub.style.left = '0px';
-      sub.style.top = '0px';
-      const h = sub.getBoundingClientRect().height;
-      placeMenu(sub, r.left, r.top - h - 8);
-      wireMenu(sub, null);
-      sub.querySelector('.mesa-menu-row')?.focus({ preventScroll: true });
+      const floor = Math.min(r.top, menuFloor());
+      openAddPanel(S.subEl, r.left, floor - 440, null, true);
     }
 
     function addWindow(type) {
@@ -1872,17 +2171,17 @@
       const mod = modOf(type);
       if (!mod) return;
       if (!canEdit()) {
-        toast('Só o líder mexe na mesa agora.');
+        toast('Só o líder mexe na Mesa agora.');
         return;
       }
       const { w, h } = mod.size;
       // Pelo botao direito a janela nasce com o canto no ponto do clique;
       // pelo + (ou teclado), no meio da vista.
-      const c = V.viewCenter(S.view, S.vw, S.vh);
+      const c = V.viewCenter(S.view, S.vw, S.vh, S.safe);
       const want = at ? { x: at.x, y: at.y, w, h } : { x: c.x - w / 2, y: c.y - h / 2, w, h };
       const rect = M.nearestFree(windows(), want, { gap: M.GAP });
       if (!rect) {
-        toast('Não há lugar livre na mesa para esta janela.');
+        toast('Não há lugar livre na Mesa para esta janela.');
         return;
       }
       S.focusAfterAdd = true;
@@ -1993,6 +2292,7 @@
     }
 
     function renderMap() {
+      if (!S.mapOpen) return;
       const mw = S.mapEl.clientWidth || 192;
       const mh = S.mapEl.clientHeight || 120;
       const s = V.minimapScale(mw, mh);
@@ -2017,28 +2317,45 @@
       e.stopPropagation();
       const r = S.mapEl.getBoundingClientRect();
       const p = V.fromMinimap(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
-      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh));
+      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh, { safe: S.safe }));
     }
 
     /** Avatares de quem esta na Mesa: "Ir ate Bia" voa ate o ponteiro. */
     function renderPeople() {
-      if (!S) return;
       const me = String(deps.me());
       const ids = (deps.viewers?.() || []).map(String).filter((id) => id !== me);
-      S.peopleEl.innerHTML = ids.map((id) => `<button type="button" class="mesa-avatar mesa-person" data-id="${escapeHtml(id)}" aria-label="Ir até ${escapeHtml(deps.nameOf(id))}" title="Ir até ${escapeHtml(deps.nameOf(id))}">${avatarHtml(id)}</button>`).join('');
-      for (const b of S.peopleEl.querySelectorAll('.mesa-person')) {
+      const peopleEl = deps.peopleSlot?.() || S?.peopleEl;
+      if (!peopleEl) return;
+      peopleEl.hidden = ids.length === 0;
+      const visiveis = ids.slice(0, 5);
+      const restantes = ids.slice(5);
+      peopleEl.innerHTML = visiveis.map((id) => {
+        const nome = deps.nameOf(id);
+        const acao = `Ir até ${nome}`;
+        return `<button type="button" class="mesa-person node" data-size="16" data-id="${escapeHtml(id)}"
+          aria-label="${escapeHtml(acao)}" title="${escapeHtml(acao)}">${avatarHtml(id)}</button>`;
+      }).join('');
+      if (restantes.length) {
+        const nomes = restantes.map((id) => deps.nameOf(id)).join(', ');
+        const mais = `<span class="mesa-person-more cluster__more" title="${escapeHtml(nomes)}">+${restantes.length}</span>`;
+        peopleEl.insertAdjacentHTML('beforeend', mais);
+      }
+      for (const b of peopleEl.querySelectorAll('.mesa-person')) {
         b.style.setProperty('--who', deps.colorFor(b.dataset.id));
-        b.addEventListener('click', () => goTo(b.dataset.id));
+        b.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (S) goTo(b.dataset.id);
+        });
       }
     }
 
     function goTo(id) {
       const p = S.pointers.active(Date.now(), 60000).find((c) => c.from === String(id));
       if (!p) {
-        toast(`${deps.nameOf(id)} ainda não mexeu o ponteiro na mesa.`, id);
+        toast(`${deps.nameOf(id)} ainda não mexeu o ponteiro na Mesa.`, id);
         return;
       }
-      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh));
+      flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh, { safe: S.safe }));
     }
 
     function onPeersChange() {
@@ -2100,6 +2417,20 @@
       return windows().find((w) => w.type === type && String(w.state?.peerId) === String(peerId)) || null;
     }
 
+    /** Clique numa fonte do barramento: centraliza a janela da tela/camera de `peerId`. Sem a janela (alguem a
+     * fechou; so o servidor poe tela e camera na Mesa), avisa. Devolve se centralizou. */
+    function focusMedia(kind, peerId) {
+      if (!S?.state) return false; // o retrato ainda nao chegou: nao da para dizer que a janela nao existe
+      const win = mediaWin(kind, peerId);
+      if (!win) {
+        toast(`${kind === 'camera' ? 'A câmera' : 'A tela'} de ${deps.nameOf(peerId)} não está na Mesa.`);
+        return false;
+      }
+      S.viewTouched = true; // a pessoa escolheu para onde olhar: telas novas nao a tiram dali
+      centerWin(win.id);
+      return true;
+    }
+
     /** Na Mesa, quero o video desta tela/camera? `null` fora da Mesa (vale
      * a regra da Transmissao). */
     function wants(kind, peerId) {
@@ -2120,7 +2451,7 @@
     function spot(type) {
       const mod = modOf(type);
       if (!S?.state || !mod) return null;
-      const c = V.viewCenter(S.view, S.vw, S.vh);
+      const c = V.viewCenter(S.view, S.vw, S.vh, S.safe);
       const { w, h } = mod.size;
       return M.nearestFree(windows(), { x: Math.round(c.x - w / 2), y: Math.round(c.y - h / 2), w, h }, { gap: M.GAP });
     }
@@ -2173,22 +2504,23 @@
     // Avisos
     // ------------------------------------------------------------------
 
-    /** Aviso curto no topo da mesa, tambem anunciado com educacao. */
-    function toast(text, who = null) {
+    /** O aviso da Mesa usa o mesmo #toast global da Sala. */
+    function toast(text) {
       if (!S) return;
-      S.toastEl.querySelector('.mesa-toast-text').textContent = text;
-      const dot = S.toastEl.querySelector('.mesa-toast-dot');
-      dot.hidden = who == null;
-      if (who != null) dot.style.setProperty('--who', deps.colorFor(who));
-      S.toastEl.classList.add('is-shown');
-      root.clearTimeout(S.toastTimer);
-      S.toastTimer = later(() => S?.toastEl.classList.remove('is-shown'), TOAST_MS);
+      const globalToast = document.getElementById('toast');
+      const globalText = document.getElementById('toast-text');
+      if (globalToast && globalText) {
+        globalText.textContent = text;
+        globalToast.classList.remove('hidden');
+        root.clearTimeout(S.toastTimer);
+        S.toastTimer = later(() => globalToast.classList.add('hidden'), 5000);
+      }
       S.liveEl.textContent = '';
       S.liveEl.textContent = text;
     }
 
-    function announce(text, who) {
-      toast(text, who);
+    function announce(text) {
+      toast(text);
     }
 
     function onViewers() {
@@ -2248,6 +2580,7 @@
       showsCursors: () => showCursors,
       openAddMenu,
       wants,
+      focusMedia,
       widthFor,
       spot,
       serverNow,

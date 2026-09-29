@@ -1,0 +1,303 @@
+/* Sinal -- Mesa (05-arquitetura.md §3.4). A transformacao e da vista; esta
+ * folha so desenha a superficie e a moldura, sem interferir na geometria. */
+
+.mesa {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-stage);
+  overflow: clip;
+  isolation: isolate;
+  background: var(--bg);
+  color: var(--tx);
+  touch-action: none;
+}
+
+.mesa:focus-visible { outline: none; box-shadow: inset var(--ring); }
+.mesa-grid { position: absolute; inset: 0; pointer-events: none; }
+.mesa-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: auto;
+}
+.mesa-world.is-moving { will-change: transform; }
+.mesa-edge { position: absolute; inset: 0; border: 1px solid var(--line); pointer-events: none; }
+.mesa-over { position: absolute; inset: 0; z-index: var(--z-hud); pointer-events: none; }
+
+.mesa-loading {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-hud);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--s-3);
+  pointer-events: none;
+  font: var(--t-body);
+  color: var(--tx2);
+}
+.mesa-loading .spinner { color: var(--wire); }
+
+.mesa-nav {
+  position: absolute;
+  left: var(--s-3);
+  bottom: var(--s-3);
+  z-index: var(--z-chrome);
+  display: grid;
+  justify-items: start;
+  gap: var(--s-2);
+  pointer-events: auto;
+}
+.mesa-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-05);
+  padding: var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: var(--elev-float);
+}
+.mesa-zoom-val { min-width: 48px; color: var(--tx2); font: var(--t-data); text-align: center; }
+.mesa-zoom-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; }
+
+.mesa-map {
+  position: relative;
+  width: min(240px, calc(100vw - 24px));
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: var(--elev-float);
+  cursor: crosshair;
+}
+.mesa-map > i { position: absolute; border: 1px solid var(--tx3); background: var(--veil); }
+.mesa-map > i.is-live { border-color: var(--live); }
+.mesa-map > u { position: absolute; border: 1px solid var(--wire); pointer-events: none; text-decoration: none; }
+.mesa-map > b { position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: var(--r-full); background: var(--who, var(--tx)); }
+
+.mesa-lock-note {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: var(--z-chrome);
+  min-height: 24px;
+  margin: 0;
+  padding: var(--s-1) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--s1);
+  color: var(--tx2);
+  font: var(--t-meta);
+  text-align: center;
+  pointer-events: none;
+}
+.mesa-lock-note svg {
+  width: 14px;
+  height: 14px;
+  margin-right: var(--s-1);
+  vertical-align: -2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+}
+
+.mesa-cursor {
+  position: absolute;
+  z-index: var(--z-hud);
+  display: inline-flex;
+  align-items: center;
+  color: var(--who, var(--tx));
+  pointer-events: none;
+}
+.mesa-cursor svg { width: 18px; height: 18px; fill: currentColor; stroke: var(--bg); }
+.mesa-cursor-name {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  background: var(--who, var(--tx));
+  color: var(--on-video);
+  font: var(--t-meta);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mesa-person { flex: none; }
+.mesa-person-more { align-self: center; }
+
+.mesa-win {
+  --mesa-bar-h: 32px;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  /* Contorno por sombra, nao border: a borda comeria 2 px da altura util de todo modulo. */
+  box-shadow: 0 0 0 1px var(--line2), var(--shadow-2);
+  transform-origin: 0 0;
+}
+.mesa-win.is-active,
+.mesa-win:focus-within { box-shadow: 0 0 0 1px var(--wire), var(--shadow-2); }
+.mesa-win:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--wire), var(--shadow-2), var(--ring); }
+.mesa-win.is-held { box-shadow: 0 0 0 2px var(--who, var(--wire)), var(--shadow-2); }
+.mesa-win.is-held .mesa-bar { color: var(--who, var(--tx)); }
+.mesa-full .mesa { position: fixed; z-index: var(--z-drag); }
+.mesa.has-full .mesa-world { position: fixed; inset: 0; width: auto; height: auto; }
+.mesa-win.is-full { position: fixed; inset: 0; z-index: var(--z-drag); width: auto; height: auto; border-radius: 0; }
+.mesa.has-full > :not(.mesa-world) { visibility: hidden; }
+.mesa-win-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+
+.mesa-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: 0 0 var(--mesa-bar-h);
+  min-width: 0;
+  height: var(--mesa-bar-h);
+  padding: 0 var(--s-1) 0 var(--s-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--s1);
+  cursor: grab;
+}
+.mesa-bar:active { cursor: grabbing; }
+.mesa-type { flex: none; color: var(--tx3); font: var(--t-data); }
+.mesa-bar-title { overflow: hidden; min-width: 0; font: var(--t-label); text-overflow: ellipsis; white-space: nowrap; }
+.mesa-bar-status { overflow: hidden; max-width: 140px; color: var(--tx2); font: var(--t-meta); text-overflow: ellipsis; white-space: nowrap; }
+.mesa-bar-turn { flex: none; }
+.mesa-moving { overflow: hidden; max-width: 150px; color: var(--who, var(--wire)); font: var(--t-meta); text-overflow: ellipsis; white-space: nowrap; }
+.mesa-avatar { margin-left: auto; }
+.mesa-avatar img { display: block; }
+.mesa-bar-btn { flex: none; cursor: pointer; }
+/* Os icones da barra vem crus do mesa-view.js: sem isto os caminhos saiam preenchidos de preto. */
+.mesa-bar-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round;
+  stroke-linejoin: round; }
+.mesa-live-slot { display: inline-flex; }
+.mesa-live { pointer-events: none; }
+/* Tela pausada nao e "ao vivo": o aviso de pausa dentro da janela fala por ela. */
+.mesa-win:has(.tile.is-paused) .mesa-live { display: none; }
+
+.mesa[data-far] .mesa-bar > :not(.mesa-bar-title) { display: none; }
+.mesa[data-far] .mesa-bar { justify-content: center; padding: 0 var(--s-2); }
+.mesa[data-far] .mesa-bar-title { overflow: visible; text-align: center; }
+.mesa-resize { position: absolute; z-index: var(--z-hud); }
+.mesa-resize[data-edge='l'] { top: var(--mesa-bar-h); bottom: 0; left: -4px; width: 8px; cursor: ew-resize; }
+.mesa-resize[data-edge='r'] { top: var(--mesa-bar-h); bottom: 0; right: -4px; width: 8px; cursor: ew-resize; }
+.mesa-resize[data-edge='b'] { right: 8px; bottom: -4px; left: 8px; height: 8px; cursor: ns-resize; }
+.mesa-resize[data-edge='bl'] { bottom: -5px; left: -5px; width: 12px; height: 12px; cursor: nesw-resize; }
+.mesa-resize[data-edge='br'] { bottom: -5px; right: -5px; width: 12px; height: 12px; cursor: nwse-resize; }
+.mesa.is-panning { cursor: grabbing; }
+.mesa-win.is-dragging { cursor: grabbing; }
+.mesa-win.is-remote-drag { outline: 2px solid var(--who, var(--wire)); }
+.mesa-win.is-settling { transition: transform var(--dur-mid) var(--ease-out); }
+.mesa.no-edit .mesa-bar { cursor: default; }
+.mesa.no-edit .mesa-resize, .mesa.no-resize .mesa-resize { display: none; }
+.mesa-menu-chev { width: 16px; height: 16px; color: var(--tx3); fill: none; stroke: currentColor; }
+
+.mesa-landing { position: absolute; z-index: var(--z-stage); border: 1px dashed var(--wire); border-radius: var(--r-sm); pointer-events: none; }
+.mesa-summary { display: grid; place-content: center; height: 100%; gap: var(--s-2); padding: var(--s-4); text-align: center; }
+.mesa-summary-title { margin: 0; font: var(--t-heading); }
+.mesa-summary-text { margin: 0; color: var(--tx2); font: var(--t-body); }
+.mesa-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--void);
+  color: var(--on-video);
+  font: var(--t-body);
+  text-align: center;
+}
+.mesa-wait-avatar { margin: 0; }
+.mesa-wait-text { color: var(--on-video); }
+.mesa-avatar-initial { display: block; line-height: 1; }
+
+.mesa-menu { z-index: var(--z-popover); }
+.mesa-menu.is-open, .mesa-map.is-open { animation: pop-in var(--dur-mid) var(--ease-out); }
+.mesa-menu .menu__item { justify-content: flex-start; }
+.mesa-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mesa-menu-row kbd, .mesa-menu-row small { margin-left: auto; color: var(--tx3); }
+.mesa-menu-sep { height: 1px; margin: var(--s-1) 0; border: 0; background: var(--line); }
+.mesa-menu-head { margin: 0; padding: var(--s-2) var(--s-2) var(--s-1); color: var(--tx3); font: var(--t-tag); letter-spacing: 0.06em; text-transform: uppercase; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mesa-world { will-change: auto; }
+}
+
+/* ============ Estrutura (regras de posicionamento que o CSS antigo tinha) ============ */
+/* Na Mesa o palco de video sai de cena: os tiles moram nas janelas. display:none
+ * de proposito -- nada da grade precisa de layout enquanto a Mesa esta aberta. */
+body.mesa-open #grid { display: none; }
+/* O conteudo de cada janela ocupa o corpo inteiro e e o container das
+ * consultas de tamanho dos modulos (versao compacta x confortavel). */
+.mesa-content { position: absolute; inset: 0; container-type: size; overflow: hidden; }
+/* O tile do palco dentro da janela: so o video, o rabisco e os estados. A
+ * barra da janela ja tem as acoes; o HUD do palco e o fio nao entram aqui. */
+.mesa-win .tile { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+.mesa-win .tile[data-kind]::after, .mesa-win .pip-strip { display: none; }
+/* Dentro da janela, o HUD fica no pe da imagem e so com o que a barra da janela
+ * nao tem: rabiscar e reagir (menu, tela cheia e tirar ja estao na barra). */
+.mesa-win .tile__hud {
+  top: auto;
+  bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%));
+  justify-content: flex-end;
+  padding: var(--s-5) var(--s-2) var(--s-2);
+  background: linear-gradient(to top, var(--scrim-4), transparent);
+  transform: scale(var(--mesa-inv, 1));
+  transform-origin: 100% 100%;
+}
+.mesa-win .tile__who,
+.mesa-win .tile__hud [data-acao]:not([data-acao='rabiscar']):not([data-acao='reagir']) { display: none; }
+/* A regua de rabisco nao encolhe com o zoom da Mesa. */
+.mesa-win .draw-bar { transform: translateX(-50%) scale(var(--mesa-inv, 1)); transform-origin: 50% 100%; }
+/* Painel de janelas: busca e grupos ficam fixos; so os cartoes rolam. */
+.mesa-menu[aria-label='Adicionar janela'] {
+  width: min(560px, calc(100vw - 24px));
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: min(520px, var(--mesa-add-max-h, calc(100vh - 24px)));
+  padding: 0;
+  overflow: hidden;
+}
+.mesa-add-panel {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  height: min(520px, var(--mesa-add-max-h, calc(100vh - 24px)));
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+.mesa-add-head h2 { margin: 0; font: var(--t-heading); }
+.mesa-add-aviso {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-xs);
+  background: var(--warn-dim);
+  color: var(--warn);
+  font: var(--t-meta);
+}
+.mesa-add-tabs { width: 100%; overflow-x: auto; }
+.mesa-add-tabs .seg__opt { flex: 1 0 auto; justify-content: center; }
+.mesa-add-scroll { min-height: 0; overflow: auto; padding-right: var(--s-1); }
+.mesa-add-scroll h3 { margin: var(--s-3) 0 var(--s-1); color: var(--tx3); font: var(--t-tag); letter-spacing: 0.06em; text-transform: uppercase; }
+.mesa-add-scroll h3:first-child { margin-top: 0; }
+.mesa-add-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1); }
+.mesa-add-card { display: flex; min-width: 0; min-height: 58px; align-items: center; gap: var(--s-2); padding: var(--s-2); border: 1px solid transparent; border-radius: var(--r-xs); color: var(--tx); text-align: left; }
+.mesa-add-card:hover:not([aria-disabled='true']) { background: var(--veil); }
+.mesa-add-card:focus-visible { border-color: var(--wire); box-shadow: var(--ring); outline: none; }
+.mesa-add-card[aria-disabled='true'] { color: var(--tx3); cursor: not-allowed; }
+.mesa-add-card > svg { flex: none; width: 20px; height: 20px; color: var(--tx2); fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.mesa-add-card > span { display: grid; min-width: 0; gap: 2px; }
+.mesa-add-card > span > :is(b, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mesa-add-card b { font: var(--t-label); }
+.mesa-add-card small { color: var(--tx3); font: var(--t-meta); }
+.mesa-add-empty { display: grid; justify-items: start; gap: var(--s-2); margin: var(--s-4) 0; color: var(--tx2); font: var(--t-body); }
+@media (max-height: 640px) {
+  .mesa-menu[aria-label='Adicionar janela'], .mesa-add-panel { max-height: var(--mesa-add-max-h, calc(100vh - 16px)); height: var(--mesa-add-max-h, calc(100vh - 16px)); }
+  .mesa-add-card { min-height: 48px; }
+}

@@ -60,8 +60,8 @@
       foto.alt = `Imagem enviada por ${img.name || 'alguém'}`;
       const btn = h('button', 'mj-btn mj-gal-por');
       btn.type = 'button';
-      btn.textContent = 'Pôr na mesa';
-      btn.title = `Pôr na mesa a imagem de ${img.name || 'alguém'}`;
+      btn.textContent = 'Pôr na Mesa';
+      btn.title = `Pôr na Mesa a imagem de ${img.name || 'alguém'}`;
       btn.addEventListener('click', () => {
         root.GoLive.mesaPor?.put('imagem', { kind: 'set', msgId: img.id });
       });

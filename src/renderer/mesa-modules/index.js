@@ -51,6 +51,8 @@
   // 32 janelas x 16 KB e o pior welcome possivel (~512 KB).
   const MAX_STATE_BYTES_CAP = 16 * 1024;
   const MIN_STATE_BYTES = 64;
+  // Altura da barra de titulo: modulos declaram conteudo, registro devolve a janela inteira.
+  const BAR_H = 32;
 
   // Janelas de midia: a tela e a camera de alguem ao vivo. Nao tem acao
   // (`act`): o video anda pelo WebRTC, nao pela mesa. O estado so diz de
@@ -121,7 +123,15 @@
       group: media ? null : mod.group,
       media,
       secret: mod.secret === true,
-      size: Object.freeze({ ...size, aspect: size.aspect == null ? null : size.aspect }),
+      content: Object.freeze({ ...size, aspect: size.aspect == null ? null : size.aspect }),
+      size: Object.freeze({
+        w: size.w,
+        h: size.h + BAR_H,
+        minW: size.minW,
+        minH: size.minH + BAR_H,
+        aspect: size.aspect == null ? null : size.aspect,
+        chromeH: BAR_H,
+      }),
       maxStateBytes,
     });
     return { ok: true, module };
@@ -219,7 +229,7 @@
   for (const b of BUILTIN) register(b);
 
   const api = {
-    MODULE_NAMES, HELPER_NAMES, GROUPS, MAX_STATE_BYTES_CAP,
+    MODULE_NAMES, HELPER_NAMES, GROUPS, MAX_STATE_BYTES_CAP, BAR_H,
     register, get, list, addable, checkModule, loadFrom, loadErrors,
   };
 

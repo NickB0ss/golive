@@ -20,6 +20,14 @@ test('nomeCasa: coluna A..J, linha 1..10', () => {
   assert.equal(J.nomeCasa(92), 'C10');
 });
 
+test('Batalha envia estado proprio e alheio para a barra', () => {
+  const chamadas = [];
+  const api = { setStatus: (v) => chamadas.push(['status', v]), setTurn: (v) => chamadas.push(['turn', v]) };
+  J.atualizarBarra(api, 'Vez de Ana', true);
+  J.atualizarBarra(api, 'Vez de Bia', false);
+  assert.deepEqual(chamadas, [['status', 'Vez de Ana'], ['turn', true], ['status', 'Vez de Bia'], ['turn', false]]);
+});
+
 test('marcas: navio, afundado, acerto e agua; afundado vence o acerto', () => {
   const m = J.marcas({
     ships: [{ size: 2, cells: [0, 1], sunk: true }, { size: 3, cells: [20, 21, 22], sunk: false }],

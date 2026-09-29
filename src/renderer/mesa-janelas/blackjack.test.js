@@ -2,6 +2,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const J = require('./blackjack');
+
+test('Blackjack envia estado proprio e alheio para a barra', () => {
+  const chamadas = [];
+  const api = { setStatus: (v) => chamadas.push(['status', v]), setTurn: (v) => chamadas.push(['turn', v]) };
+  J.atualizarBarra(api, 'Sua vez', true);
+  J.atualizarBarra(api, 'Vez de Ana', false);
+  assert.deepEqual(chamadas, [['status', 'Sua vez'], ['turn', true], ['status', 'Vez de Ana'], ['turn', false]]);
+});
 const bj = require('../mesa-modules/blackjack');
 
 const mao = (extra) => Object.assign({ cards: ['Ts', '7d'], total: 17, soft: false, blackjack: false, bust: false, bet: 10, result: null, win: null }, extra);

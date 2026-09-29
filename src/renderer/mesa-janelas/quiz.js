@@ -4,6 +4,17 @@
  * local ate a revelacao; o servidor e a unica fonte de verdade do placar. */
 
 (function (root) {
+  function textoBarra(s) {
+    if (s.finished) return 'Partida encerrada';
+    if (s.me?.answered) return 'Resposta registrada';
+    return `Pergunta ${s.round + 1} de ${s.total}`;
+  }
+
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function montar(elRoot, api) {
     // Lido dentro do mount (nao no topo do arquivo): a Vista carrega
     // `<tipo>.js` por MODULE_NAMES sem tag no index.html (contrato, secao
@@ -76,6 +87,7 @@
     function atualizar(s) {
       if (!s || !s.question) return;
       state = s;
+      atualizarBarra(api, textoBarra(s), Boolean(!s.finished && s.me?.canAnswer));
       enviado = s.me?.answered === true;
       pedido = ultimoPrazo === s.deadline ? pedido : false;
       ultimoPrazo = s.deadline;
@@ -102,7 +114,11 @@
     }
     const timer = setInterval(atualizarPrazo, 500);
     b.faxina.push(() => clearInterval(timer));
-    return { update: atualizar, destroy: b.destruir, focus() { botoes.find((x) => !x.botao.hidden)?.botao.focus(); } };
+    return {
+      update: atualizar,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
+      focus() { botoes.find((x) => !x.botao.hidden)?.botao.focus(); },
+    };
   }
 
   // Mesmo molde de truco.js/oito.js: garante que `comum.js` (sem tag
@@ -163,7 +179,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: 'quiz', mount: montar };
+  const api = { type: 'quiz', mount: montar, textoBarra, atualizarBarra };
   registrar(api, ['comum.js']);
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

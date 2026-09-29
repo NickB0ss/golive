@@ -29,11 +29,11 @@
 
   const DENIED = {
     rate: 'Calma: muitas mudanças de uma vez.',
-    locked: 'Só o líder mexe na mesa agora.',
-    full: 'A mesa já tem 32 janelas.',
-    'no-space': 'Não há lugar livre na mesa para esta janela.',
+    locked: 'Só o líder mexe na Mesa agora.',
+    full: 'A Mesa já tem 32 janelas.',
+    'no-space': 'Não há lugar livre na Mesa para esta janela.',
     'unknown-type': 'Esta sala não conhece este tipo de janela.',
-    'not-found': 'A janela saiu da mesa antes de receber o conteúdo.',
+    'not-found': 'A janela saiu da Mesa antes de receber o conteúdo.',
   };
 
   /** Retangulo do tamanho padrao do tipo com o meio em (cx, cy). */
@@ -88,7 +88,7 @@
       if (!p || typeof id !== 'string' || !id) return;
       if (p.action) deps.send({ type: 'mesa', op: 'act', id, action: p.action });
       lastAct = { id, title: p.title, at: now() };
-      if (!deps.view.isOpen()) deps.toast(`${p.title} foi para a mesa.`);
+      if (!deps.view.isOpen()) deps.toast(`${p.title} foi para a Mesa.`);
     }
 
     /** Uma mensagem da sinalizacao. `true` quando ela era so deste modulo
@@ -115,13 +115,13 @@
           return true;
         }
         pending = null;
-        deps.toast(DENIED[reason] || 'Não deu para pôr na mesa agora.');
+        deps.toast(DENIED[reason] || 'Não deu para pôr na Mesa agora.');
         return true;
       }
       if (msg.type === 'mesa-denied' && msg.op === 'act' && lastAct && msg.id === lastAct.id && !deps.view.isOpen()) {
         // Na Mesa o conteudo da janela mostra a recusa; na Transmissao, aviso.
         const detail = typeof msg.detail === 'string' && msg.detail ? msg.detail : null;
-        deps.toast(detail ? `${lastAct.title}: ${detail}` : (DENIED[msg.reason] || 'Não deu para pôr na mesa agora.'));
+        deps.toast(detail ? `${lastAct.title}: ${detail}` : (DENIED[msg.reason] || 'Não deu para pôr na Mesa agora.'));
         lastAct = null;
         return true;
       }

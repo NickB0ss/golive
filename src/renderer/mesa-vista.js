@@ -26,11 +26,9 @@
   const ZOOM_MAX = 2;
   // Um degrau de +/- (teclado e botoes): 5 degraus dobram o zoom.
   const ZOOM_STEP = 1.25;
-  const GRID_MINOR = 40;
-  const GRID_MAJOR = 200;
-  // A grade fina some quando as linhas ficariam a menos disto na tela: com
-  // zoom baixo ela vira um chuvisco que so pesa.
-  const GRID_MINOR_MIN_PX = 14;
+  const GRID_MINOR = 48;
+  const GRID_MAJOR = GRID_MINOR * 5;
+  const GRID_MINOR_MIN_PX = 10;
   const FLY_MS = 420;
   const SETTLE_MS = 260;
   // Janela fora da vista por 2 s (ou menor que 120 px na tela) para de
@@ -40,6 +38,7 @@
   // Setas andam isto em pixels da tela (nao unidades), para o passo parecer
   // o mesmo em qualquer zoom.
   const PAN_STEP_PX = 80;
+  const SAFE0 = { top: 0, right: 0, bottom: 0, left: 0 };
 
   function clamp(v, lo, hi) {
     return v < lo ? lo : v > hi ? hi : v;
@@ -117,15 +116,25 @@
     return clampView({ x: view.x - dx / view.z, y: view.y - dy / view.z, z: view.z }, vw, vh, opts);
   }
 
+  /** Centro, em pixels da tela, da area que sobra sem os controles da Mesa. */
+  function safeCenter(vw, vh, safe = SAFE0) {
+    return {
+      sx: safe.left + (vw - safe.left - safe.right) / 2,
+      sy: safe.top + (vh - safe.top - safe.bottom) / 2,
+    };
+  }
+
   /** Vista centrada no ponto do mundo `cx`,`cy` com zoom `z`. */
-  function centerOn(cx, cy, z, vw, vh, opts) {
+  function centerOn(cx, cy, z, vw, vh, opts = {}) {
     const zz = clampZoom(z);
-    return clampView({ x: cx - vw / 2 / zz, y: cy - vh / 2 / zz, z: zz }, vw, vh, opts);
+    const { sx, sy } = safeCenter(vw, vh, opts.safe);
+    return clampView({ x: cx - sx / zz, y: cy - sy / zz, z: zz }, vw, vh, opts);
   }
 
   /** Centro da vista no mundo. */
-  function viewCenter(view, vw, vh) {
-    return { x: view.x + vw / 2 / view.z, y: view.y + vh / 2 / view.z };
+  function viewCenter(view, vw, vh, safe) {
+    const { sx, sy } = safeCenter(vw, vh, safe);
+    return { x: view.x + sx / view.z, y: view.y + sy / view.z };
   }
 
   /** Menor retangulo que cobre todas as janelas, ou `null` sem janela. */
@@ -147,11 +156,11 @@
 
   /** Vista que mostra o retangulo inteiro com `pad` pixels de folga em
    * volta, sem passar de `maxZ` (uma janela so nao vira tela cheia). */
-  function fitRect(rect, vw, vh, { pad = 64, maxZ = 1.2, ...opts } = {}) {
-    const aw = Math.max(1, vw - pad * 2);
-    const ah = Math.max(1, vh - pad * 2);
+  function fitRect(rect, vw, vh, { pad = 64, maxZ = 1.2, safe = SAFE0, ...opts } = {}) {
+    const aw = Math.max(1, vw - safe.left - safe.right - pad * 2);
+    const ah = Math.max(1, vh - safe.top - safe.bottom - pad * 2);
     const z = clamp(Math.min(aw / Math.max(1, rect.w), ah / Math.max(1, rect.h)), ZOOM_MIN, Math.min(ZOOM_MAX, maxZ));
-    return centerOn(rect.x + rect.w / 2, rect.y + rect.h / 2, z, vw, vh, opts);
+    return centerOn(rect.x + rect.w / 2, rect.y + rect.h / 2, z, vw, vh, { ...opts, safe });
   }
 
   /** "Ver tudo": todas as janelas na tela. Mesa vazia: o meio da mesa a
@@ -209,33 +218,26 @@
   }
 
   // ---------------------------------------------------------------------
-  // Grade (um fundo em linear-gradient, recalculado so quando a vista muda)
+  // Grade (pontos no mundo, recalculada so quando a vista muda)
   // ---------------------------------------------------------------------
 
-  /** Estilo do fundo da grade para a vista: linhas fortes a cada 200
-   * unidades e finas a cada 40, alinhadas ao mundo. Devolve as tres
-   * propriedades de `background-*` prontas. A fina sai quando ficaria a
-   * menos de GRID_MINOR_MIN_PX na tela. */
-  function gridStyle(view, { minorMinPx = GRID_MINOR_MIN_PX } = {}) {
+  /** Estilo do fundo da grade para a vista: pontos a cada 48 unidades,
+   * alinhados ao mundo. Devolve as propriedades de `background-*` prontas. */
+  function gridStyle(view) {
+    const spacing = GRID_MINOR * view.z;
     const major = GRID_MAJOR * view.z;
-    const minor = GRID_MINOR * view.z;
     const ox = round2(-view.x * view.z);
     const oy = round2(-view.y * view.z);
-    const layers = [
-      'linear-gradient(var(--grid2) 1px, transparent 1px)',
-      'linear-gradient(90deg, var(--grid2) 1px, transparent 1px)',
-    ];
-    const sizes = [`${round2(major)}px ${round2(major)}px`, `${round2(major)}px ${round2(major)}px`];
-    const showMinor = minor >= minorMinPx;
-    if (showMinor) {
-      layers.push('linear-gradient(var(--grid) 1px, transparent 1px)', 'linear-gradient(90deg, var(--grid) 1px, transparent 1px)');
-      sizes.push(`${round2(minor)}px ${round2(minor)}px`, `${round2(minor)}px ${round2(minor)}px`);
-    }
+    const showMinor = spacing >= GRID_MINOR_MIN_PX;
+    const minorImage = 'radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)';
+    const majorImage = 'radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)';
     return {
       showMinor,
-      backgroundImage: layers.join(', '),
-      backgroundSize: sizes.join(', '),
-      backgroundPosition: layers.map(() => `${ox}px ${oy}px`).join(', '),
+      backgroundImage: showMinor ? `${minorImage}, ${majorImage}` : majorImage,
+      backgroundSize: showMinor
+        ? `${round2(spacing)}px ${round2(spacing)}px, ${round2(major)}px ${round2(major)}px`
+        : `${round2(major)}px ${round2(major)}px`,
+      backgroundPosition: showMinor ? `${ox}px ${oy}px, ${ox}px ${oy}px` : `${ox}px ${oy}px`,
     };
   }
 
@@ -284,7 +286,7 @@
    * de baixo sozinha mexe na altura e a largura acompanha; as outras mexem
    * na largura e a altura acompanha. A borda esquerda segura a direita no
    * lugar. Nunca abaixo do minimo do tipo. */
-  function resizeRect(orig, edge, dx, dy, { aspect = null, minW = 48, minH = 48 } = {}) {
+  function resizeRect(orig, edge, dx, dy, { aspect = null, minW = 48, minH = 48, chromeH = 0 } = {}) {
     const left = edge.includes('l');
     const right = edge.includes('r');
     const bottom = edge.includes('b');
@@ -294,13 +296,14 @@
     if (left) w = orig.w - dx;
     if (bottom) h = orig.h + dy;
     if (aspect) {
-      const minWa = Math.max(minW, minH * aspect);
+      const minWa = Math.max(minW, (minH - chromeH) * aspect);
       if (bottom && !left && !right) {
-        h = Math.max(minWa / aspect, h);
-        w = h * aspect;
+        const body = Math.max(minWa / aspect, h - chromeH);
+        w = body * aspect;
+        h = body + chromeH;
       } else {
         w = Math.max(minWa, w);
-        h = w / aspect;
+        h = w / aspect + chromeH;
       }
     } else {
       w = Math.max(minW, w);
@@ -341,7 +344,11 @@
 
   /** Teclado numa janela focada: setas movem 10 (Shift, 100); Alt+setas
    * redimensionam pela borda de baixo a direita. `null` para outra tecla. */
-  function keyRect(rect, key, { shift = false, alt = false, aspect = null, minW = 48, minH = 48 } = {}) {
+  function keyRect(
+    rect,
+    key,
+    { shift = false, alt = false, aspect = null, minW = 48, minH = 48, chromeH = 0 } = {},
+  ) {
     const d = ARROWS[key];
     if (!d) return null;
     const step = shift ? 100 : 10;
@@ -349,9 +356,9 @@
       if (aspect) {
         // Com proporcao, direita/baixo crescem e esquerda/cima encolhem.
         const grow = d[0] + d[1];
-        return resizeRect(rect, 'r', grow * step, 0, { aspect, minW, minH });
+        return resizeRect(rect, 'r', grow * step, 0, { aspect, minW, minH, chromeH });
       }
-      return resizeRect(rect, 'br', d[0] * step, d[1] * step, { aspect, minW, minH });
+      return resizeRect(rect, 'br', d[0] * step, d[1] * step, { aspect, minW, minH, chromeH });
     }
     return { x: rect.x + d[0] * step, y: rect.y + d[1] * step, w: rect.w, h: rect.h };
   }

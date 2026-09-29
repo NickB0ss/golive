@@ -93,18 +93,19 @@ async function main() {
     page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
     await page.addInitScript(PONTE);
     await page.goto(PAGINA);
-    await page.click('#btn-join-address');
-    await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-    await page.click('#btn-connect');
+    await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+    await page.press('#join-address', 'Enter');
     await page.waitForSelector('#room-view:not(.hidden)');
     const bia = await pessoa(servidor.port, 'Bia');
-    await page.click('#view-mesa');
+    // Sala Mesa: a Mesa abre sozinha ao receber o welcome (nao ha item da Mesa no barramento).
     await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+    await page.waitForFunction(() => window.GoLive.salaVista.isMesa());
+    conferir(!(await page.$('#view-mesa')), 'sala Mesa: sobrou o item da Mesa no barramento');
     bia.envia({ type: 'mesa-view', on: true });
     await bia.espera((m) => m.type === 'mesa-sync');
 
     // Uma janela de cada tipo, em grade, no tamanho padrao do modulo.
-    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaModules[t].size])), TIPOS);
+    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaRegistry.get(t).size])), TIPOS);
     const ids = {};
     let x = 120;
     let y = 120;
@@ -125,6 +126,9 @@ async function main() {
 
     // Clique no + do placar vira act na sala.
     const win = (t) => page.locator(`.mesa-win[data-type="${t}"]`);
+    // Janela de jogo/ferramenta continua podendo sair da Mesa (so tela/camera nao fecham).
+    conferir(await page.locator('.mesa-win[data-type="nota"] [data-act="remove"]:not([hidden])').count() === 1,
+      'nota: a janela de conteudo perdeu o botao de tirar da Mesa');
     await page.click('.mesa-zoom-btn[data-zoom="fit"]').catch(() => {});
     await espera(500);
     await win('placar').scrollIntoViewIfNeeded().catch(() => {});
@@ -181,6 +185,18 @@ async function main() {
     await espera(200);
     conferir(await bn.locator('.mj-bn-mar.is-alvo').count() === 1, 'batalha: o mar da Bia vira alvo para a Ana');
     conferir(await bn.locator('.mj-bn-mar.is-alvo .mj-bn-casa[data-m="navio"]').count() === 0, 'batalha: Ana nao ve os navios da Bia');
+    // Com todas as janelas em "Ver tudo", o tabuleiro pode ficar menor que
+    // a area clicavel. Tela cheia conserva a mesma jogada sem depender da
+    // geometria antiga da moldura.
+    await bn.focus();
+    await page.keyboard.press('f');
+    await bn.waitFor({ state: 'visible' });
+    await page.waitForSelector('.mesa-win[data-type="batalha"].is-full');
+    await espera(300);
+    if (process.env.PRINT_BATALHA) {
+      // A janela ja esta em tela cheia, no tamanho de verdade: olha o desenho.
+      await page.screenshot({ path: process.env.PRINT_BATALHA });
+    }
     await bn.locator('.mj-bn-mar.is-alvo .mj-bn-casa').nth(44).click();
     const tiro = await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.batalha && m.state.last).catch(() => null);
     conferir(tiro && tiro.state.last.seat === 0 && tiro.state.last.cell === 44, 'batalha: clicar no mar da Bia atira');
@@ -189,15 +205,8 @@ async function main() {
       return st && st.boards && st.boards[0].ships.some((n) => !n.sunk);
     });
     conferir(!vazou, 'batalha: nenhum navio da Ana chegou ao socket da Bia');
-    if (process.env.PRINT_BATALHA) {
-      // A janela em tela cheia, no tamanho de verdade: para olhar o desenho.
-      await bn.hover();
-      await bn.locator('.mesa-ctrl[data-act="full"]').click();
-      await espera(500);
-      await page.screenshot({ path: process.env.PRINT_BATALHA });
-      await page.keyboard.press('Escape');
-      await espera(300);
-    }
+    await page.keyboard.press('Escape');
+    await espera(300);
 
     // Pôquer (secret): Ana vê só as próprias duas cartas; a Bia sentada
     // recebe a própria view, sem as cartas da Ana nem o baralho. No zoom
@@ -209,7 +218,7 @@ async function main() {
     // clicar, como uma pessoa faria antes de jogar numa janela pequena.
     const pq = win('poquer');
     await pq.hover();
-    await pq.locator('.mesa-ctrl[data-act="full"]').click();
+    await pq.locator('.mesa-bar-title').dblclick();
     await espera(300);
     await pq.getByRole('button', { name: /^Sentar/ }).first().click();
     await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.poquer && m.state.seats[0]).catch(() => null);
@@ -231,7 +240,7 @@ async function main() {
     // cheia acima.
     const bj = win('blackjack');
     await bj.hover();
-    await bj.locator('.mesa-ctrl[data-act="full"]').click();
+    await bj.locator('.mesa-bar-title').dblclick();
     await espera(300);
     await bj.getByRole('button', { name: /^Sentar/ }).first().click();
     await bia.espera((m) => m.type === 'mesa' && m.op === 'state' && m.id === ids.blackjack && m.state.seats[0]).catch(() => null);

@@ -13,8 +13,7 @@
  * rodada/mao) e uma segunda instancia no tamanho minimo (so pra medir
  * layout), confere:
  *   - conteudo cabe sem rolagem nem corte (mesma medida do poquer-rodar.js);
- *   - nenhum controle visivel fica sob a faixa de 28 px do topo
- *     (.mesa-handle/.mesa-ctrls da Vista -- o "respiro de 30 px");
+ *   - nenhum controle visivel sai do corpo abaixo da barra da janela;
  *   - cada pessoa ve so o que deve (cartas/pecas/palavra alheias nunca
  *     aparecem no que o socket dela recebeu);
  *   - sem erro de console.
@@ -34,6 +33,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { createSignalingServer } = require('../../server/signaling-core');
+const { BAR_H } = require('../../src/renderer/mesa-modules/index.js');
 
 const PW = process.env.PLAYWRIGHT_DIR || '/opt/node22/lib/node_modules/playwright';
 const { chromium } = require(PW);
@@ -143,23 +143,25 @@ async function abrirPessoa(browser, servidor, nome, ehDona = false) {
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
   await page.addInitScript(PONTE, { nome, ehDona });
   await page.goto(PAGINA);
-  await page.click('#btn-join-address');
-  await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-  await page.click('#btn-connect');
+  await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+  await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   const welcome = await esperaMsg(page, (m) => m.type === 'welcome', 6000);
-  await page.click('#view-mesa');
+  // Sala Mesa: a Mesa abre sozinha ao receber o welcome (nao ha item da Mesa no barramento).
   await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  await page.waitForFunction(() => window.GoLive.salaVista.isMesa());
+  conferir(!(await page.$('#view-mesa')), `${nome}: sobrou o item da Mesa no barramento`);
   return { page, nome, id: welcome.id, erros };
 }
 
-/** Poe uma janela do `tipo` pelo canal de sinalizacao de verdade (mesmo que
- * a Vista manda ao clicar "Adicionar janela"), pela conexao da PRIMEIRA
+/** Os tamanhos `w`,`h` sao do CONTEUDO (como no modulo); a barra da janela
+ * (BAR_H) entra aqui. Poe uma janela do `tipo` pelo canal de sinalizacao de
+ * verdade (mesmo que a Vista manda ao clicar "Adicionar janela"), pela conexao da PRIMEIRA
  * pessoa. Devolve o id que o servidor deu. */
 async function adicionarJanela(pessoa, tipo, x, y, w, h) {
   await pessoa.page.evaluate(({ tipo: t, x: x2, y: y2, w: w2, h: h2 }) => {
     window.__ws.send(JSON.stringify({ type: 'mesa', op: 'add', win: { type: t, x: x2, y: y2, w: w2, h: h2 } }));
-  }, { tipo, x, y, w, h });
+  }, { tipo, x, y, w, h: h + BAR_H });
   const add = await esperaMsg(pessoa.page, (m) => m.type === 'mesa' && m.op === 'add' && m.win.type === tipo && m.win.x === x, 6000);
   return add.win.id;
 }
@@ -168,46 +170,31 @@ function janela(page, id) {
   return page.locator(`.mesa-win[data-id="${id}"]`);
 }
 
-/** conteudo cabe sem rolar/cortar + nada sob a faixa do topo (28 px logicos
- * da alca/`.mesa-ctrls`, com uma folga de 2 px) + todo controle visivel tem
- * nome -- a mesma vara de medir do poquer-rodar.js/rodar-blackjack.js.
- *
- * A mesa tem zoom por pessoa (o "Ver tudo" quase nunca fica 1:1 com mais de
- * uma janela postas): `getBoundingClientRect()` devolve pixel de TELA, ja
- * multiplicado pelo zoom, mas `clientWidth` e layout (nao muda com
- * `transform: scale`). A razao entre os dois desfaz o zoom antes de
- * comparar com os 26px logicos -- senao, zoom < 1 acusa respiro de sobra
- * como se estivesse faltando. */
+/** Conteudo cabe sem rolar/cortar, fica dentro do corpo e tem controles nomeados. */
 async function conferirGeometria(page, rotulo) {
   const r = await page.evaluate(() => {
-    const out = { vaza: [], semNome: 0, sobAlca: [] };
+    const out = { vaza: [], semNome: 0, foraDoCorpo: [] };
     for (const win of document.querySelectorAll('.mesa-win')) {
       const conteudo = win.querySelector('.mesa-content');
+      const corpo = win.querySelector('.mesa-win-body');
       const mj = conteudo && conteudo.firstElementChild;
-      if (!mj) continue;
+      if (!mj || !corpo) continue;
       const rotulo2 = `${win.dataset.type}#${win.dataset.id}`;
       if (mj.scrollWidth > mj.clientWidth + 1 || mj.scrollHeight > mj.clientHeight + 1) {
         out.vaza.push(`${rotulo2}: ${mj.scrollWidth}x${mj.scrollHeight} > ${mj.clientWidth}x${mj.clientHeight}`);
       }
       const caixaConteudo = conteudo.getBoundingClientRect();
-      const escala = conteudo.clientWidth > 0 ? caixaConteudo.width / conteudo.clientWidth : 1;
-      // So a faixa do topo (a alca, 28 px de verdade cobrindo a largura
-      // toda -- o "respiro de 30 px" que poquer/blackjack ja garantem).
-      // NAO o aglomerado do canto (avatar/tela-cheia/tirar): esse tem
-      // tamanho FIXO na tela (`transform: scale(var(--mesa-inv))`,
-      // mesa-real.js ja documenta isso pro poquer/blackjack) e, com a
-      // mesa bem afastada no "Ver tudo" pra caber 2 janelas na tela do
-      // navegador da bancada, aparenta colidir mesmo quando no tamanho
-      // de verdade (1:1) ha folga -- e o mesmo zoom que faz a propria
-      // Vista recomendar tela cheia antes de clicar perto da borda.
+      const caixaCorpo = corpo.getBoundingClientRect();
+      if (caixaConteudo.top < caixaCorpo.top || caixaConteudo.bottom > caixaCorpo.bottom) {
+        out.foraDoCorpo.push(`${rotulo2}: conteudo atravessa a barra`);
+      }
       for (const b of mj.querySelectorAll('button, input, select, textarea')) {
         if (b.offsetParent === null) continue;
         const nome = b.getAttribute('aria-label') || (b.textContent && b.textContent.trim()) || b.getAttribute('title') || b.getAttribute('placeholder');
         if (!nome) out.semNome++;
         const rc = b.getBoundingClientRect();
-        const folgaLogica = (rc.top - caixaConteudo.top) / escala;
-        if (rc.height > 0 && folgaLogica < 26) {
-          out.sobAlca.push(`${rotulo2}: "${nome}" a ${Math.round(folgaLogica)}px (logicos) do topo`);
+        if (rc.height > 0 && (rc.top < caixaCorpo.top || rc.bottom > caixaCorpo.bottom)) {
+          out.foraDoCorpo.push(`${rotulo2}: "${nome}" sai do corpo`);
         }
       }
     }
@@ -215,7 +202,7 @@ async function conferirGeometria(page, rotulo) {
   });
   conferir(r.vaza.length === 0, `${rotulo}: conteudo sai da janela (${r.vaza.join('; ')})`);
   conferir(r.semNome === 0, `${rotulo}: ${r.semNome} controle(s) sem rotulo`);
-  conferir(r.sobAlca.length === 0, `${rotulo}: controle sob a alca -- sem respiro no topo (${r.sobAlca.join('; ')})`);
+  conferir(r.foraDoCorpo.length === 0, `${rotulo}: controle sai do corpo (${r.foraDoCorpo.join('; ')})`);
 }
 
 /** Nenhum dos textos de `proibidos` (cartas/pecas/palavra da pessoa `dono`)
@@ -271,7 +258,7 @@ async function verTudo(...pessoas) {
  * jogar de verdade numa janela pequena. */
 async function telaCheia(w) {
   await w.hover();
-  await w.locator('.mesa-ctrl[data-act="full"]').click();
+  await w.locator('.mesa-bar-title').dblclick();
   await espera(250);
 }
 async function sairTelaCheia(pessoa) {

@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   DEFAULTS,
+  THEME_PRESETS,
   QUALITY_PRESETS,
   QUALITY_PRESET_ORDER,
   load,
@@ -340,10 +341,19 @@ test('eixo desconhecido cai no padrao em vez de lancar', () => {
 
 // ---------- cfg.theme (spec 2026-09-03, secao 5) ----------
 
-test('theme: signal legado sem acento migra uma vez para marca', () => {
+test('theme: signal legado sem acento segue as duas migracoes ate o Sinal', () => {
+  // Era o padrao implicito de antes da marca: passa pela marca e, como a
+  // marca tambem deixou de ser o padrao, chega ao Sinal.
   const legado = JSON.stringify({ v: 1, theme: { preset: 'signal' } });
-  assert.deepEqual(load(legado).theme, { preset: 'marca' });
+  assert.deepEqual(load(legado).theme, { preset: 'sinal' });
+});
 
+test('theme: signal legado com so a flag antiga fica no signal', () => {
+  const escolhido = JSON.stringify({ v: 1, themeMigration: true, theme: { preset: 'signal' } });
+  assert.deepEqual(load(escolhido).theme, { preset: 'signal' });
+});
+
+test('theme: signal legado com acento proprio nao migra', () => {
   // A configuracao gravada depois da migracao e uma escolha explicita e nao
   // pode voltar sozinha para outro preset numa abertura futura.
   const escolhido = JSON.stringify({ v: 1, theme: { preset: 'signal', act: '#4F46E5' } });
@@ -360,12 +370,54 @@ test('theme: signal escolhido depois da migracao sobrevive a reabertura (pelo ma
   assert.deepEqual(load(serialize(reaberto)).theme, { preset: 'signal' });
 });
 
-test('theme: default e o preset "marca", config antigo sem theme cai nele', () => {
-  assert.deepEqual(DEFAULTS.theme, { preset: 'marca' });
-  assert.deepEqual(load(null).theme, { preset: 'marca' });
+test('theme: default e o preset "sinal", config antigo sem theme cai nele', () => {
+  assert.deepEqual(DEFAULTS.theme, { preset: 'sinal' });
+  assert.deepEqual(load(null).theme, { preset: 'sinal' });
 
   const antigo = JSON.stringify({ v: 1, name: 'Nicolas' }); // de antes do theme existir
-  assert.deepEqual(load(antigo).theme, { preset: 'marca' });
+  assert.deepEqual(load(antigo).theme, { preset: 'sinal' });
+});
+
+test('theme: config sem tema abre no Sinal', () => {
+  assert.deepEqual(load(JSON.stringify({ v: 1, name: 'Nicolas' })).theme, { preset: 'sinal' });
+});
+
+test('theme: marca sem acao migra uma vez para Sinal', () => {
+  const cfg = load(JSON.stringify({ v: 1, theme: { preset: 'marca' } }));
+  assert.deepEqual(cfg.theme, { preset: 'sinal' });
+  assert.equal(cfg.themeMigrationSinal, true);
+});
+
+test('theme: marca com acao personalizada continua marca', () => {
+  const cfg = load(JSON.stringify({ v: 1, theme: { preset: 'marca', act: '#5B4BE8' } }));
+  assert.deepEqual(cfg.theme, { preset: 'marca', act: '#5B4BE8' });
+});
+
+test('theme: marcador da migracao Sinal preserva marca puro', () => {
+  const cfg = load(JSON.stringify({
+    v: 1,
+    theme: { preset: 'marca' },
+    themeMigrationSinal: true,
+  }));
+  assert.deepEqual(cfg.theme, { preset: 'marca' });
+});
+
+test('theme: Sinal abre a lista de predefinicoes e marca continua nela', () => {
+  assert.equal(THEME_PRESETS[0], 'sinal');
+  assert.ok(THEME_PRESETS.includes('sinal-claro'));
+  assert.ok(THEME_PRESETS.includes('marca'));
+});
+
+test('theme: Estudio migra para Sinal uma vez, sem perder acento proprio', () => {
+  const migrado = load(JSON.stringify({ v: 1, theme: { preset: 'estudio' } }));
+  assert.deepEqual(migrado.theme, { preset: 'sinal' });
+  assert.equal(migrado.themeMigrationSinal, true);
+
+  const escolhido = load(JSON.stringify({
+    v: 1,
+    theme: { preset: 'estudio', act: '#5B4BE8' },
+  }));
+  assert.deepEqual(escolhido.theme, { preset: 'sinal', act: '#5B4BE8' });
 });
 
 test('theme: round-trip preserva um preset conhecido', () => {
@@ -512,6 +564,14 @@ test('annotations.allow nasce desmarcado e so `true` liga', () => {
   assert.equal(load(JSON.stringify({ annotations: null })).annotations.allow, false);
 });
 
+test('reactions.allow nasce ligado e so `false` desliga', () => {
+  assert.equal(load(null).reactions.allow, true);
+  assert.equal(load(JSON.stringify({ reactions: { allow: false } })).reactions.allow, false);
+  assert.equal(load(JSON.stringify({ reactions: { allow: 'nao' } })).reactions.allow, true);
+  assert.equal(load(JSON.stringify({ reactions: 'nao' })).reactions.allow, true);
+  assert.equal(load(JSON.stringify({ reactions: null })).reactions.allow, true);
+});
+
 test('emojiRecents sobrevive ao round-trip e limpa lixo do config', () => {
   assert.deepEqual(load(null).emojiRecents, []);
   const cfg = load(JSON.stringify({ emojiRecents: ['🍕', '🍕', 42, '', null, '🎉'] }));
@@ -530,4 +590,17 @@ test('config antigo (sem annotations nem emojiRecents) abre nos padroes', () => 
   const cfg = load(antigo);
   assert.equal(cfg.annotations.allow, false);
   assert.deepEqual(cfg.emojiRecents, []);
+});
+
+test('network.roomMesa comeca ligado e config antigo (sem o campo) fica com a Mesa', () => {
+  assert.equal(load(null).network.roomMesa, true);
+  const antigo = serialize({ ...DEFAULTS, network: { advertise: false } });
+  const cfg = load(antigo);
+  assert.equal(cfg.network.roomMesa, true);
+  assert.equal(cfg.network.advertise, false);
+});
+
+test('network.roomMesa guarda a ultima escolha do dialogo de criar sala', () => {
+  const saved = serialize({ ...DEFAULTS, network: { advertise: true, roomMesa: false } });
+  assert.equal(load(saved).network.roomMesa, false);
 });

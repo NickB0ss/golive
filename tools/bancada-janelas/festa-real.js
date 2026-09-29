@@ -102,13 +102,14 @@ async function main() {
     page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
     await page.addInitScript(PONTE);
     await page.goto(PAGINA);
-    await page.click('#btn-join-address');
-    await page.fill('#in-server', `ws://127.0.0.1:${servidor.port}`);
-    await page.click('#btn-connect');
+    await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
+    await page.press('#join-address', 'Enter');
     await page.waitForSelector('#room-view:not(.hidden)');
     const bia = await pessoa(servidor.port, 'Bia');
-    await page.click('#view-mesa');
+    // Sala Mesa: a Mesa abre sozinha ao receber o welcome (nao ha item da Mesa no barramento).
     await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+    await page.waitForFunction(() => window.GoLive.salaVista.isMesa());
+    conferir(!(await page.$('#view-mesa')), 'sala Mesa: sobrou o item da Mesa no barramento');
     bia.envia({ type: 'mesa-view', on: true });
     await bia.espera((m) => m.type === 'mesa-sync');
 
@@ -120,7 +121,7 @@ async function main() {
     }, TIPOS);
     conferir(noMenu.join() === 'jam:assistir,sons:noite,link:ferramentas', `no menu, nos grupos certos (${noMenu.join()})`);
 
-    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaModules[t].size])), TIPOS);
+    const tamanhos = await page.evaluate((tipos) => Object.fromEntries(tipos.map((t) => [t, window.GoLive.mesaRegistry.get(t).size])), TIPOS);
     const ids = {};
     let x = 1400;
     for (const t of TIPOS) {

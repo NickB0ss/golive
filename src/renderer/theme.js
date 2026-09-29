@@ -16,7 +16,7 @@
   // impossivel, entao a checagem so cobre --live/--danger).
 
   const LIVE = '#FF4D4F';
-  const DANGER = '#C92A33';
+  const DANGER = '#FF8A3D';
 
   // ---------------------------------------------------------------------
   // Conversao de cor. Tudo em hex de 6 digitos (#rrggbb) pra fora; HSL só
@@ -127,6 +127,12 @@
     return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
   }
 
+  /** Tom efetivo da superficie. Fundo claro tem luminancia relativa acima
+   * de 0,5; entrada invalida cai no tom escuro seguro para o boot. */
+  function toneOf(bgHex) {
+    return isHex(bgHex) && relativeLuminance(bgHex) > 0.5 ? 'light' : 'dark';
+  }
+
   /** Razao de contraste WCAG entre duas cores hex. Ordem dos argumentos nao
    * importa -- a formula ja normaliza pra L1 (mais clara) sobre L2. */
   function contrast(hexA, hexB) {
@@ -151,7 +157,7 @@
   // ---------------------------------------------------------------------
   // Predefinicoes. Valores exatos da spec (secao 5.2) -- os mesmos numeros
   // vao pro CSS via outro agente, entao NENHUM destes hex muda sem avisar
-  // quem mantem style.css.
+  // quem mantem sinal/tokens.css e sinal/themes.css.
   //
   // Ajuste feito nesta task em cima da tabela original da spec -- ver o
   // relatorio desta task pro que mudou e por que (e um ajuste bem maior do
@@ -159,13 +165,37 @@
   // "paper" abaixo pro motivo matematico completo). bg continua sendo a
   // superficie mais clara da rampa, como pede a spec.
   const PRESETS = {
+    sinal: {
+      label: 'Sinal',
+      surfaces: {
+        bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
+        tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',
+        line: 'rgba(237,237,242,.09)', line2: 'rgba(237,237,242,.17)',
+        grid: 'rgba(237,237,242,.13)', grid2: 'rgba(237,237,242,.24)',
+      },
+      act: '#EDEDF2',
+      actHover: '#FFFFFF',
+      onAct: '#0E0E14',
+    },
+    'sinal-claro': {
+      label: 'Sinal claro',
+      surfaces: {
+        bg: '#F4F4F7', s1: '#FFFFFF', s2: '#FFFFFF', s3: '#EBEBF0', s4: '#E0E0E8',
+        tx: '#0E0E14', tx2: '#4A4A5C', tx3: '#666678',
+        line: 'rgba(14,14,20,.09)', line2: 'rgba(14,14,20,.18)',
+        grid: 'rgba(14,14,20,.13)', grid2: 'rgba(14,14,20,.24)',
+      },
+      act: '#0E0E14',
+      actHover: '#26262F',
+      onAct: '#EDEDF2',
+    },
     marca: {
       label: 'GoLive',
       surfaces: {
         bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
         tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
         line: 'rgba(237,237,242,.08)', line2: 'rgba(237,237,242,.14)',
-        grid: 'rgba(237,237,242,.065)', grid2: 'rgba(237,237,242,.11)',
+        grid: 'rgba(237,237,242,.13)', grid2: 'rgba(237,237,242,.24)',
       },
       act: '#5B4BE8',
       actHover: '#6D5CF6',
@@ -176,7 +206,7 @@
         bg: '#0E0F13', s1: '#16181D', s2: '#1D2026', s3: '#262A32', s4: '#323742',
         tx: '#E8EAED', tx2: '#9AA0AA', tx3: '#868D9B',
         line: 'rgba(255,255,255,.08)', line2: 'rgba(255,255,255,.14)',
-        grid: 'rgba(255,255,255,.055)', grid2: 'rgba(255,255,255,.095)',
+        grid: 'rgba(255,255,255,.13)', grid2: 'rgba(255,255,255,.24)',
       },
       act: '#4F46E5',
       actHover: '#6257EB',
@@ -187,7 +217,7 @@
         bg: '#080B14', s1: '#0D1220', s2: '#121A2C', s3: '#1A2438', s4: '#243149',
         tx: '#E7ECF7', tx2: '#98A3BE', tx3: '#7C87A3',
         line: 'rgba(160,185,255,.08)', line2: 'rgba(160,185,255,.14)',
-        grid: 'rgba(160,185,255,.08)', grid2: 'rgba(160,185,255,.14)',
+        grid: 'rgba(160,185,255,.13)', grid2: 'rgba(160,185,255,.24)',
       },
       act: '#4F8EF7',
       actHover: '#6FA3F9',
@@ -198,7 +228,7 @@
         bg: '#111111', s1: '#181818', s2: '#202020', s3: '#2A2A2A', s4: '#363636',
         tx: '#EDEDED', tx2: '#A3A3A3', tx3: '#8C8C8C',
         line: 'rgba(255,255,255,.08)', line2: 'rgba(255,255,255,.14)',
-        grid: 'rgba(255,255,255,.05)', grid2: 'rgba(255,255,255,.09)',
+        grid: 'rgba(255,255,255,.13)', grid2: 'rgba(255,255,255,.24)',
       },
       act: '#9CA3AF',
       actHover: '#B0B7C3',
@@ -209,7 +239,7 @@
         bg: '#15100C', s1: '#1D1712', s2: '#261E17', s3: '#332821', s4: '#42352B',
         tx: '#F1E7DD', tx2: '#B8A697', tx3: '#9C8C7E',
         line: 'rgba(255,220,180,.08)', line2: 'rgba(255,220,180,.14)',
-        grid: 'rgba(255,220,180,.06)', grid2: 'rgba(255,220,180,.10)',
+        grid: 'rgba(255,220,180,.13)', grid2: 'rgba(255,220,180,.24)',
       },
       act: '#C4AB31',
       actHover: '#D4BF54',
@@ -220,7 +250,7 @@
         bg: '#0A120E', s1: '#0F1913', s2: '#16231B', s3: '#1F2F25', s4: '#2A3D31',
         tx: '#E6F0EA', tx2: '#9DB5A8', tx3: '#84998C',
         line: 'rgba(180,255,200,.08)', line2: 'rgba(180,255,200,.14)',
-        grid: 'rgba(180,255,200,.06)', grid2: 'rgba(180,255,200,.10)',
+        grid: 'rgba(180,255,200,.13)', grid2: 'rgba(180,255,200,.24)',
       },
       act: '#5FA37E',
       actHover: '#72B491',
@@ -269,7 +299,7 @@
         bg: '#FCFAF7', s1: '#FBF8F4', s2: '#F0ECE4', s3: '#DFD6C6', s4: '#CBBEA4',
         tx: '#1C1A16', tx2: '#47423A', tx3: '#5C564B',
         line: 'rgba(30,25,15,.10)', line2: 'rgba(30,25,15,.18)',
-        grid: 'rgba(30,25,15,.06)', grid2: 'rgba(30,25,15,.11)',
+        grid: 'rgba(30,25,15,.13)', grid2: 'rgba(30,25,15,.24)',
       },
       act: '#4338CA',
       actHover: '#3730A3',
@@ -287,9 +317,9 @@
 
   // Grade da Mesa (spec 2026-09-24, secao 6): linha fina a cada 40
   // unidades (--grid) e forte a cada 200 (--grid2). Tem de aparecer sem
-  // competir com as janelas: contraste contra --bg entre 1,1:1 e 1,4:1
+  // competir com as janelas: contraste contra --bg entre 1,1:1 e 2,2:1
   // (checagem 6 de `validate`). Os alvos ficam no meio da faixa.
-  const GRID_CONTRAST = Object.freeze({ min: 1.1, max: 1.4, minor: 1.12, major: 1.25 });
+  const GRID_CONTRAST = Object.freeze({ min: 1.1, max: 2.2, minor: 1.3, major: 1.9 });
 
   /** `rgba(r, g, b, a)` (ou `rgba(r,g,b,a)`) pintado sobre um fundo hex ->
    * a cor opaca que aparece na tela. `null` se nao for rgba. */
@@ -373,7 +403,7 @@
     const tx3 = hslToHex({ h: hue, s: Math.min(sat, 4), l: surfaceL(0.56) });
 
     // Linhas: brancas com alpha baixo em fundo escuro, pretas em fundo
-    // claro -- a convencao que style.css ja usa em PRESETS.
+    // claro -- a convencao que sinal/themes.css ja usa em PRESETS.
     const lineBase = bgL < 50 ? '#ffffff' : '#000000';
     const line = rgba(lineBase, 0.08);
     const line2 = rgba(lineBase, 0.14);
@@ -396,7 +426,7 @@
    * acesso a eles e nao deveria precisar: um texto escuro generico serve
    * pra qualquer acento claro o bastante pra reprovar branco). */
   function deriveAction(actHex, darkText = '#14151A') {
-    const act = isHex(actHex) ? actHex : PRESETS.signal.act;
+    const act = isHex(actHex) ? actHex : PRESETS.sinal.act;
     const hsl = hexToHsl(act);
 
     // Hover: acentos escuros clareiam, acentos claros escurecem -- sempre
@@ -465,7 +495,7 @@
   function validate(tokens) {
     const failures = [];
     const s = (tokens && tokens.surfaces) || {};
-    const act = (tokens && tokens.act) || PRESETS.signal.act;
+    const act = (tokens && tokens.act) || PRESETS.sinal.act;
     const onAct = (tokens && tokens.onAct) || deriveAction(act).onAct;
 
     // 1. tx sobre bg e s1..s4.
@@ -501,9 +531,12 @@
     // reprovaria todo tema claro por construcao, nao por um --s1 mal
     // escolhido (foi exatamente isso que forcou a primeira tentativa do
     // preset "Papel" a paineis quase pretos -- ver o comentario dentro de
-    // PRESETS.paper acima). --live (~0.27) e --danger (~0.14) nao tem
-    // esse problema: os dois tem solucao com --s1 genuinamente claro.
-    for (const [nome, hex] of [['--live', LIVE], ['--danger', DANGER]]) {
+    // PRESETS.paper acima). --live (~0.27) tem solucao com --s1 claro. O
+    // laranja de perigo (~0.40) nao chega a 3:1 em superficie clara; nesse
+    // tom usa #B3370A, variante clara travada em tokens.css, para a conta
+    // ser matematicamente possivel sem escurecer o tema.
+    const danger = toneOf(s.bg) === 'light' ? '#B3370A' : DANGER;
+    for (const [nome, hex] of [['--live', LIVE], ['--danger', danger]]) {
       if (!isHex(s.s1)) continue;
       const c = contrast(hex, s.s1);
       if (c < MIN_SEMANTIC_CONTRAST) {
@@ -561,7 +594,7 @@
    *      perde o proprio tema num update.
    *
    * Qualquer outra coisa (preset desconhecido, custom malformado, cfg
-   * ausente) cai em PRESETS.marca sem lancar -- roda no boot do app. */
+   * ausente) cai em PRESETS.sinal sem lancar -- roda no boot do app. */
   function tokensFor(themeCfg) {
     if (isValidCustomCfg(themeCfg)) {
       return { surfaces: deriveSurfaces(themeCfg.base), ...deriveAction(themeCfg.act) };
@@ -571,7 +604,7 @@
       if (isHex(themeCfg.act)) return { surfaces: preset.surfaces, ...deriveAction(themeCfg.act) };
       return preset;
     }
-    return PRESETS.marca;
+    return PRESETS.sinal;
   }
 
   const SURFACE_VAR_MAP = {
@@ -603,7 +636,7 @@
   const CUSTOM_VAR_MAP = { ...SURFACE_VAR_MAP, ...ACTION_VAR_MAP };
 
   /** Aplica um tema no `<html>`. Presets sao so um atributo `data-theme`
-   * (o CSS ja tem o bloco pronto) -- "marca" remove o atributo, pra
+   * (o CSS ja tem o bloco pronto) -- "sinal" remove o atributo, pra
    * bater com o :root de hoje sendo o proprio padrao sem override. Custom
    * seta `data-theme="custom"` e escreve cada variavel via
    * `style.setProperty`, sem tocar em --live/--warn/--danger/os -dim (essa
@@ -620,6 +653,9 @@
     if (isValidCustomCfg(themeCfg)) {
       const tokens = tokensFor(themeCfg);
       d.documentElement.setAttribute('data-theme', 'custom');
+      // setAttribute, nao dataset: no DOM real dataset so tem getter e
+      // atribuir a ele lanca em modo estrito.
+      d.documentElement.setAttribute('data-tone', toneOf(tokens.surfaces.bg));
       for (const [varName, getter] of Object.entries(CUSTOM_VAR_MAP)) {
         d.documentElement.style.setProperty(varName, getter(tokens));
       }
@@ -635,9 +671,10 @@
     for (const varName of Object.keys(CUSTOM_VAR_MAP)) {
       d.documentElement.style.removeProperty?.(varName);
     }
-    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'marca';
-    const preset = PRESETS[requested] ? requested : 'marca';
-    if (preset === 'marca') {
+    const requested = isObject(themeCfg) && typeof themeCfg.preset === 'string' ? themeCfg.preset : 'sinal';
+    const preset = PRESETS[requested] ? requested : 'sinal';
+    d.documentElement.setAttribute('data-tone', toneOf(PRESETS[preset].surfaces.bg));
+    if (preset === 'sinal') {
       d.documentElement.removeAttribute('data-theme');
     } else {
       d.documentElement.setAttribute('data-theme', preset);
@@ -655,12 +692,10 @@
         d.documentElement.style.setProperty(varName, getter(tokens));
       }
     } else {
-      // Preset puro: superficies e acento vem do bloco CSS, mas o texto sobre
-      // o botao preenchido nao -- --on-act e #fff no :root, igual pra todos.
-      // Acento claro (Carvao: branco sobre #9CA3AF da ~2,5:1) pede o texto
-      // escuro que deriveAction calcula, o mesmo que validate ja usava para
-      // aprovar o preset. Sem isto a trava aprovava um botao ilegivel.
-      d.documentElement.style.setProperty('--on-act', deriveAction(PRESETS[preset].act).onAct);
+      // O preset pode fixar o texto quando sua acao e clara. Sem declaracao,
+      // preserva a escolha segura por contraste usada pelos temas existentes.
+      const onAct = PRESETS[preset].onAct || deriveAction(PRESETS[preset].act).onAct;
+      d.documentElement.style.setProperty('--on-act', onAct);
     }
   }
 
@@ -668,6 +703,7 @@
     PRESETS,
     DANGER,
     GRID_CONTRAST,
+    toneOf,
     contrast,
     blendOver,
     hueOf,

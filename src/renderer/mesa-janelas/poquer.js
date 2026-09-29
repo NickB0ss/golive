@@ -124,6 +124,11 @@
 
   // ---------- DOM ----------
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   function mount(elRoot, vistaApi) {
     const C = root.GoLive.mesaJanelasComum;
     const K = root.GoLive.mesaJanelasCartas;
@@ -559,6 +564,7 @@
       pintarBaixo(view);
       vezVista = vezChave(view);
       pintarStatus();
+      atualizarBarra(api, status.textContent, Boolean(me().myTurn && view.hand && !view.hand.result));
     }
 
     const timer = setInterval(pintarStatus, 250);
@@ -566,7 +572,7 @@
 
     return {
       update,
-      destroy: b.destruir,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
       focus() {
         const alvo = !acoes.hidden ? btPagar : [btDar, btRecompra].find((x) => !x.hidden) || lugares.find((L) => !L.sentar.hidden)?.sentar || status;
         alvo.focus();
@@ -642,7 +648,8 @@
   }
 
   const api = {
-    type: TYPE, mount, fichas, posicao, coordenada, textoEvento, textoResultado, atalhos, segundos, rotuloPagar, rotuloAumentar,
+    type: TYPE, mount, fichas, posicao, coordenada, textoEvento, textoResultado, atalhos, segundos, rotuloPagar,
+    rotuloAumentar, atualizarBarra,
   };
 
   registrar(api, ['comum.js', 'cartas.js']);

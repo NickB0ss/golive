@@ -21,6 +21,14 @@ pessoa menos quer decifrar sinônimo. Este arquivo fixa um termo por conceito;
 | Pôr / tirar uma janela | **Adicionar janela** / **Tirar da mesa** | inserir, fechar, remover |
 | Ocupar a tela toda com uma janela | **Tela cheia** | maximizar |
 | Para onde você olha dentro da Mesa | sem nome na interface: os botões dizem **Ver tudo** e **Ir até** | câmera (é a webcam), viewport |
+| Indicação de que é a vez da pessoa | **Sua vez** | — |
+| Faixa superior de uma janela da Mesa | **barra da janela** | — |
+| Linha da coluna de pessoas e suas seções | **presença**; **AO VIVO** / **NA SALA** | — |
+| Teto de resolução que você recebe | **Qualidade que você recebe**: **Auto**, **1080p**, **720p** e **480p**; não vale quando você repassa a tela | — |
+| Palco vazio | **Ninguém em foco** | — |
+| Navegação do lobby para a lista de salas | **Salas** | — |
+| Navegação do lobby para os ajustes do app | **Configurações** | — |
+| Tema padrão do app | **Estúdio** | — |
 
 ### A Mesa (2026-09-24)
 

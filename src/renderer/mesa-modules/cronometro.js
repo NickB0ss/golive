@@ -207,7 +207,7 @@
     type: TYPE,
     title: 'Cronômetro',
     group: 'noite',
-    size: { w: 360, h: 220, minW: 260, minH: 160, aspect: null },
+    size: { w: 360, h: 300, minW: 260, minH: 160, aspect: null },
     maxStateBytes: 512,
     MIN_DURATION, MAX_MS, MAX_LABEL, DEFAULT_DURATION,
     init,

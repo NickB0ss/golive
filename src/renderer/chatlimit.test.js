@@ -12,7 +12,7 @@ function line(kind) {
 }
 
 test('pruneChatMessages remove somente as mensagens mais antigas acima do teto', () => {
-  const nodes = Array.from({ length: MAX_CHAT_MESSAGES + 2 }, () => line('chat-line'));
+  const nodes = Array.from({ length: MAX_CHAT_MESSAGES + 2 }, () => line('msg'));
   const container = {
     querySelectorAll(selector) {
       return nodes.filter((node) => !node.removed && node.matches(selector));
@@ -23,7 +23,7 @@ test('pruneChatMessages remove somente as mensagens mais antigas acima do teto',
   };
 
   assert.equal(pruneChatMessages(container), 2);
-  assert.equal(container.querySelectorAll('.chat-line, .chat-sys').length, MAX_CHAT_MESSAGES);
+  assert.equal(container.querySelectorAll('.msg, .msg-sys').length, MAX_CHAT_MESSAGES);
   assert.equal(nodes[0].removed, true);
   assert.equal(nodes[1].removed, true);
   assert.equal(nodes.at(-1).removed, undefined);

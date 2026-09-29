@@ -6,7 +6,7 @@ const registry = require('./index');
 
 test('metadados e estado inicial', () => {
   assert.equal(aovivo.type, 'aovivo');
-  assert.equal(aovivo.title, 'Ao vivo (Twitch)');
+  assert.equal(aovivo.title, 'Twitch');
   assert.equal(aovivo.group, 'assistir');
   assert.equal(aovivo.prepare, undefined, 'ao vivo nao tem relogio');
   assert.equal(registry.checkModule(aovivo).ok, true);

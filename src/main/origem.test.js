@@ -82,7 +82,7 @@ test('resolverCaminho aceita arquivos da raiz e subpastas', () => {
   assert.equal(resolverCaminho(raiz, '/espiar.html'), path.join(raiz, 'espiar.html'));
   assert.equal(resolverCaminho(raiz, '/vazia.html'), path.join(raiz, 'vazia.html'));
   assert.equal(resolverCaminho(raiz, '/pcm-injector-worklet.js'), path.join(raiz, 'pcm-injector-worklet.js'));
-  assert.equal(resolverCaminho(raiz, '/assets/fonts/outfit-latin.woff2'), path.join(raiz, 'assets', 'fonts', 'outfit-latin.woff2'));
+  assert.equal(resolverCaminho(raiz, '/assets/fonts/atkinson-next-400-latin.woff2'), path.join(raiz, 'assets', 'fonts', 'atkinson-next-400-latin.woff2'));
   assert.equal(resolverCaminho(raiz, '/nome%20com%20espaco.js'), path.join(raiz, 'nome com espaco.js'));
 });
 
@@ -192,7 +192,7 @@ test('responder recusa metodo, outra origem, travessia, pasta, teste e symlink',
 });
 
 test('responder serve os arquivos de verdade do renderer que as janelas pedem', async () => {
-  for (const nome of ['index.html', 'espiar.html', 'vazia.html', 'app.js', 'style.css', 'espiar-page.js', 'pcm-injector-worklet.js', 'assets/fonts/outfit-latin.woff2', 'assets/icon.svg']) {
+  for (const nome of ['index.html', 'espiar.html', 'vazia.html', 'app.js', 'sinal/tokens.css', 'sinal/shell.css', 'espiar-page.js', 'pcm-injector-worklet.js', 'assets/fonts/atkinson-next-400-latin.woff2', 'assets/icon.svg']) {
     const r = await responder({ raiz: RENDERER, metodo: 'HEAD', url: `http://localhost/${nome}` });
     assert.equal(r.status, 200, nome);
   }

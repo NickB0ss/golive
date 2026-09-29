@@ -4,54 +4,109 @@
 <meta charset="utf-8">
 <title>Bancada das janelas da Mesa</title>
 <!-- Bancada de desenvolvimento, nao e pagina do app. Ver bancada.js. -->
-<link rel="stylesheet" href="../../src/renderer/style.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/tokens.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/themes.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/base.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/components.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/shell.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/sheets.css">
+<link rel="stylesheet" href="../../src/renderer/sinal/mesa.css">
 <link rel="stylesheet" href="../../src/renderer/mesa-janelas.css">
 <style>
   body { overflow: auto; user-select: auto; padding: var(--s-4); }
-  #titulo { margin: 0 0 var(--s-3); font: 700 var(--fs-lead) 'Outfit', system-ui, sans-serif; color: var(--tx2); }
+  #titulo { margin: 0 0 var(--s-3); font: var(--t-heading); color: var(--tx2); }
   #palco { display: flex; gap: var(--s-5); align-items: flex-start; flex-wrap: wrap; }
-  .pessoa h2 { margin: 0 0 var(--s-2); font-size: var(--fs-small); font-weight: 600; color: var(--tx2); }
-  .janela { position: relative; background: var(--s1); border-radius: var(--r-lg); box-shadow: 0 0 0 1px var(--line2); overflow: hidden; }
-  .conteudo { position: absolute; inset: 0; container-type: size; overflow: hidden; }
-  /* A alca da Vista: 28 px por cima do conteudo. */
-  .alca { position: absolute; left: 0; right: 0; top: 0; height: 28px; z-index: 4; display: grid; place-items: center; pointer-events: none; }
-  .alca::after { content: ""; width: 36px; height: 4px; border-radius: 2px; background: var(--tx3); opacity: 0.5; }
+  .pessoa h2 { margin: 0 0 var(--s-2); font: var(--t-meta); color: var(--tx2); }
+  .janela { display: flex; flex-direction: column; background: var(--s1); border-radius: var(--r-sm); box-shadow: var(--elev-float); overflow: hidden; }
+  .barra { flex: none; height: 32px; display: flex; align-items: center; padding: 0 var(--s-3); background: var(--s1); color: var(--tx); font: var(--t-label); }
+  .conteudo { position: relative; flex: 1; min-height: 0; container-type: size; overflow: hidden; }
 </style>
 </head>
 <body>
 <h1 id="titulo"></h1>
 <div id="palco"></div>
 
+<!-- Mantem a mesma base do app antes da Mesa. -->
+<script src="../../src/renderer/emoji.js"></script>
 <script src="../../src/renderer/annotate.js"></script>
 <script src="../../src/renderer/vendor/chess.js"></script>
 <script src="../../src/renderer/mesa-modules/cadeiras.js"></script>
+<script src="../../src/renderer/mesa-modules/baralho.js"></script>
+<script src="../../src/renderer/mesa-modules/pedras.js"></script>
+<script src="../../src/renderer/mesa-modules/poquer-maos.js"></script>
+<script src="../../src/renderer/mesa-modules/midialinks.js"></script>
+<script src="../../src/renderer/mesa-modules/youtube.js"></script>
+<script src="../../src/renderer/mesa-modules/radio.js"></script>
+<script src="../../src/renderer/mesa-modules/aovivo.js"></script>
 <script src="../../src/renderer/mesa-modules/nota.js"></script>
 <script src="../../src/renderer/mesa-modules/lista.js"></script>
 <script src="../../src/renderer/mesa-modules/enquete.js"></script>
+<script src="../../src/renderer/mesa-modules/imagem.js"></script>
+<script src="../../src/renderer/mesa-modules/galeria.js"></script>
+<script src="../../src/renderer/mesa-modules/quadro.js"></script>
 <script src="../../src/renderer/mesa-modules/placar.js"></script>
 <script src="../../src/renderer/mesa-modules/cronometro.js"></script>
 <script src="../../src/renderer/mesa-modules/sorteio.js"></script>
 <script src="../../src/renderer/mesa-modules/dados.js"></script>
 <script src="../../src/renderer/mesa-modules/roleta.js"></script>
+<script src="../../src/renderer/mesa-modules/stop.js"></script>
 <script src="../../src/renderer/mesa-modules/velha.js"></script>
 <script src="../../src/renderer/mesa-modules/lig4.js"></script>
 <script src="../../src/renderer/mesa-modules/damas.js"></script>
 <script src="../../src/renderer/mesa-modules/xadrez.js"></script>
+<script src="../../src/renderer/mesa-modules/batalha.js"></script>
+<script src="../../src/renderer/mesa-modules/oito.js"></script>
+<script src="../../src/renderer/mesa-modules/desenha.js"></script>
+<script src="../../src/renderer/mesa-modules/jam.js"></script>
+<script src="../../src/renderer/mesa-modules/sons.js"></script>
+<script src="../../src/renderer/mesa-modules/link.js"></script>
+<script src="../../src/renderer/mesa-modules/poquer.js"></script>
+<script src="../../src/renderer/mesa-modules/blackjack.js"></script>
+<script src="../../src/renderer/mesa-modules/truco.js"></script>
+<script src="../../src/renderer/mesa-modules/domino.js"></script>
+<script src="../../src/renderer/mesa-modules/quiz-perguntas.js"></script>
+<script src="../../src/renderer/mesa-modules/quiz.js"></script>
+<script src="../../src/renderer/mesa-modules/index.js"></script>
+<script src="../../src/renderer/mesa-catalogo.js"></script>
+<!-- Midia e carregada sob demanda no app; aqui ja existe para nao buscar relativo. -->
+<script src="../../src/renderer/ytplayer.js"></script>
+<script src="../../src/renderer/mesa-sync-media.js"></script>
+<script src="../../src/renderer/mesa-midia.js"></script>
 
+<!-- Todos os corpos sao carregados para a bancada medir qualquer tipo. -->
 <script src="../../src/renderer/mesa-janelas/comum.js"></script>
+<script src="../../src/renderer/mesa-janelas/cartas.js"></script>
+<script src="../../src/renderer/mesa-janelas/tabuleiro.js"></script>
+<script src="../../src/renderer/mesa-janelas/youtube.js"></script>
+<script src="../../src/renderer/mesa-janelas/radio.js"></script>
+<script src="../../src/renderer/mesa-janelas/aovivo.js"></script>
 <script src="../../src/renderer/mesa-janelas/nota.js"></script>
 <script src="../../src/renderer/mesa-janelas/lista.js"></script>
 <script src="../../src/renderer/mesa-janelas/enquete.js"></script>
+<script src="../../src/renderer/mesa-janelas/imagem.js"></script>
+<script src="../../src/renderer/mesa-janelas/galeria.js"></script>
+<script src="../../src/renderer/mesa-janelas/quadro.js"></script>
 <script src="../../src/renderer/mesa-janelas/placar.js"></script>
 <script src="../../src/renderer/mesa-janelas/cronometro.js"></script>
 <script src="../../src/renderer/mesa-janelas/sorteio.js"></script>
 <script src="../../src/renderer/mesa-janelas/dados.js"></script>
 <script src="../../src/renderer/mesa-janelas/roleta.js"></script>
-<script src="../../src/renderer/mesa-janelas/tabuleiro.js"></script>
+<script src="../../src/renderer/mesa-janelas/stop.js"></script>
 <script src="../../src/renderer/mesa-janelas/velha.js"></script>
 <script src="../../src/renderer/mesa-janelas/lig4.js"></script>
 <script src="../../src/renderer/mesa-janelas/damas.js"></script>
 <script src="../../src/renderer/mesa-janelas/xadrez.js"></script>
+<script src="../../src/renderer/mesa-janelas/batalha.js"></script>
+<script src="../../src/renderer/mesa-janelas/poquer.js"></script>
+<script src="../../src/renderer/mesa-janelas/blackjack.js"></script>
+<script src="../../src/renderer/mesa-janelas/truco.js"></script>
+<script src="../../src/renderer/mesa-janelas/oito.js"></script>
+<script src="../../src/renderer/mesa-janelas/domino.js"></script>
+<script src="../../src/renderer/mesa-janelas/desenha.js"></script>
+<script src="../../src/renderer/mesa-janelas/quiz.js"></script>
+<script src="../../src/renderer/mesa-janelas/jam.js"></script>
+<script src="../../src/renderer/mesa-janelas/sons.js"></script>
+<script src="../../src/renderer/mesa-janelas/link.js"></script>
 
 <script src="bancada.js"></script>
 </body>

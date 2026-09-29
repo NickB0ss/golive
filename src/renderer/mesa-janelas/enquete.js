@@ -79,7 +79,10 @@
     // ----- Vista de votar -----
     const votar = el('div', { class: 'mj-enq-votar' });
     const pergunta = el('h3', { class: 'mj-enq-pergunta' });
-    const lista = el('ul', { class: 'mj-enq-opcoes mj-rola', attrs: { 'aria-label': 'Opções' } });
+    const lista = el('ul', {
+      class: 'mj-enq-opcoes mj-rola',
+      attrs: { 'aria-label': 'Opções', 'data-caber-rola': '' },
+    });
     const total = el('span', { class: 'mj-enq-total' });
     const editar = C.botao({ icone: 'lapis', class: 'mj-ic mj-fantasma', label: 'Editar a enquete' });
     const encerrar = C.botao({ text: 'Encerrar', class: 'mj-fantasma' });

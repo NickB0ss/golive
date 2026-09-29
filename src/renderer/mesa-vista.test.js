@@ -95,16 +95,25 @@ test('uma transformacao so para a mesa inteira', () => {
   assert.equal(v.transformFor({ x: 100, y: 50, z: 0.5 }), 'translate3d(-50px, -25px, 0) scale(0.5)');
 });
 
-test('grade: forte a cada 200 e fina a cada 40; a fina some com zoom baixo', () => {
+test('grade: pontos menores e maiores ficam alinhados ao mundo', () => {
   const perto = v.gridStyle({ x: 0, y: 0, z: 1 });
   assert.equal(perto.showMinor, true);
-  assert.equal(perto.backgroundSize, '200px 200px, 200px 200px, 40px 40px, 40px 40px');
-  assert.match(perto.backgroundImage, /var\(--grid2\).*var\(--grid\)/);
+  assert.equal(perto.backgroundSize, '48px 48px, 240px 240px');
+  assert.match(perto.backgroundImage, /var\(--grid\).*var\(--grid2\)/);
+  const centros = [...perto.backgroundImage.matchAll(/circle at ([\d.]+px) ([\d.]+px)/g)];
+  assert.deepEqual(centros.map((centro) => centro.slice(1)), [
+    ['1.25px', '1.25px'],
+    ['1.25px', '1.25px'],
+  ]);
   const longe = v.gridStyle({ x: 0, y: 0, z: 0.3 });
-  assert.equal(longe.showMinor, false, '40 x 0,3 = 12 px: chuvisco');
-  assert.equal(longe.backgroundSize, '60px 60px, 60px 60px');
+  assert.equal(longe.showMinor, true);
+  assert.equal(longe.backgroundSize, '14.4px 14.4px, 72px 72px');
+  const baixo = v.gridStyle({ x: 0, y: 0, z: 0.2 });
+  assert.equal(baixo.showMinor, false);
+  assert.equal(baixo.backgroundSize, '48px 48px');
+  assert.match(baixo.backgroundImage, /var\(--grid2\)/);
   // Alinhada ao mundo: a posicao acompanha a vista.
-  assert.equal(v.gridStyle({ x: 10, y: 20, z: 2 }).backgroundPosition.split(', ')[0], '-20px -40px');
+  assert.equal(v.gridStyle({ x: 10, y: 20, z: 2 }).backgroundPosition, '-20px -40px, -20px -40px');
 });
 
 test('mapa: escala do mundo e clique levado de volta ao mundo', () => {
@@ -206,4 +215,45 @@ test('sameRect compara x, y, w e h e recusa ausente', () => {
   assert.equal(v.sameRect(r, { ...r, h: 201 }), false);
   assert.equal(v.sameRect(undefined, r), false);
   assert.equal(v.sameRect(r, null), false);
+});
+
+test('viewCenter com safe: o centro e o da area segura', () => {
+  const view = { x: 0, y: 0, z: 1 };
+  assert.deepEqual(v.viewCenter(view, 1000, 600), { x: 500, y: 300 });
+  assert.deepEqual(v.viewCenter(view, 1000, 600, { top: 0, right: 0, bottom: 100, left: 200 }), {
+    x: 600,
+    y: 250,
+  });
+});
+
+test('centerOn com safe poe o ponto no centro da area segura', () => {
+  const safe = { top: 0, right: 0, bottom: 100, left: 200 };
+  const view = v.centerOn(2000, 1000, 1, 1000, 600, { safe });
+  assert.deepEqual(v.viewCenter(view, 1000, 600, safe), { x: 2000, y: 1000 });
+});
+
+test('fitRect com safe cabe dentro da area segura', () => {
+  const safe = { top: 40, right: 0, bottom: 120, left: 0 };
+  const rect = { x: 1000, y: 1000, w: 800, h: 800 };
+  const view = v.fitRect(rect, 1000, 800, { pad: 0, safe });
+  const s = v.screenRect(view, rect);
+  assert.ok(s.y >= 40 - 0.5 && s.y + s.h <= 800 - 120 + 0.5, 'a janela cabe entre o topo e a pilula');
+});
+
+test('resizeRect com chromeH: a proporcao vale so para o corpo', () => {
+  const orig = { x: 0, y: 0, w: 640, h: 396 };
+  const opts = { aspect: 16 / 9, minW: 160, minH: 122, chromeH: 32 };
+  assert.deepEqual(v.resizeRect(orig, 'r', 160, 0, opts), { x: 0, y: 0, w: 800, h: 482 });
+  assert.deepEqual(v.resizeRect(orig, 'b', 0, 90, opts), { x: 0, y: 0, w: 807, h: 486 });
+  const min = v.resizeRect(orig, 'br', -9999, -9999, opts);
+  assert.deepEqual({ w: min.w, h: min.h }, { w: 160, h: 122 });
+});
+
+test('keyRect repassa chromeH', () => {
+  const r = v.keyRect(
+    { x: 0, y: 0, w: 640, h: 396 },
+    'ArrowRight',
+    { alt: true, aspect: 16 / 9, chromeH: 32 },
+  );
+  assert.deepEqual(r, { x: 0, y: 0, w: 650, h: 398 });
 });

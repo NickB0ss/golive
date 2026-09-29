@@ -33,6 +33,11 @@
     return 'Empate, tabuleiro cheio';
   }
 
+  function atualizarBarra(api, texto, vez) {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  }
+
   // ---------- DOM ----------
 
   function mount(elRoot, api) {
@@ -63,6 +68,7 @@
     function update(novo, meta) {
       state = novo;
       mold.update(state, meta);
+      atualizarBarra(api, mold.status.textContent, state.turn === api.me() && !state.result);
       const linha = new Set((state.line || []).map(([r, c]) => `${r},${c}`));
       const ultima = state.last ? `${state.last[0]},${state.last[1]}` : '';
       colunas.forEach(({ bt, furos }, c) => {
@@ -78,7 +84,11 @@
       tecl.marcar();
     }
 
-    return { update, destroy: b.destruir, focus() { colunas[tecl.atual].bt.focus(); } };
+    return {
+      update,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
+      focus() { colunas[tecl.atual].bt.focus(); },
+    };
   }
 
   // ---------- Registro ----------
@@ -131,7 +141,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, livresNaColuna, rotuloColuna, empate, LABELS };
+  const api = { type: TYPE, mount, livresNaColuna, rotuloColuna, empate, atualizarBarra, LABELS };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

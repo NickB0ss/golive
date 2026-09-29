@@ -302,7 +302,7 @@ test('mesa passa de 32 janelas: recusa full; cota de 20 operacoes/s por pessoa',
   // Metade de cada um: 16 por pessoa cabe na cota de 20/s.
   for (let i = 0; i < 32; i += 1) {
     const quem = i % 2 ? bia : ana;
-    const r = await quem.op({ op: 'add', win: nota((i % 12) * 400, Math.floor(i / 12) * 300, 160, 120) });
+    const r = await quem.op({ op: 'add', win: nota((i % 12) * 400, Math.floor(i / 12) * 300, 320, 276) });
     assert.equal(r.type, 'mesa', `janela ${i}`);
   }
   assert.equal((await bia.op({ op: 'add', win: nota(0, 2000) })).reason, 'full');
@@ -656,8 +656,11 @@ test('ir ao vivo poe a janela da tela; parar e sair tiram; camera igual', async 
   await ana.barreira();
   assert.equal(ana.msgs('mesa').filter((m) => m.op === 'add').length, 2);
 
-  // Outra pessoa nao tira a tela de quem esta ao vivo; o lider tira.
-  assert.equal((await bia.op({ op: 'remove', id: tela.id })).reason, 'not-yours');
+  // Ninguem tira a janela de tela/camera: nem outra pessoa, nem o dono, nem o lider.
+  assert.equal((await bia.op({ op: 'remove', id: tela.id })).reason, 'media');
+  assert.equal((await caio.op({ op: 'remove', id: tela.id })).reason, 'media');
+  assert.equal((await ana.op({ op: 'remove', id: tela.id })).reason, 'media');
+  assert.equal((await ana.op({ op: 'remove', id: cam.id })).reason, 'media');
 
   const tiraTela = ana.esperaMsg((m) => m.type === 'mesa' && m.op === 'remove' && m.id === tela.id, 'tira a tela');
   caio.envia({ type: 'broadcast-state', live: false });

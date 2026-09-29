@@ -11,6 +11,9 @@
  * janelas). As telas sao `canvas.captureStream` desenhando sem parar, postas
  * no palco pelo mesmo `ui.grid.showTile` que a track do WebRTC usaria.
  *
+ * Salas: a padrao e a sala Mesa (a Mesa abre sozinha no welcome e nao fecha; nao ha vista Transmissao). A
+ * vista Transmissao so existe numa sala "Só transmissões" (`mesa: false`), sobre a qual roda `transmissao`.
+ *
  * Uso: node tools/mesa-prints/harness.js [prints|checar|desempenho|tudo]
  *   PLAYWRIGHT=/caminho/do/playwright (padrao: o global do container)
  *
@@ -132,7 +135,7 @@ const FAKE_STREAM = ([rotulo, cor, w, h]) => {
   return c.captureStream(30);
 };
 
-async function abrirSala(browser, port, { largura = 1440, altura = 900 } = {}) {
+async function abrirSala(browser, port, { largura = 1440, altura = 900, comMesa = true } = {}) {
   const page = await browser.newPage({ viewport: { width: largura, height: altura } });
   const erros = [];
   page.on('console', (m) => {
@@ -141,11 +144,18 @@ async function abrirSala(browser, port, { largura = 1440, altura = 900 } = {}) {
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
   await page.addInitScript(PONTE);
   await page.goto(PAGINA);
-  await page.click('#btn-join-address');
-  await page.fill('#in-server', `ws://127.0.0.1:${port}`);
-  await page.click('#btn-connect');
+  await page.fill('#join-address', `127.0.0.1:${port}`);
+  await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   await page.waitForFunction(() => document.querySelector('#stage-member-count')?.textContent.includes('1'));
+  // Sala Mesa: a Mesa abre sozinha ao receber o welcome. Sala "Só transmissões": só o palco.
+  if (comMesa) {
+    await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+    await page.waitForFunction(() => window.GoLive.salaVista.isMesa());
+  }
+  // A 1440 px a conversa nasce fixada a direita do programa: fecha para os
+  // cliques na Mesa cairem na Mesa.
+  await page.click('#btn-conv-close').catch(() => {});
   return { page, erros };
 }
 
@@ -194,27 +204,15 @@ async function prints(browser, port, s) {
   const caio = await pessoa(port, 'Caio');
   await espera(300);
 
-  // 1. Transmissao: o palco de hoje, com duas telas e uma camera.
-  bia.envia({ type: 'broadcast-state', live: true });
-  leo.envia({ type: 'broadcast-state', live: true });
-  caio.envia({ type: 'camera-state', on: true });
-  await espera(300);
-  await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');
-  await mostrarTela(page, leo.id, 'Leo', '#3B2A63');
-  await mostrarTela(page, `cam-${caio.id}`, 'Caio', '#173C4F', 'camera', 640, 480);
-  await espera(600);
-  await page.screenshot({ path: path.join(PRINTS, '01-transmissao.png') });
-  const antes = await page.evaluate(() => ({ mesa: document.querySelectorAll('.mesa, .mesa-win').length }));
-
-  // Tira todo mundo do ar para o print da mesa vazia.
-  bia.envia({ type: 'broadcast-state', live: false });
-  leo.envia({ type: 'broadcast-state', live: false });
-  caio.envia({ type: 'camera-state', on: false });
-  await espera(300);
-  await page.click('#view-mesa');
-  await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  // 1. Mesa vazia: a sala Mesa abre sozinha, sem texto nem atalhos de "pôr na Mesa".
   await espera(400);
   await page.screenshot({ path: path.join(PRINTS, '02-mesa-vazia.png') });
+  const vazia = await page.evaluate(() => ({
+    mesa: window.GoLive.salaVista.isMesa(),
+    emptyEl: [...document.querySelectorAll('.mesa-empty, .mesa-empty__shortcuts')]
+      .filter((el) => !el.hidden && el.offsetParent).length,
+    viewMesa: Boolean(document.getElementById('view-mesa')),
+  }));
 
   // 3 telas + 1 camera + nota.
   const ana = await pessoa(port, 'Duda');
@@ -222,13 +220,13 @@ async function prints(browser, port, s) {
   caio.envia({ type: 'camera-state', on: true });
   await espera(500);
   await mostrarTela(page, ana.id, 'Duda', '#5E3A2A');
-  await page.mouse.click(1000, 300, { button: 'right' });
-  await page.waitForSelector('.mesa-menu:not([hidden])');
-  await page.keyboard.press('ArrowRight');
-  await page.waitForSelector('.mesa-menu [data-add="nota"]');
+  // Pelo + do dock: com as janelas ja espalhadas, um clique direito num ponto fixo
+  // do mundo pode cair sobre uma janela e abrir o menu dela.
+  await page.click('#btn-mesa-add');
+  await page.waitForSelector('.mesa-menu [data-add-card="nota"]');
   await espera(200);
   await page.screenshot({ path: path.join(PRINTS, '04-menu-adicionar-janela.png') });
-  await page.click('.mesa-menu [data-add="nota"]');
+  await page.click('.mesa-menu [data-add-card="nota"]');
   await page.waitForSelector('.mesa-win[data-type="nota"]');
   await page.fill('.mesa-win[data-type="nota"] textarea', 'depois do CS: pizza ou esfiha?');
   await page.click('.mesa-zoom-btn[data-zoom="fit"]');
@@ -271,24 +269,67 @@ async function prints(browser, port, s) {
 
   // Menu "..." da sala (o primeiro a entrar e o lider): trava a mesa.
   await page.click('#btn-room-more');
-  await page.check('#opt-mesa-leader-only');
+  await page.click('#opt-mesa-leader-only-row'); // o item alterna a trava (a caixa fica oculta no Sinal)
   await espera(300);
   await page.screenshot({ path: path.join(PRINTS, '08-menu-da-sala-travas.png') });
   s.trava = await bia.espera((m) => m.type === 'mesa' && m.op === 'lock').then((m) => ({ leaderOnly: m.leaderOnly, lockSize: m.lockSize }));
-  await page.uncheck('#opt-mesa-leader-only');
+  await page.click('#opt-mesa-leader-only-row');
   await page.keyboard.press('Escape');
 
-  // Volta a Transmissao: nada da mesa fica no DOM e as telas voltam.
-  await page.click('#view-tx');
+  // A Mesa nao fecha: segue aberta, sem item "Mesa" no barramento, e a janela de tela/camera nao tem "x".
   await espera(300);
-  const depois = await page.evaluate(() => ({
-    mesa: document.querySelectorAll('.mesa, .mesa-win').length,
+  const depois = await page.evaluate(() => {
+    const midia = [...document.querySelectorAll('.mesa-win.is-media')];
+    return {
+      mesaAberta: window.GoLive.salaVista.isMesa(),
+      viewMesa: Boolean(document.getElementById('view-mesa')),
+      janelasDeMidia: midia.length,
+      midiaComBotaoRemover: midia.filter((el) => {
+        const b = el.querySelector('[data-act="remove"]');
+        return Boolean(b) && !b.hidden;
+      }).length,
+    };
+  });
+  // O servidor recusa tirar a janela de tela/camera da Mesa (motivo `media`).
+  const viva = bia.caixa.filter((m) => m.type === 'mesa-sync').pop().mesa.windows.find((w) => w.type === 'tela');
+  bia.envia({ type: 'mesa', op: 'remove', id: viva.id });
+  depois.removeDeMidiaRecusado = (await bia.espera((m) => m.type === 'mesa-denied' && m.op === 'remove')).reason;
+  await page.screenshot({ path: path.join(PRINTS, '07-mesa-sem-fechar-janela-de-tela.png') });
+  s.checagens = {
+    vazia,
+    depois,
+    erros: erros.filter((e) => !/mesa-janelas/.test(e) && !/ERR_FILE_NOT_FOUND/.test(e)),
+    errosDeArquivoAusente: erros.filter((e) => /ERR_FILE_NOT_FOUND|mesa-janelas/.test(e)).length,
+  };
+  for (const p of [bia, leo, caio, ana]) p.fecha();
+  await page.close();
+}
+
+/** Sala "Só transmissões" (`mesa: false`): so o palco, com duas telas e uma camera; nada da Mesa no DOM. */
+async function transmissao(browser, port, s) {
+  fs.mkdirSync(PRINTS, { recursive: true });
+  const { page, erros } = await abrirSala(browser, port, { comMesa: false });
+  const bia = await pessoa(port, 'Bia');
+  const leo = await pessoa(port, 'Leo');
+  const caio = await pessoa(port, 'Caio');
+  bia.envia({ type: 'broadcast-state', live: true });
+  leo.envia({ type: 'broadcast-state', live: true });
+  caio.envia({ type: 'camera-state', on: true });
+  await espera(300);
+  await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');
+  await mostrarTela(page, leo.id, 'Leo', '#3B2A63');
+  await mostrarTela(page, `cam-${caio.id}`, 'Caio', '#173C4F', 'camera', 640, 480);
+  await espera(600);
+  await page.screenshot({ path: path.join(PRINTS, '01-transmissao.png') });
+  s.transmissao = await page.evaluate(() => ({
+    mesaNoDom: document.querySelectorAll('.mesa, .mesa-win, .mesa-menu').length,
+    viewMesa: Boolean(document.getElementById('view-mesa')),
+    mesaAberta: window.GoLive.salaVista.isMesa(),
     tilesNoPalco: document.querySelectorAll('#grid .tile').length,
     videosTocando: [...document.querySelectorAll('#grid video')].filter((v) => !v.paused).length,
   }));
-  await page.screenshot({ path: path.join(PRINTS, '07-de-volta-a-transmissao.png') });
-  s.checagens = { antes, depois, erros: erros.filter((e) => !/mesa-janelas/.test(e) && !/ERR_FILE_NOT_FOUND/.test(e)), errosDeArquivoAusente: erros.filter((e) => /ERR_FILE_NOT_FOUND|mesa-janelas/.test(e)).length };
-  for (const p of [bia, leo, caio, ana]) p.fecha();
+  s.transmissao.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND/.test(e));
+  for (const p of [bia, leo, caio]) p.fecha();
   await page.close();
 }
 
@@ -337,15 +378,12 @@ async function desempenho(browser, port, s) {
   await mostrarTela(page, `cam-${caio.id}`, 'Caio', '#173C4F', 'camera', 1280, 720);
   await mostrarTela(page, `cam-${rafa.id}`, 'Rafa', '#2A4B3A', 'camera', 1280, 720);
   await espera(800);
+  // A Mesa ja esta aberta (sala Mesa); nao ha mais a linha de base "Transmissão" para comparar.
   const res = [];
-  res.push(await medir(page, 'Transmissão, parada (5 vídeos no palco)', async (t0, ms) => espera(ms)));
-
-  await page.click('#view-mesa');
-  await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
   // Um iframe em branco (conteudo de teste no lugar do placar).
   // Pelo + do dock: a janela nasce no meio da vista.
   await page.click('#btn-mesa-add');
-  await page.click('.mesa-menu [data-add="placar"]');
+  await page.click('.mesa-menu [data-add-card="placar"]');
   await page.waitForSelector('.mesa-win[data-type="placar"] iframe');
   await page.click('.mesa-zoom-btn[data-zoom="fit"]');
   await espera(800);
@@ -399,9 +437,6 @@ async function desempenho(browser, port, s) {
       await espera(450);
     }
   }));
-  await page.click('#view-tx');
-  await espera(300);
-  res.push(await medir(page, 'Transmissão de novo, parada', async (t0, ms) => espera(ms)));
   s.desempenho = { quantos, res, agente: await page.evaluate(() => navigator.userAgent) };
   for (const p of gente) p.fecha();
   await page.close();
@@ -413,13 +448,17 @@ async function checar(browser, port, s) {
   await page.evaluate(CONTEUDO_DE_TESTE);
   const bia = await pessoa(port, 'Bia');
   const ok = {};
-  await page.click('#view-mesa');
-  await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  // Sala Mesa: ela ja abriu sozinha e nao ha como sair dela.
+  ok.mesaAbriuSozinha = await page.evaluate(() => window.GoLive.salaVista.isMesa());
+  ok.semItemMesaNoBarramento = await page.evaluate(() => !document.getElementById('view-mesa'));
+  ok.mesaVaziaSemTexto = await page.evaluate(() => (
+    ![...document.querySelectorAll('.mesa-empty, .mesa-empty__shortcuts')].some((el) => !el.hidden && el.offsetParent)
+  ));
   bia.envia({ type: 'mesa-view', on: true });
   await bia.espera((m) => m.type === 'mesa-sync');
   // Pelo + do dock.
   await page.click('#btn-mesa-add');
-  await page.click('.mesa-menu [data-add="nota"]');
+  await page.click('.mesa-menu [data-add-card="nota"]');
   const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add');
   const id = add.win.id;
   await page.waitForSelector(`.mesa-win[data-id="${id}"]`);
@@ -435,12 +474,26 @@ async function checar(browser, port, s) {
   await page.keyboard.press('Alt+ArrowRight');
   const m3 = await bia.espera((m) => m.type === 'mesa' && m.op === 'place' && m.seq === m2.seq + 1);
   ok.altRedimensiona = m3.w === add.win.w + 10;
-  // Arrastar pela alca: a Bia ve a vez, o arraste e o place.
-  const alca = await page.$eval(`.mesa-win[data-id="${id}"] .mesa-handle`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-  await page.mouse.move(alca.x, alca.y);
+  const winSel = `.mesa-win[data-id="${id}"]`;
+  ok.botoesDaBarra = await page.$$eval(`${winSel} .mesa-bar-btn`, (botoes) => (
+    botoes.length === 3
+      && botoes.every((b) => b.tabIndex >= 0 && Boolean(b.getAttribute('aria-label')))
+  ));
+  await page.click(`${winSel} [data-act="menu"]`);
+  ok.menuPelaBarra = await page.evaluate(() => (
+    [...document.querySelectorAll('.mesa-menu')].some((menu) => (
+      !menu.hidden && Boolean(menu.querySelector('[data-act="full"]'))
+    ))
+  ));
+  // Arrastar pela barra: a Bia ve a vez, o arraste e o place.
+  const barra = await page.$eval(`${winSel} .mesa-bar`, (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(barra.x, barra.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i += 1) {
-    await page.mouse.move(alca.x + i * 15, alca.y + i * 5);
+    await page.mouse.move(barra.x + i * 15, barra.y + i * 5);
     await espera(30);
   }
   ok.contornoDeOndeAssenta = await page.evaluate(() => Boolean(document.querySelector('.mesa-win.is-dragging')));
@@ -464,7 +517,7 @@ async function checar(browser, port, s) {
   await espera(100);
   // Trava: a Bia (nao lider) nao consegue por janela.
   await page.click('#btn-room-more');
-  await page.check('#opt-mesa-leader-only');
+  await page.click('#opt-mesa-leader-only-row'); // o item alterna a trava (a caixa fica oculta no Sinal)
   await page.keyboard.press('Escape');
   const lock = await bia.espera((m) => m.type === 'mesa' && m.op === 'lock');
   bia.envia({ type: 'mesa', op: 'add', win: { type: 'nota', x: 0, y: 0, w: 320, h: 240 } });
@@ -473,12 +526,27 @@ async function checar(browser, port, s) {
   await page.focus(`.mesa-win[data-id="${id}"]`);
   await page.keyboard.press('Delete');
   ok.deleteTira = (await bia.espera((m) => m.type === 'mesa' && m.op === 'remove')).id === id;
-  // Voltar a Transmissao desmonta tudo.
-  await page.click('#view-tx');
-  ok.nadaDaMesaNoDom = await page.evaluate(() => document.querySelectorAll('.mesa, .mesa-win, .mesa-menu').length === 0);
+  // Janela de tela: nao fecha. Sem "x", Delete nao faz nada e o servidor recusa o `remove` (motivo `media`).
+  bia.envia({ type: 'broadcast-state', live: true });
+  const tela = (await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'tela')).win;
+  const telaSel = `.mesa-win[data-id="${tela.id}"]`;
+  await page.waitForSelector(telaSel);
+  ok.telaSemBotaoRemover = await page.$eval(telaSel, (el) => {
+    const b = el.querySelector('[data-act="remove"]');
+    return !b || b.hidden;
+  });
+  await page.focus(telaSel);
+  const removesAntes = bia.caixa.filter((m) => m.type === 'mesa' && m.op === 'remove').length;
+  await page.keyboard.press('Delete');
   await espera(300);
+  ok.deleteNaoTiraATela = bia.caixa.filter((m) => m.type === 'mesa' && m.op === 'remove').length === removesAntes
+    && Boolean(await page.$(telaSel));
+  bia.envia({ type: 'mesa', op: 'remove', id: tela.id });
+  ok.servidorRecusaRemoverTela = (await bia.espera((m) => m.type === 'mesa-denied' && m.op === 'remove')).reason === 'media';
+  // A Mesa segue aberta e quem a olha e a pagina mais a Bia.
+  ok.mesaSegueAberta = await page.evaluate(() => window.GoLive.salaVista.isMesa());
   const viewers = bia.caixa.filter((m) => m.type === 'mesa-viewers').pop();
-  ok.mesaViewOff = viewers.peers.length === 1 && viewers.peers[0] === bia.id;
+  ok.mesaViewers = viewers.peers.length === 2 && viewers.peers.includes(bia.id);
   ok.erros = erros.filter((e) => !/ERR_FILE_NOT_FOUND/.test(e));
   s.checagem = ok;
   bia.fecha();
@@ -530,20 +598,20 @@ async function acabamento(browser, port, s, { comPrints = false } = {}) {
   bia.envia({ type: 'chat', text: 'olha esse clipe https://youtu.be/dQw4w9WgXcQ?t=42' });
   bia.envia({ type: 'chat', text: 'o bomb A é aqui', image: png, w: 640, h: 400 });
   const msgImg = await bia.espera((m) => m.type === 'chat' && m.image);
-  await page.waitForSelector('.chat-line .chat-image');
+  // A conversa foi fechada ao entrar (abrirSala); abre fixada para ver a imagem.
+  await page.click('#btn-conv-toggle');
+  await page.waitForSelector('.msg .msg__img');
   ok.botoesPorNaMesa = await page.evaluate(() => [...document.querySelectorAll('.chat-put')].map((b) => b.dataset.put));
   await foto(page, '01-chat-por-na-mesa.png');
 
-  // 1. Da Transmissao: a imagem do chat vai para o meio da mesa.
+  // 1. Com a Conversa fixada: a imagem do chat vai para o meio da mesa.
   await page.click('.chat-put[data-put="imagem"]');
   const addImg = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'imagem');
   const actImg = await bia.espera((m) => m.type === 'mesa' && m.op === 'act' && m.id === addImg.win.id);
-  ok.imagemPelaTransmissao = actImg.action.msgId === msgImg.id && !JSON.stringify(addImg).includes('base64');
-  ok.avisoNaTransmissao = await page.evaluate(() => document.querySelector('#toast-text')?.textContent);
+  ok.imagemComConversaFixada = actImg.action.msgId === msgImg.id && !JSON.stringify(addImg).includes('base64');
+  ok.avisoAoPorNaMesa = await page.evaluate(() => document.querySelector('#toast-text')?.textContent);
 
-  // 2. Na Mesa: a imagem aparece ajustada a janela.
-  await page.click('#view-mesa');
-  await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  // 2. Na Mesa (sempre aberta na sala Mesa): a imagem aparece ajustada a janela.
   await page.waitForSelector(`.mesa-win[data-id="${addImg.win.id}"] img.mj-img-foto[src^="data:image/jpeg"]`);
   ok.imagemNaMesa = await page.evaluate((i) => {
     const img = document.querySelector(`.mesa-win[data-id="${i}"] img.mj-img-foto`);
@@ -558,7 +626,7 @@ async function acabamento(browser, port, s, { comPrints = false } = {}) {
 
   // 4. Galeria: as imagens do chat, com "Pôr na mesa" em cada uma.
   await page.click('#btn-mesa-add');
-  await page.click('.mesa-menu [data-add="galeria"]');
+  await page.click('.mesa-menu [data-add-card="galeria"]');
   const addGal = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'galeria');
   await page.waitForSelector(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item img[src^="data:image/jpeg"]`);
   ok.galeriaMostra = await page.$$eval(`.mesa-win[data-id="${addGal.win.id}"] .mj-gal-item`, (l) => l.length);
@@ -600,7 +668,7 @@ async function tileNaMesa(page, bia, erros, foto) {
     return (await r).mesa;
   })();
   for (const w of retrato.windows) bia.envia({ type: 'mesa', op: 'remove', id: w.id });
-  bia.envia({ type: 'broadcast-state', live: true, annotate: true });
+  bia.envia({ type: 'broadcast-state', live: true, annotate: true, reactions: true });
   const add = await bia.espera((m) => m.type === 'mesa' && m.op === 'add' && m.win.type === 'tela');
   await mostrarTela(page, bia.id, 'Bia', '#4B5A3A');
   const sel = `.mesa-win[data-id="${add.win.id}"]`;
@@ -616,19 +684,23 @@ async function tileNaMesa(page, bia, erros, foto) {
   const caixa = await page.$eval(sel, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   await page.mouse.move(caixa.x + caixa.w * 0.3, caixa.y + caixa.h * 0.3);
   await espera(250);
-  ok.barrasVisiveis = await page.$eval(sel, (el) => ['.tile-annot-bar', '.tile-react-bar'].map((s) => {
+  // No Sinal, rabiscar e reagir aparecem no HUD da janela com o mouse em cima.
+  ok.barrasVisiveis = await page.$eval(sel, (el) => ['[data-acao="rabiscar"]', '[data-acao="reagir"]'].map((s) => {
     const b = el.querySelector(s);
-    const cs = getComputedStyle(b);
-    return cs.display !== 'none' && cs.opacity === '1' && cs.pointerEvents !== 'none';
+    const cs = b && getComputedStyle(b);
+    const hud = b && getComputedStyle(b.closest('.tile__hud'));
+    return Boolean(b) && cs.display !== 'none' && hud.opacity === '1' && hud.pointerEvents !== 'none';
   }));
   // Reagir: abre a lista, manda a reacao, e nada disso pega a janela.
   const antesGrab = bia.caixa.filter((m) => m.type === 'mesa-grab').length;
-  await page.click(`${sel} .tile-react-toggle`);
-  ok.listaDeReacoesAbre = await page.$eval(`${sel} .tile-react-bar`, (el) => el.classList.contains('is-open'));
-  await page.click(`${sel} .tile-react-btn >> nth=0`);
+  await page.hover(`${sel} .tile`);
+  await page.click(`${sel} [data-acao="reagir"]`);
+  ok.listaDeReacoesAbre = await page.isVisible('.pop .react-btn');
+  await page.click('.pop .react-btn >> nth=0');
   ok.reacaoChega = Boolean(await bia.espera((m) => m.type === 'reaction'));
   // Rabisco: liga pela barra e risca do meio para a direita.
-  await page.click(`${sel} .annot-toggle`);
+  await page.hover(`${sel} .tile`); // o HUD so aparece com o mouse em cima
+  await page.click(`${sel} [data-acao="rabiscar"]`);
   const v = await page.$eval(`${sel} .tile`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   const p0 = { x: v.x + v.w * 0.25, y: v.y + v.h * 0.5 };
   await page.mouse.move(p0.x, p0.y);
@@ -649,11 +721,12 @@ async function tileNaMesa(page, bia, erros, foto) {
   ok.rabiscoNaoPegaAJanela = bia.caixa.filter((m) => m.type === 'mesa-grab').length === antesGrab;
   await foto(page, '04-tile-com-controles-na-mesa.png');
   // Volume: pelo menu da janela (o botao direito da Mesa).
-  await page.click(`${sel} .annot-toggle`);
+  await page.hover(`${sel} .tile`); // o HUD so aparece com o mouse em cima
+  await page.click(`${sel} [data-acao="rabiscar"]`);
   await page.mouse.click(caixa.x + caixa.w * 0.5, caixa.y + caixa.h * 0.3, { button: 'right' });
   await page.waitForSelector('.mesa-menu [data-act="volume"]');
   await page.click('.mesa-menu [data-act="volume"]');
-  await page.waitForSelector('.tile-menu .tile-menu-volume input');
+  await page.waitForSelector('.tile-menu .menu__volume input');
   ok.menuDeVolume = await page.$eval('.tile-menu .tile-menu-name', (el) => el.textContent);
   await foto(page, '05-volume-da-tela-na-mesa.png');
   await page.keyboard.press('Escape');
@@ -666,8 +739,12 @@ async function tileNaMesa(page, bia, erros, foto) {
   const modo = process.argv[2] || 'tudo';
   const servidor = await createSignalingServer({ port: 0, ownerToken: 'banco-de-prova', log: () => {} });
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', ...(process.env.SEM_VSYNC ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : [])] });
+  const soTransmissoes = await createSignalingServer({
+    port: 0, ownerToken: 'banco-de-prova', log: () => {}, mesa: false,
+  });
   const s = {};
   try {
+    if (modo === 'prints' || modo === 'checar' || modo === 'tudo') await transmissao(browser, soTransmissoes.port, s);
     if (modo === 'prints' || modo === 'tudo') await prints(browser, servidor.port, s);
     if (modo === 'checar' || modo === 'tudo') await checar(browser, servidor.port, s);
     if (modo === 'checar' || modo === 'prints' || modo === 'tudo' || modo === 'acabamento') {
@@ -676,6 +753,7 @@ async function tileNaMesa(page, bia, erros, foto) {
     if (modo === 'desempenho' || modo === 'tudo') await desempenho(browser, servidor.port, s);
   } finally {
     await browser.close();
+    await soTransmissoes.close();
     await servidor.close();
   }
   console.log(JSON.stringify(s, null, 2));

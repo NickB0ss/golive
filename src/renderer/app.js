@@ -2,7 +2,13 @@
 'use strict';
 
 (function () {
-  const { config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status, autoquality, rxstats, conndiag, peerquality, encodehealth, version, emoji, chatmedia, annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession, migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards, health, audiometer, viewhold, warnings: warningsModule } = window.GoLive;
+  const {
+    config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status,
+    autoquality, rxstats, conndiag, peerquality, tetoRecebido, encodehealth, version, emoji, chatmedia,
+    annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession,
+    migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
+    health, audiometer, viewhold, warnings: warningsModule, reactionsPermission,
+  } = window.GoLive;
   const warningRegistry = warningsModule.create();
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
@@ -76,9 +82,8 @@
   // Mesa (spec 2026-09-24): a vista e de cada pessoa. `mesaView` e o
   // controlador de mesa-view.js (criado mais abaixo, junto dos outros
   // ganchos da grade); `mesaViewers` e quem esta na vista Mesa agora e
-  // `mesaCount` quantas janelas a mesa tem e `mesaLocks` as travas -- as tres
-  // coisas chegam mesmo a quem esta na Transmissao (welcome, mesa-viewers,
-  // mesa-count).
+  // `mesaLocks` as travas -- as duas coisas chegam antes de a Mesa abrir (welcome,
+  // mesa-viewers, mesa-count).
   let mesaView = null;
   let mesaPor = null; // "Pôr na mesa" do chat e da Galeria (mesa-por.js)
   // As imagens que o historico do chat ainda guarda (espelho das regras do
@@ -87,8 +92,10 @@
   const chatImagens = window.GoLive.chatImagensLib.createStore({ isImage: window.GoLive.chatmedia.isImageDataUrl });
   window.GoLive.chatImagens = chatImagens;
   let mesaViewers = [];
-  let mesaCount = 0;
   let mesaLocks = null;
+  // Tipo da sala vindo do welcome: false = "so transmissoes" (sem Mesa). Zera
+  // ao sair da sala (golive:room-hidden).
+  let roomMesa = true;
   let joinedAtMs = null;
   let notifyTracker = livenotify.createTracker();
   let roomId = null;
@@ -280,6 +287,9 @@
   // antes de a captura comecar, e valido so enquanto ela durar (spec de
   // 2026-09-04, secao 5.1). Viaja no 'broadcast-state'.
   let shareAnnotations = false;
+  // Reacoes seguem o mesmo ciclo da transmissao de tela, mas nao o da
+  // camera: a permissao e decidida no seletor e some quando a tela para.
+  let shareReactions = false;
   // Funcoes de parada das capturas nativas de audio por processo (WASAPI
   // Process Loopback) ligadas ao compartilhamento de tela atual, se houver
   // -- ver startShare/stopShare. Vazio quando nao ha nenhuma rodando (sem
@@ -829,6 +839,21 @@
       avatarImg.src = '';
       avatarFallback.textContent = (cfg.name || '?').trim().charAt(0).toUpperCase() || '?';
     }
+    renderHomeIdentity();
+  }
+
+  function renderHomeIdentity() {
+    const greeting = $('home-greeting');
+    const whoami = $('home-whoami');
+    const nameInput = $('home-name');
+    if (!greeting || !whoami || !nameInput) return;
+    const name = (cfg.name || '').trim();
+    const hour = new Date().getHours();
+    const salutation = hour >= 5 && hour <= 11 ? 'Bom dia' : hour >= 12 && hour <= 17 ? 'Boa tarde' : 'Boa noite';
+    greeting.textContent = name ? `${salutation}, ${name}.` : 'Como seus amigos vão te ver?';
+    greeting.hidden = false;
+    whoami.hidden = Boolean(name);
+    if (document.activeElement !== nameInput) nameInput.value = name;
   }
   renderUserPanel();
 
@@ -893,6 +918,47 @@
     });
   }
 
+  async function saveAvatar(file) {
+    if (!file) return;
+    if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
+      showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToAvatar(file);
+      cfg = { ...cfg, avatar: dataUrl };
+      persist();
+      renderUserPanel();
+    } catch (err) {
+      showToast(err?.message === AVATAR_TOO_LARGE
+        ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
+        : 'Não consegui processar essa imagem.');
+    }
+  }
+
+  const homeAvatarButton = $('home-avatar');
+  const homeAvatarInput = $('home-avatar-input');
+  const homeNameInput = $('home-name');
+  homeAvatarButton?.addEventListener('click', () => homeAvatarInput?.click());
+  homeAvatarInput?.addEventListener('change', (event) => {
+    const [file] = event.target.files;
+    event.target.value = '';
+    void saveAvatar(file);
+  });
+  function saveHomeName() {
+    const name = homeNameInput?.value.trim() || '';
+    if (name === cfg.name) return;
+    cfg = { ...cfg, name };
+    persist();
+    renderUserPanel();
+  }
+  homeNameInput?.addEventListener('blur', saveHomeName);
+  homeNameInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    saveHomeName();
+  });
+
   function openSettingsOnProfile() {
     openSettings();
     document.querySelector('.settings-cat[data-cat="profile"]')?.click();
@@ -906,22 +972,7 @@
         persist();
         renderUserPanel();
       },
-      onAvatarChange: async (file) => {
-        if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
-          showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
-          return;
-        }
-        try {
-          const dataUrl = await resizeImageToAvatar(file);
-          cfg = { ...cfg, avatar: dataUrl };
-          persist();
-          renderUserPanel();
-        } catch (err) {
-          showToast(err?.message === AVATAR_TOO_LARGE
-            ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
-            : 'Não consegui processar essa imagem.');
-        }
-      },
+      onAvatarChange: saveAvatar,
       onCameraDeviceChange: (deviceId) => {
         cfg = { ...cfg, camera: { ...cfg.camera, deviceId } };
         persist();
@@ -959,12 +1010,20 @@
         cfg = { ...cfg, themes: lista };
         persist();
       },
+      isLive: () => Boolean(localStream),
       onToast: showToast,
     });
   }
 
   $('btn-open-settings').addEventListener('click', openSettings);
   $('btn-room-settings').addEventListener('click', openSettings);
+
+  /** Diagnostico: os numeros de cada fonte (saude da cabeca, menu da sala). */
+  function openDiagnostics() {
+    openSettings();
+    document.querySelector('.settings-cat[data-cat="stats"]')?.click();
+  }
+  $('btn-room-health').addEventListener('click', openDiagnostics);
 
   async function applyLiveQuality() {
     const track = captureTrack || localStream.getVideoTracks()[0]; // ver reapplyAudienceQuality
@@ -1013,8 +1072,10 @@
         // o formulario de entrar-por-endereco ja preenchido, com o foco no
         // campo de PIN. Quem criou a sala passa o PIN por fora (voz, chat).
         if (room.protected) {
-          ui.dialogs.openJoinRoom({ address: room.address, showPinField: true, onConnect: handleJoinConnect });
-          $('setup-error').textContent = 'Essa sala pede um PIN — peça pra quem criou.';
+          // O campo de PIN ja explica de onde ele vem; nao e um erro.
+          ui.dialogs.openJoinRoom({
+            address: room.address, showPinField: true, onConnect: handleJoinConnect, roomName: room.name || room.hostName || '',
+          });
           return;
         }
         joinRoom(room.address, cfg.name);
@@ -1159,10 +1220,10 @@
     $('update-bar-title').textContent = titulo;
     $('update-bar-sub').textContent = sub;
     btnUpdateAvailable.textContent = rotulo;
-    btnUpdateAvailable.disabled = estado === 'baixando';
+    btnUpdateAvailable.hidden = estado === 'baixando';
     $('update-bar-progress').classList.toggle('hidden', estado !== 'baixando');
     if (estado === 'baixando') {
-      $('update-bar-fill').style.width = `${Math.max(0, Math.min(100, progress ?? 0))}%`;
+      $('update-bar-progress').style.setProperty('--pct', `${Math.max(0, Math.min(100, progress ?? 0))}%`);
     }
     updateBarEl.classList.remove('hidden');
   }
@@ -1236,15 +1297,31 @@
   }
 
   let toastTimer = null;
-  function showToast(msg, ms = 4000) {
+  let toastDeadline = 0;
+  let toastRemaining = 0;
+  function hideToast() {
+    $('toast').classList.add('hidden');
+    toastTimer = null;
+  }
+  function showToast(msg, ms = 5000) {
     $('toast-text').textContent = msg;
     $('toast').classList.remove('hidden');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      $('toast').classList.add('hidden');
-      toastTimer = null;
-    }, ms);
+    toastRemaining = ms;
+    toastDeadline = Date.now() + ms;
+    toastTimer = setTimeout(hideToast, ms);
   }
+  $('toast').addEventListener('mouseenter', () => {
+    if (!toastTimer) return;
+    toastRemaining = Math.max(0, toastDeadline - Date.now());
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  });
+  $('toast').addEventListener('mouseleave', () => {
+    if ($('toast').classList.contains('hidden') || toastTimer) return;
+    toastDeadline = Date.now() + toastRemaining;
+    toastTimer = setTimeout(hideToast, toastRemaining);
+  });
 
   $('btn-refresh-discovery').addEventListener('click', () => {
     const btn = $('btn-refresh-discovery');
@@ -1276,8 +1353,35 @@
     });
   }
 
-  $('btn-join-address').addEventListener('click', () => {
-    ui.dialogs.openJoinRoom({ onConnect: handleJoinConnect });
+  $('join-address').addEventListener('input', () => $('join-address').removeAttribute('aria-invalid'));
+  $('join-address-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const address = $('join-address').value.trim();
+    const valido = /^(?:wss?:\/\/)?[^\s:]+:\d+$/.test(address);
+    $('join-address').setAttribute('aria-invalid', String(!valido));
+    if (!address) {
+      showLobbyError('Digite o endereço da sala, no formato IP:porta.');
+      return;
+    }
+    if (!valido) {
+      showLobbyError('Esse endereço não está no formato IP:porta (ex.: 26.0.0.5:47800).');
+      return;
+    }
+    showLobbyError('');
+    // Direto, sem dialogo: ele so aparece se a sala pedir PIN (o joinRoom o
+    // reabre com o campo depois do 'join-denied').
+    handleJoinConnect({ address });
+  });
+
+  $('btn-copy-network')?.addEventListener('click', () => {
+    const address = $('lobby-net-addr')?.textContent?.trim();
+    if (!address) return;
+    navigator.clipboard.writeText(address).then(() => {
+      const button = $('btn-copy-network');
+      button.setAttribute('aria-label', 'Copiado');
+      showToast('Copiado', 1500);
+      setTimeout(() => button.setAttribute('aria-label', 'Copiar endereço'), 1500);
+    }).catch(() => {});
   });
 
   // Sobe (ou re-sobe) o servidor embutido e entra nele como host. Usada tanto
@@ -1286,6 +1390,15 @@
   // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
   // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
   // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
+  /** Texto do erro do room:host para o dialogo de criar sala. */
+  function hostErrorText(code) {
+    if (code === 'PORTS_EXHAUSTED') {
+      return 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.';
+    }
+    if (code === 'PIN_INVALIDO') return 'O PIN precisa ter 6 dígitos.';
+    return `Não consegui subir a sala: ${code}`;
+  }
+
   async function hostRoomFlow(protect, advertise, seed = {}, preserveMigrationOrphan = false, canContinue = null) {
     showLobbyError('');
     let result;
@@ -1297,9 +1410,7 @@
     if (!result.ok) {
       return {
         ok: false,
-        error: result.error === 'PORTS_EXHAUSTED'
-          ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
-          : `Não consegui subir a sala: ${result.error}`,
+        error: hostErrorText(result.error),
       };
     }
     // A criacao pode ter esperado uma decisao UAC. A migracao pode ter sido
@@ -1503,6 +1614,9 @@
       // Mesa: o retrato que o servidor antigo mandou no room-migrating.
       // Queda abrupta nao tem retrato: a mesa recomeca vazia.
       initialMesa: migration.mesa || null,
+      // O tipo da sala segue o host: "so transmissoes" continua assim depois
+      // de trocar de host (o cliente sabe pelo welcome; o servidor tambem avisa).
+      mesa: roomMesa && migration.mesaEnabled !== false,
       // P1: o sucessor preserva o nome da sala em vez de a sala nova cair
       // no proprio nome de quem assumiu.
       roomName: migration.roomName || currentRoomName || null,
@@ -1597,21 +1711,24 @@
       // Ultima escolha do usuario vira o padrao da caixa "anunciar" -- quem
       // sempre anuncia (ou nunca) nao precisa marcar nada de novo.
       advertise: cfg.network.advertise,
+      // Ultimo tipo de sala escolhido (Mesa ou so transmissoes), como o "anunciar".
+      mesa: cfg.network.roomMesa !== false,
       // P1: padrao do campo "Nome da sala" -- quem nao digita nada mantem o
       // comportamento de sempre (a sala se chama "Sala de <seu nome>").
       roomNameDefault: `Sala de ${cfg.name || 'anônimo'}`,
       // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
       // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
       // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
-      onConfirm: async ({ protect, advertise, roomName }) => {
+      onConfirm: async ({ protect, pin, mesa, advertise, roomName }) => {
         ui.dialogs.setCreateRoomError('');
         // Persistido ANTES do resultado: a preferencia e da pessoa, nao da
         // sala que talvez nem suba.
-        if (advertise !== cfg.network.advertise) {
-          cfg = { ...cfg, network: { ...cfg.network, advertise } };
+        if (advertise !== cfg.network.advertise || mesa !== (cfg.network.roomMesa !== false)) {
+          cfg = { ...cfg, network: { ...cfg.network, advertise, roomMesa: mesa } };
           persist();
         }
-        const res = await hostRoomFlow(protect, advertise, { roomName });
+        // O PIN so vai quando a sala e protegida; o main valida de novo.
+        const res = await hostRoomFlow(protect, advertise, { roomName, mesa, ...(protect ? { pin } : {}) });
         if (res.ok) ui.dialogs.closeCreateRoom();
         else ui.dialogs.setCreateRoomError(res.error);
       },
@@ -1738,7 +1855,9 @@
       stopNativeAudioFns.forEach((stop) => stop());
       stopNativeAudioFns = [];
       shareAnnotations = false;
+      shareReactions = false;
       ui.annotations.setSurface('me', { allowed: false });
+      ui.reactions.setSurface('me', { allowed: false });
       ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
       stopAnnotOverlay();
       ui.grid.removeTile('me');
@@ -1771,6 +1890,7 @@
     }
     tileSource.clear();
     viewerHealth.clear();
+    for (const peerId of watchedScreens) tetoRecebido.limpar(`${peerId}:screen`);
     watchedScreens.clear();
     autoWatchSuppressed = false;
     notifyTracker = livenotify.createTracker();
@@ -1877,6 +1997,7 @@
       myId: 'me',
       onModerate: (action, targetId, targetName) => sendModerate(action, targetId, targetName),
       healthTags,
+      mesaPeople: new Set(mesaViewers),
     });
     const people = (session ? session.mesh.peers.size : 0) + (currentSelfInfo() ? 1 : 0);
     $('room-people-count').textContent = String(people);
@@ -1892,7 +2013,7 @@
     const live = Boolean(localStream)
       || Array.from(session?.mesh.peers.values() ?? []).some((p) => p.live);
     const effective = qualityFor('screen');
-    ui.stageHeader.setStatus(status.roomStatus({
+    const roomHealth = status.roomStatus({
       inRoom: Boolean(session),
       // orphanSession so existe quando a sinalizacao caiu com a midia
       // viva -- e exatamente o estado "reconectando" (H1).
@@ -1905,7 +2026,17 @@
       meshFallback: Boolean(meshFallback.screen),
       softwareEncoder: Boolean(myEncodeHealth?.softwareEncoder),
       effectivePreset: effective.preset,
-    }));
+    });
+    ui.stageHeader.setStatus(roomHealth);
+    const health = $('btn-room-health')?.querySelector('.health');
+    if (health) {
+      // Saude e da CONEXAO: sala sem ninguem ao vivo ou pausada esta bem.
+      const nivel = { offline: 'none', reconnecting: 'bad', degraded: 'warn' }[roomHealth.level] || 'ok';
+      health.dataset.level = nivel;
+      const rotulo = { none: 'Sem conexão', bad: 'Reconectando…', warn: `Qualidade reduzida: ${roomHealth.label}` };
+      $('btn-room-health').setAttribute('aria-label', rotulo[nivel] || 'Conexão boa');
+      $('btn-room-health').title = rotulo[nivel] || 'Conexão boa';
+    }
     // Chat: o compose so aceita texto enquanto a sinalizacao esta viva. Com a
     // sessao orfa (H1) `currentSession` e null e o `currentSession?.sig.send`
     // do onSend vira no-op silencioso -- entao desabilita o campo e mostra a
@@ -2097,7 +2228,7 @@
               appVersion: appVersion || undefined,
             });
           });
-          ui.stageHeader.set({ name: `sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
+          ui.stageHeader.set({ name: `Sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
           window.golive.setRoomActive?.(true);
           if (attempts > 0) $('setup-error').textContent = '';
           showLobbyError(''); // limpa erro/countdown de reconexao pendente
@@ -2760,7 +2891,7 @@
    * sobre o que esta sendo capturado, do lado que decide. */
   async function startAnnotOverlay() {
     annotOverlayOn = false;
-    if (!shareAnnotations) return;
+    if (!shareAnnotations && !shareReactions) return;
     const r = await window.golive.startAnnotOverlay?.();
     if (r?.ok) {
       annotOverlayOn = true;
@@ -2772,11 +2903,12 @@
       window.golive.sendAnnotOverlayLoad?.({ surface: minhaTela, items: ui.annotations.snapshot(minhaTela) });
       return;
     }
-    if (r?.reason === 'window') {
-      showToast('Compartilhando uma janela: os rabiscos aparecem no app, não na tela.');
-    } else if (r?.reason === 'display') {
-      showToast('Não achei o monitor pra desenhar os rabiscos; eles ficam só no app.');
-    }
+    const toast = reactionsPermission.overlayUnavailableToast({
+      reason: r?.reason,
+      annotations: shareAnnotations,
+      reactions: shareReactions,
+    });
+    if (toast) showToast(toast);
   }
 
   function stopAnnotOverlay() {
@@ -2795,23 +2927,34 @@
    * onde aterrissar -- as coordenadas sao do quadro da camera, nao do
    * monitor. */
   function pushToAnnotOverlay(surfaceId, from, op) {
-    if (!annotOverlayOn) return;
+    if (!annotOverlayOn || !shareAnnotations) return;
     const { ownerId, kind } = annotate.parseSurface(surfaceId);
     if (String(ownerId) !== String(myId) || kind !== 'screen') return;
     window.golive.sendAnnotOverlayOp?.({ surface: String(surfaceId), from: String(from), op });
   }
 
-  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: MESMA
-   * regra (so a MINHA tela, so `kind === 'screen'`, so com o overlay ligado
-   * -- que so liga com `shareAnnotations`, a mesma permissao do rabisco;
-   * ver a spec de 2026-09-12, secao 2). Canal PROPRIO (`overlay:fx`), nao o
-   * `overlay:op` do rabisco: sao efeitos efemeros, sem a semantica de lousa
-   * persistente que aquele canal carrega. */
+  /** Espelho pequeno de `pushToAnnotOverlay`, pro laser e pra reacao: os dois
+   * ficam na MINHA tela, mas laser respeita o rabisco e reacao tem permissao
+   * propria. Canal PROPRIO (`overlay:fx`), sem a semantica persistente da
+   * lousa. */
   function pushToFxOverlay(kind, surfaceId, from, payload) {
     if (!annotOverlayOn) return;
+    if (kind === 'laser' && !shareAnnotations) return;
+    if (kind === 'reaction' && !shareReactions) return;
     const { ownerId, kind: surfaceKind } = annotate.parseSurface(surfaceId);
     if (String(ownerId) !== String(myId) || surfaceKind !== 'screen') return;
     window.golive.sendFxOverlay?.({ kind, surface: String(surfaceId), from: String(from), ...payload });
+  }
+
+  // Defesa em profundidade: a acao some do HUD, mas uma mensagem atrasada
+  // ou forjada ainda nao pode produzir reacao numa tela que a dona fechou.
+  function reactionAllowedForSurface(surfaceId) {
+    const { ownerId, kind } = annotate.parseSurface(surfaceId);
+    const isOwner = String(ownerId) === String(myId);
+    const allowed = isOwner
+      ? shareReactions
+      : currentSession?.mesh?.peers.get(String(ownerId))?.reactions === true;
+    return reactionsPermission.canReceiveScreenReaction({ kind, allowed });
   }
 
   function dropOverlayFxAuthor(peerId) {
@@ -2819,45 +2962,64 @@
     window.golive.sendFxOverlay?.({ kind: 'drop-author', from: String(peerId) });
   }
 
-  // Recolher a coluna direita (membros + banidos + chat). O CSS de
-  // `.room-side.collapsed` poe `visibility: hidden` (tira os filhos do foco
-  // por teclado enquanto invisiveis); aqui a affordance do botao acompanha o
-  // estado -- title e o chevron giram.
-  $('btn-toggle-side').addEventListener('click', () => {
-    const collapsed = $('room-side').classList.toggle('collapsed');
-    const btn = $('btn-toggle-side');
-    btn.classList.toggle('collapsed', collapsed);
-    btn.title = collapsed ? 'Expandir coluna' : 'Recolher coluna';
-    btn.setAttribute('aria-label', btn.title);
-  });
+  const CONV_PREF = 'golive.sala.conversa';
+  let convManual = null;
+  // Declarado antes do primeiro setConversation(null) da carga: com a preferencia salva 'pinned', ele zera o
+  // contador ja na carga, e um `let` mais abaixo dava ReferenceError de TDZ e abortava o resto da inicializacao
+  // (o relayRetry nunca era criado e "Criar sala" quebrava).
+  let naoLidas = 0;
 
-  // As abas mantem um painel por vez para a coluna continuar utilizavel em janela baixa.
-  const roomTabs = [...document.querySelectorAll('.room-tab')];
-  function selectRoomTab(tab) {
-    for (const candidate of roomTabs) {
-      const selected = candidate === tab;
-      candidate.setAttribute('aria-selected', String(selected));
-      candidate.tabIndex = selected ? 0 : -1;
-      $(`${candidate.getAttribute('aria-controls')}`).hidden = !selected;
+  function setConversation(mode, { persist = false } = {}) {
+    const app = $('app');
+    const next = mode || window.GoLive.roomUi.modoConversa($('room-view').clientWidth, convManual);
+    app.dataset.conv = next;
+    $('btn-conv-toggle').setAttribute('aria-pressed', String(next !== 'closed'));
+    if (next === 'pinned') {
+      naoLidas = 0;
+      $('chat-unread-dot').classList.add('hidden');
+      $('btn-conv-toggle').setAttribute('aria-label', 'Conversa');
     }
-    if (tab.id === 'tab-chat') $('chat-unread-dot').classList.add('hidden');
+    // Fixada ou fechada: o que estava espiando some junto.
+    if (next !== 'peek') $('chat-peek').replaceChildren();
+    if (!persist) return;
+    convManual = next;
+    try {
+      localStorage.setItem(CONV_PREF, next);
+    } catch (error) {
+      console.warn('Não foi possível salvar a preferência da conversa.', error);
+    }
   }
+
+  try {
+    const saved = localStorage.getItem(CONV_PREF);
+    if (['pinned', 'peek', 'closed'].includes(saved)) convManual = saved;
+  } catch (error) {
+    console.warn('Não foi possível ler a preferência da conversa.', error);
+  }
+  new ResizeObserver(() => setConversation(null)).observe($('room-view'));
+  setConversation(null);
+
+  // Fixada fecha; espiando ou fechada abre fixada (05 §3.6).
+  $('btn-conv-toggle').addEventListener('click', () => {
+    setConversation($('app').dataset.conv === 'pinned' ? 'closed' : 'pinned', { persist: true });
+  });
+  $('btn-conv-peek').addEventListener('click', () => {
+    setConversation('peek', { persist: true });
+    // O clique tem que mostrar algo na hora: as ultimas mensagens, ou um aviso de que as novas vao surgir.
+    ui.chat.espiarRecentes();
+  });
+  document.addEventListener('golive:conv-open', () => setConversation('pinned', { persist: true }));
+  $('btn-conv-close').addEventListener('click', () => setConversation('closed', { persist: true }));
   function resetRoomTabs() {
-    selectRoomTab($('tab-chat'));
+    setConversation(null);
     $('chat-unread-dot').classList.add('hidden');
   }
-  roomTabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => selectRoomTab(tab));
-    tab.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? roomTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + roomTabs.length) % roomTabs.length;
-      selectRoomTab(roomTabs[next]);
-      roomTabs[next].focus();
-    });
-  });
   document.addEventListener('golive:chat-received', () => {
-    if ($('tab-people').getAttribute('aria-selected') === 'true') $('chat-unread-dot').classList.remove('hidden');
+    if ($('app').dataset.conv === 'pinned') return;
+    naoLidas += 1;
+    $('chat-unread-dot').textContent = naoLidas > 99 ? '99+' : String(naoLidas);
+    $('chat-unread-dot').classList.remove('hidden');
+    $('btn-conv-toggle').setAttribute('aria-label', `Conversa, ${naoLidas} ${naoLidas === 1 ? 'mensagem nova' : 'mensagens novas'}`);
   });
 
   // ---------- Desconectar ----------
@@ -3380,6 +3542,10 @@
     try {
     switch (msg.type) {
       case 'welcome': {
+        // Primeiro de tudo: o historico do chat e as vistas abaixo ja dependem do tipo.
+        roomMesa = msg.mesa !== false;
+        // O Modo teatro e do palco: uma sala Mesa nunca herda o da sala anterior.
+        if (roomMesa) document.getElementById('app').removeAttribute('data-theater');
         const waitingOrphan = session.reconnectWithOrphan ? orphanSession : null;
         const welcomePeers = Array.isArray(msg.peers) ? msg.peers : [];
         const migratedRoom = Boolean(waitingOrphan && session.preserveMigrationOrphan
@@ -3469,7 +3635,9 @@
         // O servidor novo nasce sem estado live. Todo transmissor o anuncia
         // no welcome da migracao para inclusive o ultimo entrar ser visivel.
         if (localStream && sig.isOpen()) {
-          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null });
+          sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+            reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+            limit: myEncodeHealth?.limit ?? null });
         }
         // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
         if (!plan.adopt) {
@@ -3552,14 +3720,16 @@
         // Mesa: o welcome nao traz a mesa, so quantas janelas e quem esta
         // nela. Quem estava na vista Mesa pede o retrato de novo (depois de
         // QUALQUER welcome -- o servidor tira a pessoa da Mesa ao retomar).
-        mesaCount = Number.isInteger(msg.mesaCount) ? msg.mesaCount : 0;
         mesaViewers = Array.isArray(msg.mesaViewers) ? msg.mesaViewers.map(String) : [];
         mesaLocks = typeof msg.mesaLocks?.leaderOnly === 'boolean' && typeof msg.mesaLocks?.lockSize === 'boolean'
           ? { leaderOnly: msg.mesaLocks.leaderOnly, lockSize: msg.mesaLocks.lockSize }
           : null;
         renderViewSwitch();
         renderRoomMore();
-        mesaView?.afterWelcome();
+        // Sala Mesa: a Mesa abre sozinha em QUALQUER welcome (entrada, retomada, migracao) e nao fecha ate
+        // sair da sala. Ja aberta, o welcome so pede o retrato de novo.
+        if (roomMesa && !mesaView?.isOpen()) setRoomView('mesa');
+        else mesaView?.afterWelcome();
         mesaView?.onViewers();
         mesaView?.onLeaderChange();
         break;
@@ -3587,7 +3757,8 @@
           // enxerga como nao-live. A tree tem de vir depois deste estado.
           if (sig.isOpen()) sig.send({
             type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
-            bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null,
+            reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+            limit: myEncodeHealth?.limit ?? null,
           });
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
@@ -3642,7 +3813,8 @@
         // continua ao vivo, entao reanuncia antes de qualquer reoferta.
         if (localStream && sig.isOpen()) sig.send({
           type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
-          bootstrap: session.bootstrapExistingShare, limit: myEncodeHealth?.limit ?? null,
+          reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
+          limit: myEncodeHealth?.limit ?? null,
         });
         const kinds = await reofferForResumedPeer(session, msg.id);
         console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
@@ -3763,7 +3935,6 @@
         break;
       }
       case 'mesa-count': {
-        if (Number.isInteger(msg.count) && msg.count >= 0) mesaCount = msg.count;
         if (typeof msg.leaderOnly === 'boolean' && typeof msg.lockSize === 'boolean') {
           mesaLocks = { leaderOnly: msg.leaderOnly, lockSize: msg.lockSize };
         }
@@ -3810,6 +3981,7 @@
           chat: Array.isArray(msg.chat) ? msg.chat : [],
           // A mesa da sala (retrato + idFloor): o sucessor a semeia.
           mesa: msg.mesa && typeof msg.mesa === 'object' ? msg.mesa : null,
+          mesaEnabled: msg.mesaEnabled !== false,
         }, {
           candidates: migrationCandidates(session),
           announcedSuccessor: typeof msg.successor === 'string' ? msg.successor : null,
@@ -3909,6 +4081,7 @@
       // pra aparecer na tela REAL de quem transmite (mesma checagem de
       // `pushToFxOverlay`, mesma logica de `pushToAnnotOverlay`).
       case 'reaction': {
+        if (!reactionAllowedForSurface(msg.surface)) break;
         ui.reactions.apply(msg.surface, msg.from, msg.emoji);
         pushToFxOverlay('reaction', msg.surface, msg.from, { emoji: msg.emoji });
         break;
@@ -3968,9 +4141,10 @@
         const bootstrap = msg.bootstrap === true;
         if (peer) peer.live = msg.live;
         if (peer) peer.paused = Boolean(msg.paused);
-        // Quem transmite decide se a sala pode rabiscar na tela dele. Peer
-        // em versao antiga nao manda o campo -> undefined -> falso.
+        // Quem transmite decide o que a sala pode fazer na tela dele. Peer
+        // em versao antiga nao manda os campos -> falso.
         if (peer) peer.annotate = msg.live && msg.annotate === true;
+        if (peer) peer.reactions = msg.live && msg.reactions === true;
         // P4: a limitacao de encode que a ORIGEM anunciou sobre a propria
         // tela -- alimenta o culpado do chip de saude de quem assiste (ver
         // updateViewerHealth). Zera quando a tela sai do ar: um `limit`
@@ -3985,6 +4159,7 @@
           canClearAll: false, // a tela e do outro; apagar tudo e so de quem e dono dela
           canDraw: true, // ... e desenhar e justamente o que so quem assiste faz
         });
+        ui.reactions.setSurface(msg.id, { allowed: Boolean(peer?.reactions) });
         if (!msg.live) {
           // So soa na transicao live -> parou (wasLive), nunca num
           // broadcast-state repetido nem no estado inicial de quem entra. O
@@ -4473,10 +4648,11 @@
       quality: cfg.quality,
       onQualityChange: onQualityPresetChange,
       allowAnnotations: cfg.annotations.allow,
+      allowReactions: cfg.reactions.allow,
     });
   });
 
-  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false) {
+  async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false, allowReactions = true) {
     if (sharing || localStream) return;
     const session = currentSession;
     if (!session || !session.sig.isOpen()) return;
@@ -4656,6 +4832,7 @@
 
       // A escolha vale pra ESTA transmissao e fica lembrada pra proxima.
       shareAnnotations = Boolean(allowAnnotations);
+      shareReactions = Boolean(allowReactions);
       // A permissao mudou: a camera anuncia por conta propria (a tela vai
       // no broadcast-state logo abaixo, no startShare).
       if (cameraStream) sendCameraState();
@@ -4663,10 +4840,15 @@
         cfg = { ...cfg, annotations: { allow: shareAnnotations } };
         persist();
       }
+      if (cfg.reactions.allow !== shareReactions) {
+        cfg = { ...cfg, reactions: { allow: shareReactions } };
+        persist();
+      }
       // A superficie e o MEU id de conexao (nao 'me'): e a chave que todo
       // mundo na sala usa pra falar da minha tela. `canClearAll` porque a
       // tela e minha -- so o dono da lousa apaga o traco dos outros.
       ui.annotations.setSurface('me', { surfaceId: annotate.surfaceKey(myId, 'screen'), allowed: shareAnnotations, canClearAll: true, canDraw: false });
+      ui.reactions.setSurface('me', { allowed: shareReactions });
       await startAnnotOverlay();
       if (!canContinue()) return;
 
@@ -4685,7 +4867,8 @@
       broadcastWatchers('screen'); // lista inicial: todo mundo conta como assistindo
       // O peer precisa conhecer o estado live antes de receber a tree, pois
       // tree de origem que não está ao vivo é descartada como mensagem forjada.
-      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations, limit: null });
+      session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations,
+        reactions: shareReactions, limit: null });
       recomputeTree('screen');
       ui.setToggleState('share', 'on');
       $('btn-pause-share').classList.remove('hidden');
@@ -4907,7 +5090,16 @@
       stopAnnotOverlay();
       ui.annotations.clearSurface('me');
       currentSourceId = newSourceId;
-      if (plan.overlayShouldReopen) await startAnnotOverlay();
+      if (plan.overlayShouldReopen) {
+        await startAnnotOverlay();
+      } else if (!plan.fromIsWindow && plan.toIsWindow) {
+        const toast = reactionsPermission.overlayUnavailableToast({
+          reason: 'window',
+          annotations: shareAnnotations,
+          reactions: shareReactions,
+        });
+        if (toast) showToast(toast);
+      }
       if (!canContinue()) {
         stopNewCapture();
         return;
@@ -4956,7 +5148,9 @@
     // A lousa morre com a tela (spec, secao 8): parar de compartilhar apaga
     // o que estava desenhado, aqui e -- via broadcast-state -- em todo mundo.
     shareAnnotations = false;
+    shareReactions = false;
     ui.annotations.setSurface('me', { allowed: false });
+    ui.reactions.setSurface('me', { allowed: false });
     ui.laser.drop(annotate.surfaceKey(myId, 'screen'));
     stopAnnotOverlay();
     ui.grid.removeTile('me');
@@ -5169,7 +5363,10 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
-    if (session?.sig?.isOpen()) session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+    if (session?.sig?.isOpen()) {
+      session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations,
+        reactions: shareReactions, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+    }
     ui.grid.setPaused('me', paused, {
       title: paused ? 'Você pausou' : '',
       subtitle: paused ? 'Ninguém está vendo' : '',
@@ -5193,6 +5390,7 @@
         nativeAudioAvailable,
         quality: cfg.quality,
         allowAnnotations: shareAnnotations,
+        allowReactions: shareReactions,
         currentShareSound,
         currentIncludeDiscord,
       });
@@ -5545,8 +5743,10 @@
 
   /** A tela de alguem saiu do ar (parou de transmitir, ou a pessoa saiu). */
   function unwatchScreen(originId) {
-    watchedScreens.delete(String(originId));
-    ui.grid.forgetWatched(String(originId));
+    const id = String(originId);
+    watchedScreens.delete(id);
+    tetoRecebido.limpar(`${id}:screen`);
+    ui.grid.forgetWatched(id);
   }
 
   function maybeNotifyLive(peer, peerId, { bootstrap = false } = {}) {
@@ -5586,6 +5786,9 @@
     }
 
     if (mode === 'only') {
+      for (const watchedId of watchedScreens) {
+        if (watchedId !== id) tetoRecebido.limpar(`${watchedId}:screen`);
+      }
       watchedScreens.clear();
       watchedScreens.add(id);
       autoWatchSuppressed = false;
@@ -5594,6 +5797,7 @@
       autoWatchSuppressed = false;
     } else if (mode === 'remove') {
       watchedScreens.delete(id);
+      tetoRecebido.limpar(`${id}:screen`);
       // Ficou sem nenhuma tela: foi uma escolha explicita de nao ver nada
       // (o menu de botao direito, ou largar a ultima). A auto-escolha para
       // de repor ate o usuario pedir uma tela de novo.
@@ -5655,6 +5859,8 @@
     colorFor: (id) => annotate.colorFor(id),
     avatarOf: (id) => (String(id) === String(myId) ? cfg.avatar || null : currentSession?.mesh?.peers.get(String(id))?.avatar || null),
     viewers: () => mesaViewers,
+    peopleSlot: () => $('stage-mesa-people'),
+    dockEl: () => document.querySelector('.bus'),
     tileIdFor: mesaTileId,
     tileFor: (kind, peerId) => ui.grid.tileEl(mesaTileId(kind, peerId)),
     returnTile: ui.grid.returnTile,
@@ -5663,7 +5869,7 @@
     onWatchChange: () => broadcastViewState(),
     onOpenChange: (on) => {
       document.body.classList.toggle('mesa-open', on);
-      $('btn-mesa-add').classList.toggle('hidden', !on);
+      $('btn-mesa-add').classList.toggle('hidden', !on || !roomMesa);
       renderViewSwitch();
       renderRoomMore();
     },
@@ -5689,39 +5895,30 @@
   });
   window.GoLive.mesaPor = { put: (type, action) => mesaPor.put(type, action) };
 
-  const viewButtons = [$('view-tx'), $('view-mesa')];
-
+  // Os tipos de sala sao exclusivos: sala Mesa so tem a Mesa (abre sozinha no welcome e so fecha ao sair da
+  // sala), sala "so transmissoes" so tem o palco. Nao ha vista para alternar; a vista e de cada pessoa.
   function setRoomView(view) {
+    if (!window.GoLive.roomUi.vistaPermitida(view, roomMesa)) return;
     if (view === 'mesa') mesaView.open();
-    else mesaView.close();
     renderViewSwitch();
   }
 
   function renderViewSwitch() {
-    const naMesa = Boolean(mesaView?.isOpen());
-    for (const b of viewButtons) {
-      const on = (b.dataset.view === 'mesa') === naMesa;
-      b.setAttribute('aria-checked', String(on));
-      b.tabIndex = on ? 0 : -1;
-    }
-    // Quem esta na Transmissao ve que a mesa tem janelas (mesa-count).
-    const count = $('view-mesa-count');
-    count.textContent = mesaCount > 0 ? String(mesaCount) : '';
-    count.classList.toggle('hidden', !(mesaCount > 0));
-    $('view-mesa').setAttribute('aria-label', mesaCount > 0 ? `Mesa, ${mesaCount} ${mesaCount === 1 ? 'janela' : 'janelas'}` : 'Mesa');
+    ui.grid.refreshWatchGates();
   }
 
-  viewButtons.forEach((b, i) => {
-    b.addEventListener('click', () => setRoomView(b.dataset.view));
-    // radiogroup: setas trocam e escolhem (padrao ARIA).
-    b.addEventListener('keydown', (e) => {
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-      e.preventDefault();
-      const next = viewButtons[(i + 1) % viewButtons.length];
-      setRoomView(next.dataset.view);
-      next.focus();
-    });
-  });
+  /** Clique numa fonte do barramento numa sala Mesa: leva ate a janela dela (mesa-view.js). */
+  function focusMedia(tileId) {
+    const { kind, peerId } = window.GoLive.roomUi.fonteDoTile(tileId);
+    mesaView.focusMedia(kind, peerId);
+  }
+
+  window.GoLive.salaVista = {
+    setRoomView,
+    focusMedia,
+    isMesa: () => Boolean(mesaView?.isOpen()),
+    temMesa: () => roomMesa,
+  };
 
   $('btn-mesa-add').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5740,6 +5937,11 @@
   function renderRoomMore() {
     const leader = ownerId === 'me';
     const locks = mesaView?.locks() || mesaLocks;
+    // Sala "so transmissoes": o bloco inteiro da Mesa some do menu.
+    for (const id of ['room-more-mesa-sep', 'room-more-mesa-label', 'opt-mesa-cursors-row',
+      'opt-mesa-leader-only-row', 'opt-mesa-lock-size-row', 'opt-mesa-locks-hint']) {
+      $(id).hidden = !roomMesa;
+    }
     $('opt-mesa-leader-only-row').classList.toggle('hidden', !leader);
     $('opt-mesa-lock-size-row').classList.toggle('hidden', !leader);
     // Servidores antigos nao mandam as travas para a Transmissao: so nesse
@@ -5749,14 +5951,29 @@
       const box = $(id);
       box.disabled = !locks;
       box.checked = Boolean(locks?.[key]);
+      box.parentElement?.setAttribute('aria-checked', String(box.checked));
     }
+    // Modo teatro (o palco em tela cheia) nao existe na sala Mesa.
+    const teatro = $('room-more').querySelector('[data-room-action="theater"]');
+    teatro.hidden = !window.GoLive.roomUi.controlesDoPalco(roomMesa);
     $('opt-mesa-cursors').checked = Boolean(mesaView?.showsCursors());
+    $('opt-mesa-cursors').parentElement?.setAttribute('aria-checked', String($('opt-mesa-cursors').checked));
   }
 
   function setRoomMoreOpen(open) {
     $('room-more').classList.toggle('hidden', !open);
     $('btn-room-more').setAttribute('aria-expanded', String(open));
-    if (open) renderRoomMore();
+    if (!open) return;
+    renderRoomMore();
+    $('room-copy-pin').classList.toggle('hidden', !hostInfo?.pin && !$('stage-room-pin').textContent);
+    roomMoreItems()[0]?.focus();
+  }
+
+  /** Itens do menu da sala que estao a mostra, na ordem, para as setas. `getClientRects` pega tambem o que o CSS
+   * esconde por largura ("Copiar endereço" so existe abaixo de 1024 px), nao so a classe `.hidden`. */
+  function roomMoreItems() {
+    return [...$('room-more').querySelectorAll('.menu__item')]
+      .filter((el) => !el.classList.contains('hidden') && el.getClientRects().length > 0);
   }
 
   $('btn-room-more').addEventListener('click', (e) => {
@@ -5764,9 +5981,23 @@
     setRoomMoreOpen($('room-more').classList.contains('hidden'));
   });
   document.addEventListener('pointerdown', (e) => {
-    if (!e.target.closest?.('.room-more-wrap')) setRoomMoreOpen(false);
+    if (!e.target.closest?.('#room-more, #btn-room-more')) setRoomMoreOpen(false);
   });
   $('room-more').addEventListener('keydown', (e) => {
+    const itens = roomMoreItems();
+    const i = itens.indexOf(document.activeElement);
+    const vai = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: itens.length - 1 }[e.key];
+    if (vai !== undefined) {
+      e.preventDefault();
+      itens[(vai + itens.length) % itens.length]?.focus();
+      return;
+    }
+    // Label com checkbox dentro: Enter/Espaco alterna, como um menuitemcheckbox.
+    if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.matches('label.menu__item')) {
+      e.preventDefault();
+      document.activeElement.querySelector('input')?.click();
+      return;
+    }
     if (e.key !== 'Escape') return;
     e.stopPropagation();
     setRoomMoreOpen(false);
@@ -5776,22 +6007,61 @@
   $('opt-mesa-lock-size').addEventListener('change', (e) => mesaView.setLock('lockSize', e.target.checked));
   $('opt-mesa-cursors').addEventListener('change', (e) => {
     mesaView.setShowCursors(e.target.checked);
+    e.target.parentElement?.setAttribute('aria-checked', String(e.target.checked));
     try {
       localStorage.setItem(MESA_CURSORS_KEY, e.target.checked ? '1' : '0');
     } catch {
       // sem armazenamento: vale so ate fechar o app
     }
   });
+  $('room-more').addEventListener('click', (event) => {
+    const copy = event.target.closest('[data-copy]')?.dataset.copy;
+    if (copy) {
+      const texto = copy === 'pin' ? (hostInfo?.pin || $('stage-room-pin').textContent.replace(/\D/g, ''))
+        : $('stage-room-address').textContent;
+      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(copy === 'pin' ? 'PIN copiado' : 'Endereço copiado', 1500)).catch(() => {});
+      setRoomMoreOpen(false);
+      return;
+    }
+    const action = event.target.closest('[data-room-action]')?.dataset.roomAction;
+    if (action) setRoomMoreOpen(false);
+    if (action === 'theater') document.getElementById('app').toggleAttribute('data-theater');
+    if (action === 'diagnostics') openDiagnostics();
+  });
+  document.addEventListener('keydown', (event) => {
+    const field = event.target?.matches?.('input, textarea, select, [contenteditable="true"]');
+    if (field || document.getElementById('app').dataset.place !== 'room') return;
+    // Modo teatro e do palco; a sala Mesa nao tem palco. Nao ha atalho para alternar Mesa e palco.
+    const teatroLivre = window.GoLive.roomUi.controlesDoPalco(roomMesa);
+    if (teatroLivre && (event.key === 't' || event.key === 'T')) {
+      document.getElementById('app').toggleAttribute('data-theater');
+    }
+    if (event.key === 'Escape' && document.getElementById('app').hasAttribute('data-theater')) {
+      document.getElementById('app').removeAttribute('data-theater');
+    }
+    if (event.key === 'c' || event.key === 'C') {
+      const app = document.getElementById('app');
+      app.dataset.conv = app.dataset.conv === 'closed' ? window.GoLive.roomUi.modoConversa(window.innerWidth) : 'closed';
+    }
+  });
+  document.addEventListener('pointermove', (event) => {
+    const app = document.getElementById('app');
+    if (!app.hasAttribute('data-theater')) return;
+    if (event.clientY <= 8) app.dataset.reveal = 'top';
+    else if (event.clientY >= window.innerHeight - 8) app.dataset.reveal = 'bottom';
+    else delete app.dataset.reveal;
+  });
 
   // A sala saiu da tela (Sair da sala, sala fechada, entrada recusada): a
-  // Mesa desmonta sem avisar ninguem e a proxima sala abre na Transmissao.
+  // Mesa desmonta sem avisar ninguem; a proxima sala abre no que o welcome disser.
   document.addEventListener('golive:room-hidden', () => {
     mesaView.close({ silent: true });
     mesaPor.reset();
     chatImagens.clear();
     mesaViewers = [];
-    mesaCount = 0;
+    mesaView.onViewers();
     mesaLocks = null;
+    roomMesa = true;
     setRoomMoreOpen(false);
     renderViewSwitch();
   });
@@ -5805,6 +6075,18 @@
   // minimizada -- um relay que minimizou mas tem espectadores atras nao pode
   // cortar o encode de quem esta assistindo de verdade. Ver a spec de
   // 2026-08-23, secao "Demanda propaga pra cima".
+  /** Sou relay da origem `peerId` naquele tipo, com alguma folha assistindo?
+   * So vale em conexao direta: num kind composto somos folha. */
+  function folhaAssistindo(session, baseKind, peerId) {
+    const state = myRole[baseKind].get(peerId);
+    // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
+    // assim que relayTo as criou) -- consultar isPeerSuspended com o
+    // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
+    const childKind = relayKindFor(baseKind, peerId);
+    return state?.role === 'relay'
+      && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+  }
+
   function broadcastViewState() {
     const session = currentSession;
     if (!session?.mesh || !session.sig.isOpen()) return;
@@ -5816,13 +6098,7 @@
       // direta, `peerId` E a origem -- que e exatamente a chave do estado
       // por-origem, entao a pergunta "sou relay DESTE peer?" vira uma
       // consulta direta.
-      const state = sourceId ? null : myRole[baseKind].get(peerId);
-      // As out-conns pros nossos filhos vivem sob o kind COMPOSTO (foi
-      // assim que relayTo as criou) -- consultar isPeerSuspended com o
-      // kind cru olharia o slot errado e nunca acharia ninguem assistindo.
-      const childKind = relayKindFor(baseKind, peerId);
-      const anyFolhaWatching = state?.role === 'relay'
-        && state.filhosIds.some((id) => !session.mesh.isPeerSuspended(id, childKind));
+      const anyFolhaWatching = !sourceId && folhaAssistindo(session, baseKind, peerId);
       // A escolha de assistir e por ORIGEM: num kind composto quem esta rio
       // acima e o relay, mas o video continua sendo o de `sourceId`. Tela e
       // camera tem defaults opostos -- tela e opt-in (watchedScreens),
@@ -5857,13 +6133,40 @@
       // Mesa: a largura da janela desta tela (ou camera) na minha vista vira
       // teto de qualidade do lado de quem manda (peerquality.capForWidth e
       // cameraEncodingFor). Fora da Mesa (ou relay com filhos atras de mim),
-      // sem teto.
-      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
-        ? mesaView?.widthFor(baseKind, origem) ?? null
+      // sem teto. Em tela, o teto escolhido no menu do video ("Qualidade que
+      // voce recebe") entra junto: vale o menor dos dois.
+      const larguraMesa = mesaView?.widthFor(baseKind, origem) ?? null;
+      const larguraDaEscolha = baseKind === 'screen'
+        ? tetoRecebido.larguraEscolhida(`${origem}:screen`)
         : null;
-      session.sig.send({ type: 'view-state', to: peerId, kind, watching, looking, maxWidth, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null, relayLoad: relayLoad() });
+      const maxWidth = (baseKind === 'screen' || baseKind === 'camera') && !anyFolhaWatching
+        ? tetoRecebido.combinar(larguraDaEscolha, larguraMesa)
+        : null;
+      session.sig.send({
+        type: 'view-state',
+        to: peerId,
+        kind,
+        watching,
+        looking,
+        maxWidth,
+        encodeHealth: myEncodeHealth,
+        receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null,
+        relayLoad: relayLoad(),
+      });
     }
   }
+
+  // O menu do video chama o modulo direto; a troca republica o view-state
+  // pelo mesmo caminho que a Mesa usa ao redimensionar.
+  tetoRecebido.definirAoMudar(() => broadcastViewState());
+  // Repassando a tela para folhas, o teto nao vale (ver broadcastViewState):
+  // o menu mostra o item desabilitado.
+  tetoRecebido.definirBloqueio((tileId) => {
+    const session = currentSession;
+    const chave = String(tileId);
+    if (!session?.mesh || !chave.endsWith(':screen')) return false;
+    return folhaAssistindo(session, 'screen', chave.slice(0, -':screen'.length));
+  });
 
   document.addEventListener('visibilitychange', onVisibilityChanged);
   window.golive.onWindowVisibilityChange?.((visible) => {
@@ -6586,7 +6889,8 @@
       const nextLimit = myEncodeHealth?.limit ?? null;
       if (nextLimit !== lastAnnouncedLimit) {
         lastAnnouncedLimit = nextLimit;
-        session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations, limit: nextLimit });
+        session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
+          reactions: shareReactions, limit: nextLimit });
       }
     }
 

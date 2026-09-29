@@ -3,6 +3,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const J = require('./poquer');
 
+test('Pôquer envia estado proprio e alheio para a barra', () => {
+  const chamadas = [];
+  const api = { setStatus: (v) => chamadas.push(['status', v]), setTurn: (v) => chamadas.push(['turn', v]) };
+  J.atualizarBarra(api, 'Pote 40 · flop', true);
+  J.atualizarBarra(api, 'Vez de Bia', false);
+  assert.deepEqual(chamadas, [['status', 'Pote 40 · flop'], ['turn', true], ['status', 'Vez de Bia'], ['turn', false]]);
+});
+
 const NB = ' ';
 
 test('fichas: milhar com espaco fino', () => {

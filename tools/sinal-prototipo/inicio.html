@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Sinal — protótipo do Início</title>
+<link rel="stylesheet" href="../../src/renderer/sinal/tokens.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/base.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/components.css" />
+<link rel="stylesheet" href="../../src/renderer/sinal/shell.css" />
+</head>
+<body>
+<!--SPRITE-->
+<div class="app">
+  <header class="head drag">
+    <div class="head__group">
+      <span class="brand">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+          <g fill="none" stroke="var(--tx)" stroke-width="2.5" stroke-linecap="round">
+            <path d="M20.71 14.20 L11.35 9.06" /><path d="M20.71 17.80 L11.35 22.94" />
+            <circle cx="8.5" cy="7.5" r="3.25" /><circle cx="8.5" cy="24.5" r="3.25" />
+          </g>
+          <circle cx="24" cy="16" r="3.75" fill="var(--live)" />
+        </svg>
+        GoLive
+      </span>
+    </div>
+    <div class="head__group head__group--end">
+      <button class="btn btn--quiet btn--icon" aria-label="Seu perfil"><span class="node" style="--who:#C7A2FF">N</span></button>
+      <button class="btn btn--quiet btn--icon" aria-label="Configurações"><svg class="i"><use href="#i-settings"/></svg></button>
+      <div class="winctl">
+        <button class="winctl__btn" aria-label="Minimizar"><svg class="i"><use href="#i-minus"/></svg></button>
+        <button class="winctl__btn" aria-label="Maximizar"><svg class="i"><use href="#i-square"/></svg></button>
+        <button class="winctl__btn winctl__btn--close" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+  </header>
+  <div class="bands">
+    <div class="band band--info">
+      <svg class="i i--sm tx-wire"><use href="#i-download"/></svg>
+      <span class="band__text">A versão 0.22.0 está disponível.</span>
+      <button class="btn btn--secondary btn--sm">Baixar</button>
+      <button class="btn btn--quiet btn--icon btn--sm" aria-label="Dispensar"><svg class="i i--sm"><use href="#i-x"/></svg></button>
+    </div>
+  </div>
+  <main class="lobby">
+    <div class="lobby__col">
+      <section class="hello">
+        <h1 class="hello__title">Boa noite, Nick.</h1>
+        <p class="hello__net"><span class="health" data-level="ok"><span></span><span></span><span></span></span>
+          Radmin VPN · <span class="tx-data">26.12.4.8</span>
+          <button class="btn btn--quiet btn--icon btn--sm" aria-label="Copiar endereço"><svg class="i i--sm"><use href="#i-copy"/></svg></button></p>
+      </section>
+
+      <div class="lobby__actions">
+        <button class="btn btn--primary btn--lg"><svg class="i"><use href="#i-plus"/></svg>Criar sala</button>
+        <form class="combo" onsubmit="return false">
+          <label class="sr-only" for="addr">Endereço da sala</label>
+          <input id="addr" class="input input--lg input--mono" placeholder="Entrar por endereço — 26.0.0.5:47800" />
+          <button class="btn btn--secondary btn--lg">Entrar</button>
+        </form>
+      </div>
+
+      <section class="rooms" aria-labelledby="rooms-t">
+        <div class="rooms__head">
+          <h2 id="rooms-t" class="tx-tag">Na sua rede · 3</h2>
+          <button class="btn btn--quiet btn--sm"><svg class="i i--sm"><use href="#i-refresh-cw"/></svg>Procurar de novo</button>
+        </div>
+        <button class="room-row">
+          <span class="cluster"><span class="cluster__nodes"><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span></span></span>
+          <span class="room-row__main"><span class="room-row__name">Sala do Caio</span><span class="room-row__addr">26.3.1.9:47800</span></span>
+          <span class="room-row__meta"><svg class="i i--sm"><use href="#i-lock"/></svg>PIN</span>
+          <span class="room-row__go">Entrar <svg class="i i--sm"><use href="#i-chevron-right"/></svg></span>
+        </button>
+        <button class="room-row" aria-busy="true">
+          <span class="cluster"><span class="cluster__nodes"><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span></span></span>
+          <span class="room-row__main"><span class="room-row__name">Churras</span><span class="room-row__addr">26.1.0.2:47810</span></span>
+          <span class="room-row__meta"></span>
+          <span class="room-row__go"><span class="spinner"></span>Conectando… <span class="btn btn--quiet btn--sm">Cancelar</span></span>
+        </button>
+        <button class="room-row" disabled>
+          <span class="cluster"><span class="cluster__nodes"><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span><span class="node" data-size="16" data-state="present"></span></span></span>
+          <span class="room-row__main"><span class="room-row__name">Sala antiga</span><span class="room-row__addr">26.8.0.1:47800</span></span>
+          <span class="room-row__meta tx-warn">Versão 0.20.0 — quem criou precisa atualizar</span>
+          <span></span>
+        </button>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

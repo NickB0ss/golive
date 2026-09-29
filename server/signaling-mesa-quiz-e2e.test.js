@@ -32,8 +32,11 @@ function cliente(porta, nome, sala) {
     return w;
   };
   c.mesa = async () => {
+    // So vale o retrato que chegou DEPOIS deste pedido: a caixa ja pode ter um
+    // retrato antigo (de antes da janela existir), e sob carga o novo demora.
+    const desde = mensagens.length;
     c.envia({ type: 'mesa-view', on: true });
-    return (await c.ate((m) => m.type === 'mesa-sync', 'mesa-sync')).mesa;
+    return (await c.ate((m) => m.type === 'mesa-sync' && mensagens.indexOf(m) >= desde, 'mesa-sync')).mesa;
   };
   c.acao = async (id, action) => {
     c.envia({ type: 'mesa', op: 'act', id, action });

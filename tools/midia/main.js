@@ -59,7 +59,7 @@ function paginaHtml() {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="${csp}" />
 <title>bancada midia</title>
-<link rel="stylesheet" href="style.css" /><link rel="stylesheet" href="mesa-janelas.css" />
+<link rel="stylesheet" href="sinal/tokens.css" /><link rel="stylesheet" href="sinal/themes.css" /><link rel="stylesheet" href="sinal/base.css" /><link rel="stylesheet" href="sinal/components.css" /><link rel="stylesheet" href="sinal/shell.css" /><link rel="stylesheet" href="sinal/sheets.css" /><link rel="stylesheet" href="sinal/mesa.css" /><link rel="stylesheet" href="mesa-janelas.css" />
 <style>
 body{overflow:auto;background:var(--bg)}
 #mesa{display:flex;flex-wrap:wrap;gap:12px;padding:12px}

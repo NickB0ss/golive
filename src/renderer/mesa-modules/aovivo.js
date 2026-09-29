@@ -66,7 +66,7 @@
 
   const api = {
     type: TYPE,
-    title: 'Ao vivo (Twitch)',
+    title: 'Twitch',
     group: 'assistir',
     size: { w: 640, h: 360, minW: 320, minH: 180, aspect: 16 / 9 },
     maxStateBytes: 128,

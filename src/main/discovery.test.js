@@ -184,6 +184,103 @@ test('descoberta mantem duas salas do mesmo IP em portas distintas', async () =>
   d.stop();
 });
 
+// Manda o mesmo beacon como se tivesse chegado de varias origens.
+function sendBeacon(handlers, fields, sourceIp) {
+  handlers.message(Buffer.from(formatBeacon(fields)), { address: sourceIp });
+}
+
+test('o mesmo beacon vindo de 4 origens vira 1 sala so', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  const beacon = { name: 'A', port: 9001, address: '26.1.2.3:9001' };
+  for (const ip of ['192.168.0.5', '26.9.9.9', '172.20.0.1', '10.0.0.7']) sendBeacon(handlers, beacon, ip);
+  assert.equal(d.getRooms().length, 1);
+  d.stop();
+});
+
+test('a origem igual ao host anunciado e preferida, mesmo nao sendo a mais recente', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  const beacon = { name: 'A', port: 9001, address: '26.1.2.3:9001' };
+  sendBeacon(handlers, beacon, '26.1.2.3');
+  sendBeacon(handlers, beacon, '192.168.0.5');
+  assert.deepEqual(d.getRooms().map((room) => room.address), ['26.1.2.3:9001']);
+  d.stop();
+});
+
+test('sem origem igual ao host anunciado, vale a origem mais recente', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  const beacon = { name: 'A', port: 9001, address: '26.1.2.3:9001' };
+  sendBeacon(handlers, beacon, '192.168.0.5');
+  sendBeacon(handlers, beacon, '10.0.0.7');
+  assert.deepEqual(d.getRooms().map((room) => room.address), ['10.0.0.7:9001']);
+  d.stop();
+});
+
+test('dois hosts diferentes continuam sendo duas salas', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  await d.start();
+  sendBeacon(handlers, { name: 'A', port: 9001, address: '26.1.2.3:9001' }, '26.1.2.3');
+  sendBeacon(handlers, { name: 'B', port: 9001, address: '26.4.5.6:9001' }, '26.4.5.6');
+  assert.deepEqual(d.getRooms().map((room) => room.address), ['26.1.2.3:9001', '26.4.5.6:9001']);
+  d.stop();
+});
+
+test('o teto de salas conta grupos, nao origens', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ maxRooms: 2, deps: { dgram } });
+  await d.start();
+  for (const ip of ['10.0.0.1', '10.0.0.2', '10.0.0.3']) {
+    sendBeacon(handlers, { name: 'A', port: 1, address: 'a:1' }, ip);
+  }
+  sendBeacon(handlers, { name: 'B', port: 2, address: 'b:2' }, '10.0.0.9');
+  assert.equal(d.getRooms().length, 2);
+  d.stop();
+});
+
+test('um emissor que anuncia 1000 enderecos continua limitado ao teto', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ maxRooms: 8, deps: { dgram } });
+  await d.start();
+  for (let i = 0; i < 1000; i += 1) {
+    sendBeacon(handlers, { name: 'X', port: 9000, address: `forjado${i}:9000` }, '10.0.0.66');
+  }
+  assert.equal(d.getRooms().length, 8);
+  d.stop();
+});
+
+test('a sala expira quando nenhuma origem do grupo renova', async () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ ttlMs: 20, deps: { dgram } });
+  await d.start();
+  sendBeacon(handlers, { name: 'A', port: 9001, address: '26.1.2.3:9001' }, '192.168.0.5');
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(d.getRooms().length, 0);
+  d.stop();
+});
+
+test('formatBeacon + parseBeacon carregam mesa:false e omitem quando a Mesa esta ligada', () => {
+  const base = { name: 'A', port: 9000, address: 'a:9000' };
+  assert.equal(JSON.parse(formatBeacon({ ...base, mesa: false })).mesa, false);
+  assert.equal('mesa' in JSON.parse(formatBeacon({ ...base, mesa: true })), false);
+  assert.equal('mesa' in JSON.parse(formatBeacon(base)), false);
+  assert.equal(parseBeacon(formatBeacon({ ...base, mesa: false })).mesa, false);
+  assert.equal('mesa' in parseBeacon(formatBeacon(base)), false);
+});
+
+test('parseBeacon so aceita mesa estritamente false; toRoomList repassa', () => {
+  const base = { type: 'golive-room', port: 9000, address: 'a:9000' };
+  assert.equal('mesa' in parseBeacon(JSON.stringify({ ...base, mesa: 0 })), false);
+  assert.equal('mesa' in parseBeacon(JSON.stringify({ ...base, mesa: 'false' })), false);
+  const rooms = new Map([['a', { name: 'A', address: 'a:9000', port: 9000, mesa: false, lastSeen: 1 }]]);
+  assert.equal(toRoomList(rooms)[0].mesa, false);
+});
+
 test('descoberta coalesce atualizacoes da lista', async () => {
   const { handlers, dgram } = fakeDgram();
   const d = createDiscovery({ roomListUpdatesPerSecond: 20, deps: { dgram } });

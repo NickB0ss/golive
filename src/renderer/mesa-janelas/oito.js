@@ -20,6 +20,11 @@
   };
   const podeJogar = (card, discard, suit) => Boolean(card && discard)
     && (card[0] === '8' || card[1] === suit || card[0] === discard[0]);
+  const atualizarBarra = (api, texto, vez) => {
+    api.setStatus?.(texto);
+    api.setTurn?.(vez);
+  };
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const K = root.GoLive.mesaJanelasCartas;
@@ -30,7 +35,7 @@
     const titulo = el('strong', { class: 'mj-oito-titulo' }, 'Oito maluco');
     const status = el('span', { class: 'mj-oito-status', attrs: { tabindex: '-1' } });
     const relogio = el('span', { class: 'mj-oito-relogio' });
-    const topo = el('header', { class: 'mj-oito-topo' }, titulo, status, relogio);
+    const topo = el('header', { class: 'mj-oito-topo' }, titulo, relogio);
     const descarte = el('div', { class: 'mj-oito-descarte' });
     const naipe = el('div', { class: 'mj-oito-naipe' });
     const mesa = el('section', { class: 'mj-oito-mesa' }, descarte, naipe);
@@ -115,6 +120,7 @@
         ? `${nome(s.winner)} venceu`
         : (s.phase === 'play' ? `Vez de ${nome(s.turn)}` : 'Sente-se e dê as cartas');
       renderPeople();
+      atualizarBarra(api, textoDeStatus(s), Boolean(s.phase === 'play' && s.me?.can?.play));
       descarte.replaceChildren(K.carta(s.discard, { tamanho: 'g' }));
       naipe.textContent = s.suit ? `Naipe: ${NAIPES.find((n) => n[0] === s.suit)?.[1] || ''}` : '';
       renderHand();
@@ -140,7 +146,7 @@
     b.faxina.push(() => clearInterval(timeout));
     return {
       update,
-      destroy: b.destruir,
+      destroy() { atualizarBarra(api, '', false); b.destruir(); },
       focus() {
         minha.querySelector('button:not([disabled])')?.focus();
       },
@@ -201,7 +207,7 @@
     };
     G.mesaJanelas[api.type] = api;
   }
-  const api = { type: TYPE, mount, textoDeStatus, podeJogar };
+  const api = { type: TYPE, mount, textoDeStatus, atualizarBarra, podeJogar };
   registrar(api, ['comum.js', 'cartas.js']);
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
