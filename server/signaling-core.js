@@ -575,8 +575,12 @@ function normalizeRoomName(raw) {
  *
  * `initialMesa`: semente da mesa na migracao (ver sanitizeInitialMesa).
  * `mesaGrabMs`: quanto dura a vez por janela sem mesa-drag (padrao
- * GRAB_MS, 5 s; os testes encurtam). */
-function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS }) {
+ * GRAB_MS, 5 s; os testes encurtam).
+ * `mesa`: tipo da sala. `false` = "so transmissoes": toda operacao da Mesa
+ * e recusada e o welcome/probe-ok levam `mesa: false`. Qualquer outro valor
+ * (inclusive ausente) mantem a Mesa ligada. */
+function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS, mesa = true }) {
+  const mesaEnabled = mesa !== false;
   if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
     return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
   }
@@ -1087,6 +1091,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
      * mais perto do meio da mesa. Mesa cheia: fica sem janela, e a pessoa
      * continua na Transmissao de todo mundo como sempre. */
     function addMediaWindow(room, pid, type) {
+      if (!mesaEnabled) return;
       if (findMediaWindow(pid, type)) return;
       const mod = mesaRegistry.get(type);
       if (!mod || mesaState.mesa.windows.length >= mesaModel.MAX_WINDOWS) return;
@@ -1115,6 +1120,8 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       const op = typeof msg.op === 'string' ? msg.op.slice(0, 16) : null;
       const wid = typeof msg.id === 'string' ? msg.id.slice(0, 32) : null;
       const deny = (reason, extra) => denyMesa(ws, op, wid, reason, extra);
+      // Sala "so transmissoes": nenhuma operacao da Mesa (nem as travas).
+      if (!mesaEnabled) return deny('disabled');
       if (!mesaHit(pid, 'ops')) return deny('rate');
       const isLeader = me.owner === true;
       const mesa = mesaState.mesa;
@@ -1163,10 +1170,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
         case 'remove': {
           if (!win) return deny('not-found');
           const mod = mesaRegistry.get(win.type);
+          // Janela de tela/camera nao fecha por pedido de ninguem (nem lider
+          // nem dono): sai so quando a transmissao acaba (removeMediaWindows).
+          if (mod?.media) return deny('media');
           if (mesa.leaderOnly && !isLeader) return deny('locked');
-          // A tela de alguem ao vivo so sai pela propria pessoa ou pelo
-          // lider: senao qualquer um sumiria com a transmissao dos outros.
-          if (mod?.media && win.state?.peerId !== pid && !isLeader) return deny('not-yours');
           const holder = mesaGrabs.holder(win.id, now);
           if (holder !== null && holder !== pid) return deny('held', { holder });
           const cand = mesaCandidate({ op: 'remove', id: win.id, by: pid });
@@ -1495,6 +1502,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 roomName: effectiveRoomName(),
                 peers: peers.size,
                 protected: Boolean(roomPin),
+                ...(mesaEnabled ? {} : { mesa: false }),
                 version: hostVersion,
                 // Item B: o sobrevivente de uma migracao sonda o IP do
                 // sucessor e precisa saber se achou A MESMA sala. Responde
@@ -1623,6 +1631,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                   migrationSecret: resumedSecret, peerAddresses: peerAddressesOf(room),
                   mesaCount: mesaState.mesa.windows.length, mesaViewers: mesaViewerIds(room),
                   mesaLocks: { leaderOnly: mesaState.mesa.leaderOnly, lockSize: mesaState.mesa.lockSize },
+                  ...(mesaEnabled ? {} : { mesa: false }),
                 });
                 if (wasOnMesa) {
                   releaseMesaGrabsOf(room, resumedId);
@@ -1660,6 +1669,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 // nao esta vazia) e quem esta la (avatares).
                 mesaCount: mesaState.mesa.windows.length, mesaViewers: mesaViewerIds(room),
                 mesaLocks: { leaderOnly: mesaState.mesa.leaderOnly, lockSize: mesaState.mesa.lockSize },
+                ...(mesaEnabled ? {} : { mesa: false }),
               });
               announceMigrationInfo(room, joinSecret, id);
               broadcastToRoom(room, id, { type: 'peer-joined', id, name, avatar, owner });
@@ -2072,6 +2082,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               const me = peers.get(peerId);
               if (!me) return;
               const on = msg.on === true;
+              if (!mesaEnabled) return on ? denyMesa(ws, 'view', null, 'disabled') : undefined;
               // Abrir manda o retrato inteiro: tem cota. Fechar sempre passa.
               if (on && !mesaHit(peerId, 'sync')) return;
               setMesaView(peerId, on);
@@ -2080,7 +2091,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
 
             case 'mesa-sync': {
               const me = peers.get(peerId);
-              if (!me || !mesaHit(peerId, 'sync')) return;
+              if (!me) return;
+              if (!mesaEnabled) return denyMesa(ws, 'sync', null, 'disabled');
+              if (!mesaHit(peerId, 'sync')) return;
               send(ws, mesaSyncMsg(peerId));
               break;
             }
@@ -2096,6 +2109,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               const me = peers.get(peerId);
               if (!me) return;
               const wid = typeof msg.id === 'string' ? msg.id.slice(0, 32) : null;
+              if (!mesaEnabled) return denyMesa(ws, 'grab', wid, 'disabled');
               if (!me.mesaView) return denyMesa(ws, 'grab', wid, 'not-viewing');
               if (!mesaHit(peerId, 'ops')) return denyMesa(ws, 'grab', wid, 'rate');
               if (!wid || !mesaState.mesa.windows.some((w) => w.id === wid)) return denyMesa(ws, 'grab', wid, 'not-found');
@@ -2139,6 +2153,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
             // daqui. So para quem perguntou.
             case 'time': {
               const me = peers.get(peerId);
+              if (!mesaEnabled) return; // o relogio so serve o YouTube da Mesa
               if (!me || typeof msg.t0 !== 'number' || !Number.isFinite(msg.t0) || !mesaHit(peerId, 'time')) return;
               send(ws, { type: 'time', t0: msg.t0, server: Date.now() });
               break;
@@ -2221,6 +2236,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               // o piso de ids (ver seedIdFloor) -- menos o segredo das janelas
               // secret, que passa por migrate (ver migrationMesa).
               mesa: migrationMesa(),
+              // Tipo da sala: o sucessor sobe o servidor novo com o mesmo
+              // tipo. Omitido quando a Mesa esta ligada, igual ao welcome.
+              ...(mesaEnabled ? {} : { mesaEnabled: false }),
             });
           }
           log(`sala encerrada: room-closed para ${wss.clients.size} conexao(oes)`);

@@ -65,7 +65,7 @@ function listBroadcastTargets(interfaces = os.networkInterfaces()) {
 }
 
 /** Serializa o beacon que anuncia uma sala. */
-function formatBeacon({ name, port, address, peers, protected: isProtected, version }) {
+function formatBeacon({ name, port, address, peers, protected: isProtected, version, mesa = true }) {
   const payload = {
     type: BEACON_TYPE,
     name: typeof name === 'string' && name.trim() ? name.trim() : 'anônimo',
@@ -77,6 +77,9 @@ function formatBeacon({ name, port, address, peers, protected: isProtected, vers
   // deixa a lista da rede mostrar um cadeado e ja pedir o PIN antes de
   // tentar entrar (B3). Omitido quando falso, igual a `peers`.
   if (isProtected) payload.protected = true;
+  // Sala "so transmissoes" (sem Mesa): a lista da rede avisa antes do clique.
+  // Omitido quando a Mesa esta ligada, igual a `protected`.
+  if (mesa === false) payload.mesa = false;
   // Versao do app de quem hospeda: a lista da rede usa pra marcar a sala
   // como incompativel antes do clique (o bloqueio de verdade e no 'join',
   // em server/signaling-core.js). Omitida quando ausente, igual a `peers`.
@@ -106,6 +109,7 @@ function parseBeacon(raw) {
     result.peers = data.peers;
   }
   if (data.protected === true) result.protected = true;
+  if (data.mesa === false) result.mesa = false;
   if (typeof data.version === 'string' && data.version.trim()) result.version = data.version.trim().slice(0, 40);
   return result;
 }
@@ -183,14 +187,47 @@ function pruneExpiredRooms(roomsMap, now, ttl = ROOM_TTL_MS) {
 /** Formata o Map interno (chave = address) pra lista simples pro renderer. */
 function toRoomList(roomsMap) {
   return Array.from(roomsMap.values())
-    .map(({ name, address, port, peers, protected: isProtected, version }) => {
+    .map(({ name, address, port, peers, protected: isProtected, version, mesa }) => {
       const room = { name, address, port };
       if (peers != null) room.peers = peers;
       if (isProtected) room.protected = true;
+      if (mesa === false) room.mesa = false;
       if (version) room.version = version;
       return room;
     })
     .sort((a, b) => a.address.localeCompare(b.address));
+}
+
+/** Host do `host:porta` que o host anunciou (o que vem antes do ultimo ':'). */
+function hostOfAnnouncedAddress(announced) {
+  const text = String(announced);
+  const index = text.lastIndexOf(':');
+  return index > 0 ? text.slice(0, index) : text;
+}
+
+/** Endereco pelo qual se entra numa sala: sempre um IP de ORIGEM visto de
+ * verdade (R13: o texto do beacon nunca vira destino sozinho). Se algum
+ * pacote do grupo veio do IP que o host anunciou, esse e o preferido; senao
+ * vale a origem mais recente. `sources` mapeia IP de origem -> ultimo visto. */
+function pickJoinAddress(announced, port, sources) {
+  const announcedHost = hostOfAnnouncedAddress(announced);
+  if (sources.has(announcedHost)) return `${announcedHost}:${port}`;
+  let newestIp = null;
+  let newestSeen = -Infinity;
+  for (const [ip, seen] of sources) {
+    if (seen >= newestSeen) {
+      newestIp = ip;
+      newestSeen = seen;
+    }
+  }
+  return `${newestIp}:${port}`;
+}
+
+/** Tira do grupo as origens que nao renovaram dentro do TTL. */
+function pruneStaleSources(sources, now, ttl) {
+  for (const [ip, seen] of sources) {
+    if (now - seen > ttl) sources.delete(ip);
+  }
 }
 
 // --- Parte com socket de verdade ----------------------------------------
@@ -246,12 +283,26 @@ function createDiscovery({
       if (beacon) {
         const sourceIp = typeof rinfo.address === 'string' && rinfo.address ? rinfo.address : null;
         if (!sourceIp) return;
-        const key = `${sourceIp}:${beacon.port}`;
-        if (!rooms.has(key) && rooms.size >= maxRooms) {
+        // A sala e a que o host anunciou (`beacon.address`): o mesmo beacon
+        // chega por varios IPs de origem (uma interface por alvo de
+        // broadcast) e vira UMA linha. O teto conta grupos, entao um emissor
+        // que anuncia mil enderecos continua limitado a `maxRooms`.
+        const key = beacon.address;
+        const now = Date.now();
+        const previous = rooms.get(key);
+        if (!previous && rooms.size >= maxRooms) {
           const oldest = rooms.keys().next().value;
           rooms.delete(oldest);
         }
-        rooms.set(key, { ...beacon, address: key, lastSeen: Date.now() });
+        const sources = previous ? previous.sources : new Map();
+        pruneStaleSources(sources, now, ttlMs);
+        sources.set(sourceIp, now);
+        rooms.set(key, {
+          ...beacon,
+          address: pickJoinAddress(beacon.address, beacon.port, sources),
+          sources,
+          lastSeen: now,
+        });
         notify();
         return;
       }
@@ -283,7 +334,9 @@ function createDiscovery({
     });
   }
 
-  function startAdvertising({ name, port: roomPort, address, getPeerCount, protected: isProtected = false, version = null }) {
+  function startAdvertising({
+    name, port: roomPort, address, getPeerCount, protected: isProtected = false, version = null, mesa = true,
+  }) {
     stopAdvertising();
     advertising = true;
     const send = () => {
@@ -301,7 +354,9 @@ function createDiscovery({
       // Evita a sala ficar pendurada em "Ao vivo agora" depois que todo mundo
       // saiu. `undefined` (sem contagem) segue anunciando normalmente.
       if (peers === 0) return;
-      const payload = Buffer.from(formatBeacon({ name, port: roomPort, address, peers, protected: isProtected, version }));
+      const payload = Buffer.from(formatBeacon({
+        name, port: roomPort, address, peers, protected: isProtected, version, mesa,
+      }));
       for (const target of listBroadcastTargets()) {
         socket.send(payload, port, target, () => {});
       }

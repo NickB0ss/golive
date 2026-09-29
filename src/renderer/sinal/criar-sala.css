@@ -1,0 +1,25 @@
+/* ============ Criar sala: tipo da sala e PIN escolhido ============
+   Componentes do design system (.seg, .field, .input, .btn); aqui so o que o
+   dialogo "Criar sala" precisa a mais. Sem cor nem medida solta. */
+
+/* Segmentado com duas opcoes de duas linhas (titulo + explicacao): as
+   opcoes dividem a largura e crescem em altura conforme o texto. */
+.seg--tipo { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+.seg--tipo .seg__opt {
+  display: grid;
+  align-content: start;
+  gap: var(--s-05);
+  height: auto;
+  padding: var(--s-2) var(--s-3);
+  text-align: left;
+}
+.seg__title { font: var(--t-label); }
+.seg__sub { font: var(--t-meta); color: var(--tx3); }
+.seg--tipo .seg__opt[aria-checked='true'] .seg__sub { color: var(--tx2); }
+.seg--tipo .seg__opt:disabled { opacity: 0.5; }
+
+/* PIN: campo grande e o "Sortear" ao lado, alinhados pelo centro. */
+.field--pin { padding: 0 0 var(--s-3); }
+.field__row { display: flex; align-items: center; gap: var(--s-2); }
+.field__row .input { flex: 1 1 auto; min-width: 0; }
+.field__row .btn { flex: none; }

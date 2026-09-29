@@ -36,9 +36,22 @@ test('transmitindo: pausar ou retomar, trocar e parar; nada de transmitir de nov
   assert.ok(!pausado.includes('Transmitir tela'));
 });
 
-test('na Mesa: voltar para a Transmissao e por na Mesa', () => {
-  const rotulos = acoesDisponiveis({ lugar: 'room', naMesa: true }).map((a) => a.rotulo);
-  assert.ok(rotulos.includes('Voltar ao palco'));
+test('sala Mesa: sem alternar vista, sem Modo teatro, e as fontes so levam a janela', () => {
+  const acoes = acoesDisponiveis({
+    lugar: 'room',
+    soMesa: true,
+    fontes: [{ tileId: 'p1', nome: 'Ana', assistindo: false }, { tileId: 'cam-p2', nome: 'Bia', assistindo: true }],
+  });
+  const ids = acoes.map((a) => a.id);
+  const rotulos = acoes.map((a) => a.rotulo);
+  assert.ok(!ids.includes('mesa'));
+  assert.ok(!ids.includes('teatro'));
+  assert.ok(!ids.includes('ver-junto'));
+  assert.ok(!ids.includes('parar-assistir'));
+  assert.ok(!rotulos.some((r) => /palco|Assistir/.test(r)));
+  assert.ok(rotulos.includes('Ir até Ana'));
+  assert.ok(rotulos.includes('Ir até Bia'));
+  assert.equal(acoes.find((a) => a.rotulo === 'Ir até Ana').alvo, 'p1');
   assert.ok(rotulos.includes('Pôr na Mesa…'));
 });
 
@@ -48,4 +61,12 @@ test('filtrar ignora acento e poe comeco de palavra primeiro', () => {
   assert.deepEqual(filtrar(acoes, 'con').map((a) => a.rotulo), ['Configurações', 'Abrir a conversa']);
   assert.equal(filtrar(acoes, '').length, 3);
   assert.equal(filtrar(acoes, 'xyz').length, 0);
+});
+
+test('sala so transmissoes: sem os comandos da Mesa, com Modo teatro', () => {
+  const sem = acoesDisponiveis({ lugar: 'room', semMesa: true }).map((a) => a.id);
+  assert.ok(!sem.includes('mesa'));
+  assert.ok(!sem.includes('por-na-mesa'));
+  assert.ok(sem.includes('teatro'));
+  assert.ok(sem.includes('conversa'));
 });

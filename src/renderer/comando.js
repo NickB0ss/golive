@@ -14,12 +14,19 @@
    *   lugar: 'lobby' | 'room'
    *   fontes: [{ tileId, nome, assistindo }] (fontes ao vivo de outras pessoas)
    *   salas: [{ indice, nome }] (salas encontradas na rede)
-   *   transmitindo, pausado, cameraLigada, naMesa, conversaAberta: booleanos */
+   *   transmitindo, pausado, cameraLigada, conversaAberta: booleanos
+   *   soMesa: sala "Mesa" -- so ha a Mesa (sem Modo teatro, sem assistir/ver junto: o comando leva a janela)
+   *   semMesa: sala "so transmissoes" -- sem os comandos da Mesa */
   function acoesDisponiveis(estado = {}) {
     const acoes = [];
     const add = (id, rotulo, extra = {}) => acoes.push({ id, rotulo, ...extra });
     if (estado.lugar === 'room') {
       for (const f of estado.fontes || []) {
+        if (estado.soMesa) {
+          // Na Mesa quem decide o que se assiste sao as janelas visiveis: o comando so leva ate a janela.
+          add('assistir', `Ir até ${f.nome}`, { alvo: f.tileId });
+          continue;
+        }
         if (!f.assistindo) add('assistir', `Assistir ${f.nome}`, { alvo: f.tileId });
         else add('parar-assistir', `Parar de assistir ${f.nome}`, { alvo: f.tileId });
         if (!f.assistindo && !String(f.tileId).startsWith('cam-')) add('ver-junto', `Ver ${f.nome} junto`, { alvo: f.tileId });
@@ -31,10 +38,11 @@
         add('parar-transmitir', 'Parar de transmitir');
       }
       add('camera', estado.cameraLigada ? 'Desligar câmera' : 'Ligar câmera');
-      add('mesa', estado.naMesa ? 'Voltar ao palco' : 'Abrir a Mesa', { dica: 'M' });
-      if (estado.naMesa) add('por-na-mesa', 'Pôr na Mesa…');
+      // Os tipos de sala sao exclusivos: nao ha comando que alterne entre Mesa e palco.
+      if (estado.soMesa) add('por-na-mesa', 'Pôr na Mesa…');
       add('conversa', estado.conversaAberta ? 'Fechar a conversa' : 'Abrir a conversa', { dica: 'C' });
-      add('teatro', 'Modo teatro', { dica: 'T' });
+      // O Modo teatro e o palco em tela cheia: na sala Mesa nao ha palco.
+      if (!estado.soMesa) add('teatro', 'Modo teatro', { dica: 'T' });
       add('copiar-endereco', 'Copiar endereço da sala');
       add('diagnostico', 'Diagnóstico');
       add('configuracoes', 'Configurações');

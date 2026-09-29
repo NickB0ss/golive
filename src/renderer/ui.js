@@ -684,7 +684,10 @@
     const state = tileWatch.get(tileId);
     // Sem estado registrado o tile e assistido -- e o caso de todo tile que
     // nao e tela de outra pessoa (o proprio, as cameras).
-    const watched = !state || state.watched;
+    // Sala Mesa: toda tela e camera esta na Mesa, e quem decide o que chega e a janela estar a vista
+    // (mesa-view `wants`); nunca ha o cartao de "Assistir".
+    const salaMesa = root.GoLive.salaVista?.temMesa?.() === true;
+    const watched = !state || state.watched || salaMesa;
     const opts = state?.opts || {};
     const naMesa = document.body.classList.contains('mesa-open');
     const ocultarNoPalco = !watched && !naMesa;
@@ -750,7 +753,7 @@
     // sozinho ele seria um jeito de ficar sem ver nada, e a saida pra isso
     // ja e sair da sala ou pedir outra tela.
     const off = tile.querySelector('.tile__hud [data-acao="parar"]');
-    if (off) off.hidden = !(watched && opts.canDrop);
+    if (off) off.hidden = salaMesa || !(watched && opts.canDrop);
     // O card de "ver junto" tambem ocupa a tira: a troca de assistida nao
     // pode esperar a proxima track pra redesenhar a hierarquia do palco.
     syncGridCount();
@@ -1563,7 +1566,7 @@
           setAnnotDrawing(tileId, !tile.classList.contains('annot-on'));
           break;
         case 'volume':
-          openTileMenu(tileId, button, { parte: 'volume' });
+          openTileMenu(tileId, button, undefined, { parte: 'volume' });
           break;
         case 'espiar':
           openSpyWindow(tileId);
@@ -2332,7 +2335,10 @@
     const ws = tileWatch.get(id);
     const watched = !ws || ws.watched;
     let watchItem = '';
-    if (isCam) {
+    if (mesa) {
+      // Na Mesa quem decide o que chega e a janela estar a vista: nada de largar ou pedir de volta aqui.
+      watchItem = '';
+    } else if (isCam) {
       watchItem = watched
         ? '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta câmera</button>'
         : '<button type="button" class="tile-menu-watch" data-watch="only">Assistir câmera</button>';
@@ -2579,7 +2585,11 @@
         : 'atualize o seu GoLive';
       return escapeHtml(`Versão ${room.version} — ${quem}`);
     }
-    return room.protected ? '<svg class="i i--sm"><use href="#i-lock" /></svg>PIN' : '';
+    const parts = [];
+    if (room.protected) parts.push('<svg class="i i--sm"><use href="#i-lock" /></svg>PIN');
+    // Sala sem Mesa: o beacon avisa antes do clique (sem icone novo).
+    if (room.mesa === false) parts.push('<span>Só transmissões</span>');
+    return parts.join('');
   }
 
   /** Coluna da acao: "Entrar", "Conectando…" na sala escolhida, nada quando nao da para entrar. */
@@ -2695,6 +2705,85 @@
   let onCreateConfirm = null;
   let creatingRoom = false;
 
+  // Tipo da sala (radiogroup) e PIN escolhido por quem cria.
+  const roomKindMesaEl = $('room-kind-mesa');
+  const roomKindTransmissoesEl = $('room-kind-transmissoes');
+  const roomKindOptions = [roomKindMesaEl, roomKindTransmissoesEl];
+  const roomPinFieldEl = $('room-pin-field');
+  const roomPinInputEl = $('in-room-pin');
+  const roomPinRandomEl = $('btn-room-pin-random');
+  const ROOM_PIN_LENGTH = 6;
+  const ROOM_PIN_ERROR = 'O PIN precisa ter 6 dígitos.';
+
+  /** Marca a opcao escolhida do tipo de sala. Radiogroup: so a marcada entra
+   * na ordem de Tab (tabindex 0); a outra e alcancada pelas setas. */
+  function setRoomKind(mesa, { focus = false } = {}) {
+    const chosen = mesa === false ? roomKindTransmissoesEl : roomKindMesaEl;
+    for (const option of roomKindOptions) {
+      const isChosen = option === chosen;
+      option.setAttribute('aria-checked', String(isChosen));
+      option.tabIndex = isChosen ? 0 : -1;
+    }
+    if (focus) chosen.focus();
+  }
+  /** true = Mesa; false = so transmissoes. */
+  function isRoomKindMesa() {
+    return roomKindMesaEl.getAttribute('aria-checked') === 'true';
+  }
+  for (const option of roomKindOptions) {
+    option.addEventListener('click', () => { if (!creatingRoom) setRoomKind(option === roomKindMesaEl); });
+    option.addEventListener('keydown', (e) => {
+      if (creatingRoom) return;
+      const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      const next = (roomKindOptions.indexOf(option) + step + roomKindOptions.length) % roomKindOptions.length;
+      setRoomKind(roomKindOptions[next] === roomKindMesaEl, { focus: true });
+    });
+  }
+
+  /** Mostra ou esconde o campo de PIN conforme o switch "Proteger com PIN".
+   * Desligado, o campo some e o valor vai junto (nao e enviado). */
+  function syncRoomPinField({ focus = false } = {}) {
+    const protect = $('chk-protect-room').checked;
+    roomPinFieldEl.hidden = !protect;
+    if (!protect) {
+      roomPinInputEl.value = '';
+      roomPinInputEl.removeAttribute('aria-invalid');
+    } else if (focus) {
+      roomPinInputEl.focus();
+    }
+  }
+  $('chk-protect-room').addEventListener('change', () => syncRoomPinField({ focus: true }));
+
+  /** Seis digitos sorteados com crypto.getRandomValues. Descarta bytes >= 250
+   * para `% 10` nao favorecer os primeiros digitos. */
+  function randomRoomPin() {
+    const digits = [];
+    while (digits.length < ROOM_PIN_LENGTH) {
+      const bytes = crypto.getRandomValues(new Uint8Array(ROOM_PIN_LENGTH * 2));
+      for (const byte of bytes) {
+        if (byte < 250 && digits.length < ROOM_PIN_LENGTH) digits.push(byte % 10);
+      }
+    }
+    return digits.join('');
+  }
+  function clearRoomPinInvalid() {
+    roomPinInputEl.removeAttribute('aria-invalid');
+    if ($('create-room-error').textContent === ROOM_PIN_ERROR) $('create-room-error').textContent = '';
+  }
+  roomPinRandomEl.addEventListener('click', () => {
+    roomPinInputEl.value = randomRoomPin();
+    clearRoomPinInvalid();
+    roomPinInputEl.focus();
+  });
+  // Descarta o que nao for digito enquanto se digita (tambem na colagem).
+  roomPinInputEl.addEventListener('input', () => {
+    const digits = window.GoLive.roomUi.soDigitosDoPin(roomPinInputEl.value);
+    if (digits !== roomPinInputEl.value) roomPinInputEl.value = digits;
+    clearRoomPinInvalid();
+  });
+
   /** Estado ocupado do "Criar": subir o servidor embutido inclui pedir
    * liberacao de firewall ao Windows, que pode abrir um prompt de elevacao
    * e demorar segundos. O Cancelar tambem desabilita -- nao ha o que
@@ -2710,11 +2799,17 @@
     $('chk-protect-room').disabled = busy;
     $('chk-advertise-room').disabled = busy;
     $('in-room-name').disabled = busy;
+    for (const option of roomKindOptions) option.disabled = busy;
+    roomPinInputEl.disabled = busy;
+    roomPinRandomEl.disabled = busy;
   }
 
-  function openCreateRoom({ onConfirm, advertise = true, roomNameDefault = '' }) {
+  function openCreateRoom({ onConfirm, advertise = true, mesa = true, roomNameDefault = '' }) {
     $('create-room-error').textContent = '';
     $('chk-protect-room').checked = false;
+    syncRoomPinField();
+    // Ultima escolha do tipo de sala (persistida no config), como o "anunciar".
+    setRoomKind(mesa !== false);
     // Ultima escolha do usuario (persistida no config) vira o padrao.
     $('chk-advertise-room').checked = advertise !== false;
     // P1: campo vem pre-preenchido com o padrao de hoje -- quem nao mexe
@@ -2742,10 +2837,21 @@
   btnCreateConfirmEl.addEventListener('click', async () => {
     if (creatingRoom || !onCreateConfirm) return;
     const handler = onCreateConfirm;
+    const protect = $('chk-protect-room').checked;
+    // PIN ligado sem exatamente 6 digitos: nao cria, avisa e devolve o foco.
+    if (protect && !window.GoLive.roomUi.pinDaSalaValido(roomPinInputEl.value)) {
+      $('create-room-error').textContent = ROOM_PIN_ERROR;
+      roomPinInputEl.setAttribute('aria-invalid', 'true');
+      roomPinInputEl.focus();
+      return;
+    }
     setCreateRoomBusy(true);
     try {
       await handler({
-        protect: $('chk-protect-room').checked,
+        protect,
+        // O PIN so viaja quando a sala e protegida.
+        ...(protect ? { pin: roomPinInputEl.value } : {}),
+        mesa: isRoomKindMesa(),
         advertise: $('chk-advertise-room').checked,
         // P1: mesma normalizacao do servidor (roomname.js, espelhado em
         // signaling-core.js) -- o servidor normaliza de novo de qualquer
@@ -3093,7 +3199,6 @@
     if (eu && [...tileWatch.values()].some((w) => w.watched)) return 'watching';
     return 'present';
   }
-  const ORDEM_NO = { live: 0, paused: 1, watching: 2, present: 3 };
 
   function renderMembers(peers, self, qualityTags, opcoes = {}) {
     ultimasPresencas = [peers, self, qualityTags, opcoes];
@@ -3108,28 +3213,28 @@
     if (self) pessoas.push({ ...self, id: 'me', isSelf: true });
     for (const peer of peers.values()) pessoas.push({ ...peer, isSelf: false });
     const presenceCount = pessoas.length;
-    const presenceNodes = $('presence-nodes');
-    if (presenceNodes) {
-      // Ao vivo primeiro, depois pausado, assistindo e na sala; voce por ultimo.
-      const nos = pessoas.map((pessoa) => ({ pessoa, estado: estadoNo(pessoa) }))
-        .sort((a, b) => (a.pessoa.isSelf - b.pessoa.isSelf) || (ORDEM_NO[a.estado] - ORDEM_NO[b.estado]));
-      presenceNodes.innerHTML = nos.slice(0, 5).map(({ estado }) => `<span class="node" data-size="16" data-state="${estado}"></span>`)
-        .join('') + (nos.length > 5 ? `<span class="cluster__more">+${nos.length - 5}</span>` : '');
-    }
     $('presence-count').textContent = String(presenceCount);
     renderBus(pessoas);
     renderMeNode(self);
-    $('btn-room-presence')?.setAttribute('aria-label', `Pessoas na sala: ${presenceCount}`);
+    $('btn-room-presence')?.setAttribute('aria-label', `Pessoas: ${presenceCount}`);
     // A mesma leitura dos nos: camera ligada ou tela pausada tambem estao no ar.
     const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas.map((pessoa) => ({
       ...pessoa, noAr: ['live', 'paused'].includes(estadoNo(pessoa)),
     })));
-    for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], ['NA SALA', secoes.naSala]]) {
+    // O cabecalho ja diz "Pessoas": so quem esta ao vivo ganha rotulo; o resto vem depois de uma linha.
+    for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], [null, secoes.naSala]]) {
       if (!lista.length) continue;
-      const secao = document.createElement('li');
-      secao.className = 'menu__label';
-      secao.textContent = titulo;
-      peerListEl.appendChild(secao);
+      if (titulo) {
+        const secao = document.createElement('li');
+        secao.className = 'menu__label';
+        secao.textContent = titulo;
+        peerListEl.appendChild(secao);
+      } else if (secoes.aoVivo.length) {
+        const linha = document.createElement('li');
+        linha.className = 'menu__sep';
+        linha.setAttribute('role', 'separator');
+        peerListEl.appendChild(linha);
+      }
       for (const pessoa of lista) {
         const assistido = tileWatch.get(pessoa.id)?.watched !== false;
         const estado = estadoPresenca(pessoa, assistido, mesaPeople);
@@ -3183,8 +3288,10 @@
     const quem = (tileWatchers.get(tileId) || []).slice(0, 4)
       .map((w) => `<span class="node" data-size="16" data-state="watching" title="${escapeHtml(w.name || '')}"></span>`)
       .join('');
-    const podeJunto = kind === 'screen' && !watched && tileWatch.get(tileId)?.opts?.canAdd;
-    const podeLargar = watched && (kind === 'camera' || tileWatch.get(tileId)?.opts?.canDrop);
+    // Ver junto e o × de largar so existem escolhendo o que assistir no palco; na sala Mesa nao.
+    const noPalco = root.GoLive.roomUi.controlesDoPalco(root.GoLive.salaVista?.temMesa?.() === true);
+    const podeJunto = noPalco && kind === 'screen' && !watched && tileWatch.get(tileId)?.opts?.canAdd;
+    const podeLargar = noPalco && watched && (kind === 'camera' || tileWatch.get(tileId)?.opts?.canDrop);
     const estado = [paused ? 'pausada' : 'ao vivo', watched ? 'você está assistindo' : ''].filter(Boolean).join(', ');
     return `
       <div class="src" role="option" tabindex="-1" data-tile="${escapeHtml(tileId)}" data-kind="${kind}"
@@ -3236,11 +3343,15 @@
   if (busSourcesEl) new ResizeObserver(marcarTransbordo).observe(busSourcesEl);
 
 
-  /** Clique = assistir so esta; Ctrl+clique = somar; o × larga. Estando na
-   * Mesa, escolher uma fonte de video volta para a Transmissao. */
+  /** Sala so de transmissoes: clique = assistir so esta; Ctrl+clique = somar; o × larga. Sala Mesa: quem decide o
+   * que se assiste sao as janelas visiveis, entao o clique so leva ate a janela da fonte (nunca ao palco). */
   function escolherFonte(tileId, intent) {
     const vista = root.GoLive.salaVista;
-    if (intent !== 'remove' && vista?.isMesa()) vista.setRoomView('tx');
+    const acao = root.GoLive.roomUi.cliqueDaFonte(vista?.temMesa?.() === true);
+    if (acao === 'centralizar') {
+      if (intent !== 'remove') vista.focusMedia(tileId);
+      return;
+    }
     onWatchIntent?.(tileId, intent);
   }
 
@@ -3463,6 +3574,7 @@
    * `imagem` guarda). Vazio se nao ha o que pôr, ou se o app nao pediu. */
   function chatPutHtml(entry) {
     if (!onChatPut) return '';
+    if (root.GoLive.salaVista?.temMesa?.() === false) return ''; // sala sem Mesa
     const L = root.GoLive.mesaMidiaLinks;
     const lib = root.GoLive.chatImagensLib;
     const links = lib && L ? lib.youtubeLinks(entry.text, L.parseYouTube) : [];
@@ -3549,7 +3661,18 @@
     $('chat-jump-new').classList.add('hidden');
   }
 
+  // As ultimas mensagens de pessoas (sem linhas de sistema): e o que o "Espiar" mostra na hora.
+  const PEEK_MAX = 3;
+  const recentesConversa = [];
+
+  function lembrarRecente(entry) {
+    if (entry.system) return;
+    recentesConversa.push(entry);
+    while (recentesConversa.length > PEEK_MAX) recentesConversa.shift();
+  }
+
   function appendEntry(entry) {
+    lembrarRecente(entry);
     // Decide ANTES de inserir: depois da insercao a lista ja cresceu e
     // "estava no fim" viraria sempre falso.
     const seguir = estaNoFim();
@@ -3579,24 +3702,46 @@
   // programa e some sozinha em 6 s; no maximo 3 de uma vez. Clique abre a
   // conversa fixada.
   const chatPeekEl = $('chat-peek');
-  const PEEK_MAX = 3;
+
+  function novaBolhaEspiar(classe = '') {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `peek__msg${classe ? ` ${classe}` : ''}`;
+    item.addEventListener('click', () => document.dispatchEvent(new CustomEvent('golive:conv-open')));
+    item.addEventListener('animationend', () => item.remove());
+    return item;
+  }
 
   function espiarMensagem(entry) {
     if (!chatPeekEl || $('app')?.dataset.conv !== 'peek') return;
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'peek__msg';
+    const item = novaBolhaEspiar();
     const cor = avatarColorFor(String(entry.from));
     const texto = entry.text || (entry.image ? 'mandou uma imagem' : '');
     item.innerHTML = `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>`
       + `<span class="peek__text"><b class="peek__who" style="--who:${cor}">${escapeHtml(entry.name)}</b>${escapeHtml(texto)}</span>`;
-    item.addEventListener('click', () => document.dispatchEvent(new CustomEvent('golive:conv-open')));
-    item.addEventListener('animationend', () => item.remove());
     chatPeekEl.appendChild(item);
     while (chatPeekEl.children.length > PEEK_MAX) chatPeekEl.firstElementChild.remove();
   }
 
+  /**
+   * Ao entrar no modo espiar por clique: mostra na hora as ultimas mensagens (ate 3) como bolhas;
+   * sem nenhuma, uma bolha so de texto avisa que as novas aparecem ali. Tudo some sozinho.
+   */
+  function espiarRecentes() {
+    if (!chatPeekEl || $('app')?.dataset.conv !== 'peek') return;
+    chatPeekEl.replaceChildren();
+    if (!recentesConversa.length) {
+      const aviso = novaBolhaEspiar('peek__msg--aviso');
+      aviso.innerHTML = '<span class="peek__text">Espiando: mensagens novas aparecem aqui.</span>';
+      chatPeekEl.appendChild(aviso);
+      return;
+    }
+    for (const entry of recentesConversa) espiarMensagem(entry);
+  }
+
   function setHistory(entries) {
+    recentesConversa.length = 0;
+    for (const entry of entries || []) lembrarRecente(entry);
     chatMessagesEl.innerHTML = '';
     lastChatEntry = null;
     lastChatDayKey = null;
@@ -5426,7 +5571,8 @@
       transmitindo: $('btn-toggle-share')?.getAttribute('aria-pressed') === 'true',
       pausado: $('btn-pause-share')?.getAttribute('aria-pressed') === 'true',
       cameraLigada: $('btn-toggle-camera')?.getAttribute('aria-pressed') === 'true',
-      naMesa: Boolean(root.GoLive.salaVista?.isMesa()),
+      soMesa: root.GoLive.salaVista?.temMesa?.() === true,
+      semMesa: root.GoLive.salaVista?.temMesa?.() === false,
       conversaAberta: app?.dataset.conv === 'pinned',
     };
   }
@@ -5443,7 +5589,6 @@
       case 'pausar': clicar('#btn-pause-share'); break;
       case 'trocar-fonte': clicar('#btn-swap-share'); break;
       case 'camera': clicar('#btn-toggle-camera'); break;
-      case 'mesa': clicar('#view-mesa'); break;
       case 'por-na-mesa': clicar('#btn-mesa-add'); break;
       case 'conversa': clicar('#btn-conv-toggle'); break;
       case 'teatro': $('app')?.toggleAttribute('data-theater'); break;
@@ -5585,7 +5730,7 @@
     },
     picker: { open: openPicker },
     members: { render: renderMembers, renderBanned },
-    chat: { render, append, setHistory, setEnabled, setAttachment, clearAttachment },
+    chat: { render, append, setHistory, espiarRecentes, setEnabled, setAttachment, clearAttachment },
     soundMeter: { setVisible: setSoundMeterVisible, setLevel: setSoundMeterLevel },
     warnings: warningCenter,
     setToggleState,

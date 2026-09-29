@@ -73,10 +73,11 @@
 .addr .i { width: 14px; height: 14px; color: var(--tx3); }
 .addr[data-copied] { color: var(--ok); }
 
-.presence-btn { display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-ctl); padding: 0 var(--s-2);
-  border-radius: var(--r-xs); --cluster-bg: var(--bg); }
-.presence-btn:hover { background: var(--veil); --cluster-bg: color-mix(in srgb, var(--tx) 10%, var(--bg)); }
-.presence-btn .tx-data { color: var(--tx); }
+/* Pessoas na sala: botao calado com o icone de duas pessoas e o numero. */
+#btn-room-presence .tx-data { color: var(--tx); }
+
+/* Sair da sala: perigo (laranja), com texto; abaixo de 1024 px encolhe para "Sair". */
+.sair__curto { display: none; }
 
 /* Controles da janela (Windows): largos, sem cor de destaque. */
 .winctl { display: flex; align-self: stretch; margin-left: var(--s-2); }
@@ -354,6 +355,7 @@ body.room-idle .tile.fullscreen { cursor: none; }
   text-align: left;
   animation: peek-life 6s var(--ease-out) forwards;
 }
+.peek__msg--aviso { grid-template-columns: minmax(0, 1fr); color: var(--tx2); }
 .peek__who { font: var(--t-label); margin-right: var(--s-15); color: var(--who, var(--tx)); }
 @keyframes peek-life { 0% { opacity: 0; transform: translateY(6px); } 5%, 85% { opacity: 1; transform: none; }
   100% { opacity: 0; } }
@@ -464,6 +466,8 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .bus__live { display: contents; }
 .bus__sep { flex: none; width: 1px; height: 32px; margin: 0 var(--s-1); background: var(--line); }
 .bus__end { display: flex; align-items: center; gap: var(--s-1); flex: none; }
+/* Pôr coisa na sala: transmitir tela, camera e Pôr na Mesa, num grupo so e com o mesmo espaco. */
+.bus__acts { display: flex; align-items: center; gap: var(--s-2); flex: none; }
 
 /* Fonte: tudo o que se pode assistir. */
 .src {
@@ -516,22 +520,6 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .src:hover .src__add, .src:focus-within .src__add { display: inline-flex; }
 .src[data-watching]:hover .src__add { display: none; }
 .src[data-watching]:hover .src__drop, .src[data-watching]:focus-within .src__drop { display: inline-flex; }
-
-.src__glyph {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-}
-.src__glyph::before {
-  content: '';
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid var(--tx2);
-  border-radius: 2px;
-  transform: rotate(45deg);
-}
-.src--mesa[data-current] .src__glyph::before { border-color: var(--wire); background: var(--wire-soft); }
 
 /* A sua fonte. */
 /* A sua fonte: sem transmitir e so o botao Transmitir; ao vivo vira o bloco
@@ -595,7 +583,10 @@ body.room-idle .tile.fullscreen { cursor: none; }
   .src__text { max-width: 84px; }
   .src__sub { display: none; }
   .me__live .src__text { max-width: 116px; }
-  .bus__end :is(.btn__label, .btn-label) { display: none; }
+  .bus__acts :is(#btn-toggle-camera, #btn-mesa-add) :is(.btn__label, .btn-label) { display: none; }
+  .bus__end .btn__label { display: none; }
+  .sair__cheio { display: none; }
+  .sair__curto { display: inline; }
   .addr { display: none; }
   .room-menu .room-menu__estreito { display: flex; }
   .me .me__share[aria-pressed='true'] { width: var(--h-ctl-sm); padding: 0; }
@@ -654,7 +645,8 @@ body.room-idle .tile.fullscreen { cursor: none; }
 .room-menu label.menu__item:focus-visible { box-shadow: inset 0 0 0 2px var(--wire); }
 .stage-empty .blank__art { color: var(--line2); }
 .stage-empty__acoes { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); margin-top: var(--s-2); }
-.bus__live:empty + .bus__sep { display: none; }
+/* Ninguem ao vivo e ninguem na Mesa para mostrar: o separador antes de "Transmitir tela" ficaria solto. */
+.bus__sources:has(.bus__live:empty) + #stage-mesa-people[hidden] + .bus__sep { display: none; }
 
 /* ============ Central de avisos (popover da cabeca) ============ */
 .warn-center-wrap { position: relative; display: flex; }

@@ -82,9 +82,8 @@
   // Mesa (spec 2026-09-24): a vista e de cada pessoa. `mesaView` e o
   // controlador de mesa-view.js (criado mais abaixo, junto dos outros
   // ganchos da grade); `mesaViewers` e quem esta na vista Mesa agora e
-  // `mesaCount` quantas janelas a mesa tem e `mesaLocks` as travas -- as tres
-  // coisas chegam mesmo a quem esta na Transmissao (welcome, mesa-viewers,
-  // mesa-count).
+  // `mesaLocks` as travas -- as duas coisas chegam antes de a Mesa abrir (welcome,
+  // mesa-viewers, mesa-count).
   let mesaView = null;
   let mesaPor = null; // "Pôr na mesa" do chat e da Galeria (mesa-por.js)
   // As imagens que o historico do chat ainda guarda (espelho das regras do
@@ -93,8 +92,10 @@
   const chatImagens = window.GoLive.chatImagensLib.createStore({ isImage: window.GoLive.chatmedia.isImageDataUrl });
   window.GoLive.chatImagens = chatImagens;
   let mesaViewers = [];
-  let mesaCount = 0;
   let mesaLocks = null;
+  // Tipo da sala vindo do welcome: false = "so transmissoes" (sem Mesa). Zera
+  // ao sair da sala (golive:room-hidden).
+  let roomMesa = true;
   let joinedAtMs = null;
   let notifyTracker = livenotify.createTracker();
   let roomId = null;
@@ -1389,6 +1390,15 @@
   // `protect` vem por argumento (nao relido do DOM): o dialogo de criar pode
   // ja ter fechado quando isto resolve. Devolve { ok } | { ok:false, error }
   // -- quem chama decide se fecha o dialogo ou mostra o erro nele.
+  /** Texto do erro do room:host para o dialogo de criar sala. */
+  function hostErrorText(code) {
+    if (code === 'PORTS_EXHAUSTED') {
+      return 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.';
+    }
+    if (code === 'PIN_INVALIDO') return 'O PIN precisa ter 6 dígitos.';
+    return `Não consegui subir a sala: ${code}`;
+  }
+
   async function hostRoomFlow(protect, advertise, seed = {}, preserveMigrationOrphan = false, canContinue = null) {
     showLobbyError('');
     let result;
@@ -1400,9 +1410,7 @@
     if (!result.ok) {
       return {
         ok: false,
-        error: result.error === 'PORTS_EXHAUSTED'
-          ? 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.'
-          : `Não consegui subir a sala: ${result.error}`,
+        error: hostErrorText(result.error),
       };
     }
     // A criacao pode ter esperado uma decisao UAC. A migracao pode ter sido
@@ -1606,6 +1614,9 @@
       // Mesa: o retrato que o servidor antigo mandou no room-migrating.
       // Queda abrupta nao tem retrato: a mesa recomeca vazia.
       initialMesa: migration.mesa || null,
+      // O tipo da sala segue o host: "so transmissoes" continua assim depois
+      // de trocar de host (o cliente sabe pelo welcome; o servidor tambem avisa).
+      mesa: roomMesa && migration.mesaEnabled !== false,
       // P1: o sucessor preserva o nome da sala em vez de a sala nova cair
       // no proprio nome de quem assumiu.
       roomName: migration.roomName || currentRoomName || null,
@@ -1700,21 +1711,24 @@
       // Ultima escolha do usuario vira o padrao da caixa "anunciar" -- quem
       // sempre anuncia (ou nunca) nao precisa marcar nada de novo.
       advertise: cfg.network.advertise,
+      // Ultimo tipo de sala escolhido (Mesa ou so transmissoes), como o "anunciar".
+      mesa: cfg.network.roomMesa !== false,
       // P1: padrao do campo "Nome da sala" -- quem nao digita nada mantem o
       // comportamento de sempre (a sala se chama "Sala de <seu nome>").
       roomNameDefault: `Sala de ${cfg.name || 'anônimo'}`,
       // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
       // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
       // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
-      onConfirm: async ({ protect, advertise, roomName }) => {
+      onConfirm: async ({ protect, pin, mesa, advertise, roomName }) => {
         ui.dialogs.setCreateRoomError('');
         // Persistido ANTES do resultado: a preferencia e da pessoa, nao da
         // sala que talvez nem suba.
-        if (advertise !== cfg.network.advertise) {
-          cfg = { ...cfg, network: { ...cfg.network, advertise } };
+        if (advertise !== cfg.network.advertise || mesa !== (cfg.network.roomMesa !== false)) {
+          cfg = { ...cfg, network: { ...cfg.network, advertise, roomMesa: mesa } };
           persist();
         }
-        const res = await hostRoomFlow(protect, advertise, { roomName });
+        // O PIN so vai quando a sala e protegida; o main valida de novo.
+        const res = await hostRoomFlow(protect, advertise, { roomName, mesa, ...(protect ? { pin } : {}) });
         if (res.ok) ui.dialogs.closeCreateRoom();
         else ui.dialogs.setCreateRoomError(res.error);
       },
@@ -2989,7 +3003,11 @@
   $('btn-conv-toggle').addEventListener('click', () => {
     setConversation($('app').dataset.conv === 'pinned' ? 'closed' : 'pinned', { persist: true });
   });
-  $('btn-conv-peek').addEventListener('click', () => setConversation('peek', { persist: true }));
+  $('btn-conv-peek').addEventListener('click', () => {
+    setConversation('peek', { persist: true });
+    // O clique tem que mostrar algo na hora: as ultimas mensagens, ou um aviso de que as novas vao surgir.
+    ui.chat.espiarRecentes();
+  });
   document.addEventListener('golive:conv-open', () => setConversation('pinned', { persist: true }));
   $('btn-conv-close').addEventListener('click', () => setConversation('closed', { persist: true }));
   function resetRoomTabs() {
@@ -3524,6 +3542,10 @@
     try {
     switch (msg.type) {
       case 'welcome': {
+        // Primeiro de tudo: o historico do chat e as vistas abaixo ja dependem do tipo.
+        roomMesa = msg.mesa !== false;
+        // O Modo teatro e do palco: uma sala Mesa nunca herda o da sala anterior.
+        if (roomMesa) document.getElementById('app').removeAttribute('data-theater');
         const waitingOrphan = session.reconnectWithOrphan ? orphanSession : null;
         const welcomePeers = Array.isArray(msg.peers) ? msg.peers : [];
         const migratedRoom = Boolean(waitingOrphan && session.preserveMigrationOrphan
@@ -3698,14 +3720,16 @@
         // Mesa: o welcome nao traz a mesa, so quantas janelas e quem esta
         // nela. Quem estava na vista Mesa pede o retrato de novo (depois de
         // QUALQUER welcome -- o servidor tira a pessoa da Mesa ao retomar).
-        mesaCount = Number.isInteger(msg.mesaCount) ? msg.mesaCount : 0;
         mesaViewers = Array.isArray(msg.mesaViewers) ? msg.mesaViewers.map(String) : [];
         mesaLocks = typeof msg.mesaLocks?.leaderOnly === 'boolean' && typeof msg.mesaLocks?.lockSize === 'boolean'
           ? { leaderOnly: msg.mesaLocks.leaderOnly, lockSize: msg.mesaLocks.lockSize }
           : null;
         renderViewSwitch();
         renderRoomMore();
-        mesaView?.afterWelcome();
+        // Sala Mesa: a Mesa abre sozinha em QUALQUER welcome (entrada, retomada, migracao) e nao fecha ate
+        // sair da sala. Ja aberta, o welcome so pede o retrato de novo.
+        if (roomMesa && !mesaView?.isOpen()) setRoomView('mesa');
+        else mesaView?.afterWelcome();
         mesaView?.onViewers();
         mesaView?.onLeaderChange();
         break;
@@ -3911,7 +3935,6 @@
         break;
       }
       case 'mesa-count': {
-        if (Number.isInteger(msg.count) && msg.count >= 0) mesaCount = msg.count;
         if (typeof msg.leaderOnly === 'boolean' && typeof msg.lockSize === 'boolean') {
           mesaLocks = { leaderOnly: msg.leaderOnly, lockSize: msg.lockSize };
         }
@@ -3958,6 +3981,7 @@
           chat: Array.isArray(msg.chat) ? msg.chat : [],
           // A mesa da sala (retrato + idFloor): o sucessor a semeia.
           mesa: msg.mesa && typeof msg.mesa === 'object' ? msg.mesa : null,
+          mesaEnabled: msg.mesaEnabled !== false,
         }, {
           candidates: migrationCandidates(session),
           announcedSuccessor: typeof msg.successor === 'string' ? msg.successor : null,
@@ -5845,7 +5869,7 @@
     onWatchChange: () => broadcastViewState(),
     onOpenChange: (on) => {
       document.body.classList.toggle('mesa-open', on);
-      $('btn-mesa-add').classList.toggle('hidden', !on);
+      $('btn-mesa-add').classList.toggle('hidden', !on || !roomMesa);
       renderViewSwitch();
       renderRoomMore();
     },
@@ -5871,35 +5895,30 @@
   });
   window.GoLive.mesaPor = { put: (type, action) => mesaPor.put(type, action) };
 
-  // A Mesa e uma fonte do barramento (05 §3.2): escolhe-la troca o programa
-  // para a vista Mesa; escolhe-la de novo (ou qualquer fonte de video) volta
-  // para a Transmissao. A vista e de cada pessoa, nao da sala.
+  // Os tipos de sala sao exclusivos: sala Mesa so tem a Mesa (abre sozinha no welcome e so fecha ao sair da
+  // sala), sala "so transmissoes" so tem o palco. Nao ha vista para alternar; a vista e de cada pessoa.
   function setRoomView(view) {
+    if (!window.GoLive.roomUi.vistaPermitida(view, roomMesa)) return;
     if (view === 'mesa') mesaView.open();
-    else mesaView.close();
     renderViewSwitch();
   }
 
   function renderViewSwitch() {
-    const naMesa = Boolean(mesaView?.isOpen());
     ui.grid.refreshWatchGates();
-    const mesa = $('view-mesa');
-    mesa.setAttribute('aria-selected', String(naMesa));
-    mesa.toggleAttribute('data-current', naMesa);
-    // Quem esta na Transmissao ve que a mesa tem janelas (mesa-count).
-    const janelas = mesaCount === 1 ? '1 janela' : `${mesaCount} janelas`;
-    const sub = naMesa ? 'Voltar ao palco' : (mesaCount > 0 ? janelas : 'Abrir a Mesa');
-    $('view-mesa-count').textContent = sub;
-    mesa.setAttribute('aria-label', naMesa ? 'Mesa aberta. Voltar ao palco' : `Mesa, ${mesaCount > 0 ? janelas : 'vazia'}`);
   }
 
-  $('view-mesa').addEventListener('click', () => setRoomView(mesaView.isOpen() ? 'tx' : 'mesa'));
-  $('view-mesa').addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    e.preventDefault();
-    setRoomView(mesaView.isOpen() ? 'tx' : 'mesa');
-  });
-  window.GoLive.salaVista = { setRoomView, isMesa: () => Boolean(mesaView?.isOpen()) };
+  /** Clique numa fonte do barramento numa sala Mesa: leva ate a janela dela (mesa-view.js). */
+  function focusMedia(tileId) {
+    const { kind, peerId } = window.GoLive.roomUi.fonteDoTile(tileId);
+    mesaView.focusMedia(kind, peerId);
+  }
+
+  window.GoLive.salaVista = {
+    setRoomView,
+    focusMedia,
+    isMesa: () => Boolean(mesaView?.isOpen()),
+    temMesa: () => roomMesa,
+  };
 
   $('btn-mesa-add').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5918,6 +5937,11 @@
   function renderRoomMore() {
     const leader = ownerId === 'me';
     const locks = mesaView?.locks() || mesaLocks;
+    // Sala "so transmissoes": o bloco inteiro da Mesa some do menu.
+    for (const id of ['room-more-mesa-sep', 'room-more-mesa-label', 'opt-mesa-cursors-row',
+      'opt-mesa-leader-only-row', 'opt-mesa-lock-size-row', 'opt-mesa-locks-hint']) {
+      $(id).hidden = !roomMesa;
+    }
     $('opt-mesa-leader-only-row').classList.toggle('hidden', !leader);
     $('opt-mesa-lock-size-row').classList.toggle('hidden', !leader);
     // Servidores antigos nao mandam as travas para a Transmissao: so nesse
@@ -5929,6 +5953,9 @@
       box.checked = Boolean(locks?.[key]);
       box.parentElement?.setAttribute('aria-checked', String(box.checked));
     }
+    // Modo teatro (o palco em tela cheia) nao existe na sala Mesa.
+    const teatro = $('room-more').querySelector('[data-room-action="theater"]');
+    teatro.hidden = !window.GoLive.roomUi.controlesDoPalco(roomMesa);
     $('opt-mesa-cursors').checked = Boolean(mesaView?.showsCursors());
     $('opt-mesa-cursors').parentElement?.setAttribute('aria-checked', String($('opt-mesa-cursors').checked));
   }
@@ -6004,11 +6031,14 @@
   document.addEventListener('keydown', (event) => {
     const field = event.target?.matches?.('input, textarea, select, [contenteditable="true"]');
     if (field || document.getElementById('app').dataset.place !== 'room') return;
-    if (event.key === 't' || event.key === 'T') document.getElementById('app').toggleAttribute('data-theater');
+    // Modo teatro e do palco; a sala Mesa nao tem palco. Nao ha atalho para alternar Mesa e palco.
+    const teatroLivre = window.GoLive.roomUi.controlesDoPalco(roomMesa);
+    if (teatroLivre && (event.key === 't' || event.key === 'T')) {
+      document.getElementById('app').toggleAttribute('data-theater');
+    }
     if (event.key === 'Escape' && document.getElementById('app').hasAttribute('data-theater')) {
       document.getElementById('app').removeAttribute('data-theater');
     }
-    if (event.key === 'm' || event.key === 'M') setRoomView(mesaView?.isOpen() ? 'transmissao' : 'mesa');
     if (event.key === 'c' || event.key === 'C') {
       const app = document.getElementById('app');
       app.dataset.conv = app.dataset.conv === 'closed' ? window.GoLive.roomUi.modoConversa(window.innerWidth) : 'closed';
@@ -6023,15 +6053,15 @@
   });
 
   // A sala saiu da tela (Sair da sala, sala fechada, entrada recusada): a
-  // Mesa desmonta sem avisar ninguem e a proxima sala abre na Transmissao.
+  // Mesa desmonta sem avisar ninguem; a proxima sala abre no que o welcome disser.
   document.addEventListener('golive:room-hidden', () => {
     mesaView.close({ silent: true });
     mesaPor.reset();
     chatImagens.clear();
     mesaViewers = [];
     mesaView.onViewers();
-    mesaCount = 0;
     mesaLocks = null;
+    roomMesa = true;
     setRoomMoreOpen(false);
     renderViewSwitch();
   });

@@ -44,7 +44,6 @@
     locked: 'Só o líder mexe na Mesa agora.',
     'size-locked': 'O líder travou o tamanho das janelas.',
     'leader-only': 'Só o líder da sala muda isso.',
-    'not-yours': 'Só a própria pessoa ou o líder tira esta tela da Mesa.',
     full: 'A Mesa já tem 32 janelas.',
     'no-space': 'Não há lugar livre na Mesa para esta janela.',
     'too-small': 'A janela ficaria pequena demais.',
@@ -240,6 +239,8 @@
       s.ro?.disconnect();
       for (const rec of s.wins.values()) unmountWin(rec, { returnTile: true });
       s.section.remove();
+      s.menuEl.remove();
+      s.subEl.remove();
       S = null;
       renderPeople();
       lastAnnotateViewers = new Set();
@@ -295,16 +296,10 @@
       sec.setAttribute('aria-label', 'Mesa da sala');
       sec.setAttribute('aria-describedby', 'mesa-help');
       sec.innerHTML = `
-        <p id="mesa-help" class="sr-only">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa.</p>
+        <p id="mesa-help" class="sr-only">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa as janelas que não são tela nem câmera.</p>
         <div class="mesa-grid" aria-hidden="true"></div>
         <div class="mesa-world"><div class="mesa-edge" aria-hidden="true"></div></div>
         <div class="mesa-over" aria-hidden="true"></div>
-        <div class="mesa-empty blank" hidden>
-          <p class="blank__title">A Mesa está vazia.</p>
-          <!-- Sem botao proprio: "Pôr na Mesa" ja esta na barra de baixo (mesma regra do Início). -->
-          <p class="blank__text">Comece por um destes ou veja todos em <b>Pôr na Mesa</b>, na barra de baixo.</p>
-          <div class="mesa-empty__shortcuts" aria-label="Atalhos para pôr na Mesa"></div>
-        </div>
         <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>Abrindo a Mesa…</p>
         <div class="mesa-people" role="group" aria-label="Quem está na Mesa"></div>
         <div class="mesa-nav">
@@ -319,16 +314,12 @@
           </div>
         </div>
         <p class="mesa-lock-note" hidden></p>
-        <p class="sr-only mesa-live" aria-live="polite"></p>
-        <div class="mesa-menu pop" role="menu" hidden></div>
-        <div class="mesa-menu pop" role="menu" hidden></div>`;
+        <p class="sr-only mesa-live" aria-live="polite"></p>`;
       const q = (sel) => sec.querySelector(sel);
       S.section = sec;
       S.gridBg = q('.mesa-grid');
       S.world = q('.mesa-world');
       S.over = q('.mesa-over');
-      S.emptyEl = q('.mesa-empty');
-      S.emptyShortcuts = q('.mesa-empty__shortcuts');
       S.loadingEl = q('.mesa-loading');
       S.peopleEl = q('.mesa-people');
       S.mapEl = q('.mesa-map');
@@ -336,7 +327,10 @@
       S.zoomVal = q('.mesa-zoom-val');
       S.lockNote = q('.mesa-lock-note');
       S.liveEl = q('.mesa-live');
-      [S.menuEl, S.subEl] = sec.querySelectorAll('.mesa-menu');
+      // Os menus moram no body, nao na secao: a secao cria um contexto de empilhamento
+      // (isolation + z-index) e o z-index do menu ficaria preso nele, com a Conversa por cima.
+      S.menuEl = criarMenuFlutuante();
+      S.subEl = criarMenuFlutuante();
       const edge = q('.mesa-edge');
       edge.style.width = `${V.WORLD.w}px`;
       edge.style.height = `${V.WORLD.h}px`;
@@ -392,6 +386,7 @@
       for (const b of sec.querySelectorAll('.mesa-zoom-btn')) {
         listen(b, 'click', () => {
           const k = b.dataset.zoom;
+          if (k !== 'map') S.viewTouched = true;
           if (k === 'fit') {
             flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
           }
@@ -399,12 +394,6 @@
           else setView(V.zoomStep(S.view, k === 'in' ? 1 : -1, S.vw, S.vh));
         });
       }
-      listen(S.emptyShortcuts, 'click', (e) => {
-        const button = e.target.closest('[data-mesa-quick]');
-        if (!button || !canEdit()) return;
-        S.menu = { at: null, returnFocus: button };
-        addWindow(button.dataset.mesaQuick);
-      });
       listen(document, 'pointerdown', (e) => {
         if (S.menu && !e.target.closest?.('.mesa-menu') && !e.target.closest?.('[data-mesa-add]')) closeMenu();
       }, true);
@@ -518,6 +507,7 @@
       const winEl = e.target.closest?.('.mesa-win');
       if (winEl && !winEl.classList.contains('is-media') && scrollsInside(e.target, winEl, e.deltaY)) return;
       e.preventDefault();
+      S.viewTouched = true;
       const r = S.section.getBoundingClientRect();
       setView(V.wheelZoom(S.view, e.clientX - r.left, e.clientY - r.top, e.deltaY, e.ctrlKey, S.vw, S.vh));
     }
@@ -544,12 +534,13 @@
 
     function isBackground(t) {
       return t === S.section || t === S.gridBg || t === S.world || t === S.over
-        || t.classList?.contains('mesa-edge') || t.classList?.contains('mesa-empty');
+        || t.classList?.contains('mesa-edge');
     }
 
     function onBackgroundDown(e) {
       if (e.button !== 0 || !isBackground(e.target)) return;
       e.preventDefault();
+      S.viewTouched = true;
       closeMenu();
       S.section.focus({ preventScroll: true });
       S.section.setPointerCapture?.(e.pointerId);
@@ -641,7 +632,9 @@
       }
       S.loadingEl.hidden = true;
       renderAll({ refreshContent: true });
-      if (first && !S.fitted) {
+      // Mesa vazia nao conta como enquadrada: numa sala Mesa ela abre antes de qualquer tela existir, e o
+      // enquadramento fica para a primeira janela que chegar (ver onMesa 'add').
+      if (first && !S.fitted && windows().length) {
         S.fitted = true;
         setView(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }), { quiet: true });
       }
@@ -665,6 +658,14 @@
           renderAll();
           const rec = S.wins.get(msg.win?.id);
           if (rec) animateIn(rec);
+          // A Mesa abre vazia numa sala Mesa e as telas chegam depois, uma a uma: enquanto a pessoa nao
+          // mexeu na vista (roda, arrastar o fundo, zoom), cada tela/camera que entra sozinha reenquadra tudo.
+          const autoMedia = !mine && msg.win && isMedia(msg.win)
+            && String(msg.win.state?.peerId) === String(msg.by);
+          if (windows().length && (!S.fitted || (autoMedia && !S.viewTouched))) {
+            S.fitted = true;
+            flyTo(V.fitAll(windows(), S.vw, S.vh, { safe: S.safe }));
+          }
           if (mine) S.pendingAdd = null;
           if (mine && S.focusAfterAdd && rec) {
             S.focusAfterAdd = false;
@@ -811,6 +812,8 @@
         const rec = S.wins.get(id);
         if (rec) placeWin(rec);
       }
+      // Tela/camera nao fecham (nem ha botao): recusa 'media' fica sem aviso.
+      if (reason === 'media') return;
       toast(DENIED_TEXT[reason] || 'Não deu para fazer isso agora.');
     }
 
@@ -898,10 +901,8 @@
 
     function canRemove(win) {
       if (!canEdit()) return false;
-      if (win.type === 'tela' || win.type === 'camera') {
-        return String(win.state?.peerId) === String(deps.me()) || deps.isLeader();
-      }
-      return true;
+      // Tela e camera nao fecham: saem sozinhas quando a transmissao acaba.
+      return !isMedia(win);
     }
 
     function lockReason() {
@@ -995,8 +996,6 @@
         syncControls(rec, win);
         placeWin(rec);
       }
-      S.emptyEl.hidden = list.length > 0 || !S.state;
-      renderEmptyShortcuts();
       applyLocks();
       scheduleMap();
       scheduleWatch();
@@ -1133,19 +1132,6 @@
       return ({ youtube: '▶', radio: '◉', nota: '□', lista: '☷', enquete: '◌', imagem: '▧',
         galeria: '▦', quadro: '✎', placar: '≡', cronometro: '◷', velha: '×', xadrez: '♞',
         damas: '●', dados: '⚄', roleta: '◉', quiz: '?', domino: '▯', truco: '♠' })[type] || '◇';
-    }
-
-    function renderEmptyShortcuts() {
-      if (!S?.state || !S.emptyShortcuts) return;
-      const common = ['youtube', 'nota', 'enquete', 'placar', 'cronometro', 'velha'];
-      const available = new Map((registry()?.addable() || []).map((mod) => [mod.type, mod]));
-      S.emptyShortcuts.innerHTML = common.map((type) => {
-        const mod = available.get(type);
-        return mod
-          ? `<button type="button" class="btn btn--secondary btn--sm" data-mesa-quick="${type}">
-              ${escapeHtml(mod.title)}</button>`
-          : '';
-      }).join('');
     }
 
     function placeWin(rec) {
@@ -1690,8 +1676,9 @@
     function removeFromMesa(id) {
       const win = findWin(id);
       if (!win) return;
+      if (isMedia(win)) return;
       if (!canRemove(win)) {
-        toast(!canEdit() ? 'Só o líder mexe na Mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela da Mesa.');
+        toast('Só o líder mexe na Mesa agora.');
         return;
       }
       const held = holderOf(id);
@@ -1785,6 +1772,16 @@
       openMenuAt(e.clientX, e.clientY, winEl ? winEl.dataset.id : null, { at: worldPoint(e) });
     }
 
+    /** Menu flutuante (position: fixed via .pop), fora da secao da Mesa para ficar acima da Conversa. */
+    function criarMenuFlutuante() {
+      const el = document.createElement('div');
+      el.className = 'mesa-menu pop';
+      el.setAttribute('role', 'menu');
+      el.hidden = true;
+      document.body.appendChild(el);
+      return el;
+    }
+
     function closeMenu() {
       if (!S?.menu) return;
       const back = S.menu.returnFocus;
@@ -1827,8 +1824,15 @@
           row('Tela cheia', { act: 'full', kbd: 'F' }),
           row('Centralizar na vista', { act: 'center' }),
           volume ? row('Volume e silenciar…', { act: 'volume' }) : '',
-          '<hr class="mesa-menu-sep">',
-          row('Tirar da Mesa', { act: 'remove', kbd: 'Del', danger: true, disabled: !removable, reason: removable ? '' : (!canEdit() ? 'Só o líder mexe na Mesa agora.' : 'Só a própria pessoa ou o líder tira esta tela.') }),
+          // Tela e camera nao fecham: sem "Tirar da Mesa" (nem o separador).
+          isMedia(win) ? '' : '<hr class="mesa-menu-sep">',
+          isMedia(win) ? '' : row('Tirar da Mesa', {
+            act: 'remove',
+            kbd: 'Del',
+            danger: true,
+            disabled: !removable,
+            reason: removable ? '' : 'Só o líder mexe na Mesa agora.',
+          }),
         ].join('');
       } else {
         const locked = !canEdit();
@@ -2327,7 +2331,7 @@
       const restantes = ids.slice(5);
       peopleEl.innerHTML = visiveis.map((id) => {
         const nome = deps.nameOf(id);
-        const acao = S ? `Ir até ${nome}` : `Abrir a Mesa com ${nome}`;
+        const acao = `Ir até ${nome}`;
         return `<button type="button" class="mesa-person node" data-size="16" data-id="${escapeHtml(id)}"
           aria-label="${escapeHtml(acao)}" title="${escapeHtml(acao)}">${avatarHtml(id)}</button>`;
       }).join('');
@@ -2341,7 +2345,6 @@
         b.addEventListener('click', (event) => {
           event.stopPropagation();
           if (S) goTo(b.dataset.id);
-          else document.getElementById('view-mesa')?.click();
         });
       }
     }
@@ -2412,6 +2415,20 @@
     function mediaWin(kind, peerId) {
       const type = kind === 'camera' ? 'camera' : 'tela';
       return windows().find((w) => w.type === type && String(w.state?.peerId) === String(peerId)) || null;
+    }
+
+    /** Clique numa fonte do barramento: centraliza a janela da tela/camera de `peerId`. Sem a janela (alguem a
+     * fechou; so o servidor poe tela e camera na Mesa), avisa. Devolve se centralizou. */
+    function focusMedia(kind, peerId) {
+      if (!S?.state) return false; // o retrato ainda nao chegou: nao da para dizer que a janela nao existe
+      const win = mediaWin(kind, peerId);
+      if (!win) {
+        toast(`${kind === 'camera' ? 'A câmera' : 'A tela'} de ${deps.nameOf(peerId)} não está na Mesa.`);
+        return false;
+      }
+      S.viewTouched = true; // a pessoa escolheu para onde olhar: telas novas nao a tiram dali
+      centerWin(win.id);
+      return true;
     }
 
     /** Na Mesa, quero o video desta tela/camera? `null` fora da Mesa (vale
@@ -2563,6 +2580,7 @@
       showsCursors: () => showCursors,
       openAddMenu,
       wants,
+      focusMedia,
       widthFor,
       spot,
       serverNow,

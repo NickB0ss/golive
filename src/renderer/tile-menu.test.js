@@ -39,3 +39,9 @@ test('popover fica inteiramente dentro da janela', () => {
     viewportHeight: 800,
   }), { x: 792, y: 632 });
 });
+
+test('ui.js nao passa as opcoes do menu no lugar do y (assinatura: id, x, y, opcoes)', () => {
+  const fonte = require('node:fs').readFileSync(require('node:path').join(__dirname, 'ui.js'), 'utf8');
+  assert.ok(!/(?<!function )openTileMenu\([^,()]+,[^,()]+,\s*\{/.test(fonte), 'opcoes caindo na posicao de y');
+  assert.match(fonte, /openTileMenu\(tileId, button, undefined, \{ parte: 'volume' \}\)/);
+});

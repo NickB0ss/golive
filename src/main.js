@@ -212,6 +212,7 @@ const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
 const { checkTcpPort } = require('./main/tcpcheck');
 const { createDiscovery } = require('./main/discovery');
+const { resolveRoomPin, resolveRoomMesa } = require('./main/roomhost');
 const { setupAutoUpdater } = require('./main/updater');
 const { createBootUpdater } = require('./main/boot');
 const { createUpdatePolicy } = require('./main/update-policy');
@@ -357,6 +358,9 @@ let hostedRoomName = 'anônimo';
  * o renderer reenviar nada, e o beacon precisa saber se marca o cadeado.
  * O PIN em si nunca vai pro beacon. */
 let hostedRoomPin = null;
+/** Tipo da sala ativa: false = "so transmissoes" (sem Mesa). Guardado pelo
+ * mesmo motivo do PIN: o beacon refeito no discovery:refresh precisa dele. */
+let hostedRoomMesa = true;
 
 /** Descoberta de salas via broadcast UDP. Sempre escuta (independente de
  * estar anunciando ou nao); so publica beacons enquanto houver sala local
@@ -389,6 +393,7 @@ async function closeEmbeddedServer(opts) {
   const server = embeddedServer;
   embeddedServer = null;
   hostedRoomPin = null;
+  hostedRoomMesa = true;
   // Limpa a referencia antes do await: session-end e will-quit podem chegar
   // quase juntos, e os dois precisam compartilhar este mesmo fechamento.
   try {
@@ -1049,6 +1054,7 @@ function advertiseHostedRoom() {
     // Defesa para um tick que tenha sido enfileirado enquanto a sala fecha.
     getPeerCount: () => embeddedServer?.getPeerCount?.() || 0,
     protected: Boolean(hostedRoomPin),
+    mesa: hostedRoomMesa,
     // A versao viaja no beacon so pra lista da rede poder avisar ANTES do
     // clique ("v0.6.0 - atualize") em vez de deixar a pessoa conectar e
     // tomar um join-denied. Quem barra de verdade e o servidor.
@@ -1117,15 +1123,22 @@ ipcMain.handle('sources:select', (_event, { id, audioMode: mode }) => {
 });
 
 ipcMain.handle('room:host', async (_event, {
-  name, advertise, protect, roomId, roomName, pin: forcedPin, initialTransferredTo, initialBans, initialChatHistory, initialMesa, preferredPort,
+  name, advertise, protect, roomId, roomName, pin: requestedPin, mesa,
+  initialTransferredTo, initialBans, initialChatHistory, initialMesa, preferredPort,
 } = {}) => {
   if (embeddedServerHosting) return embeddedServerHosting;
   embeddedServerHosting = (async () => {
   try {
+    // Fronteira: `pin` (escolhido por quem cria, ou o da migracao) e `mesa`
+    // vem do renderer. PIN fora do formato volta como erro para o dialogo,
+    // ANTES de fechar a sala que ja estiver de pe.
+    const pickedPin = resolveRoomPin({
+      protect, pin: requestedPin, randomInt: require('crypto').randomInt,
+    });
+    if (!pickedPin.ok) return { ok: false, error: pickedPin.error };
+    const pin = pickedPin.pin;
+    const roomMesa = resolveRoomMesa(mesa);
     if (embeddedServer || embeddedServerClosing) await closeEmbeddedServer();
-    const pin = forcedPin !== undefined ? forcedPin : (protect
-      ? require('crypto').randomInt(0, 1000000).toString().padStart(6, '0')
-      : null);
     // Token de dono (novo): gerado por sala, nunca sai desta maquina -- so
     // volta pro renderer que criou a sala, que o reenvia no proprio 'join'.
     const ownerToken = require('crypto').randomUUID();
@@ -1143,6 +1156,7 @@ ipcMain.handle('room:host', async (_event, {
       // A mesa da sala que caiu (room-migrating.mesa), limpa pelo servidor
       // como o historico do chat. Ver sanitizeInitialMesa.
       initialMesa,
+      mesa: roomMesa,
       appVersion: app.getVersion(),
       log: (...a) => logger.log('[servidor]', ...a),
     }), {
@@ -1151,6 +1165,7 @@ ipcMain.handle('room:host', async (_event, {
       preferredPort: Number.isInteger(preferredPort) ? preferredPort : null,
     });
     hostedRoomPin = pin;
+    hostedRoomMesa = roomMesa;
 
     const firewall = await ensureFirewallRule(embeddedServer.port);
     const picked = pickAddress();

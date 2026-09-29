@@ -147,8 +147,10 @@ async function abrirPessoa(browser, servidor, nome, ehDona = false) {
   await page.press('#join-address', 'Enter');
   await page.waitForSelector('#room-view:not(.hidden)');
   const welcome = await esperaMsg(page, (m) => m.type === 'welcome', 6000);
-  await page.click('#view-mesa');
+  // Sala Mesa: a Mesa abre sozinha ao receber o welcome (nao ha item da Mesa no barramento).
   await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+  await page.waitForFunction(() => window.GoLive.salaVista.isMesa());
+  conferir(!(await page.$('#view-mesa')), `${nome}: sobrou o item da Mesa no barramento`);
   return { page, nome, id: welcome.id, erros };
 }
 

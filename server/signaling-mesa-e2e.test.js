@@ -656,8 +656,11 @@ test('ir ao vivo poe a janela da tela; parar e sair tiram; camera igual', async 
   await ana.barreira();
   assert.equal(ana.msgs('mesa').filter((m) => m.op === 'add').length, 2);
 
-  // Outra pessoa nao tira a tela de quem esta ao vivo; o lider tira.
-  assert.equal((await bia.op({ op: 'remove', id: tela.id })).reason, 'not-yours');
+  // Ninguem tira a janela de tela/camera: nem outra pessoa, nem o dono, nem o lider.
+  assert.equal((await bia.op({ op: 'remove', id: tela.id })).reason, 'media');
+  assert.equal((await caio.op({ op: 'remove', id: tela.id })).reason, 'media');
+  assert.equal((await ana.op({ op: 'remove', id: tela.id })).reason, 'media');
+  assert.equal((await ana.op({ op: 'remove', id: cam.id })).reason, 'media');
 
   const tiraTela = ana.esperaMsg((m) => m.type === 'mesa' && m.op === 'remove' && m.id === tela.id, 'tira a tela');
   caio.envia({ type: 'broadcast-state', live: false });

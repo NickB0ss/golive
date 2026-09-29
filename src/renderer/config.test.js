@@ -591,3 +591,16 @@ test('config antigo (sem annotations nem emojiRecents) abre nos padroes', () => 
   assert.equal(cfg.annotations.allow, false);
   assert.deepEqual(cfg.emojiRecents, []);
 });
+
+test('network.roomMesa comeca ligado e config antigo (sem o campo) fica com a Mesa', () => {
+  assert.equal(load(null).network.roomMesa, true);
+  const antigo = serialize({ ...DEFAULTS, network: { advertise: false } });
+  const cfg = load(antigo);
+  assert.equal(cfg.network.roomMesa, true);
+  assert.equal(cfg.network.advertise, false);
+});
+
+test('network.roomMesa guarda a ultima escolha do dialogo de criar sala', () => {
+  const saved = serialize({ ...DEFAULTS, network: { advertise: true, roomMesa: false } });
+  assert.equal(load(saved).network.roomMesa, false);
+});

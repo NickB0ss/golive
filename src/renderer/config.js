@@ -189,6 +189,9 @@
     },
     network: {
       advertise: true,
+      // Ultimo tipo de sala escolhido no dialogo de criar sala: true = Mesa,
+      // false = so transmissoes. Igual ao `advertise`, e preferencia da pessoa.
+      roomMesa: true,
       // Retransmissao em cadeia (F2): sem opcao de desligar na UI -- a
       // medida no PC real (ver spec de 2026-08-23) mostrou que a malha
       // direta derruba o encoder pra software com poucos espectadores, e

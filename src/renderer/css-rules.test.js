@@ -243,3 +243,60 @@ test('a Sala preserva os contratos de compositor, HUD, tela cheia e h1', () => {
   assert.match(html, /<h1\b[^>]*id="room-screen-title"[^>]*>/,
     'a tela da sala precisa de #room-screen-title em h1');
 });
+
+const lerRenderer = (nome) => fs.readFileSync(path.join(__dirname, nome), 'utf8').split('\r\n').join('\n');
+
+test('a barra de baixo agrupa transmitir, camera e Pôr na Mesa; a Conversa fica sozinha no fim', () => {
+  const html = lerRenderer('index.html');
+  const rodape = html.slice(html.indexOf('<footer class="bus"'), html.indexOf('</footer>', html.indexOf('<footer class="bus"')));
+  const grupo = rodape.slice(rodape.indexOf('<div class="bus__acts">'), rodape.indexOf('<div class="bus__end">'));
+  for (const id of ['me-source', 'btn-toggle-share', 'btn-toggle-camera', 'btn-mesa-add']) {
+    assert.ok(grupo.includes(`id="${id}"`), `#${id} precisa morar em .bus__acts`);
+  }
+  assert.ok(!grupo.includes('btn-conv-toggle'), 'a Conversa fica fora do grupo');
+  assert.match(rodape, /<span class="bus__sep"><\/span>\s*<div class="bus__acts">/, 'separador antes do grupo');
+  assert.match(rodape, /<\/div>\s*<span class="bus__sep"><\/span>\s*<div class="bus__end">/, 'separador depois');
+  const fim = rodape.slice(rodape.indexOf('<div class="bus__end">'));
+  assert.ok(fim.includes('id="btn-conv-toggle"') && !fim.includes('btn-toggle-camera'));
+  const gap = declarations(cssByFile.get('shell.css'))
+    .find(({ stack, property }) => stack.at(-1) === '.bus__acts' && property === 'gap')?.value;
+  assert.match(gap, /^var\(--s-\d+\)$/, '.bus__acts usa token de espaco');
+});
+
+test('Pessoas e Sair da sala na cabeca usam os componentes do Sinal', () => {
+  const html = lerRenderer('index.html');
+  const pessoas = html.match(/<button id="btn-room-presence"[\s\S]*?<\/button>/)[0];
+  assert.match(pessoas, /class="btn btn--quiet btn--sm"/);
+  assert.match(pessoas, /href="#i-users"/);
+  assert.match(pessoas, /title="Pessoas"/);
+  assert.ok(!/Pessoas na sala|'NA SALA'/.test(html + lerRenderer('ui.js')), 'so "Pessoas", sem "na sala"');
+  assert.ok(!html.includes('presence-nodes'), 'sem o aglomerado de bolinhas');
+  assert.ok(html.includes('<span class="tx-tag">Pessoas · '), 'cabecalho do popover sem repetir "Na sala"');
+  const sair = html.match(/<button id="btn-disconnect"[\s\S]*?<\/button>/)[0];
+  assert.match(sair, /class="btn btn--danger btn--sm"/);
+  assert.match(sair, /href="#i-log-out"/);
+  assert.match(sair, />Sair da sala</);
+  assert.ok(!/--live/.test(sair));
+});
+
+test('os menus da Mesa moram no body, fora da secao que isola o empilhamento', () => {
+  const fonte = lerRenderer('mesa-view.js');
+  assert.ok(!/<div class="mesa-menu pop"/.test(fonte), 'menu nao pode nascer dentro do template da secao');
+  assert.match(fonte, /document\.body\.appendChild\(el\)/);
+  assert.match(fonte, /s\.menuEl\.remove\(\);\s*s\.subEl\.remove\(\);/, 'sair da Mesa remove os menus');
+  const z = declarations(cssByFile.get('mesa.css'))
+    .find(({ stack, property }) => stack.at(-1) === '.mesa-menu' && property === 'z-index')?.value;
+  assert.equal(z, 'var(--z-popover)');
+});
+
+test('espiar mostra as ultimas mensagens na hora e explica quando nao ha nenhuma', () => {
+  const ui = lerRenderer('ui.js');
+  const app = lerRenderer('app.js');
+  assert.match(ui, /function espiarRecentes\(\)/);
+  assert.match(ui, /Espiando: mensagens novas aparecem aqui\./);
+  assert.match(app, /setConversation\('peek', \{ persist: true \}\);\s*[^]*?ui\.chat\.espiarRecentes\(\);/);
+  const html = lerRenderer('index.html');
+  const botao = html.match(/<button id="btn-conv-peek"[\s\S]*?<\/button>/)[0];
+  const rotulo = 'Espiar: esconder a coluna e mostrar só as mensagens novas';
+  assert.ok(botao.includes(`aria-label="${rotulo}"`) && botao.includes(`title="${rotulo}"`));
+});

@@ -30,6 +30,19 @@ test('o menu da janela de video oferece o volume do tile', () => {
   assert.match(vista, /deps\.openTileMenu\(/);
 });
 
+test('janela de tela ou camera nao fecha: sem botao, sem menu e sem Delete', () => {
+  assert.match(vista, /function canRemove\(win\) \{[^}]*return !isMedia\(win\);/, 'ninguem remove midia');
+  assert.match(vista, /if \(isMedia\(win\)\) return;\s*if \(!canRemove\(win\)\)/, 'Delete e menu nao pedem');
+  assert.match(vista, /isMedia\(win\) \? '' : row\('Tirar da Mesa'/, 'o menu nao oferece Tirar da Mesa');
+  assert.match(vista, /if \(reason === 'media'\) return;/, 'recusa media fica sem aviso');
+  assert.ok(!/not-yours/.test(vista), 'o motivo antigo saiu');
+});
+
+test('a Mesa vazia nao tem texto nem atalhos no meio', () => {
+  assert.ok(!/mesa-empty|emptyShortcuts|emptyEl|renderEmptyShortcuts|data-mesa-quick/.test(vista));
+  assert.ok(!/A Mesa está vazia/.test(vista));
+});
+
 test('o ponto do rabisco e o mesmo com qualquer zoom da mesa (transform no conteiner)', () => {
   // Na Mesa, getBoundingClientRect do tile e o retangulo de layout vezes a
   // escala; o clique tambem vem em px da tela. A normalizacao pela caixa do

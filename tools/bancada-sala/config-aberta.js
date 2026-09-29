@@ -4,7 +4,8 @@
 
 /*
  * Prova a transmissao com Configuracoes aberta, no servidor real e em duas
- * paginas. A vista escondida precisa continuar com medidas para a Mesa.
+ * paginas, em dois tipos de sala: "Só transmissões" (palco; o teto de largura nao muda) e sala Mesa (a
+ * Mesa, sempre aberta, continua com medidas para a Mesa por baixo de Configuracoes).
  *
  * PLAYWRIGHT_DIR=C:/.../playwright node tools/bancada-sala/config-aberta.js
  */
@@ -234,79 +235,75 @@ async function medirConfiguracoes(ana, bia, seletor, naMesa) {
   return { quadrosAna, quadrosBia };
 }
 
-async function abrirMesaComTela(bia, idAna) {
-  await bia.page.evaluate(() => window.GoLive.ui.settings.close());
-  const focoRestaurado = await bia.page.evaluate(() => document.activeElement?.id === 'btn-room-settings');
-  if (!focoRestaurado) throw new Error('o foco não voltou ao botão que abriu Configurações');
-  console.log('config-aberta: Configurações de Bia fechadas para a Mesa');
-  await bia.page.click('#view-mesa');
-  console.log('config-aberta: Bia pediu a vista Mesa');
-  const montada = await bia.page.waitForSelector('.mesa-loading[hidden]', {
+/** Sala Mesa: a Mesa abre sozinha ao receber o welcome e a tela de quem transmite entra nela. */
+async function esperarMesaComTela(pessoa, idOrigem) {
+  const montada = await pessoa.page.waitForSelector('.mesa-loading[hidden]', {
     state: 'attached',
     timeout: 5000,
   })
     .then(() => true, () => false);
   if (!montada) {
-    const mensagens = await bia.page.evaluate(() => window.__caixa.filter((mensagem) => (
+    const mensagens = await pessoa.page.evaluate(() => window.__caixa.filter((mensagem) => (
       mensagem.type === 'mesa-sync' || mensagem.type === 'mesa-viewers'
     )));
-    throw new Error(`Mesa de Bia não sincronizou: ${JSON.stringify(mensagens)}`);
+    throw new Error(`Mesa de ${pessoa.nome} não sincronizou: ${JSON.stringify(mensagens)}`);
   }
-  console.log('config-aberta: Mesa de Bia montada');
+  const aberta = await pessoa.page.evaluate(() => window.GoLive.salaVista.isMesa());
+  if (!aberta) throw new Error(`a Mesa de ${pessoa.nome} não abriu sozinha`);
+  const semItem = await pessoa.page.evaluate(() => !document.getElementById('view-mesa'));
+  if (!semItem) throw new Error('sala Mesa: sobrou o item da Mesa no barramento');
   const seletor = '.mesa-win .tile video';
-  await esperarVideo(bia, idAna, seletor);
-  console.log('config-aberta: Bia recebeu a tela na Mesa');
+  await esperarVideo(pessoa, idOrigem, seletor);
+  console.log(`config-aberta: ${pessoa.nome} recebeu a tela na Mesa`);
   return seletor;
 }
 
-async function main() {
-  const servidor = await createSignalingServer({ port: 0 });
-  const browser = await chromium.launch();
+/** Uma sala completa. `naMesa` false = "Só transmissões" (so o palco); true = sala Mesa (so a Mesa). */
+async function rodarSala(browser, naMesa) {
+  const rotulo = naMesa ? 'Mesa' : 'Transmissão';
+  const servidor = await createSignalingServer({ port: 0, mesa: naMesa });
   const pessoas = [];
   try {
     const ana = await abrirPessoa(browser, servidor, 'Ana', true);
     const bia = await abrirPessoa(browser, servidor, 'Bia', false);
     pessoas.push(ana, bia);
-    console.log('config-aberta: pessoas conectadas');
+    console.log(`config-aberta: [${rotulo}] pessoas conectadas`);
     await transmitirTela(ana);
-    console.log('config-aberta: Ana transmitindo');
-    const seletorTransmissao = await esperarVideo(bia, ana.id);
-    console.log('config-aberta: Bia recebeu a tela');
+    console.log(`config-aberta: [${rotulo}] Ana transmitindo`);
+    const seletor = naMesa ? await esperarMesaComTela(bia, ana.id) : await esperarVideo(bia, ana.id);
+    if (!naMesa) {
+      const semMesa = await bia.page.evaluate(() => !document.querySelector('.mesa, .mesa-win')
+        && !document.getElementById('view-mesa') && !window.GoLive.salaVista.isMesa());
+      if (!semMesa) throw new Error('sala Só transmissões: apareceu algo da Mesa');
+    }
+    console.log(`config-aberta: [${rotulo}] Bia recebeu a tela`);
     await esperarMensagem(ana.page, (mensagem) => (
       mensagem.type === 'view-state' && mensagem.from === bia.id && mensagem.kind === 'screen'
+      && (!naMesa || Number.isFinite(mensagem.maxWidth))
     ));
-    const antesTransmissao = await medirQuadros(bia.page, seletorTransmissao);
-    const transmissao = await medirConfiguracoes(ana, bia, seletorTransmissao, false);
-    await ana.page.evaluate(() => window.GoLive.ui.settings.close());
-    await bia.page.evaluate(() => window.GoLive.ui.settings.close());
-    const seletorMesa = await abrirMesaComTela(bia, ana.id);
-    const antesMesa = await medirQuadros(bia.page, seletorMesa);
-    console.log('config-aberta: esperando o teto da Mesa');
-    await esperarMensagem(ana.page, (mensagem) => (
-      mensagem.type === 'view-state'
-      && mensagem.from === bia.id
-      && mensagem.kind === 'screen'
-      && Number.isFinite(mensagem.maxWidth)
-    ));
-    const larguraAntes = await ana.page.evaluate((id) => {
-      const estados = window.__caixa.filter((mensagem) => (
-        mensagem.type === 'view-state'
-        && mensagem.from === id
-        && mensagem.kind === 'screen'
-        && Number.isFinite(mensagem.maxWidth)
-      ));
-      return estados.at(-1)?.maxWidth || null;
-    }, bia.id);
-    console.log(`config-aberta: teto da Mesa ${larguraAntes}`);
-    const mesa = await medirConfiguracoes(ana, bia, seletorMesa, true);
+    const antes = await medirQuadros(bia.page, seletor);
+    if (naMesa) {
+      console.log('config-aberta: esperando o teto da Mesa');
+    }
+    const medido = await medirConfiguracoes(ana, bia, seletor, naMesa);
     const erros = pessoas.flatMap((pessoa) => pessoa.erros);
     if (erros.length) throw new Error(`erro de pagina: ${erros.join(' | ')}`);
-    console.log(`config-aberta: transmissão ${JSON.stringify({ antesTransmissao, transmissao })}`);
-    console.log(`config-aberta: Mesa ${JSON.stringify({ antesMesa, mesa, larguraAntes })}`);
+    console.log(`config-aberta: ${rotulo} ${JSON.stringify({ antes, ...medido })}`);
   } finally {
     await Promise.all(pessoas.map((pessoa) => pessoa.page.close()));
-    await browser.close();
     await servidor.close();
+  }
+}
+
+async function main() {
+  const browser = await chromium.launch();
+  try {
+    // Sala "Só transmissões": Configuracoes aberta sobre o palco; o teto de largura nao muda.
+    await rodarSala(browser, false);
+    // Sala Mesa: a vista escondida (a Mesa) continua com medidas e teto finito.
+    await rodarSala(browser, true);
+  } finally {
+    await browser.close();
   }
 }
 

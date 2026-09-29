@@ -40,17 +40,6 @@
   color: var(--tx2);
 }
 .mesa-loading .spinner { color: var(--wire); }
-.mesa-empty {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-hud);
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: var(--s-3);
-}
-.mesa-empty__shortcuts { display: flex; flex-wrap: wrap; justify-content: center; max-width: 420px; gap: var(--s-1); }
-.mesa-empty__shortcuts .btn { font: var(--t-meta); }
 
 .mesa-nav {
   position: absolute;

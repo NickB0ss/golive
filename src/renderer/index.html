@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="sinal/components.css" />
 <link rel="stylesheet" href="sinal/shell.css" />
 <link rel="stylesheet" href="sinal/sheets.css" />
+<link rel="stylesheet" href="sinal/criar-sala.css" />
 <link rel="stylesheet" href="sinal/mesa.css" />
 <link rel="stylesheet" href="mesa-janelas.css" />
 </head>
@@ -126,8 +127,8 @@
         <button id="room-copy-pin" class="menu__item hidden" type="button" role="menuitem" data-copy="pin"><svg class="i"><use href="#i-lock" /></svg>Copiar PIN</button>
         <button class="menu__item" type="button" role="menuitem" data-room-action="diagnostics"><svg class="i"><use href="#i-info" /></svg>Diagnóstico</button>
         <button class="menu__item" type="button" role="menuitem" data-room-action="theater"><svg class="i"><use href="#i-tv-minimal" /></svg>Modo teatro<span class="menu__hint">T</span></button>
-        <div class="menu__sep" role="separator"></div>
-        <p class="menu__label">Mesa</p>
+        <div id="room-more-mesa-sep" class="menu__sep" role="separator"></div>
+        <p id="room-more-mesa-label" class="menu__label">Mesa</p>
         <label id="opt-mesa-cursors-row" class="menu__item" role="menuitemcheckbox" aria-checked="true" tabindex="-1"><input id="opt-mesa-cursors" class="sr-only" type="checkbox" checked />Mostrar ponteiros das pessoas</label>
         <label id="opt-mesa-leader-only-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-leader-only" class="sr-only" type="checkbox" />Só o líder mexe nas janelas</label>
         <label id="opt-mesa-lock-size-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-lock-size" class="sr-only" type="checkbox" />Travar o tamanho das janelas</label>
@@ -158,16 +159,21 @@
               title="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
     </span>
     <span class="head__room-actions" hidden>
-      <button id="btn-room-presence" class="presence-btn" type="button" aria-haspopup="dialog" aria-expanded="false"
-              aria-controls="presence-pop" aria-label="Pessoas na sala: 0"><span class="cluster"><span id="presence-nodes" class="cluster__nodes"></span><span id="room-people-count" class="tx-data">0</span></span></button>
-      <div id="presence-pop" class="pop presence hidden" role="dialog" aria-label="Pessoas na sala">
-        <div class="pop__head"><span class="tx-tag">Na sala · <span id="presence-count">0</span></span></div>
+      <button id="btn-room-presence" class="btn btn--quiet btn--sm" type="button" aria-haspopup="dialog"
+              aria-expanded="false" aria-controls="presence-pop" aria-label="Pessoas: 0"
+              title="Pessoas"><svg class="i i--sm"><use href="#i-users" /></svg><span id="room-people-count"
+              class="tx-data">0</span></button>
+      <div id="presence-pop" class="pop presence hidden" role="dialog" aria-label="Pessoas">
+        <div class="pop__head"><span class="tx-tag">Pessoas · <span id="presence-count">0</span></span></div>
         <ul id="peer-list" class="presence__list"></ul>
         <section id="banned-section" class="presence__banned hidden"><div class="menu__sep" role="separator"></div><button class="menu__item banned-toggle" type="button" aria-expanded="false" aria-controls="banned-list"><svg class="i i--sm"><use href="#i-lock" /></svg>Banidos<svg class="i i--sm menu__hint"><use href="#i-chevron-down" /></svg></button><ul id="banned-list" class="presence__list" hidden></ul></section>
       </div>
       <button id="btn-room-health" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Conexão"><span class="health" data-level="none"><span></span><span></span><span></span></span></button>
       <button id="btn-room-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
-      <button id="btn-disconnect" class="btn btn--quiet" type="button">Sair</button>
+      <span class="head__sep" role="presentation"></span>
+      <button id="btn-disconnect" class="btn btn--danger btn--sm" type="button" title="Sair da sala"><svg
+              class="i i--sm"><use href="#i-log-out" /></svg><span class="sair__cheio">Sair da sala</span><span
+              class="sair__curto">Sair</span></button>
     </span>
     <div id="titlebar" class="winctl" hidden>
       <button id="tb-min" class="winctl__btn" type="button" aria-label="Minimizar">
@@ -268,6 +274,23 @@
         <label class="field__label" for="in-room-name">Nome da sala</label>
         <input id="in-room-name" class="input" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
       </div>
+      <!-- Tipo da sala: "Mesa" (padrao) ou "Só transmissões". Radiogroup: só o
+           marcado entra na ordem de Tab; as setas trocam (ui.js). A ultima
+           escolha fica lembrada, como o "Anunciar". -->
+      <div class="field">
+        <span id="room-kind-label" class="field__label">Tipo de sala</span>
+        <div id="room-kind" class="seg seg--tipo" role="radiogroup" aria-labelledby="room-kind-label">
+          <button id="room-kind-mesa" class="seg__opt" type="button" role="radio" aria-checked="true" tabindex="0">
+            <span class="seg__title">Mesa</span>
+            <span class="seg__sub">Tudo acontece na Mesa: telas, câmeras, jogos, vídeos e notas</span>
+          </button>
+          <button id="room-kind-transmissoes" class="seg__opt" type="button" role="radio" aria-checked="false"
+                  tabindex="-1">
+            <span class="seg__title">Só transmissões</span>
+            <span class="seg__sub">Telas e câmeras no palco, sem a Mesa</span>
+          </button>
+        </div>
+      </div>
       <!-- "Anunciar na rede" mora aqui: e da sala que esta nascendo, e a ultima
            escolha fica lembrada. -->
       <div>
@@ -278,9 +301,20 @@
         </label>
         <label class="opt">
           <span class="opt__text"><span class="opt__title">Proteger com PIN</span>
-            <span class="opt__desc">Seis dígitos, pedidos na entrada. Você passa para os amigos.</span></span>
+            <span class="opt__desc">Quem entrar precisa digitar o PIN que você escolher.</span></span>
           <input id="chk-protect-room" class="switch" type="checkbox" />
         </label>
+        <!-- PIN escolhido por quem cria: só aparece com o switch ligado. -->
+        <div id="room-pin-field" class="field field--pin" hidden>
+          <label class="field__label" for="in-room-pin">PIN da sala</label>
+          <div class="field__row">
+            <input id="in-room-pin" class="input input--lg input--mono input--pin" type="text" inputmode="numeric"
+                   autocomplete="off" maxlength="6" spellcheck="false" placeholder="000000"
+                   aria-describedby="room-pin-help" />
+            <button id="btn-room-pin-random" class="btn btn--quiet btn--sm" type="button">Sortear</button>
+          </div>
+          <p id="room-pin-help" class="field__help">6 dígitos. Você passa para quem vai entrar.</p>
+        </div>
       </div>
       <p id="create-room-error" class="field__error" role="alert"></p>
     </div>
@@ -333,7 +367,8 @@
       <div class="conv__head">
         <h2 class="conv__title">Conversa</h2>
         <button id="btn-conv-peek" class="btn btn--quiet btn--icon btn--sm" type="button"
-                aria-label="Espiar em vez de fixar" title="Espiar em vez de fixar"><svg class="i i--sm"><use href="#i-panel-right" /></svg></button>
+                aria-label="Espiar: esconder a coluna e mostrar só as mensagens novas"
+                title="Espiar: esconder a coluna e mostrar só as mensagens novas"><svg class="i i--sm"><use href="#i-panel-right" /></svg></button>
         <button id="btn-conv-close" class="btn btn--quiet btn--icon btn--sm" type="button"
                 aria-label="Fechar conversa" title="Fechar conversa"><svg class="i i--sm"><use href="#i-x" /></svg></button>
       </div>
@@ -378,44 +413,40 @@
   <footer class="bus" aria-label="Fontes e controles da sala">
     <div id="bus-sources" class="bus__sources" role="listbox" aria-orientation="horizontal" aria-label="Fontes">
       <div id="bus-live" class="bus__live" role="presentation"></div>
-      <span class="bus__sep" role="presentation"></span>
-      <div id="view-mesa" class="src src--mesa" role="option" aria-selected="false" tabindex="0" data-view="mesa">
-        <span class="src__glyph" aria-hidden="true"></span>
-        <span class="src__text">
-          <span class="src__name">Mesa</span>
-          <span id="view-mesa-count" class="src__sub">Abrir a Mesa</span>
-        </span>
-        <span id="stage-mesa-people" class="cluster__nodes" role="group" aria-label="Quem está na Mesa" hidden></span>
-      </div>
     </div>
+    <!-- Quem esta na Mesa (ir ate o ponteiro). Sala Mesa: todo mundo esta nela, e nao ha item "Mesa" nas
+         fontes -- o tipo de sala e exclusivo, nao se alterna entre Mesa e palco. -->
+    <span id="stage-mesa-people" class="cluster__nodes" role="group" aria-label="Quem está na Mesa" hidden></span>
     <span class="bus__sep"></span>
-    <div id="me-source" class="me">
-      <div class="me__live">
-        <span id="me-node" class="node" data-size="32" data-state="live"></span>
-        <span class="src__text">
-          <span class="src__name">Você</span>
-          <span id="me-source-sub" class="src__sub">ao vivo</span>
+    <div class="bus__acts">
+      <div id="me-source" class="me">
+        <div class="me__live">
+          <span id="me-node" class="node" data-size="32" data-state="live"></span>
+          <span class="src__text">
+            <span class="src__name">Você</span>
+            <span id="me-source-sub" class="src__sub">ao vivo</span>
+          </span>
+          <div id="sound-meter" class="me__meter hidden" aria-hidden="true"><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i></div>
+        </div>
+        <span class="me__ctl">
+          <button id="btn-pause-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Pausar"
+                  aria-pressed="false"><svg class="i i--sm icon-off"><use href="#i-pause" /></svg><svg
+                  class="i i--sm icon-on hidden"><use href="#i-play" /></svg><span class="btn-label sr-only">Pausar</span></button>
+          <button id="btn-swap-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Trocar fonte"
+                  title="Trocar fonte"><svg class="i i--sm"><use href="#i-arrow-left-right" /></svg></button>
         </span>
-        <div id="sound-meter" class="me__meter hidden" aria-hidden="true"><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i></div>
+        <button id="btn-toggle-share" class="btn btn--primary me__share" type="button" aria-label="Transmitir tela"
+                aria-pressed="false"><svg class="i icon-off"><use href="#i-plus" /></svg><svg
+                class="i i--sm icon-on hidden"><use href="#i-square" /></svg><span class="btn-label">Transmitir tela</span></button>
       </div>
-      <span class="me__ctl">
-        <button id="btn-pause-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Pausar"
-                aria-pressed="false"><svg class="i i--sm icon-off"><use href="#i-pause" /></svg><svg
-                class="i i--sm icon-on hidden"><use href="#i-play" /></svg><span class="btn-label sr-only">Pausar</span></button>
-        <button id="btn-swap-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Trocar fonte"
-                title="Trocar fonte"><svg class="i i--sm"><use href="#i-arrow-left-right" /></svg></button>
-      </span>
-      <button id="btn-toggle-share" class="btn btn--primary me__share" type="button" aria-label="Transmitir tela"
-              aria-pressed="false"><svg class="i icon-off"><use href="#i-plus" /></svg><svg
-              class="i i--sm icon-on hidden"><use href="#i-square" /></svg><span class="btn-label">Transmitir tela</span></button>
-    </div>
-    <span class="bus__sep"></span>
-    <div class="bus__end">
       <button id="btn-toggle-camera" class="btn btn--quiet" type="button" aria-label="Câmera" aria-pressed="false"><svg
               class="i icon-off"><use href="#i-video" /></svg><svg class="i icon-on hidden"><use href="#i-video" /></svg><span
               class="spinner btn-spinner hidden" aria-hidden="true"></span><span class="btn-label">Câmera</span></button>
       <button id="btn-mesa-add" class="btn btn--quiet hidden" type="button" aria-haspopup="menu" data-mesa-add><svg
               class="i"><use href="#i-plus" /></svg><span class="btn__label">Pôr na Mesa</span></button>
+    </div>
+    <span class="bus__sep"></span>
+    <div class="bus__end">
       <button id="btn-conv-toggle" class="btn btn--quiet" type="button" aria-pressed="false"
               aria-label="Conversa"><svg class="i"><use href="#i-message-square" /></svg><span
               class="btn__label">Conversa</span><span id="chat-unread-dot" class="count hidden"></span></button>

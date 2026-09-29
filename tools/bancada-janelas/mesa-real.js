@@ -97,8 +97,10 @@ async function main() {
     await page.press('#join-address', 'Enter');
     await page.waitForSelector('#room-view:not(.hidden)');
     const bia = await pessoa(servidor.port, 'Bia');
-    await page.click('#view-mesa');
+    // Sala Mesa: a Mesa abre sozinha ao receber o welcome (nao ha item da Mesa no barramento).
     await page.waitForSelector('.mesa-loading[hidden]', { state: 'attached' });
+    await page.waitForFunction(() => window.GoLive.salaVista.isMesa());
+    conferir(!(await page.$('#view-mesa')), 'sala Mesa: sobrou o item da Mesa no barramento');
     bia.envia({ type: 'mesa-view', on: true });
     await bia.espera((m) => m.type === 'mesa-sync');
 
@@ -124,6 +126,9 @@ async function main() {
 
     // Clique no + do placar vira act na sala.
     const win = (t) => page.locator(`.mesa-win[data-type="${t}"]`);
+    // Janela de jogo/ferramenta continua podendo sair da Mesa (so tela/camera nao fecham).
+    conferir(await page.locator('.mesa-win[data-type="nota"] [data-act="remove"]:not([hidden])').count() === 1,
+      'nota: a janela de conteudo perdeu o botao de tirar da Mesa');
     await page.click('.mesa-zoom-btn[data-zoom="fit"]').catch(() => {});
     await espera(500);
     await win('placar').scrollIntoViewIfNeeded().catch(() => {});
