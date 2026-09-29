@@ -107,8 +107,8 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.21.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **1010 testes, 1010 passando, 0 falhando**. `npm run lint` → 0
+`0.22.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **1977 testes, 1977 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
@@ -528,6 +528,39 @@ Pendências:
 - **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
   anterior a estas fases, contra a regra de não usar `filter`.
 - **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
+## Lançado na 0.22.0 (2026-09-28)
+
+A primeira versão com a **Mesa** e com a interface **Sinal** (seções acima: redesign "Sinal" e fase 1), mais a
+rodada de ajustes da sala de 28/09.
+
+**Tipo de sala, escolhido ao criar.** "Mesa": a sala só tem a Mesa. Ela abre sozinha ao entrar (inclusive depois
+de retomar ou migrar), não há vista de palco, e cada tela ou câmera ao vivo vira uma janela lá. O clique numa fonte
+do barramento centraliza a janela dela, e a Mesa reenquadra sozinha a cada tela que entra até a pessoa mexer na
+vista. "Só transmissões": só o palco; o servidor recusa as operações da Mesa (`mesa-denied` com motivo
+`disabled`). O tipo viaja no `welcome`, no `probe-ok`, no beacon ("Só transmissões" na lista da rede) e na
+migração de host.
+
+**PIN escolhido por quem cria** (6 dígitos, com "Sortear"), validado no diálogo (`room-ui.js`, com teste), no
+`room:host` (`src/main/roomhost.js`) e no servidor.
+
+**Sala repetida na lista da rede.** O host anuncia por cada interface (LAN, Radmin, Hyper-V…), e a lista criava
+uma linha por IP de origem. Agora agrupa pelo endereço anunciado e entra sempre por um IP de origem visto de
+verdade (a proteção do R13 continua).
+
+**Janelas de tela e câmera não fecham** por pedido de ninguém, nem do líder (`deny('media')`); saem quando a
+transmissão acaba. **Mesa vazia** sem texto nem atalhos.
+
+**Sala.** Barra de baixo com Transmitir tela, Câmera e Pôr na Mesa num grupo só; botão de pessoas com ícone de
+duas pessoas e popover "Pessoas"; "Sair da sala" em destaque; menu da Mesa clicável por cima da Conversa (saía
+preso no contexto de empilhamento da seção); "Espiar" a conversa mostra na hora as últimas mensagens; o botão de
+volume do HUD abria o menu inteiro.
+
+**Bancadas** (`tools/mesa-prints`, `tools/bancada-janelas`, `tools/bancada-sala`, `tools/sinal-prints/sala.js`)
+no modelo novo; `SINAL_SALA=transmissoes` fotografa a sala só de palco.
+
+Não testado com PCs reais: criar a sala de verdade, a lista da rede com duas máquinas e a migração numa sala só de
+transmissões (coberta só pelo e2e do servidor).
 
 ## Lançado na 0.21.0 (2026-09-24)
 
