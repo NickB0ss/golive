@@ -970,6 +970,28 @@
       return S.local.get(win.id) || S.remote.get(win.id)?.rect || win;
     }
 
+    // Modulos privados podem ocultar seu conteudo de outras pessoas. O
+    // cursor tambem e conteudo: nao sai enquanto esta sobre essa janela.
+    // Em tela cheia a janela nao ocupa o proprio retangulo do mundo, entao
+    // tambem vale o elemento debaixo do ponteiro (e qualquer privada em tela cheia).
+    function janelaPrivada(win) {
+      return !!win && modOf(win.type)?.isPrivate?.(win.state) === true;
+    }
+
+    function cursorSobreJanelaPrivada(point, alvo) {
+      const winEl = alvo?.closest?.('.mesa-win');
+      if (winEl && janelaPrivada(findWin(winEl.dataset.id))) return true;
+      return windows().some((win) => {
+        if (!janelaPrivada(win)) return false;
+        if (S.wins.get(win.id)?.el?.classList.contains('is-full')) return true;
+        const rect = rectOf(win);
+        return point.x >= rect.x
+          && point.y >= rect.y
+          && point.x <= rect.x + rect.w
+          && point.y <= rect.y + rect.h;
+      });
+    }
+
     /** Casa o DOM com o estado: cria o que falta, tira o que saiu, poe cada
      * uma no lugar. */
     function renderAll({ refreshContent = false } = {}) {
@@ -1333,6 +1355,16 @@
         sendAnnotate(op) {
           if (!S || !findWin(rec.id)) return false;
           return deps.send({ type: 'annotate', surface: `mesa:${rec.id}`, ...op });
+        },
+        sendAnnotateSyncAll(items) {
+          if (!S || !findWin(rec.id) || !Array.isArray(items)) return false;
+          const me = String(deps.me());
+          const destinos = (deps.viewers?.() || []).map(String).filter((id) => id !== me);
+          let enviado = false;
+          for (const to of destinos) {
+            if (deps.send({ type: 'annotate-sync', to, surface: `mesa:${rec.id}`, items })) enviado = true;
+          }
+          return enviado;
         },
       };
     }
@@ -2198,6 +2230,7 @@
       const p = worldPoint(e);
       const pt = M.normCursor(p);
       if (!pt) return;
+      if (cursorSobreJanelaPrivada(pt, e.target)) return;
       S.pendingCursor = pt;
       const t = now();
       if (M.shouldEmit(S.lastCursorAt, t)) {

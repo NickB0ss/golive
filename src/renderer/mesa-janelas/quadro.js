@@ -34,6 +34,36 @@
   const PEN_WIDTH = 4;
   const TEXT_SIZE = 20;
 
+  function visibilidadeQuadro(state, me, nameOf) {
+    const dono = String(state && state.owner) === String(me);
+    const escondido = state && state.hidden === true;
+    const semAcesso = escondido && !dono;
+    let nome = 'Alguém';
+    try {
+      nome = nameOf(state && state.owner) || nome;
+    } catch {
+      /* nome ausente nao impede o aviso */
+    }
+    return {
+      dono,
+      escondido,
+      semAcesso,
+      mostraBotao: dono,
+      textoBotao: escondido ? 'Mostrar a todos' : 'Esconder dos outros',
+      aviso: semAcesso ? `${nome} escondeu o quadro` : '',
+    };
+  }
+
+  function deveEnviarRetrato(antes, depois, me) {
+    return String(depois && depois.owner) === String(me)
+      && antes && antes.hidden === true
+      && depois && depois.hidden !== true;
+  }
+
+  function perdeAcessoAoEsconder(antes, depois, dona) {
+    return antes?.hidden !== true && depois?.hidden === true && !dona;
+  }
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const A = root.GoLive.annotate;
@@ -41,7 +71,7 @@
     const b = C.base(elRoot, api, TYPE);
     const store = A.createStore();
 
-    let state = { owner: null };
+    let state = { owner: null, hidden: false };
     let tool = 'caneta'; // 'caneta' | 'texto'
     let corEscolhida = null; // null = a cor da propria pessoa
 
@@ -50,11 +80,16 @@
     }
 
     function souDona() {
-      return String(state.owner) === String(api.me());
+      return visibilidadeQuadro(state, api.me(), api.nameOf).dono;
     }
 
     function podeLimpar() {
+      if (state.hidden === true) return souDona();
       return souDona() || api.isLeader();
+    }
+
+    function escondidoParaMim() {
+      return visibilidadeQuadro(state, api.me(), api.nameOf).semAcesso;
     }
 
     // ---------- barra de ferramentas ----------
@@ -63,7 +98,10 @@
     const btTexto = C.botao({ text: 'Texto', class: 'mj-qd-ferr' });
     const paleta = el('div', { class: 'mj-qd-paleta', attrs: { role: 'group', 'aria-label': 'Cor do traço' } });
     const swatches = A.PALETTE.map((cor) => {
-      const sw = el('button', { class: 'mj-qd-cor', attrs: { type: 'button', 'aria-label': `Usar a cor ${cor}`, title: 'Cor' } });
+      const sw = el('button', {
+        class: 'mj-qd-cor',
+        attrs: { type: 'button', 'aria-label': `Usar a cor ${cor}`, title: 'Cor' },
+      });
       sw.style.setProperty('--mj-cor', cor);
       sw.addEventListener('click', () => {
         corEscolhida = cor;
@@ -74,7 +112,24 @@
     });
     const btDesfazer = C.botao({ text: 'Desfazer', class: 'mj-qd-acao' });
     const btLimpar = C.botao({ text: 'Limpar', class: 'mj-qd-acao' });
-    const barra = el('div', { class: 'mj-qd-barra' }, btCaneta, btTexto, paleta, el('span', { class: 'mj-mola' }), btDesfazer, btLimpar);
+    const btVisibilidade = C.botao({
+      text: 'Esconder dos outros',
+      class: 'mj-qd-acao mj-qd-visibilidade',
+      attrs: { 'aria-pressed': 'false' },
+    });
+    const selo = el('span', { class: 'mj-qd-selo', text: 'Só você vê', attrs: { hidden: '' } });
+    const barra = el(
+      'div',
+      { class: 'mj-qd-barra' },
+      btCaneta,
+      btTexto,
+      paleta,
+      selo,
+      el('span', { class: 'mj-mola' }),
+      btDesfazer,
+      btLimpar,
+      btVisibilidade,
+    );
     b.raiz.append(barra);
 
     function escolherFerramenta(nova) {
@@ -83,6 +138,10 @@
     }
     btCaneta.addEventListener('click', () => escolherFerramenta('caneta'));
     btTexto.addEventListener('click', () => escolherFerramenta('texto'));
+
+    b.clique(btVisibilidade, barra, () => {
+      api.act({ kind: 'visibility', hidden: state.hidden !== true });
+    });
 
     b.clique(btDesfazer, barra, () => aplicarLocal({ op: 'undo' }));
     b.clique(btLimpar, barra, () => {
@@ -98,9 +157,15 @@
     });
 
     function sincronizarBarra() {
+      const visibilidade = visibilidadeQuadro(state, api.me(), api.nameOf);
       btCaneta.classList.toggle('is-on', tool === 'caneta');
       btTexto.classList.toggle('is-on', tool === 'texto');
       for (const sw of swatches) sw.el.classList.toggle('is-on', corEscolhida === sw.cor);
+      btVisibilidade.hidden = !visibilidade.mostraBotao;
+      btVisibilidade.textContent = visibilidade.textoBotao;
+      btVisibilidade.setAttribute('aria-pressed', String(visibilidade.escondido));
+      selo.hidden = !visibilidade.escondido || !visibilidade.dono;
+      barra.classList.toggle('is-escondido', visibilidade.semAcesso);
       C.ligado(btDesfazer, store.hasFrom(LOCAL, api.me()) ? true : 'Nada seu pra desfazer');
       C.ligado(btLimpar, podeLimpar() ? true : 'Só quem pôs o quadro ou o líder da sala limpa');
     }
@@ -109,7 +174,12 @@
 
     const palco = el('div', { class: 'mj-qd-palco' });
     const canvas = el('canvas', { class: 'mj-qd-canvas' });
+    const avisoEscondido = el('p', {
+      class: 'mj-qd-escondido',
+      attrs: { role: 'status', 'aria-live': 'polite', tabindex: '-1', hidden: '' },
+    });
     palco.append(canvas);
+    palco.append(avisoEscondido);
     b.raiz.append(palco);
     // Nada que comeca no canvas pode arrastar a janela (a alca e a Vista
     // cuidam disso fora daqui, mas o pointerdown tambem sobe por padrao).
@@ -284,12 +354,33 @@
     // ---------- ciclo de vida ----------
 
     function update(novo) {
-      state = novo && typeof novo === 'object' ? novo : { owner: null };
+      const antes = state;
+      state = novo && typeof novo === 'object'
+        ? { ...novo, hidden: novo.hidden === true }
+        : { owner: null, hidden: false };
+      const visibilidade = visibilidadeQuadro(state, api.me(), api.nameOf);
+      if (visibilidade.semAcesso) {
+        fecharTexto();
+        store.load(LOCAL, []);
+      }
+      canvas.hidden = visibilidade.semAcesso;
+      avisoEscondido.hidden = !visibilidade.semAcesso;
+      avisoEscondido.textContent = visibilidade.aviso;
+      const foco = root.document?.activeElement;
+      if (perdeAcessoAoEsconder(antes, state, visibilidade.dono)
+        && (barra.contains(foco) || canvas === foco)) {
+        avisoEscondido.focus();
+      }
       b.raiz.classList.toggle('is-dona', souDona());
       sincronizarBarra();
+      redesenhar();
+      if (deveEnviarRetrato(antes, state, api.me())) {
+        api.sendAnnotateSyncAll(store.snapshot(LOCAL));
+      }
     }
 
     function annotateOp(msg) {
+      if (escondidoParaMim()) return;
       if (msg && msg.op === 'clear' && msg.scope === 'all') {
         // O servidor so repassa um clear:all de quem pode (o dono da
         // janela ou o lider da sala) -- store.apply recusaria por causa da
@@ -304,6 +395,7 @@
     }
 
     function annotateSync(items) {
+      if (escondidoParaMim()) return;
       store.load(LOCAL, items);
       redesenhar();
       sincronizarBarra();
@@ -383,7 +475,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount };
+  const api = { type: TYPE, mount, visibilidadeQuadro, deveEnviarRetrato, perdeAcessoAoEsconder };
   registrar(api, ['comum.js']);
 
   if (typeof module !== 'undefined') module.exports = api;

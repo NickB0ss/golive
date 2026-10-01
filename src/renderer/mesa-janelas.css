@@ -638,14 +638,17 @@
 /* ---------- Tabuleiros: moldura comum ----------
    As casas do tabuleiro seguem "claro/escuro" de verdade: nos temas
    escuros --s4 e a mais clara; no Papel (o unico tema claro) inverte. As
-   pecas tem cor fixa em todos os temas (branca e branca). */
+   pecas tem cor fixa em todos os temas (giz e breu, os tokens travados de
+   sobre-video): --on-act e --on-fill trocam por tema e no escuro valem
+   quase o mesmo preto do --void. A peca escura leva um aro de giz para nao
+   sumir nas casas escuras. */
 
 .mj-jogo {
   gap: var(--s-15);
   --mj-casa-a: var(--s4);
   --mj-casa-b: var(--s2);
-  --mj-peca-clara: var(--on-act);
-  --mj-peca-escura: var(--video-bg);
+  --mj-peca-clara: var(--on-video);
+  --mj-peca-escura: var(--void);
 }
 :root[data-theme="paper"] .mj-jogo { --mj-casa-a: var(--s2); --mj-casa-b: var(--s4); }
 
@@ -785,7 +788,8 @@
 }
 .mj .mj-casa.is-b { background: var(--mj-casa-b); }
 .mj .mj-casa:active { transform: none; }
-.mj .mj-casa.is-ultimo::before { content: ""; position: absolute; inset: 0; background: var(--on-fill); }
+/* Ultimo lance: tinta do fio por cima da casa. Era --on-fill, que no tema escuro e preto e apagava as pecas. */
+.mj .mj-casa.is-ultimo::before { content: ""; position: absolute; inset: 0; background: var(--wire-soft); }
 .mj .mj-casa.is-sel::after,
 .mj .mj-casa.is-xeque::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 3px var(--on-text); }
 .mj .mj-casa.is-xeque::after { box-shadow: inset 0 0 0 3px var(--warn); }
@@ -810,8 +814,14 @@
 .mj-damas .mj-amostra.s1 { background: var(--mj-peca-escura); box-shadow: inset 0 0 0 1px var(--veil-strong); }
 .mj-damas .mj-peca { width: 76%; aspect-ratio: 1; border-radius: var(--r-full); }
 .mj-damas .mj-peca:not(.is-clara):not(.is-escura) { display: none; }
-.mj-damas .mj-peca.is-clara { background: var(--mj-peca-clara); box-shadow: inset 0 -3px 0 var(--scrim-1), 0 1px 2px var(--scrim-2); }
-.mj-damas .mj-peca.is-escura { background: var(--mj-peca-escura); box-shadow: inset 0 0 0 2px var(--veil-hover), inset 0 -3px 0 var(--scrim-4), 0 1px 2px var(--scrim-2); }
+.mj-damas .mj-peca.is-clara {
+  background: var(--mj-peca-clara);
+  box-shadow: inset 0 0 0 1px var(--scrim-2), inset 0 -3px 0 var(--scrim-1), 0 1px 2px var(--scrim-2);
+}
+.mj-damas .mj-peca.is-escura {
+  background: var(--mj-peca-escura);
+  box-shadow: inset 0 0 0 2px var(--veil-strong), inset 0 -3px 0 var(--scrim-4), 0 1px 2px var(--scrim-2);
+}
 .mj-damas .mj-peca.is-dama::after {
   content: ""; position: absolute; inset: 24%;
   border-radius: var(--r-full);
@@ -825,8 +835,14 @@
 .mj-xadrez .mj-peca {
   font: calc(min(100cqw, 100cqh) / 8 * 0.78)/1 'Segoe UI Symbol', 'DejaVu Sans', system-ui, sans-serif;
 }
-.mj-xadrez .mj-peca.is-branca, .mj-xadrez .mj-amostra.is-branca { color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6), 0 1px 2px var(--scrim-4); }
-.mj-xadrez .mj-peca.is-preta, .mj-xadrez .mj-amostra.is-preta { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong), 0 0 2px var(--veil); }
+.mj-xadrez .mj-peca.is-branca, .mj-xadrez .mj-amostra.is-branca {
+  color: var(--mj-peca-clara);
+  text-shadow: 0 0 1px var(--void), 0 0 1px var(--void), 0 1px 2px var(--scrim-4);
+}
+.mj-xadrez .mj-peca.is-preta, .mj-xadrez .mj-amostra.is-preta {
+  color: var(--mj-peca-escura);
+  text-shadow: 0 0 1px var(--on-video), 0 0 1px var(--on-video), 0 0 3px var(--veil-strong);
+}
 .mj-xadrez .mj-amostra { font-size: var(--fs-lead); }
 .mj-xadrez.is-posso .mj-casa.is-mexe:hover::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--on-line); }
 .mj-jogo-placa {
@@ -848,7 +864,10 @@
 }
 .mj-xadrez-promo[hidden] { display: none; }
 .mj-xadrez-promo-g { font-size: var(--fs-lead); color: var(--mj-peca-clara); text-shadow: 0 0 1px var(--scrim-6); }
-.mj-xadrez-promo.is-preta .mj-xadrez-promo-g { color: var(--mj-peca-escura); text-shadow: 0 0 1px var(--veil-strong); }
+.mj-xadrez-promo.is-preta .mj-xadrez-promo-g {
+  color: var(--mj-peca-escura);
+  text-shadow: 0 0 1px var(--on-video), 0 0 1px var(--on-video);
+}
 
 /* ---------- Dentro da caixa da Vista ----------
    Na Mesa a alca de arrastar ocupa os 28 px de cima do `el` (por cima do
@@ -1889,6 +1908,17 @@
   cursor: pointer;
 }
 .mj-qd-cor.is-on { border-color: var(--tx); }
+.mj-qd-selo {
+  padding: var(--s-05) var(--s-1);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+}
+.mj-qd-barra.is-escondido .mj-qd-ferr,
+.mj-qd-barra.is-escondido .mj-qd-paleta,
+.mj-qd-barra.is-escondido .mj-qd-acao { display: none; }
 .mj-qd-palco {
   position: relative;
   flex: 1; min-height: 0;
@@ -1899,6 +1929,17 @@
   touch-action: none;
 }
 .mj-qd-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.mj-qd-escondido {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: var(--s-3);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+  text-align: center;
+}
 .mj-qd-texto-input {
   position: absolute;
   min-width: 120px;

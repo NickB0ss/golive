@@ -10,43 +10,67 @@
  * O traco NAO mora no estado desta janela: ele vai pelo canal do rabisco do
  * servidor ('annotate'/'annotate-sync', superficie 'mesa:<id da janela>'),
  * porque o estado da janela tem teto de 16 KB e uma folha cheia de tracos
- * estoura isso na primeira pincelada. O estado aqui guarda so quem criou a
- * janela (`owner`, carimbado pelo servidor no `init`, ctx.by): e o que o
- * conteudo (`mesa-janelas/quadro.js`) usa pra saber se "Limpar" aparece
- * ligado. Nenhuma acao (`act`) existe -- nada muda este estado depois de
- * criado.
+ * estoura isso na primeira pincelada. O estado aqui guarda quem criou a
+ * janela (`owner`, carimbado pelo servidor no `init`, ctx.by) e se ela esta
+ * escondida dos outros (`hidden`). So quem criou troca essa visibilidade.
  *
  * `annotate`/`canAnnotateClear` sao a extensao do contrato pro canal do
  * rabisco em janela da Mesa (server/signaling-core.js, casos
  * 'annotate'/'annotate-sync'): `annotate: true` liga o canal pra este tipo;
- * sem `canAnnotateDraw` (nao declarado aqui) qualquer pessoa na vista Mesa
- * pode desenhar -- e a regra do Quadro ("todo mundo rabisca"); so
- * `canAnnotateClear` decide quem pode apagar tudo, o servidor confere
- * antes de repassar o `clear` (o lider ou quem pos a janela).
+ * `canAnnotateDraw`/`canAnnotateClear` decidem quem desenha ou limpa; e
+ * `canAnnotateSee` decide quem recebe o rabisco. Quando escondido, so a
+ * pessoa que criou ve e desenha; visivel, o Quadro segue colaborativo.
  */
 
 (function (root) {
   function init(ctx) {
-    return { owner: ctx && ctx.by != null ? String(ctx.by) : null };
+    return { owner: ctx && ctx.by != null ? String(ctx.by) : null, hidden: false };
   }
 
-  // Nenhuma acao existe: o botao "Limpar" e o resto do desenho passam pelo
-  // canal do rabisco, nao por `act`. `validate` so precisa devolver um
-  // motivo (nunca `true`) para o registro aceitar o modulo.
-  function validate() {
-    return 'Esta janela não tem ação';
+  function validate(state, action, ctx) {
+    if (!action || action.kind !== 'visibility' || typeof action.hidden !== 'boolean') {
+      return 'Visibilidade inválida';
+    }
+    const owner = state && state.owner;
+    if (!ctx || ctx.from !== owner) return 'Só quem criou o quadro pode escondê-lo';
+    return true;
   }
 
-  function reduce(state) {
-    return state;
+  function reduce(state, action) {
+    if (!action || action.kind !== 'visibility' || typeof action.hidden !== 'boolean') return state;
+    return { ...state, hidden: action.hidden };
+  }
+
+  function estaEscondido(state) {
+    return state && state.hidden === true;
+  }
+
+  function isPrivate(state) {
+    return estaEscondido(state);
+  }
+
+  function canAnnotateDraw(state, from) {
+    return !estaEscondido(state) || String(from) === String(state && state.owner);
   }
 
   function canAnnotateClear(state, from, ctx) {
+    if (estaEscondido(state)) return String(from) === String(state && state.owner);
     return String(from) === String(state && state.owner) || (ctx && ctx.isLeader === true);
   }
 
-  function summary() {
-    return 'Rabisco em grupo';
+  function canAnnotateSee(state, peerId) {
+    return !estaEscondido(state) || String(peerId) === String(state && state.owner);
+  }
+
+  function dropPeer(state, peerId) {
+    if (estaEscondido(state) && String(peerId) === String(state && state.owner)) {
+      return { ...state, hidden: false };
+    }
+    return state;
+  }
+
+  function summary(state) {
+    return estaEscondido(state) ? 'Quadro escondido' : 'Rabisco em grupo';
   }
 
   const mod = {
@@ -59,7 +83,11 @@
     init,
     validate,
     reduce,
+    canAnnotateDraw,
     canAnnotateClear,
+    canAnnotateSee,
+    isPrivate,
+    dropPeer,
     summary,
   };
 
