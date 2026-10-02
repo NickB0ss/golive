@@ -165,7 +165,36 @@
   cursor: grab;
 }
 .mesa-bar:active { cursor: grabbing; }
-.mesa-type { flex: none; color: var(--tx3); font: var(--t-data); }
+.mesa-type {
+  display: inline-grid;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: var(--r-xs);
+  color: var(--tx3);
+  font: var(--t-tag);
+}
+.mesa-win:not(.is-media):has(.mj[data-superficie='feltro']) .mesa-type {
+  background: var(--mj-mat-feltro-2);
+  color: var(--on-video);
+}
+.mesa-win:not(.is-media):has(.mj[data-superficie='tabuleiro']) .mesa-type {
+  background: var(--mj-mat-madeira);
+  color: var(--on-video);
+}
+.mesa-win:not(.is-media):has(.mj[data-superficie='papel']) .mesa-type {
+  background: var(--mj-mat-papel);
+  color: var(--void);
+}
+.mesa-win:not(.is-media):has(.mj[data-superficie='lousa']) .mesa-type {
+  background: var(--mj-mat-lousa);
+  color: var(--on-video);
+}
+.mesa-win:not(.is-media):has(.mj[data-superficie='palco']) .mesa-type {
+  background: var(--void);
+  color: var(--on-video);
+}
 .mesa-bar-title { overflow: hidden; min-width: 0; font: var(--t-label); text-overflow: ellipsis; white-space: nowrap; }
 .mesa-bar-status { overflow: hidden; max-width: 140px; color: var(--tx2); font: var(--t-meta); text-overflow: ellipsis; white-space: nowrap; }
 .mesa-bar-turn { flex: none; }

@@ -41,6 +41,39 @@
     error: 'Não deu certo; tente de novo',
   };
 
+  const SUPERFICIES = Object.freeze({
+    poquer: 'feltro',
+    blackjack: 'feltro',
+    truco: 'feltro',
+    oito: 'feltro',
+    domino: 'feltro',
+    dados: 'feltro',
+    roleta: 'feltro',
+    velha: 'tabuleiro',
+    lig4: 'tabuleiro',
+    damas: 'tabuleiro',
+    xadrez: 'tabuleiro',
+    batalha: 'tabuleiro',
+    nota: 'papel',
+    lista: 'papel',
+    enquete: 'papel',
+    sorteio: 'papel',
+    stop: 'papel',
+    quiz: 'papel',
+    placar: 'lousa',
+    cronometro: 'lousa',
+    quadro: 'lousa',
+    desenha: 'lousa',
+    youtube: 'palco',
+    aovivo: 'palco',
+    radio: 'palco',
+    imagem: 'palco',
+    galeria: 'palco',
+    jam: 'palco',
+    link: 'palco',
+    sons: 'palco',
+  });
+
   function motivoRecusa(reason, detail) {
     if (reason === 'invalid' && typeof detail === 'string' && detail.trim()) return primeiraMaiuscula(detail.trim());
     return RECUSAS[reason] || 'Não deu certo; tente de novo';
@@ -173,6 +206,102 @@
     return b;
   }
 
+  function cadeiras(opcoes) {
+    const opts = opcoes || {};
+    const node = el('div', { class: 'mj-cadeiras', attrs: { 'aria-label': opts.rotulo || 'Lugares à mesa' } });
+    const lugares = [];
+
+    function criarLugar() {
+      const item = el('div', { class: 'mj-cadeira' });
+      const botaoLugar = botao({ class: 'mj-cadeira-botao' });
+      botaoLugar.addEventListener('click', () => {
+        if (estaDesligado(botaoLugar)) {
+          // Como o `clique` da base: desligado mostra o motivo em vez de ficar mudo.
+          opts.aoRecusar?.(botaoLugar.title || 'Indisponível', item);
+          return;
+        }
+        if (botaoLugar.dataset.ocupado === '1') opts.aoLevantar?.(botaoLugar.indice);
+        else opts.aoSentar?.(botaoLugar.indice);
+      });
+      item.append(botaoLugar);
+      return { item, botao: botaoLugar };
+    }
+
+    function atualizarLugar(registro, lugar, indice) {
+      const ocupado = lugar.peer !== null && lugar.peer !== undefined;
+      const nome = lugar.eu ? 'Você' : (lugar.nome || 'Alguém');
+      const { item, botao: botaoLugar } = registro;
+      botaoLugar.indice = indice;
+      botaoLugar.dataset.ocupado = ocupado ? '1' : '0';
+      if (lugar.vez) item.dataset.vez = '1';
+      else delete item.dataset.vez;
+
+      if (!ocupado) {
+        botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-livre';
+        botaoLugar.replaceChildren(icone('mais'), el('span', { text: 'Sentar' }));
+        ligado(botaoLugar, lugar.motivoSentar ?? true, 'Sentar');
+        item.removeAttribute('title');
+        return;
+      }
+
+      const avatar = el('span', { class: 'mj-cadeira-avatar', text: nome.trim().charAt(0).toUpperCase() || '?' });
+      if (lugar.cor) avatar.style.setProperty('--mj-cor', lugar.cor);
+      const nomeNode = el('span', { class: 'mj-cadeira-nome', text: nome, attrs: { title: nome } });
+      const peca = lugar.peca && lugar.peca.texto
+        ? el('span', { class: 'mj-cadeira-peca', text: lugar.peca.texto })
+        : lugar.peca && lugar.peca.cor
+          ? bolinha(lugar.peca.cor, 'Peça')
+          : null;
+      if (peca) peca.classList.add('mj-cadeira-peca');
+      botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-ocupada';
+      botaoLugar.replaceChildren(avatar, nomeNode, peca);
+      ligado(botaoLugar, lugar.motivoLevantar ?? true, `Levantar ${nome}`);
+      item.setAttribute('title', nome);
+    }
+
+    function sync(novosLugares) {
+      const lista = Array.isArray(novosLugares) ? novosLugares : [];
+      while (lugares.length > lista.length) lugares.pop().item.remove();
+      while (lugares.length < lista.length) lugares.push(criarLugar());
+      for (let indice = 0; indice < lista.length; indice += 1) {
+        atualizarLugar(lugares[indice], lista[indice], indice);
+        porNaPosicao(node, lugares[indice].item, indice);
+      }
+    }
+
+    return { node, sync };
+  }
+
+  function vazio(opcoes) {
+    const opts = opcoes || {};
+    const node = el('section', { class: 'mj-vazio' });
+    const glifo = el('div', { class: 'mj-vazio-glifo', attrs: { 'aria-hidden': 'true' } }, icone(opts.icone));
+    const titulo = el('h2', { class: 'mj-vazio-titulo', text: opts.titulo || '' });
+    const texto = el('p', { class: 'mj-vazio-texto', text: opts.texto || '' });
+    node.append(glifo, titulo, texto);
+    if (opts.acao) node.append(el('div', { class: 'mj-vazio-acao' }, opts.acao));
+    return node;
+  }
+
+  function acoes(opcoes) {
+    const opts = opcoes || {};
+    const node = el('footer', { class: 'mj-acoes' });
+    const secundarias = el('div', { class: 'mj-acoes-secundarias' });
+    for (const botaoSecundario of opts.secundarias || []) {
+      botaoSecundario.classList.add('mj-fantasma');
+      const rotulo = botaoSecundario.getAttribute('aria-label') || botaoSecundario.textContent.trim();
+      if (rotulo) botaoSecundario.setAttribute('aria-label', rotulo);
+      if (rotulo && !botaoSecundario.getAttribute('title')) botaoSecundario.setAttribute('title', rotulo);
+      secundarias.append(botaoSecundario);
+    }
+    node.append(secundarias, el('span', { class: 'mj-mola', attrs: { 'aria-hidden': 'true' } }));
+    if (opts.principal) {
+      opts.principal.classList.add('mj-pri');
+      node.append(opts.principal);
+    }
+    return node;
+  }
+
   /** A linha de recusa. Uma por janela: ela vai morar perto do controle da
    * ultima acao (`em(zona)` a move para dentro da zona) e some sozinha. */
   function criarAviso() {
@@ -206,6 +335,7 @@
    * pode, manda se pode. */
   function base(elRoot, api, tipo) {
     const raiz = el('div', { class: `mj mj-${tipo}` });
+    if (SUPERFICIES[tipo]) raiz.dataset.superficie = SUPERFICIES[tipo];
     elRoot.append(raiz);
     const aviso = criarAviso();
     const faxina = [];
@@ -404,6 +534,7 @@
 
   const api = {
     RECUSAS,
+    SUPERFICIES,
     motivoRecusa,
     milhar,
     plural,
@@ -417,6 +548,9 @@
     ligado,
     estaDesligado,
     bolinha,
+    cadeiras,
+    vazio,
+    acoes,
     criarAviso,
     base,
     campoLocal,

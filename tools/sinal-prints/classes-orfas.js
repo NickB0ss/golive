@@ -12,8 +12,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const R = path.join(__dirname, '..', '..', 'src', 'renderer');
-const css = [...fs.readdirSync(path.join(R, 'sinal')).filter((f) => f.endsWith('.css')).map((f) => path.join(R, 'sinal', f)),
-  path.join(R, 'mesa-janelas.css')].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+const entradaMesa = fs.readFileSync(path.join(R, 'mesa-janelas.css'), 'utf8');
+const folhasMesa = [...entradaMesa.matchAll(/@import url\('mesa-janelas\/css\/([\w-]+\.css)'\);/g)]
+  .map((match) => path.join(R, 'mesa-janelas', 'css', match[1]));
+const css = [
+  ...fs.readdirSync(path.join(R, 'sinal')).filter((f) => f.endsWith('.css')).map((f) => path.join(R, 'sinal', f)),
+  ...folhasMesa,
+].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const arquivos = process.argv.slice(2).length ? process.argv.slice(2)
   : ['index.html', 'ui.js', 'app.js', 'warningcenter.js'].map((f) => path.join(R, f));
 

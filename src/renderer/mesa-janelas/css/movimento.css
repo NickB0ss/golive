@@ -1,0 +1,5 @@
+/* ---------- Movimento ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .mj *, .mj *::before, .mj *::after { transition: none !important; animation: none !important; }
+}

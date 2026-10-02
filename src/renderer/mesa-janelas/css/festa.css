@@ -1,0 +1,198 @@
+/* === desenha === */
+/* Desenha e adivinha (contrato, secao 10), por cima do Quadro: topo com
+   fase/relogio, placar horizontal, e o corpo troca de secao pela fase
+   (lobby | escolhendo | desenhando | fim). So uma secao visivel por vez. */
+.mj-desenha { padding: var(--s-2); gap: var(--s-15); }
+.mj-ds-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-height: 22px; }
+/* O aviso (quem acertou, "quase", a revelacao da rodada) mora na barra do
+   topo -- nunca dentro de uma secao que pode estar escondida pra quem
+   desenha (ver mostrarEvento/mostrarRevelacao em desenha.js). */
+.mj-ds-topo .mj-aviso { flex-basis: 100%; }
+.mj-ds-status { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mj-desenha.is-minha-vez .mj-ds-status { color: var(--wire); }
+.mj-ds-relogio { flex: none; color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-ds-relogio.is-pouco { color: var(--warn); font-weight: 600; }
+.mj-ds-relogio[hidden] { display: none; }
+
+.mj-ds-placar {
+  flex: none;
+  display: flex; flex-wrap: wrap; gap: var(--s-1);
+  list-style: none; margin: 0; padding: 0;
+}
+.mj-ds-jogador {
+  display: flex; align-items: center; gap: var(--s-05);
+  padding: 2px var(--s-15) 2px var(--s-05);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  font-size: var(--fs-micro);
+}
+.mj-ds-jogador.is-vez { box-shadow: inset 0 0 0 2px var(--wire); }
+.mj-ds-jogador.is-fora { opacity: 0.55; }
+.mj-ds-nome { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-ds-pontos { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tx2); }
+
+.mj-ds-lobby, .mj-ds-escolhendo, .mj-ds-desenhando, .mj-ds-fim { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mj-ds-lobby { justify-content: center; }
+.mj-ds-fim { align-items: center; justify-content: center; }
+
+.mj-ds-escolhendo { align-items: center; justify-content: center; }
+.mj-ds-opcoes { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; }
+.mj .mj-ds-opcao {
+  min-width: 140px; min-height: 44px;
+  padding: 0 var(--s-3);
+  background: var(--s3);
+  border-color: var(--line2);
+  color: var(--tx);
+  font-weight: 600;
+}
+.mj .mj-ds-opcao:hover:not([aria-disabled="true"]) { background: var(--act); border-color: var(--act); color: var(--on-act); }
+
+.mj-ds-palavra {
+  margin: 0;
+  min-height: 1.4em;
+  text-align: center;
+  font: 700 var(--fs-lead) var(--font-display);
+  letter-spacing: 0.2em;
+}
+.mj-ds-palco {
+  position: relative;
+  flex: 1; min-height: 0;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+  touch-action: none;
+}
+.mj-ds-canvas { display: block; width: 100%; height: 100%; }
+.mj-desenha.is-minha-vez .mj-ds-canvas { cursor: crosshair; }
+.mj-ds-palpite { flex: none; }
+.mj-ds-palpite[hidden] { display: none; }
+
+@container mj (max-height: 320px) {
+  .mj-ds-placar { display: none; }
+}
+@container mj (max-width: 420px) {
+  .mj .mj-ds-opcao { min-width: 0; flex: 1 1 100%; }
+}
+
+/* === stop === */
+.mj-stop-head,
+.mj-stop-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mj-stop-letter {
+  color: var(--tx);
+  font-size: var(--fs-hero);
+  line-height: 1;
+}
+
+.mj-stop-clock {
+  color: var(--tx2);
+  font-variant-numeric: tabular-nums;
+}
+
+.mj-stop-body {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mj-stop-categories,
+.mj-stop-answers,
+.mj-stop-review,
+.mj-stop-category-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mj-stop-category-list,
+.mj-stop-answers {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mj-stop-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(80px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mj-stop-name {
+  color: var(--tx2);
+}
+
+.mj-stop-answer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container (max-width: 580px) {
+  .mj-stop-row {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .mj-stop-name,
+  .mj-stop-answer {
+    grid-column: span 3;
+  }
+}
+
+/* === quiz === */
+.mj.mj-quiz { padding-top: 30px; gap: var(--s-2); }
+.mj-quiz-topo {
+  display: flex; align-items: center; gap: var(--s-2); min-width: 0;
+}
+.mj-quiz-titulo { font: 700 var(--fs-lead) var(--font-display); }
+.mj-quiz-rodada { color: var(--tx2); font-size: var(--fs-small); }
+.mj-quiz-prazo {
+  min-width: 42px; padding: 1px var(--s-2); border-radius: var(--r-full);
+  background: var(--s3); color: var(--tx2); text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.mj-quiz-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
+.mj-quiz-pergunta {
+  margin: 0; min-height: 48px; font: 600 var(--fs-lead) var(--font-display);
+}
+.mj-quiz-alternativas {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2);
+}
+.mj-quiz-opcao {
+  min-width: 0; min-height: 48px; justify-content: flex-start;
+  text-align: left; white-space: normal;
+}
+.mj-quiz-opcao-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mj-quiz-opcao.is-escolhida { box-shadow: inset 0 0 0 2px var(--wire); }
+.mj-quiz-placar {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1);
+  min-height: 0; overflow: hidden;
+}
+.mj-quiz-jogador {
+  display: flex; align-items: center; gap: var(--s-1); min-width: 0;
+  padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--s2);
+}
+.mj-quiz-jogador.is-eu { box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-quiz-nome {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 600;
+}
+.mj-quiz-respondeu { color: var(--tx3); font-size: var(--fs-micro); }
+.mj-quiz-pontos { margin-left: auto; white-space: nowrap; font-size: var(--fs-small); }
+.mj-quiz-status { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-quiz-status:empty { display: none; }
+@container mj (max-width: 430px) {
+  .mj-quiz-alternativas { grid-template-columns: 1fr; gap: var(--s-1); }
+  .mj-quiz-opcao { min-height: 40px; }
+  .mj-quiz-placar { grid-template-columns: 1fr; }
+  .mj-quiz-pergunta { font-size: var(--fs-body); }
+}
+@container mj (max-height: 380px) {
+  .mj-quiz-placar { display: none; }
+  .mj-quiz-pergunta { min-height: 36px; }
+}
