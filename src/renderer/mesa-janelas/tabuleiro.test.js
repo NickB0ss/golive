@@ -30,7 +30,7 @@ test('minhaCadeira e virado', () => {
 
 test('textoStatus: cadeiras, vez, vitoria e empate', () => {
   let s = velha.init();
-  assert.equal(T.textoStatus(s, '1', LAB, nameOf), 'Cadeiras livres: sente-se para jogar');
+  assert.equal(T.textoStatus(s, '1', LAB, nameOf), '');
   s = velha.reduce(s, { kind: 'sit', seat: 0 }, ctx('1'));
   assert.equal(T.textoStatus(s, '1', LAB, nameOf), 'Esperando alguém sentar na outra cadeira');
   assert.equal(T.textoStatus(s, '3', LAB, nameOf), 'Uma cadeira livre: sente-se para jogar');

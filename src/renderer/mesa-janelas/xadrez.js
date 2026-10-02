@@ -89,6 +89,7 @@
       labels: LABELS,
       empate,
       desistir: true,
+      peca() { return { texto: '♚' }; },
       amostra(a, i) { a.textContent = `${GLIFOS.k}︎`; a.classList.add(i === 0 ? 'is-branca' : 'is-preta'); },
     });
     const g = T.grade8(mold.placa, { rotulo: 'Tabuleiro de xadrez', clique(l, c) { tocar(T.nomeCasa(l, c, N)); } });

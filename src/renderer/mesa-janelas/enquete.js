@@ -155,7 +155,7 @@
     const addOpcao = C.botao({ icone: 'mais', text: 'Opção', class: 'mj-fantasma', label: 'Adicionar opção' });
     const cancelar = C.botao({ text: 'Cancelar', class: 'mj-fantasma' });
     const publicar = el('button', { class: 'mj-btn mj-pri', text: 'Publicar', attrs: { type: 'submit' } });
-    const barraForm = el('div', { class: 'mj-barra' }, addOpcao, el('span', { class: 'mj-mola' }), cancelar, publicar);
+    const barraForm = C.acoes({ principal: publicar, secundarias: [addOpcao, cancelar] });
     const esperando = el('p', { class: 'mj-dica mj-enq-espera' });
     form.append(el('p', { class: 'mj-rotulo', text: 'Nova enquete' }), campoPergunta, listaEd, barraForm);
 

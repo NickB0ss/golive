@@ -118,6 +118,11 @@
         no.campo.sync(t.name);
         if (no.valor !== t.score) {
           no.pontos.textContent = String(t.score);
+          if (no.valor !== null && !C.reduzMovimento()) {
+            no.pontos.classList.remove('is-mudou');
+            void no.pontos.offsetWidth;
+            no.pontos.classList.add('is-mudou');
+          }
           no.valor = t.score;
         }
         no.pontos.setAttribute('aria-label', `${t.name}: ${t.score}`);

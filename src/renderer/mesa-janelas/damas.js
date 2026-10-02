@@ -77,7 +77,12 @@
     let posso = false;
     let sel = null; // [l, c] da peca escolhida
 
-    const mold = T.moldura(b, api, { labels: LABELS, empate, desistir: true });
+    const mold = T.moldura(b, api, {
+      labels: LABELS,
+      empate,
+      desistir: true,
+      peca(i) { return { cor: i === 0 ? 'var(--mj-peca-clara)' : 'var(--mj-peca-escura)' }; },
+    });
     const g = T.grade8(mold.placa, {
       rotulo: 'Tabuleiro de damas',
       clique(l, c) { tocar(l, c); },

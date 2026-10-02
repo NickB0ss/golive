@@ -62,7 +62,12 @@
       class: 'mj-lista-itens mj-rola',
       attrs: { 'aria-label': 'Itens', 'data-caber-rola': '' },
     });
-    const vazio = el('p', { class: 'mj-dica mj-lista-vazio', text: 'Nada na lista ainda.' });
+    const vazio = C.vazio({
+      icone: 'check',
+      titulo: 'Lista vazia',
+      texto: 'Escreva o primeiro item abaixo.',
+    });
+    vazio.classList.add('mj-lista-vazio');
 
     const novo = el('input', {
       class: 'mj-campo',
@@ -203,6 +208,8 @@
       }
       vazio.hidden = n > 0;
       conta.textContent = contagem(state).texto;
+      // Vazia, o convite ja diz "Lista vazia": o rodape nao repete.
+      rodape.hidden = n === 0;
       C.ligado(apagar, C.podeFazer(api, { kind: 'clearDone' }), 'Apagar os itens marcados');
       C.ligado(addBtn, C.podeFazer(api, { kind: 'add', text: 'x' }), 'Adicionar à lista');
     }

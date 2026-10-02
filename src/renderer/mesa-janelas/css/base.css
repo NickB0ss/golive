@@ -7,6 +7,7 @@
   --mj-mat-casa-clara: #D9B98C;
   --mj-mat-casa-escura: #5B3B22;
   --mj-mat-papel: #E9DFC8;
+  --mj-mat-mar: #1F4E79;
   --mj-mat-vinheta: rgba(0, 0, 0, 0.28);
   --mj-mat-giz-po: rgba(237, 237, 242, 0.05);
   --mj-mat-veio: rgba(0, 0, 0, 0.05);
@@ -89,8 +90,8 @@
 
 .mj[data-superficie='tabuleiro'] {
   --mj-moldura: color-mix(in oklab, var(--mj-mat-madeira) 40%, var(--s2));
-  --mj-casa-clara: color-mix(in oklab, var(--mj-mat-casa-clara) 30%, var(--s3));
-  --mj-casa-escura: color-mix(in oklab, var(--mj-mat-casa-escura) 35%, var(--s1));
+  --mj-casa-clara: color-mix(in oklab, var(--mj-mat-casa-clara) 55%, var(--s3));
+  --mj-casa-escura: color-mix(in oklab, var(--mj-mat-casa-escura) 60%, var(--s1));
   background: repeating-linear-gradient(
     100deg,
     transparent 0 7px,
@@ -184,7 +185,7 @@
 }
 
 .mj-vazio-glifo .mj-i { width: 40px; height: 40px; }
-.mj-vazio-titulo { margin: 0; font: var(--t-heading); }
+.mj .mj-vazio-titulo { margin: 0; font: var(--t-heading); }
 .mj-vazio-texto { max-width: 36ch; margin: 0; color: var(--tx2); font: var(--t-body); }
 .mj-vazio-acao { display: flex; justify-content: center; width: 100%; }
 

@@ -365,7 +365,9 @@ async function arrastarCasa(c, quem, de, para) {
 Object.assign(ROTEIROS, {
   async velha(c, tam) {
     c.tipo = `velha/${tam}`;
-    conferir((await c.ana.locator('.mj-jogo-status').textContent()).startsWith('Cadeiras livres'), `velha/${tam}: comeca com cadeiras livres`);
+    // As cadeiras dizem que estao livres; a linha de situacao nao repete.
+    const livres = await c.ana.locator('.mj-cadeira-livre').count();
+    conferir(livres === 2, `velha/${tam}: comeca com as duas cadeiras livres (${livres})`);
     await sentarOsDois(c);
     // Bia fora da vez: a casa esta desligada e o clique diz por que.
     const casaBia = c.bia.locator('.mj-velha-casa').nth(0);

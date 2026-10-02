@@ -558,3 +558,212 @@
   font: inherit;
   font-size: var(--fs-body);
 }
+
+/* ---------- Leva 1: materiais e controles ---------- */
+
+.mj[data-superficie='papel'] .mj-nota-texto,
+.mj[data-superficie='papel'] .mj-lista-itens,
+.mj[data-superficie='papel'] .mj-item,
+.mj[data-superficie='papel'] .mj-enq-opcao,
+.mj[data-superficie='papel'] .mj-sort-time {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 27px,
+    color-mix(in oklab, var(--line) 78%, transparent) 27px 28px
+  );
+}
+
+.mj-nota {
+  position: relative;
+  padding: var(--s-3) var(--s-4) var(--s-2);
+}
+
+.mj-nota::before {
+  position: absolute;
+  inset: var(--s-2) auto var(--s-2) var(--s-2);
+  width: 1px;
+  background: color-mix(in oklab, var(--danger) 30%, transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.mj .mj-nota-texto {
+  padding-left: var(--s-4);
+  border-radius: 0;
+  background-color: transparent;
+  line-height: 28px;
+}
+
+.mj-nota-rodape {
+  padding-left: var(--s-3);
+  font: var(--t-data);
+}
+
+.mj-lista {
+  gap: var(--s-2);
+  padding-bottom: var(--s-2);
+}
+
+.mj-lista-itens {
+  min-height: 0;
+  padding: 0 var(--s-2);
+}
+
+.mj-lista-vazio {
+  min-height: 0;
+}
+
+.mj-lista-vazio[hidden] {
+  display: none;
+}
+
+.mj-lista .mj-form {
+  flex: none;
+  padding: var(--s-1) var(--s-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.mj-lista-rodape {
+  margin-top: 0;
+}
+
+.mj-item {
+  border-bottom: 1px solid color-mix(in oklab, var(--line) 75%, transparent);
+  border-radius: 0;
+}
+
+.mj-enquete .mj-acoes,
+.mj-enquete .mj-enq-rodape {
+  flex: none;
+}
+
+.mj-enq-opcao {
+  box-shadow: 0 2px 0 color-mix(in oklab, var(--line) 65%, transparent);
+}
+
+.mj-enq-fundo {
+  background: color-mix(in oklab, var(--mj-mat-papel, var(--s3)) 26%, var(--s3));
+}
+
+.mj-placar .mj-time,
+.mj-cronometro .mj-cron-relogio,
+.mj-quadro .mj-qd-palco {
+  background: color-mix(in oklab, var(--s2) 88%, var(--mj-mat-lousa, var(--s2)));
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--tx) 10%, transparent),
+    inset 0 0 24px color-mix(in oklab, var(--void) 26%, transparent);
+}
+
+.mj-pontos,
+.mj-cron-tempo {
+  color: color-mix(in oklab, var(--tx) 88%, var(--mj-mat-papel, var(--tx)));
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--void) 55%, transparent);
+}
+
+.mj-pontos.is-mudou {
+  animation: mj-numero-lousa 240ms var(--ease-out) both;
+}
+
+.mj-pm .mj-ic {
+  width: 36px;
+  min-height: 36px;
+  border-radius: var(--r-full);
+  background: color-mix(in oklab, var(--s3) 72%, transparent);
+}
+
+.mj-cron-pre .mj-seg,
+.mj-cronometro .mj-segs,
+.mj-qd-barra {
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: color-mix(in oklab, var(--s2) 82%, transparent);
+}
+
+.mj-cron-ctrl,
+.mj-dados-ctrl,
+.mj-rol-ctrl,
+.mj-sort-acoes {
+  margin-top: auto;
+}
+
+.mj-sort-time {
+  box-shadow: 0 2px 0 color-mix(in oklab, var(--line) 70%, transparent),
+    0 8px 18px color-mix(in oklab, var(--void) 12%, transparent);
+}
+
+.mj-dados-meio {
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--s2) 70%, var(--mj-mat-feltro-2, var(--s2)));
+  box-shadow: inset 0 4px 14px color-mix(in oklab, var(--void) 30%, transparent);
+}
+
+.mj-dado,
+.mj-moeda {
+  background: radial-gradient(circle at 35% 30%, var(--s4), var(--s2) 72%);
+  box-shadow: 0 2px 0 color-mix(in oklab, var(--void) 58%, transparent),
+    0 4px 8px color-mix(in oklab, var(--void) 34%, transparent);
+}
+
+.mj-roleta .mj-rol-roda {
+  border-radius: var(--r-full);
+  background: radial-gradient(circle, color-mix(in oklab, var(--s2) 75%, transparent), transparent 68%);
+}
+
+.mj-roleta .mj-rol-fatia.t0 path {
+  fill: color-mix(in oklab, var(--act) 60%, var(--s2));
+}
+
+.mj-roleta .mj-rol-fatia.t1 path {
+  fill: color-mix(in oklab, var(--wire) 44%, var(--s2));
+}
+
+.mj-roleta .mj-rol-fatia.t2 path {
+  fill: color-mix(in oklab, var(--warn) 46%, var(--s2));
+}
+
+.mj-roleta .mj-rol-vazio { display: none; }
+
+.mj-roleta .mj-rol-vazio-fora {
+  flex: 1;
+}
+
+.mj-roleta .mj-rol-vazio-fora[hidden] {
+  display: none;
+}
+
+.mj-qd-barra {
+  padding: var(--s-05);
+}
+
+.mj .mj-qd-ferr,
+.mj .mj-qd-acao {
+  border-radius: var(--r-full);
+}
+
+.mj-qd-cor.is-on {
+  border-color: var(--wire);
+  box-shadow: 0 0 0 2px var(--wire-soft);
+}
+
+.mj-sons-btn {
+  background: linear-gradient(145deg, color-mix(in oklab, var(--s3) 92%, var(--tx) 8%), var(--s2));
+  box-shadow: 0 2px 0 color-mix(in oklab, var(--void) 55%, transparent);
+}
+
+.mj .mj-sons-btn.is-toca {
+  animation-duration: 240ms;
+}
+
+@keyframes mj-numero-lousa {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mj-pontos.is-mudou,
+  .mj-dado.is-rola,
+  .mj-moeda.is-rola,
+  .mj .mj-sons-btn.is-toca,
+  .mj-sort-time.is-entra {
+    animation: none;
+  }
+}

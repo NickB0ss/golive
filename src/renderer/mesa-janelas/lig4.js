@@ -48,7 +48,11 @@
     const { el } = C;
     let state = null;
 
-    const mold = T.moldura(b, api, { labels: LABELS, empate });
+    const mold = T.moldura(b, api, {
+      labels: LABELS,
+      empate,
+      peca(i) { return { cor: i === 0 ? 'var(--mj-v)' : 'var(--mj-a)' }; },
+    });
     const grade = el('div', { class: 'mj-lig4-grade', attrs: { role: 'group', 'aria-label': 'Lig 4: escolha a coluna' } });
     mold.placa.append(grade);
     mold.placa.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -74,6 +78,7 @@
       colunas.forEach(({ bt, furos }, c) => {
         furos.forEach((f, r) => {
           const v = state.board[r][c];
+          if (f.dataset.v !== v) f.classList.toggle('is-nova', v !== '.');
           f.dataset.v = v;
           f.classList.toggle('is-linha', linha.has(`${r},${c}`));
           f.classList.toggle('is-ultima', ultima === `${r},${c}`);

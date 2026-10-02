@@ -225,7 +225,9 @@
         } else if (item.kind === 'text') {
           const p = A.toPx(item.x, item.y, rect);
           const tam = (item.size || TEXT_SIZE) * (rect.height / Math.max(1, canvas.offsetHeight || rect.height));
-          ctx2d.font = `${tam}px 'Work Sans', system-ui, sans-serif`;
+          const familia = root.getComputedStyle(b.raiz).getPropertyValue('--font-body').trim()
+            || 'system-ui, sans-serif';
+          ctx2d.font = `${tam}px ${familia}`;
           ctx2d.textBaseline = 'top';
           ctx2d.fillText(item.text, p.x, p.y);
         }

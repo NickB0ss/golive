@@ -70,7 +70,7 @@
     const selTimes = el('select', { class: 'mj-sel', attrs: { 'aria-label': 'Número de times' } });
     for (const o of opcoesTimes(m)) selTimes.append(el('option', { text: o.texto, attrs: { value: String(o.valor) } }));
     const sortear = C.botao({ icone: 'embaralhar', text: 'Sortear', class: 'mj-pri' });
-    topo.append(selTimes, el('span', { class: 'mj-mola' }), sortear);
+    topo.append(selTimes);
 
     // Times que sairam.
     const secTimes = el('section', { class: 'mj-sort-times', attrs: { 'aria-label': 'Times' } });
@@ -91,12 +91,13 @@
     const form = el('form', { class: 'mj-form' }, campo, addBtn);
     const sala = C.botao({ icone: 'pessoas', text: 'Pôr a sala toda', class: 'mj-fantasma' });
     const limpar = C.botao({ icone: 'x', text: 'Limpar', class: 'mj-fantasma', label: 'Limpar os nomes' });
-    const acoesNomes = el('div', { class: 'mj-barra mj-sort-acoes' }, sala, el('span', { class: 'mj-mola' }), limpar);
+    const acoesNomes = C.acoes({ principal: sortear, secundarias: [sala, limpar] });
+    acoesNomes.classList.add('mj-sort-acoes');
     const chips = el('ul', { class: 'mj-chips', attrs: { 'aria-label': 'Nomes no sorteio' } });
-    secNomes.append(cabNomes, form, chips, acoesNomes);
+    secNomes.append(cabNomes, form, chips);
 
     const corpo = el('div', { class: 'mj-sort-corpo mj-rola' }, secTimes, secNomes);
-    b.raiz.append(topo, corpo);
+    b.raiz.append(topo, corpo, acoesNomes);
 
     selTimes.addEventListener('change', () => {
       if (!b.acao(topo, { kind: 'teams', count: Number(selTimes.value) })) selTimes.value = String(state.teamCount);

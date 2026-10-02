@@ -77,6 +77,11 @@
     return `Deu ${state.options[state.spin.index]}`;
   }
 
+  /** Sem opcoes, o convite ocupa a lateral e nunca o centro da roda. */
+  function mostraVazio(state) {
+    return !state.options.length;
+  }
+
   /** Anima este giro? So se e novo para mim e ainda esta dentro do tempo. */
   function precisaAnimar(spin, agora, dur) {
     if (!spin) return false;
@@ -112,8 +117,22 @@
     const saida = el('p', { class: 'mj-rol-saida', attrs: { role: 'status', 'aria-live': 'polite' } });
     const quem = el('span', { class: 'mj-dados-quem mj-rol-quem' });
     const girar = C.botao({ icone: 'zerar', text: 'Girar', class: 'mj-pri' });
-    const ctrl = el('div', { class: 'mj-barra mj-rol-ctrl' }, el('span', { class: 'mj-mola' }), girar);
-    const lado = el('div', { class: 'mj-rol-lado' }, roda, el('div', { class: 'mj-rol-res' }, saida, quem), ctrl);
+    const ctrl = C.acoes({ principal: girar, secundarias: [] });
+    ctrl.classList.add('mj-rol-ctrl');
+    const vazio = C.vazio({
+      icone: 'mais',
+      titulo: 'Sem opções',
+      texto: 'Adicione opções para começar a girar.',
+    });
+    vazio.classList.add('mj-rol-vazio-fora');
+    const lado = el(
+      'div',
+      { class: 'mj-rol-lado' },
+      roda,
+      vazio,
+      el('div', { class: 'mj-rol-res' }, saida, quem),
+      ctrl,
+    );
 
     // Opcoes.
     const painel = el('section', {
@@ -263,6 +282,9 @@
       state = novo;
       desenharDisco();
       desenharLista();
+      const semOpcoes = mostraVazio(state);
+      roda.hidden = semOpcoes;
+      vazio.hidden = !semOpcoes;
       const spin = state.spin;
       if (!spin) {
         if (timer) clearTimeout(timer);
@@ -340,7 +362,18 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, pontoEm, fatias, rotuloFatia, transformRotulo, resultado, precisaAnimar, GIRO_MS };
+  const api = {
+    type: TYPE,
+    mount,
+    pontoEm,
+    fatias,
+    rotuloFatia,
+    transformRotulo,
+    resultado,
+    mostraVazio,
+    precisaAnimar,
+    GIRO_MS,
+  };
 
   registrar(api, ['comum.js']);
 

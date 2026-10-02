@@ -127,8 +127,6 @@
 .mj-lig4-furo[data-v="A"] i { background: var(--mj-a); box-shadow: inset 0 -3px 0 var(--scrim-1); }
 .mj-lig4-furo.is-ultima i { outline: 2px solid var(--tx2); outline-offset: 1px; }
 .mj-lig4-furo.is-linha i { outline: 3px solid var(--tx); outline-offset: 1px; }
-.mj-lig4-furo[data-v="V"].is-ultima i, .mj-lig4-furo[data-v="A"].is-ultima i { animation: mj-cai var(--dur-slow) var(--ease-out); }
-@keyframes mj-cai { from { transform: translateY(-60%); opacity: 0.4; } }
 
 /* ---------- Tabuleiro 8x8 (damas e xadrez) ---------- */
 
@@ -314,3 +312,177 @@
 /* ======================================================================
    Festa (time Festa, 2026-09-25): Spotify Jam, Sons e Link.
    ====================================================================== */
+
+/* ---------- Tabuleiros: material e pecas ---------- */
+
+.mj-jogo {
+  gap: var(--s-2);
+  --mj-casa-a: var(--mj-casa-clara);
+  --mj-casa-b: var(--mj-casa-escura);
+  --mj-peca-clara: var(--on-video);
+  --mj-peca-escura: var(--void);
+}
+
+.mj-jogo-topo {
+  align-items: center;
+  min-height: 32px;
+}
+
+.mj-jogo .mj-cadeiras {
+  flex: 1;
+  min-width: 0;
+  gap: var(--s-1);
+}
+
+.mj-jogo .mj-cadeira {
+  min-width: 0;
+  padding: 0;
+  background: color-mix(in oklab, var(--s2) 78%, var(--mj-mat-madeira));
+  box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--mj-mat-contato);
+}
+
+.mj-jogo .mj-cadeira-botao {
+  min-height: 32px;
+  padding: 0 var(--s-1);
+}
+
+.mj-jogo .mj-cadeira[data-vez='1'] {
+  box-shadow: inset 0 0 0 2px var(--wire), 0 0 0 2px var(--wire-soft);
+}
+
+.mj-jogo .mj-cadeira-peca {
+  font: 700 var(--fs-small) / 1 var(--font-display);
+}
+
+.mj-jogo .mj-mini {
+  align-self: center;
+}
+
+.mj-jogo-placa {
+  padding: var(--s-1);
+  border: 1px solid var(--mj-moldura);
+  border-radius: var(--r-md);
+  background:
+    repeating-linear-gradient(100deg, transparent 0 7px, var(--mj-mat-veio) 7px 8px),
+    var(--mj-moldura);
+  box-shadow: inset 0 0 0 var(--s-1) color-mix(in oklab, var(--mj-moldura), var(--s2) 45%);
+}
+
+.mj-jogo-status {
+  font: var(--t-meta);
+}
+
+.mj-velha-grade {
+  gap: var(--s-1);
+  padding: var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--mj-casa-escura);
+  box-shadow: inset 0 2px var(--s-05) var(--mj-mat-contato);
+}
+
+.mj .mj-velha-casa {
+  background: var(--mj-casa-clara);
+  box-shadow: inset 0 1px 0 var(--mj-mat-brilho), inset 0 calc(var(--s-05) * -1) 0 var(--mj-mat-contato);
+}
+
+.mj .mj-velha-casa.is-o,
+.mj .mj-velha-casa:not(:empty) {
+  color: var(--mj-cor, var(--tx));
+}
+
+.mj .mj-velha-casa.is-linha {
+  background: color-mix(in oklab, var(--mj-casa-clara), var(--wire-soft) 42%);
+  box-shadow: inset 0 0 0 2px var(--wire);
+}
+
+.mj-lig4-grade {
+  padding: var(--s-2);
+  border: var(--s-1) solid var(--mj-moldura);
+  background:
+    repeating-linear-gradient(100deg, transparent 0 7px, var(--mj-mat-veio) 7px 8px),
+    var(--mj-moldura);
+  box-shadow: inset 0 2px var(--s-1) var(--mj-mat-contato);
+}
+
+.mj-lig4-furo i {
+  background: color-mix(in oklab, var(--s1), var(--mj-mat-madeira) 14%);
+  box-shadow: inset 0 2px var(--s-1) var(--mj-mat-contato), 0 1px 0 var(--mj-mat-brilho);
+}
+
+.mj-lig4-furo[data-v='V'] i,
+.mj-lig4-furo[data-v='A'] i {
+  box-shadow: inset 0 1px 0 var(--mj-mat-brilho), inset 0 -3px 0 var(--mj-mat-contato), 0 2px 0 var(--mj-mat-contato),
+    0 4px 8px var(--mj-mat-sombra);
+}
+
+.mj-grade8 {
+  border: var(--s-1) solid var(--mj-moldura);
+  border-radius: var(--r-sm);
+  box-shadow: 0 2px 0 var(--mj-mat-contato), 0 4px 8px var(--mj-mat-sombra);
+}
+
+.mj .mj-casa { background: var(--mj-casa-clara); }
+.mj .mj-casa.is-b { background: var(--mj-casa-escura); }
+.mj .mj-casa.is-ultimo::before { background: var(--wire-soft); }
+.mj .mj-casa.is-sel::after { box-shadow: inset 0 0 0 3px var(--wire); }
+
+.mj-damas .mj-peca {
+  background: radial-gradient(circle at 35% 30%, var(--mj-mat-brilho), transparent 34%), var(--mj-peca-clara);
+  box-shadow: inset 0 -3px 0 var(--mj-mat-contato), 0 2px 0 var(--mj-mat-contato), 0 4px 8px var(--mj-mat-sombra);
+}
+
+.mj-damas .mj-peca.is-escura {
+  background: radial-gradient(circle at 35% 30%, var(--mj-mat-brilho), transparent 34%), var(--mj-peca-escura);
+}
+
+.mj-damas .mj-peca.is-dama::after {
+  border: 2px solid var(--wire);
+  box-shadow: inset 0 0 0 2px var(--mj-mat-brilho);
+}
+
+.mj-xadrez .mj-peca {
+  text-shadow: 0 2px 0 var(--mj-mat-contato), 0 4px 8px var(--mj-mat-sombra);
+}
+
+.mj-bn-grade {
+  /* O fundo aparece no gap de 1px entre as casas: e a linha da grade, mais clara que o mar. */
+  background: color-mix(in oklab, var(--mj-mat-mar) 45%, var(--tx3));
+  box-shadow: inset 0 2px var(--s-1) var(--mj-mat-contato);
+}
+
+.mj .mj-bn-casa {
+  background: color-mix(in oklab, var(--mj-mat-mar) 35%, var(--s2));
+}
+
+.mj .mj-bn-casa[data-m='navio'] {
+  background: radial-gradient(circle at 35% 30%, var(--mj-mat-brilho), transparent 34%), var(--s3);
+  box-shadow: inset 0 -2px 0 var(--mj-mat-contato), 0 1px 0 var(--mj-mat-contato);
+}
+
+.mj .mj-bn-casa[data-m='agua']::after { background: var(--on-video); }
+
+.mj .mj-bn-casa[data-m='afundado'] { background: var(--danger-dim); }
+
+.mj .mj-bn-casa.is-ultimo { box-shadow: inset 0 0 0 2px var(--wire); }
+
+.mj-velha-casa.is-nova,
+.mj-lig4-furo.is-nova i {
+  animation: mj-peca-assenta 240ms var(--ease-out) both;
+}
+
+.mj-lig4-furo.is-nova i { animation-name: mj-ficha-cai; }
+
+@keyframes mj-peca-assenta {
+  from { transform: translateY(-6px) scale(1.08); opacity: 0.4; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes mj-ficha-cai {
+  from { transform: translateY(-70%); opacity: 0.35; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mj-velha-casa.is-nova,
+  .mj-lig4-furo.is-nova i { animation: none; }
+}
