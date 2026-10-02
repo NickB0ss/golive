@@ -114,7 +114,7 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.22.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+`0.23.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
 Testes: `node --test` → **1977 testes, 1977 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
