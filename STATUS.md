@@ -102,12 +102,19 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Painel de estatísticas mostra os dois lados: o que sai e o que está
   **sendo recebido**.
 - Atualização via GitHub Releases, disparada pelo usuário (não baixa sozinha).
+  **Desde 2026-10-02 os releases moram no repositório público
+  `NickB0ss/golive-releases`** (só binários): o `golive` vai ficar privado.
+  O `release.yml` sobe lá com o secret `RELEASES_TOKEN` e, enquanto
+  `ESPELHO_NO_GOLIVE` for `'true'`, espelha o rascunho aqui — a release ponte
+  que move quem está em versão antiga. Publicar:
+  `gh release edit vX --repo NickB0ss/golive-releases --draft=false --latest`
+  (e o espelho aqui), depois rodar o workflow `release` na mão com a tag.
 - Log em arquivo por sessão (Configurações > Estatísticas > "Abrir pasta de
   logs").
 
 ## Versão atual
 
-`0.22.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+`0.23.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
 Testes: `node --test` → **1977 testes, 1977 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído

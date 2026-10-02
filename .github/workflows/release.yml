@@ -4,11 +4,25 @@ name: release
 # RASCUNHO (padrao do provider github em package.json), entao publicar
 # continua sendo um clique manual, como sempre foi aqui. O job 'conferir'
 # roda depois desse clique.
+#
+# Desde 2026-10-02 os instaladores sobem no repositorio PUBLICO
+# NickB0ss/golive-releases (o golive, com o codigo, ficou privado). O
+# GITHUB_TOKEN nao escreve em outro repositorio, entao o upload usa o secret
+# RELEASES_TOKEN: um fine-grained PAT com Contents: write SO no golive-releases.
 on:
   push:
     tags: ['v*']
+  # Release publicado AQUI (espelho da release ponte, ver abaixo).
   release:
     types: [published]
+  # O evento 'release' do golive-releases nao chega neste repositorio: depois
+  # de publicar la, rode este workflow na mao (Actions > release > Run
+  # workflow) com a tag, para o job 'conferir'.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag publicada no golive-releases (ex.: v0.23.0)'
+        required: true
 
 jobs:
   publicar:
@@ -74,35 +88,56 @@ jobs:
           if (!(Test-Path $addon)) { throw "addon nativo ausente do pacote -- o instalador sairia sem captura de audio por processo" }
 
       # Um rascunho so, com os tres arquivos do MESMO build. Publicar continua
-      # sendo clique manual (`gh release edit <tag> --draft=false --latest`).
+      # sendo clique manual:
+      #   gh release edit <tag> --repo NickB0ss/golive-releases --draft=false --latest
       # Se a tag ja tiver um rascunho (re-execucao do workflow), reaproveita.
+      #
+      # ESPELHO_NO_GOLIVE: a RELEASE PONTE. Quem esta numa versao antiga tem
+      # o updater apontando pro golive; enquanto ele ainda e publico, o mesmo
+      # rascunho sobe tambem aqui, para essas pessoas receberem a versao que
+      # ja busca no golive-releases. Depois que o golive virar privado, mude
+      # para 'false' -- ninguem de fora consegue mais ler os releases daqui.
       - name: subir os artefatos num rascunho unico
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GITHUB_TOKEN_LOCAL: ${{ secrets.GITHUB_TOKEN }}
+          ESPELHO_NO_GOLIVE: 'true'
         run: |
+          if (-not $env:RELEASES_TOKEN) { throw "secret RELEASES_TOKEN ausente -- sem ele nao ha como subir no golive-releases" }
           $tag = "${{ github.ref_name }}"
           $arquivos = @(
             (Get-ChildItem dist -Filter '*.exe' | Select-Object -First 1).FullName,
             (Get-ChildItem dist -Filter '*.exe.blockmap' | Select-Object -First 1).FullName,
             (Resolve-Path dist/latest.yml).Path
           )
-          $existe = $true
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -ne 0) { $existe = $false }
-          if ($existe) {
-            gh release upload $tag $arquivos --clobber
-          } else {
-            gh release create $tag --draft --target "${{ github.sha }}" --title $tag.TrimStart('v') --notes "Rascunho gerado pelo workflow de release. Edite as notas antes de publicar." $arquivos
+
+          function Subir($repo, $token, $alvo) {
+            $env:GH_TOKEN = $token
+            gh release view $tag --repo $repo *> $null
+            if ($LASTEXITCODE -eq 0) {
+              gh release upload $tag $arquivos --repo $repo --clobber
+            } else {
+              # O golive-releases nao tem o codigo: a tag nasce la apontando
+              # pro commit padrao dele, nao pro sha deste repositorio.
+              $extra = @()
+              if ($alvo) { $extra = @('--target', $alvo) }
+              gh release create $tag --repo $repo --draft @extra --title $tag.TrimStart('v') --notes "Rascunho gerado pelo workflow de release. Edite as notas antes de publicar." $arquivos
+            }
+            if ($LASTEXITCODE -ne 0) { throw "falha ao subir os artefatos em $repo" }
           }
-          if ($LASTEXITCODE -ne 0) { throw "falha ao subir os artefatos" }
+
+          Subir 'NickB0ss/golive-releases' $env:RELEASES_TOKEN $null
+          if ($env:ESPELHO_NO_GOLIVE -eq 'true') {
+            Subir '${{ github.repository }}' $env:GITHUB_TOKEN_LOCAL '${{ github.sha }}'
+          }
 
   # release:check existe desde o incidente da v0.10.0 (release sem latest.yml
   # derrubou a atualizacao de todas as versoes anteriores) e nunca era
   # chamado por ninguem. Aqui ele roda contra o release ja publicado, que e
   # quando o electron-updater de fato le os assets.
   conferir:
-    if: github.event_name == 'release'
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,6 +148,9 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm run release:check ${{ github.event.release.tag_name }}
+      # Rodado na mao: confere o golive-releases (o que o updater novo le).
+      # Disparado pelo release daqui: confere o espelho da release ponte.
+      - run: npm run release:check ${{ github.event.inputs.tag || github.event.release.tag_name }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOLIVE_RELEASES_REPO: ${{ github.event_name == 'release' && github.repository || 'NickB0ss/golive-releases' }}
