@@ -202,8 +202,10 @@ const CAPTURA_FALSA = `(() => {
   return true;
 })()`;
 
-// Primeiro tile de tela de OUTRA pessoa na grade.
-const TILE_REMOTO = `[...document.querySelectorAll('#grid .tile')].find((t) => !/^tile-(me|cam-)/.test(t.id) && t.dataset.kind !== 'camera')`;
+// Primeiro tile de tela de OUTRA pessoa, na grade ou na mesa.
+// Na sala Mesa (o tipo padrao desde a 0.22) o tile mora numa janela da mesa
+// (.mesa-win), fora de #grid.
+const TILE_REMOTO = `[...document.querySelectorAll('#grid .tile, .mesa-win .tile')].find((t) => !/^tile-(me|cam-)/.test(t.id) && t.dataset.kind !== 'camera')`;
 
 class Instancia {
   constructor({ nome, dir, passo }) {
@@ -327,9 +329,9 @@ class Instancia {
   }
 
   async entrar(endereco) {
-    await this.js(`document.getElementById('btn-join-address').click()`);
-    await this.esperar(`!document.getElementById('dialog-join-room').classList.contains('hidden')`, 5000, 'dialogo de entrar');
-    await this.js(`(() => { const i = document.getElementById('in-server'); i.value = ${JSON.stringify(endereco)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('btn-connect').click(); })()`);
+    // Desde o redesign do lobby o endereco vai direto no campo inline do
+    // painel; o #dialog-join-room so abre se a sala pedir PIN.
+    await this.js(`(() => { const i = document.getElementById('join-address'); i.value = ${JSON.stringify(endereco)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('join-address-form').requestSubmit(); })()`);
     await this.esperar(`!document.getElementById('room-view').classList.contains('hidden')`, 20000, 'entrar na sala');
     this.passo(`${this.nome} entrou na sala`);
   }
@@ -341,15 +343,17 @@ class Instancia {
     await this.js(`document.getElementById('btn-toggle-share').click()`);
     await this.esperar(`!document.getElementById('picker').classList.contains('hidden')`, 5000, 'seletor de fonte');
     // A lista de telas vem do desktopCapturer; se o X11 do Xvfb engasgar,
-    // "Atualizar" pede de novo.
+    // "Atualizar" pede de novo. Enquanto carrega, o seletor mostra cartoes
+    // esqueleto (.src-card--skel) que nao sao fontes.
+    const CARTAO = `'.src-card:not(.src-card--skel)'`;
     await ate(async () => {
-      if (await this.js(`Boolean(document.querySelector('.source-card'))`)) return true;
+      if (await this.js(`Boolean(document.querySelector(${CARTAO}))`)) return true;
       await this.js(`document.getElementById('picker-refresh').click()`);
       await sleep(2000);
-      return this.js(`Boolean(document.querySelector('.source-card'))`);
+      return this.js(`Boolean(document.querySelector(${CARTAO}))`);
     }, { timeoutMs: 30000, intervaloMs: 500, descricao: `${this.nome}: alguma fonte no seletor` });
-    const fontes = await this.js(`[...document.querySelectorAll('.source-card .source-name')].map((e) => e.textContent)`);
-    await this.js(`document.getElementById('btn-go-live').disabled && document.querySelector('.source-card').click()`);
+    const fontes = await this.js(`[...document.querySelectorAll(${CARTAO} + ' .src-card__name')].map((e) => e.textContent.trim())`);
+    await this.js(`document.getElementById('btn-go-live').disabled && document.querySelector(${CARTAO}).click()`);
     await this.js(`document.getElementById('btn-go-live').click()`);
     await this.esperar(`document.getElementById('tile-me')`, 15000, 'o proprio tile ao vivo');
     this.passo(`${this.nome} ao vivo`);
@@ -382,7 +386,7 @@ class Instancia {
 
   /** Texto do aviso de congelamento visivel no tile remoto ('' sem aviso). */
   avisoNoTile() {
-    return this.js(`(() => { const n = ${TILE_REMOTO}?.querySelector('.tile-stall-note'); return n && !n.classList.contains('hidden') ? n.textContent : ''; })()`);
+    return this.js(`(() => { const n = ${TILE_REMOTO}?.querySelector('.tile__stall'); return n && !n.classList.contains('hidden') ? n.textContent : ''; })()`);
   }
 
   /** Mata o processo na hora, como a queda de um PC (sem fechar a sala). */
