@@ -1,4 +1,4 @@
-Copyright (c) 2026 Nicolas Mateus de Castro Silva (CPF: 147.504.116-04)
+Copyright (c) 2026 Nicolas Mateus de Castro Silva (CPF: 147.***.***-04)
 
 Todos os direitos reservados.
 
