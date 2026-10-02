@@ -2,7 +2,7 @@
 
 **Última atualização:** 02 de outubro de 2026
 
-Este Termo de Licença de Uso para o Usuário Final ("EULA", "Termo") é um contrato legal entre você ("Usuário") e [NOME COMPLETO], pessoa física, inscrito(a) no CPF nº [CPF], titular dos direitos sobre o software "golive" ("Software", "Aplicativo"), contato: nicolasmateusdecastrosilva@gmail.com ("Licenciante").
+Este Termo de Licença de Uso para o Usuário Final ("EULA", "Termo") é um contrato legal entre você ("Usuário") e Nicolas Mateus de Castro Silva, pessoa física, inscrito no CPF nº 147.504.116-04, titular dos direitos sobre o software "golive" ("Software", "Aplicativo"), contato: nicolasmateusdecastrosilva@gmail.com ("Licenciante").
 
 Ao instalar, copiar ou de qualquer outra forma utilizar o Software, você concorda com os termos deste EULA. Se você não concorda, não instale nem utilize o Software.
 
