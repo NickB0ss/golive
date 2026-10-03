@@ -107,6 +107,30 @@
     'pagina.fecharEspiar': 'Close Peek',
     'pagina.rabiscosSala': 'Room scribbles',
     'pagina.simboloFechar': '×',
+    // --- mesa.recusa ---
+    'mesa.recusa.rate': 'Too many actions in a row; wait a moment',
+    'mesa.recusa.locked': 'Only the room leader can change the Table right now',
+    'mesa.recusa.leaderOnly': 'Only the room leader can do this',
+    'mesa.recusa.notFound': 'This window was removed from the Table',
+    'mesa.recusa.notViewing': 'Open the Table to use this',
+    'mesa.recusa.stateTooBig': 'This is more than the window can hold',
+    'mesa.recusa.tooBig': 'Too big to send',
+    'mesa.recusa.noAct': "This window doesn't take actions",
+    'mesa.recusa.badRequest': 'Invalid request',
+    'mesa.recusa.error': "That didn't work; try again",
+    'mesa.recusa.semAcao': 'window has no actions',
+    'mesa.recusa.acaoInvalida': 'invalid action',
+    // --- mesa.por ---
+    'mesa.por.rate': 'Easy there: too many changes at once.',
+    'mesa.por.locked': 'Only the room leader can change the Table right now.',
+    'mesa.por.full': 'The Table already has 32 windows.',
+    'mesa.por.noSpace': 'There is no room on the Table for this window.',
+    'mesa.por.unknownType': 'This room does not recognize this window type.',
+    'mesa.por.notFound': 'The window left the Table before receiving its content.',
+    'mesa.por.semConexao': 'There is no connection to the room right now.',
+    'mesa.por.foiParaMesa': '{janela} went to the Table.',
+    'mesa.por.erro': "Couldn't put it on the Table right now.",
+    'mesa.por.recusaDe': '{janela}: {motivo}',
   };
 
   root.GoLive = root.GoLive || {};

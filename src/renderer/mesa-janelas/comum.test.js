@@ -1,6 +1,10 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const i18n = require('../i18n');
+const pt = require('../i18n/pt-BR');
+require('../i18n/en');
+require('../i18n/es');
 const C = require('./comum');
 const registro = require('../mesa-modules');
 
@@ -106,6 +110,33 @@ test('motivoRecusa: invalid mostra o motivo do modulo; o resto vira frase em PT'
   assert.equal(C.motivoRecusa('rate'), 'Muitas ações seguidas; espere um instante');
   assert.equal(C.motivoRecusa('coisa-nova'), 'Não deu certo; tente de novo');
   assert.equal(C.motivoRecusa('invalid', ''), 'Não deu certo; tente de novo');
+});
+
+test('motivoRecusa traduz codigo do validate e mantem frase antiga', () => {
+  pt['mesa.teste.ocupado'] = 'Lugar ocupado';
+  try {
+    i18n.definirIdioma('pt-BR');
+    assert.equal(C.motivoRecusa('invalid', 'mesa.teste.ocupado'), 'Lugar ocupado');
+    assert.equal(C.motivoRecusa('invalid', 'texto antigo'), 'Texto antigo');
+  } finally {
+    delete pt['mesa.teste.ocupado'];
+  }
+});
+
+test('motivoRecusa, podeFazer e ligado traduzem codigos no idioma ativo', () => {
+  try {
+    i18n.definirIdioma('en');
+    assert.equal(C.motivoRecusa('rate'), 'Too many actions in a row; wait a moment');
+    assert.equal(
+      C.podeFazer({ validate: () => i18n.codigo('mesa.recusa.semAcao') }, {}),
+      'Window has no actions',
+    );
+    const btn = new Elemento('button');
+    C.ligado(btn, i18n.codigo('mesa.recusa.noAct'));
+    assert.equal(btn.title, "This window doesn't take actions");
+  } finally {
+    i18n.definirIdioma('pt-BR');
+  }
 });
 
 test('milhar e plural', () => {

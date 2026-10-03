@@ -25,20 +25,28 @@
 (function (root) {
   // ---------- Puras ----------
 
-  /** Recusa do servidor (`mesa-denied.reason`) -> frase curta em PT. O
-   * `invalid` traz o motivo do `validate` do modulo em `detail`, que ja e
-   * texto para a pessoa. */
+  const i18n = root.GoLive && root.GoLive.i18n;
+  // Os testes puros podem carregar este apoio sem os scripts do renderer.
+  const t = i18n ? i18n.t : (chave) => chave;
+  const traduzirCodigo = i18n ? i18n.traduzirCodigo : (texto) => texto;
+  const maiuscula = i18n
+    ? i18n.maiuscula
+    : (texto) => texto && texto[0].toUpperCase() + texto.slice(1);
+
+  /** Recusa do servidor (`mesa-denied.reason`) -> chave de traducao. O
+   * `invalid` traz o motivo do `validate` do modulo, como codigo ou texto
+   * antigo durante a migracao. */
   const RECUSAS = {
-    rate: 'Muitas ações seguidas; espere um instante',
-    locked: 'Só o líder da sala mexe na Mesa agora',
-    'leader-only': 'Só o líder da sala pode',
-    'not-found': 'Esta janela saiu da Mesa',
-    'not-viewing': 'Abra a Mesa para mexer aqui',
-    'state-too-big': 'Passou do tamanho que a janela guarda',
-    'too-big': 'Grande demais para mandar',
-    'no-act': 'Esta janela não aceita ações',
-    'bad-request': 'Pedido inválido',
-    error: 'Não deu certo; tente de novo',
+    rate: 'mesa.recusa.rate',
+    locked: 'mesa.recusa.locked',
+    'leader-only': 'mesa.recusa.leaderOnly',
+    'not-found': 'mesa.recusa.notFound',
+    'not-viewing': 'mesa.recusa.notViewing',
+    'state-too-big': 'mesa.recusa.stateTooBig',
+    'too-big': 'mesa.recusa.tooBig',
+    'no-act': 'mesa.recusa.noAct',
+    'bad-request': 'mesa.recusa.badRequest',
+    error: 'mesa.recusa.error',
   };
 
   const SUPERFICIES = Object.freeze({
@@ -75,12 +83,14 @@
   });
 
   function motivoRecusa(reason, detail) {
-    if (reason === 'invalid' && typeof detail === 'string' && detail.trim()) return primeiraMaiuscula(detail.trim());
-    return RECUSAS[reason] || 'Não deu certo; tente de novo';
+    if (reason === 'invalid' && typeof detail === 'string' && detail.trim()) {
+      return primeiraMaiuscula(traduzirCodigo(detail.trim()));
+    }
+    return t(RECUSAS[reason] || RECUSAS.error);
   }
 
   function primeiraMaiuscula(s) {
-    return s ? s[0].toUpperCase() + s.slice(1) : s;
+    return maiuscula(s);
   }
 
   /** 1000 -> "1 000" (espaco fino inseparavel, como o resto da interface). */
@@ -98,7 +108,7 @@
     try {
       const r = api.validate(action);
       if (r === true) return true;
-      return typeof r === 'string' && r ? primeiraMaiuscula(r) : 'Indisponível';
+      return typeof r === 'string' && r ? primeiraMaiuscula(traduzirCodigo(r)) : 'Indisponível';
     } catch {
       return 'Indisponível';
     }
@@ -191,7 +201,7 @@
       return true;
     }
     btn.setAttribute('aria-disabled', 'true');
-    btn.title = motivo;
+    btn.title = traduzirCodigo(motivo);
     return false;
   }
 

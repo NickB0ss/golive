@@ -112,6 +112,30 @@
     'pagina.fecharEspiar': 'Fechar Espiar',
     'pagina.rabiscosSala': 'Rabiscos da sala',
     'pagina.simboloFechar': '×',
+    // --- mesa.recusa ---
+    'mesa.recusa.rate': 'Muitas ações seguidas; espere um instante',
+    'mesa.recusa.locked': 'Só o líder da sala mexe na Mesa agora',
+    'mesa.recusa.leaderOnly': 'Só o líder da sala pode',
+    'mesa.recusa.notFound': 'Esta janela saiu da Mesa',
+    'mesa.recusa.notViewing': 'Abra a Mesa para mexer aqui',
+    'mesa.recusa.stateTooBig': 'Passou do tamanho que a janela guarda',
+    'mesa.recusa.tooBig': 'Grande demais para mandar',
+    'mesa.recusa.noAct': 'Esta janela não aceita ações',
+    'mesa.recusa.badRequest': 'Pedido inválido',
+    'mesa.recusa.error': 'Não deu certo; tente de novo',
+    'mesa.recusa.semAcao': 'janela sem ação',
+    'mesa.recusa.acaoInvalida': 'ação inválida',
+    // --- mesa.por ---
+    'mesa.por.rate': 'Calma: muitas mudanças de uma vez.',
+    'mesa.por.locked': 'Só o líder mexe na Mesa agora.',
+    'mesa.por.full': 'A Mesa já tem 32 janelas.',
+    'mesa.por.noSpace': 'Não há lugar livre na Mesa para esta janela.',
+    'mesa.por.unknownType': 'Esta sala não conhece este tipo de janela.',
+    'mesa.por.notFound': 'A janela saiu da Mesa antes de receber o conteúdo.',
+    'mesa.por.semConexao': 'Sem conexão com a sala agora.',
+    'mesa.por.foiParaMesa': '{janela} foi para a Mesa.',
+    'mesa.por.erro': 'Não deu para pôr na Mesa agora.',
+    'mesa.por.recusaDe': '{janela}: {motivo}',
   };
 
   root.GoLive = root.GoLive || {};

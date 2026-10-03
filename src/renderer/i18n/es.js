@@ -107,6 +107,30 @@
     'pagina.fecharEspiar': 'Cerrar Espiar',
     'pagina.rabiscosSala': 'Garabatos de la sala',
     'pagina.simboloFechar': '×',
+    // --- mesa.recusa ---
+    'mesa.recusa.rate': 'Demasiadas acciones seguidas; espera un momento',
+    'mesa.recusa.locked': 'Ahora solo el líder de la sala puede tocar la Mesa',
+    'mesa.recusa.leaderOnly': 'Solo el líder de la sala puede hacerlo',
+    'mesa.recusa.notFound': 'Esta ventana ya no está en la Mesa',
+    'mesa.recusa.notViewing': 'Abre la Mesa para usar esto',
+    'mesa.recusa.stateTooBig': 'Supera lo que la ventana puede guardar',
+    'mesa.recusa.tooBig': 'Demasiado grande para enviar',
+    'mesa.recusa.noAct': 'Esta ventana no acepta acciones',
+    'mesa.recusa.badRequest': 'Solicitud no válida',
+    'mesa.recusa.error': 'No funcionó; inténtalo de nuevo',
+    'mesa.recusa.semAcao': 'ventana sin acciones',
+    'mesa.recusa.acaoInvalida': 'acción no válida',
+    // --- mesa.por ---
+    'mesa.por.rate': 'Calma: demasiados cambios a la vez.',
+    'mesa.por.locked': 'Ahora solo el líder de la sala puede tocar la Mesa.',
+    'mesa.por.full': 'La Mesa ya tiene 32 ventanas.',
+    'mesa.por.noSpace': 'No hay lugar en la Mesa para esta ventana.',
+    'mesa.por.unknownType': 'Esta sala no reconoce este tipo de ventana.',
+    'mesa.por.notFound': 'La ventana salió de la Mesa antes de recibir su contenido.',
+    'mesa.por.semConexao': 'No hay conexión con la sala ahora.',
+    'mesa.por.foiParaMesa': '{janela} fue a la Mesa.',
+    'mesa.por.erro': 'No se pudo poner en la Mesa ahora.',
+    'mesa.por.recusaDe': '{janela}: {motivo}',
   };
 
   root.GoLive = root.GoLive || {};

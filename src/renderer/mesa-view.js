@@ -28,6 +28,7 @@
   const G = root.GoLive || {};
   const M = G.mesa;
   const V = G.mesaVista;
+  const { codigo } = G.i18n;
 
   const GROUP_LABELS = {
     assistir: 'Assistir e ouvir',
@@ -1309,14 +1310,14 @@
         validate(action) {
           const win = S && findWin(rec.id);
           const mod = win ? modOf(win.type) : null;
-          if (!mod || typeof mod.validate !== 'function') return 'janela sem ação';
+          if (!mod || typeof mod.validate !== 'function') return codigo('mesa.recusa.semAcao');
           // Janela secret: o cliente nao tem o estado inteiro; quem decide e
           // o servidor, e a interface usa o `me` que veio na view.
           if (mod.secret === true) return true;
           try {
             return mod.validate(win.state, action, { from: String(deps.me()), isLeader: deps.isLeader(), now: serverNow(), peers: deps.peers() });
           } catch {
-            return 'ação inválida';
+            return codigo('mesa.recusa.acaoInvalida');
           }
         },
         me: () => String(deps.me()),
