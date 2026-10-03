@@ -2685,7 +2685,7 @@
     "videoId invalido"
   ],
   "src/splash/splash.js": [
-    "Baixando atualização —",
+    "Baixando atualização — {pct}%",
     "Procurando atualizações…"
   ]
 }

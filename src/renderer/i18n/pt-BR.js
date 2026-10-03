@@ -8,7 +8,12 @@
  */
 
 (function (root) {
-  const textos = {};
+  const textos = {
+    'splash.procurando': 'Procurando atualizações…',
+    'splash.baixando': 'Baixando atualização — {pct}%',
+    'splash.instalando': 'Instalando…',
+    'splash.abrindo': 'Abrindo…',
+  };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.i18nDicionarios = root.GoLive.i18nDicionarios || {};

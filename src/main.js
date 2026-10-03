@@ -227,6 +227,8 @@ const { shouldKeepAwake } = require('./main/awake');
 const { canNavigateTo } = require('./main/navigation');
 const { linkParaNavegador, linkDaMesa } = require('./main/linksexternos');
 const origemLocal = require('./main/origem');
+const idiomaApp = require('./main/idioma');
+const i18n = require('./renderer/i18n');
 
 // A janela principal (e a Espiar, que ela abre) vem de http://localhost,
 // servido sem socket por src/main/origem.js: o YouTube recusa embed de
@@ -998,6 +1000,40 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 }).catch((err) => logger.error('bootstrap (app.whenReady) falhou:', err?.message || err));
+
+// Idioma (spec 2026-10-03-idiomas, secao 2). Lido de novo a cada pedido:
+// a janela que recarrega depois de um i18n:set ja nasce no idioma novo.
+function arquivoIdioma() {
+  return path.join(app.getPath('userData'), 'idioma.json');
+}
+
+function estadoIdioma() {
+  const preferencia = idiomaApp.lerPreferencia(arquivoIdioma());
+  const ativo = idiomaApp.resolverIdioma(preferencia, app.getPreferredSystemLanguages());
+  return { preferencia, ativo };
+}
+
+ipcMain.on('i18n:get', (event) => {
+  event.returnValue = estadoIdioma();
+});
+
+ipcMain.handle('i18n:set', (_event, preferencia) => {
+  idiomaApp.gravarPreferencia(arquivoIdioma(), preferencia);
+  return estadoIdioma();
+});
+
+// A splash nao carrega dicionario: o preload em sandbox recebe os textos prontos.
+ipcMain.on('i18n:splash', (event) => {
+  const { ativo } = estadoIdioma();
+  i18n.definirIdioma(ativo);
+  event.returnValue = {
+    idioma: ativo,
+    checking: i18n.t('splash.procurando'),
+    downloading: i18n.t('splash.baixando'),
+    installing: i18n.t('splash.instalando'),
+    release: i18n.t('splash.abrindo'),
+  };
+});
 
 app.on('will-quit', () => {
   logEncerramento('will-quit');

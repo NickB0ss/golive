@@ -8,6 +8,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('goliveOverlay', {
+  idioma: ipcRenderer.sendSync('i18n:get'),
   /** Uma op de anotacao (`begin`/`points`/`text`/`undo`/`clear`), com quem
    * mandou. A cor sai de `from` do lado de ca, igual no app: nao existe
    * campo de cor pra forjar. */
