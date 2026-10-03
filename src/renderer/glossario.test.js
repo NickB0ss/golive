@@ -34,6 +34,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { extrairLiterais, fragmentosVisiveis } = require('../../tools/i18n/literais');
 
 const DIR = __dirname;
 
@@ -66,132 +67,15 @@ const PROHIBITED = [
   [/\bviewport\b/i, 'use "Ver tudo" / "Ir até" (nunca "viewport")'],
 ];
 
-// Contextos depois dos quais um '/' e INICIO DE REGEX, nao divisao -- o
-// mesmo dilema classico de qualquer tokenizador de JS de verdade. Sem isso,
-// `/[&<>"']/g` (o escapeHtml do proprio ui.js) tinha um '"' e um '\'' DENTRO
-// da classe de caracteres, e o tokenizador entrava em modo "string" no meio
-// do regex e so resincronizava varias linhas depois -- achado rodando
-// contra o proprio arquivo na segunda versao deste teste. Cobre todo regex
-// literal hoje existente em app.js/ui.js (conferido a mao: todos vem logo
-// depois de `(`, `!` ou `&&`).
-const REGEX_STARTS_AFTER = new Set([
-  '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', ';', '\n', '+', '-', '*', '%', '<', '>', '~', '^', '',
-]);
-
-/** Tokenizador minimo: devolve so os trechos literais de string/template de
- * um arquivo JS, pulando comentarios, regex literais, o codigo fora de
- * string e o conteudo de ${...} dentro de template. Rastreia aspas/backtick/
- * regex char a char (em vez de regex line-based) porque uma primeira versao
- * baseada em `$` por linha quebrava com final de linha CRLF -- o `$` sem
- * `/m` nunca casava antes do `\r` residual, entao nenhum comentario era
- * removido de verdade. */
-function extractStringLiterals(src) {
-  const out = [];
-  let i = 0;
-  const n = src.length;
-  let buf = '';
-  let lastSignificant = ''; // ultimo char nao-espaco fora de string/comentario
-  const flush = () => { if (buf) out.push(buf); buf = ''; };
-
-  while (i < n) {
-    const c = src[i];
-    const c2 = src[i + 1];
-
-    if (c === '/' && c2 === '/') {
-      while (i < n && src[i] !== '\n') i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
-      i += 2;
-      continue;
-    }
-    if (c === '/' && REGEX_STARTS_AFTER.has(lastSignificant)) {
-      i += 1;
-      let inClass = false;
-      while (i < n) {
-        if (src[i] === '\\') { i += 2; continue; }
-        if (src[i] === '[') inClass = true;
-        else if (src[i] === ']') inClass = false;
-        else if (src[i] === '/' && !inClass) { i += 1; break; }
-        else if (src[i] === '\n') break; // regex nao atravessa linha -- seguranca
-        i += 1;
-      }
-      while (i < n && /[a-z]/i.test(src[i])) i += 1; // flags (g, i, ...)
-      lastSignificant = '/';
-      continue;
-    }
-    if (c === "'" || c === '"') {
-      const quote = c;
-      i += 1;
-      while (i < n && src[i] !== quote) {
-        if (src[i] === '\\') { i += 2; continue; }
-        buf += src[i];
-        i += 1;
-      }
-      i += 1; // fecha aspas
-      flush();
-      lastSignificant = quote;
-      continue;
-    }
-    if (c === '`') {
-      i += 1;
-      while (i < n && src[i] !== '`') {
-        if (src[i] === '\\') { i += 2; continue; }
-        if (src[i] === '$' && src[i + 1] === '{') {
-          flush();
-          i += 2;
-          let depth = 1;
-          // O conteudo de ${...} e codigo (variavel, chamada, ate outro
-          // template aninhado) -- pulado inteiro, so a profundidade de
-          // chaves importa pra achar o fim certo.
-          while (i < n && depth > 0) {
-            if (src[i] === '{') depth += 1;
-            else if (src[i] === '}') depth -= 1;
-            i += 1;
-          }
-          continue;
-        }
-        buf += src[i];
-        i += 1;
-      }
-      i += 1; // fecha backtick
-      flush();
-      lastSignificant = '`';
-      continue;
-    }
-    if (!/\s/.test(c)) lastSignificant = c;
-    i += 1;
-  }
-  return out;
-}
-
 const HAS_SPACE_OR_ACCENT = /[ À-ÿ]/; // espaco, ou acento/cedilha latino-1
 
 function isVisibleText(literal) {
   return HAS_SPACE_OR_ACCENT.test(literal);
 }
 
-// Muitos literais extraidos sao pedacos de HTML inteiros (innerHTML gerado
-// em ui.js), nao texto corrido -- e a marcacao tem nome de classe kebab-case
-// que pode conter um termo proibido como SUBSTRING de identificador
-// (`class="peer-avatar"` tem "peer" com fronteira de palavra valida pro
-// regex, mas nao e a palavra "peer" pra pessoa ler). Por isso, quando o
-// literal parece HTML (tem '<'), so os NOS DE TEXTO e os atributos que a
-// pessoa realmente le (title/aria-label/placeholder/alt) viram candidato --
-// igual index.html. Fora isso (mensagem de texto corrido, sem HTML), o
-// literal inteiro e o candidato.
-function visibleFragments(literal) {
-  if (!literal.includes('<')) return [literal];
-  const texts = [...literal.matchAll(/>([^<]+)</g)].map((m) => m[1]);
-  const attrs = [...literal.matchAll(/\b(?:title|aria-label|placeholder|alt)="([^"]*)"/g)].map((m) => m[1]);
-  return [...texts, ...attrs];
-}
-
 function checkTexts(texts, label, violations) {
   for (const raw of texts) {
-    for (const text of visibleFragments(raw)) {
+    for (const text of fragmentosVisiveis(raw)) {
       if (!isVisibleText(text)) continue;
       for (const [re, hint] of PROHIBITED) {
         if (re.test(text)) violations.push(`${label}: "${text.trim().slice(0, 80)}" -- ${hint}`);
@@ -230,7 +114,7 @@ function stripConsoleCalls(src) {
 
 function checkJsFile(file, violations) {
   const src = stripConsoleCalls(fs.readFileSync(path.join(DIR, file), 'utf8'));
-  checkTexts(extractStringLiterals(src), file, violations);
+  checkTexts(extrairLiterais(src).map((literal) => literal.texto), file, violations);
 }
 
 // HTML: texto entre tags (">texto<") e os atributos que a pessoa le
@@ -285,7 +169,7 @@ test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o cert
 // de uma string de verdade) continua sendo tratado certo.
 test('a extracao de texto visivel realmente encontra strings (controle de sanidade)', () => {
   const appSrc = stripConsoleCalls(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
-  const appTexts = extractStringLiterals(appSrc);
+  const appTexts = extrairLiterais(appSrc).map((literal) => literal.texto);
   assert.ok(appTexts.some((t) => t.includes('sala')), 'app.js precisa ter strings visiveis com "sala"');
   // 'ws://' tem "//" dentro da propria string -- se o tokenizador tratasse
   // isso como comentario, o resto da linha desapareceria e este literal
