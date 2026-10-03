@@ -18,7 +18,13 @@
     const points = state.scores.filter((_, i) => state.seats[i] !== null).join(' × ');
     return `Vez de ${nomeDoLugar(state, state.turn)} — ${points} pontos`;
   };
-  const podeJogar = (card, discard, suit) => Boolean(card && discard)
+  const GLIFOS = { s: '♠', h: '♥', d: '♦', c: '♣' };
+  /** O naipe escolhido, para o chip do meio da mesa: "♥ Copas". */
+  function chipNaipe(suit) {
+    const nome = NAIPES.find((n) => n[0] === suit)?.[1] || '';
+    return { nome, texto: nome ? `${GLIFOS[suit]} ${nome}` : '', vermelho: suit === 'h' || suit === 'd' };
+  }
+  const podeJogar =(card, discard, suit) => Boolean(card && discard)
     && (card[0] === '8' || card[1] === suit || card[0] === discard[0]);
   const atualizarBarra = (api, texto, vez) => {
     api.setStatus?.(texto);
@@ -32,13 +38,17 @@
     const b = C.base(elRoot, api, TYPE);
     let state = null;
     let chosen = 's';
-    const titulo = el('strong', { class: 'mj-oito-titulo' }, 'Oito maluco');
+    let descarteVisto = null;
+    // O nome do jogo ja esta na barra da janela: o alto e so a linha de estado.
     const status = el('span', { class: 'mj-oito-status', attrs: { tabindex: '-1' } });
     const relogio = el('span', { class: 'mj-oito-relogio' });
-    const topo = el('header', { class: 'mj-oito-topo' }, titulo, relogio);
+    const topo = el('header', { class: 'mj-oito-topo' }, status, relogio);
+    // Monte (so o desenho: comprar e o botao de baixo) e descarte, lado a lado no feltro.
+    const verso = K.carta(null, { tamanho: 'g' });
+    const monte = el('div', { class: 'mj-oito-monte', attrs: { 'aria-hidden': 'true' } }, verso);
     const descarte = el('div', { class: 'mj-oito-descarte' });
     const naipe = el('div', { class: 'mj-oito-naipe' });
-    const mesa = el('section', { class: 'mj-oito-mesa' }, descarte, naipe);
+    const mesa = el('section', { class: 'mj-oito-mesa' }, monte, descarte, naipe);
     const pessoas = el('div', { class: 'mj-oito-pessoas' });
     const minha = el('div', { class: 'mj-oito-minha' });
     const selecao = el('select', {
@@ -51,8 +61,8 @@
     });
     const comprar = C.botao({ icone: 'mais', text: 'Comprar', class: 'mj-oito-comprar' });
     const iniciar = C.botao({ icone: 'play', text: 'Dar cartas', class: 'mj-oito-iniciar' });
-    const levantar = C.botao({ icone: 'sair', text: 'Levantar', class: 'mj-oito-levantar' });
-    const resetar = C.botao({ icone: 'reiniciar', text: 'Recomeçar', class: 'mj-oito-resetar' });
+    const levantar = C.botao({ icone: 'sobe', text: 'Levantar', class: 'mj-oito-levantar mj-fantasma' });
+    const resetar = C.botao({ icone: 'zerar', text: 'Recomeçar', class: 'mj-oito-resetar mj-fantasma' });
     const acoes = el(
       'footer',
       { class: 'mj-oito-acoes' },
@@ -77,6 +87,7 @@
         pessoas.append(el(
           'span',
           { class: `mj-oito-pessoa${state.turn === i ? ' is-vez' : ''}` },
+          C.bolinha(C.corDe(api, id), nome(i)),
           `${nome(i)} · ${state.counts[i]} cartas · ${state.scores[i]} pts`,
         ));
       });
@@ -121,9 +132,18 @@
         : (s.phase === 'play' ? `Vez de ${nome(s.turn)}` : 'Sente-se e dê as cartas');
       renderPeople();
       atualizarBarra(api, textoDeStatus(s), Boolean(s.phase === 'play' && s.me?.can?.play));
-      descarte.replaceChildren(K.carta(s.discard, { tamanho: 'g' }));
-      naipe.textContent = s.suit ? `Naipe: ${NAIPES.find((n) => n[0] === s.suit)?.[1] || ''}` : '';
+      // So a carta nova do descarte gira; atualizacao sem carta nova nao refaz o giro.
+      descarte.replaceChildren(K.carta(s.discard, { tamanho: 'g', vira: s.discard !== descarteVisto }));
+      descarteVisto = s.discard;
+      const chip = chipNaipe(s.suit);
+      naipe.textContent = chip.texto;
+      naipe.classList.toggle('is-vermelho', chip.vermelho);
+      naipe.hidden = !s.suit;
+      if (s.suit) naipe.setAttribute('aria-label', `Naipe: ${chip.nome}`);
       renderHand();
+      // Uma acao principal por momento: dar as cartas na espera, comprar quando nao ha jogada.
+      iniciar.classList.toggle('mj-pri', Boolean(s.me?.can.start));
+      comprar.classList.toggle('mj-pri', Boolean(s.me?.can.draw) && !s.me?.can.start);
       C.ligado(comprar, s.me?.can.draw ? true : 'Comprar só quando não houver jogada');
       C.ligado(iniciar, s.me?.can.start ? true : 'Precisa de duas pessoas e rodada parada');
       C.ligado(levantar, s.me?.can.stand ? true : 'Você não está jogando');
@@ -207,7 +227,7 @@
     };
     G.mesaJanelas[api.type] = api;
   }
-  const api = { type: TYPE, mount, textoDeStatus, atualizarBarra, podeJogar };
+  const api = { type: TYPE, mount, textoDeStatus, atualizarBarra, podeJogar, chipNaipe };
   registrar(api, ['comum.js', 'cartas.js']);
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

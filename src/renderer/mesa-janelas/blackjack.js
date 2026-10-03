@@ -90,6 +90,16 @@
     return 'Vez da banca';
   }
 
+  /** A dica da barra da pessoa. Com lugar livre para sentar nao ha dica: as proprias
+   * cadeiras ("Sentar") ja convidam, e a situacao do alto ja diz o mesmo. */
+  function textoDica(v) {
+    const me = (v && v.me) || { seat: -1, actions: [] };
+    const a = new Set(me.actions || []);
+    if (me.seat < 0) return a.has('sit') ? '' : 'Mesa cheia: assistindo';
+    if (!a.size || (a.size === 1 && a.has('leave'))) return v.phase === 'bets' ? '' : 'Esperando a sua vez';
+    return '';
+  }
+
   /** Anuncio curto para o leitor de tela quando algo importante muda
    * (null = nada a dizer). */
   function anuncio(antes, v, nameOf) {
@@ -182,8 +192,18 @@
     const lugares = [];
     for (let i = 0; i < LUGARES; i += 1) {
       const node = el('section', { class: 'mj-bj-lugar', attrs: { 'aria-label': `Lugar ${i + 1}` } });
+      const lugar = { node, chave: null, livre: true };
+      // A cadeira comum de um lugar so; Levantar mora so no botao da barra (uma acao num lugar so).
+      const cad = C.cadeiras({
+        rotulo: `Lugar ${i + 1}`,
+        aoSentar() { b.acao(zona, { kind: 'sit', seat: i }); },
+        aoRecusar(motivo) { if (lugar.livre) b.aviso.mostrar(motivo, zona); },
+      });
+      const corpo = el('div', { class: 'mj-bj-corpo' });
+      node.append(cad.node, corpo);
       lugaresEl.append(node);
-      lugares.push({ node, chave: null });
+      Object.assign(lugar, { cad, corpo });
+      lugares.push(lugar);
     }
 
     // Barra da pessoa.
@@ -272,31 +292,36 @@
       const vez = v.phase === 'play' && v.turn !== null && v.hands[v.turn] && v.hands[v.turn].seat === i;
       const podeSentar = id === null && (me.actions || []).includes('sit');
       const nome = id !== null ? nomeLugar(v, i, (x) => C.nomeDe(api, x)) : null;
-      const chave = JSON.stringify([id, nome, v.chips[i], v.bets[i], v.insurance[i], v.insuranceNet[i], maos, vez, v.turn, podeSentar, me.seat === i, v.phase]);
+      const chave = JSON.stringify([
+        id, nome, v.chips[i], v.bets[i], v.insurance[i], v.insuranceNet[i],
+        maos, vez, v.turn, podeSentar, me.seat, v.phase,
+      ]);
       if (chave === L.chave) return;
       L.chave = chave;
-      const tinhaFoco = L.node.contains(root.document.activeElement);
-      L.node.replaceChildren();
+      L.livre = id === null;
+      L.cad.sync([{
+        peer: id,
+        nome: nome || '',
+        cor: id === null ? null : C.corDe(api, id),
+        peca: null,
+        vez: !!vez,
+        eu: me.seat === i,
+        motivoSentar: podeSentar ? true : (me.seat >= 0 ? 'Você já está sentado' : 'Indisponível agora'),
+        motivoLevantar: 'Use o botão Levantar',
+      }]);
+      const botaoLugar = L.cad.node.children[0].children[0];
+      L.corpo.replaceChildren();
       L.node.classList.toggle('is-vazio', id === null);
       L.node.classList.toggle('is-vez', !!vez);
       L.node.classList.toggle('is-meu', me.seat === i);
       L.node.classList.toggle('is-anterior', v.phase === 'bets');
       if (id === null) {
         L.node.setAttribute('aria-label', `Lugar ${i + 1}, livre`);
-        if (podeSentar) {
-          const bt = C.botao({ text: 'Sentar', label: `Sentar no lugar ${i + 1}` });
-          b.clique(bt, zona, () => b.acao(zona, { kind: 'sit', seat: i }));
-          L.node.append(bt);
-          if (tinhaFoco) bt.focus();
-        } else {
-          L.node.append(el('span', { class: 'mj-bj-livre', text: 'Livre' }));
-        }
+        botaoLugar.setAttribute('aria-label', `Sentar no lugar ${i + 1}`);
         return;
       }
       L.node.setAttribute('aria-label', `Lugar ${i + 1}: ${nome}${me.seat === i ? ' (você)' : ''}`);
-      const cab = el('div', { class: 'mj-bj-quem' },
-        C.bolinha(C.corDe(api, id), nome),
-        el('span', { class: 'mj-bj-nome', text: me.seat === i ? `${nome} (você)` : nome }));
+      botaoLugar.setAttribute('aria-label', `Lugar ${i + 1}: ${nome}`);
       const saldo = el('div', { class: 'mj-bj-saldo' },
         el('span', { class: 'mj-bj-fichas', text: `${milhar(v.chips[i])} fichas` }));
       if (v.bets[i] > 0) saldo.append(el('span', { class: 'mj-bj-aposta', text: `Aposta ${milhar(v.bets[i])}` }));
@@ -305,7 +330,7 @@
         const t = net === null ? `Seguro ${milhar(v.insurance[i])}` : net > 0 ? `Seguro: ganhou ${milhar(net)}` : `Seguro: perdeu ${milhar(-net)}`;
         saldo.append(el('span', { class: 'mj-bj-seguro', text: t }));
       }
-      L.node.append(cab, saldo);
+      L.corpo.append(saldo);
       const lista = el('div', { class: 'mj-bj-maos' });
       for (const { h, k } of maos) {
         const res = textoResultado(h);
@@ -318,7 +343,7 @@
         mao.setAttribute('role', 'group');
         lista.append(mao);
       }
-      L.node.append(lista);
+      L.corpo.append(lista);
     }
 
     let bancaChave = null;
@@ -327,7 +352,7 @@
       const chave = JSON.stringify(d);
       if (chave === bancaChave) return;
       bancaChave = chave;
-      bancaMao.replaceChildren(K.mao(d.cards, { tamanho: 'm' }));
+      bancaMao.replaceChildren(K.mao(d.cards, { tamanho: 'm', vira: true }));
       bancaTotal.textContent = textoBanca(d);
       banca.classList.toggle('is-estourou', !!d.bust);
     }
@@ -356,9 +381,7 @@
       for (const k of Object.keys(jogadas)) jogadas[k].hidden = !a.has(k);
       btRecompra.hidden = !a.has('rebuy');
       btLevantar.hidden = !a.has('leave');
-      let texto = '';
-      if (me.seat < 0) texto = a.has('sit') ? 'Escolha um lugar livre para jogar' : 'Mesa cheia: assistindo';
-      else if (!a.size || (a.size === 1 && a.has('leave'))) texto = v.phase === 'bets' ? '' : 'Esperando a sua vez';
+      const texto = textoDica(v);
       dica.textContent = texto;
       dica.hidden = !texto;
     }
@@ -493,8 +516,8 @@
   }
 
   const api = {
-    type: TYPE, mount, textoTotal, textoBanca, textoResultado, textoStatus, anuncio, segundos, esperaTimeout,
-    milhar, atualizarBarra,
+    type: TYPE, mount, textoTotal, textoBanca, textoResultado, textoStatus, textoDica, anuncio, segundos,
+    esperaTimeout, milhar, atualizarBarra,
   };
 
   registrar(api, ['comum.js', 'cartas.js']);

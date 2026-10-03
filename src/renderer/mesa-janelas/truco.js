@@ -4,6 +4,7 @@
  * carta nula vira verso e, por isso, a mao de ferro nao vaza valores. */
 (function (root) {
   const VALORES = [1, 3, 6, 9, 12];
+  const TEXTO_VAZIO = 'Sente 2 ou 4 pessoas. As duplas ficam frente a frente.';
   const NAIPES = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
   function proximoValor(valor) {
@@ -120,18 +121,59 @@
     const acoes = criar(doc, 'div', 'mj-tr-acoes');
     const topo = criar(doc, 'div', 'mj-tr-topo');
     topo.append(vira);
-    base.raiz.append(topo, resumo, lugares, mesa, minhas, acoes);
+
+    // Sem mao: as 4 cadeiras em cruz (duplas frente a frente) dentro do vazio.
+    // Cada cadeira e uma `C.cadeiras` de um lugar so, para a cruz poder usar a grade.
+    const cruz = criar(doc, 'div', 'mj-tr-cruz');
+    const cadeiras = [0, 1, 2, 3].map((seat) => {
+      const grupo = comum.cadeiras({
+        rotulo: `Lugar ${seat + 1}`,
+        aoSentar() { base.acao(cruz, { kind: 'sit', seat }); },
+        aoRecusar(motivo) { base.aviso.mostrar(motivo, cruz); },
+      });
+      grupo.node.classList.add(`mj-tr-pos-${seat}`);
+      cruz.append(grupo.node);
+      return grupo;
+    });
+    const vazio = comum.vazio({
+      icone: 'pessoas',
+      titulo: 'Quatro lugares, duas duplas',
+      texto: TEXTO_VAZIO,
+      acao: cruz,
+    });
+    base.raiz.append(vazio, topo, resumo, lugares, mesa, minhas, acoes);
     let view = null;
+    let jogadasVistas = new Set();
 
     function nome(seat) {
       const id = view?.seats?.[seat];
       return id ? comum.nomeDe(api, id) : 'Livre';
     }
 
-    function botao(texto, action, zona = acoes) {
-      const novo = comum.botao({ text: texto, class: 'mj-pri' });
+    function botao(texto, action, zona = acoes, classe = '') {
+      const novo = comum.botao({ text: texto, class: classe });
       base.clique(novo, zona, () => base.acao(zona, action));
       return novo;
+    }
+
+    function desenharCruz() {
+      const sentado = view?.me?.seat >= 0;
+      cadeiras.forEach((grupo, seat) => {
+        const id = view?.seats?.[seat] || null;
+        grupo.sync([{
+          peer: id,
+          nome: id ? nome(seat) : '',
+          cor: id ? comum.corDe(api, id) : null,
+          peca: null,
+          vez: false,
+          eu: Boolean(id) && view?.me?.seat === seat,
+          motivoSentar: view?.me?.can?.sit ? true : (sentado ? 'Você já está sentado' : 'Indisponível agora'),
+          // Levantar mora so no botao "Levantar" de baixo: uma acao num lugar so.
+          motivoLevantar: 'Use o botão Levantar',
+        }]);
+      });
+      const sentados = (view?.seats || []).filter(Boolean).length;
+      vazio.children[2].textContent = sentados ? textoStatus(view, nome) : TEXTO_VAZIO;
     }
 
     function desenharLugares() {
@@ -141,7 +183,7 @@
         if (view?.hand?.turn === seat) lugar.classList.add('is-vez');
         lugar.append(criar(doc, 'span', 'mj-tr-nome', nome(seat)));
         if (!view?.seats?.[seat] && view?.me?.can?.sit) {
-          lugar.append(botao('Sentar', { kind: 'sit', seat }, lugar));
+          lugar.append(botao('Sentar', { kind: 'sit', seat }, lugar, 'mj-fantasma'));
         }
         lugares.append(lugar);
       }
@@ -149,14 +191,19 @@
 
     function desenharMesa() {
       mesa.replaceChildren();
+      const vistas = new Set();
       for (const jogada of view?.hand?.table || []) {
+        const chave = `${jogada.seat}:${jogada.covered ? 'x' : jogada.card}`;
+        vistas.add(chave);
         const no = criar(doc, 'div', 'mj-tr-jogada');
         no.append(
           criar(doc, 'span', null, nome(jogada.seat)),
-          cartas.carta(jogada.covered ? null : jogada.card, { tamanho: 'm' }),
+          // So a carta que acabou de cair gira; as que ja estavam ficam paradas.
+          cartas.carta(jogada.covered ? null : jogada.card, { tamanho: 'm', vira: !jogadasVistas.has(chave) }),
         );
         mesa.append(no);
       }
+      jogadasVistas = vistas;
     }
 
     function desenharCartas() {
@@ -172,30 +219,37 @@
         const item = criar(doc, 'div', 'mj-tr-carta');
         item.append(cartas.carta(carta, { tamanho: 'g' }));
         for (const action of acoesDaView(view, index)) {
-          item.append(botao(action.covered ? 'Encoberta' : 'Jogar', action));
+          item.append(botao(action.covered ? 'Encoberta' : 'Jogar', action, acoes, action.covered ? '' : 'mj-pri'));
         }
         minhas.append(item);
       });
     }
 
     function desenharAcoes() {
-      acoes.replaceChildren();
+      // `principal: true` e a acao que o momento pede; o resto vai como secundaria.
+      const itens = [];
       for (const action of acoesPrincipais(view)) {
-        const texto = action.kind === 'stand' ? 'Levantar' : 'Dar as cartas';
-        acoes.append(botao(texto, action));
+        const levantar = action.kind === 'stand';
+        itens.push({ texto: levantar ? 'Levantar' : 'Dar as cartas', action, principal: !levantar });
       }
       if (view?.me?.can?.eleven) {
-        acoes.append(botao('Jogar por 3', { kind: 'eleven', choice: 'play' }));
-        acoes.append(botao('Correr', { kind: 'eleven', choice: 'run' }));
+        itens.push({ texto: 'Jogar por 3', action: { kind: 'eleven', choice: 'play' }, principal: true });
+        itens.push({ texto: 'Correr', action: { kind: 'eleven', choice: 'run' } });
       }
-      if (view?.me?.can?.call) {
-        acoes.append(botao(rotuloCanto(view), { kind: 'call' }));
-      }
+      if (view?.me?.can?.call) itens.push({ texto: rotuloCanto(view), action: { kind: 'call' } });
       if (view?.me?.can?.answer) {
-        acoes.append(botao('Aceitar', { kind: 'answer', answer: 'accept' }));
-        acoes.append(botao('Correr', { kind: 'answer', answer: 'run' }));
-        acoes.append(botao('Aumentar', { kind: 'answer', answer: 'raise' }));
+        itens.push({ texto: 'Aceitar', action: { kind: 'answer', answer: 'accept' }, principal: true });
+        itens.push({ texto: 'Correr', action: { kind: 'answer', answer: 'run' } });
+        itens.push({ texto: 'Aumentar', action: { kind: 'answer', answer: 'raise' } });
       }
+      const botoes = itens.map((item) => ({ item, botao: botao(item.texto, item.action) }));
+      const principal = botoes.find((x) => x.item.principal);
+      acoes.replaceChildren();
+      if (!botoes.length) return;
+      acoes.append(comum.acoes({
+        principal: principal ? principal.botao : null,
+        secundarias: botoes.filter((x) => x !== principal).map((x) => x.botao),
+      }));
     }
 
     function desenhar(novaView) {
@@ -212,6 +266,11 @@
         `${view.scores?.[0] || 0} × ${view.scores?.[1] || 0} · ${status.textContent}`,
         Boolean(view.hand && !view.hand.result && (view.me?.can?.play || view.me?.can?.answer)),
       );
+      // Sem mao na mesa: so o vazio com as cadeiras em cruz (e as acoes de baixo).
+      const semMao = !view.hand || view.phase === 'waiting';
+      vazio.hidden = !semMao;
+      for (const parte of [topo, resumo, lugares, mesa, minhas]) parte.hidden = semMao;
+      desenharCruz();
       desenharLugares();
       desenharMesa();
       desenharCartas();

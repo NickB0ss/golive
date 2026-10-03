@@ -104,6 +104,12 @@ function montar(state = estado()) {
       root.append(raiz);
       return { raiz, acao: (_where, acao) => api.act(acao), faxina: [], destruir() {} };
     },
+    acoes({ principal, secundarias = [] }) {
+      const node = new Elemento('footer');
+      node.className = 'mj-acoes';
+      node.append(...secundarias, ...(principal ? [principal] : []));
+      return node;
+    },
     ligado(btn, ligado) {
       if (ligado === true) btn.removeAttribute('aria-disabled');
       else btn.setAttribute('aria-disabled', 'true');
@@ -338,8 +344,38 @@ test('mostra Salvo quando o servidor confirma a resposta ja limpa', () => {
   view.atualizar(estado({ myAnswers: ['Anta', 'Aracaju'] }));
   const dicas = [];
   const juntar = (node) => { dicas.push(node.textContent); node.children.forEach(juntar); };
-  juntar(view.inputs()[0].parentNode.parentNode.parentNode);
+  // Sobe ate a raiz da janela: o campo agora mora numa linha de caderno (label), dentro do form.
+  let raiz = view.inputs()[0];
+  while (raiz.parentNode?.parentNode) raiz = raiz.parentNode;
+  juntar(raiz);
   assert.ok(dicas.includes('Salvo'));
   assert.ok(!dicas.includes('Salvando…'));
+  view.destruir();
+});
+
+test('cada categoria da escrita e uma linha de caderno com o nome ao lado do campo', () => {
+  const view = montar();
+  const [animal, cidade] = view.inputs();
+  assert.equal(animal.parentNode.className, 'mj-stop-linha');
+  assert.equal(animal.parentNode.children[0].textContent, 'Animal');
+  assert.equal(cidade.parentNode.children[0].textContent, 'Cidade');
+  view.destruir();
+});
+
+test('na preparacao nao sobra o "Stop" solto e Começar rodada e a acao principal do rodape', () => {
+  const view = montar(estado({ phase: 'setup', letter: '', deadline: null, me: { canManage: true } }));
+  const textos = [];
+  const juntar = (node) => { textos.push(node.textContent); node.children.forEach(juntar); };
+  let raiz = view.inputs()[0];
+  while (raiz.parentNode?.parentNode) raiz = raiz.parentNode;
+  juntar(raiz);
+  assert.ok(!textos.includes('Stop'), 'o nome do jogo ja esta na barra da janela');
+  const comecar = view.botao('Começar rodada');
+  assert.equal(comecar.parentNode.className, 'mj-acoes');
+  comecar.dispatch('click');
+  assert.deepEqual(view.acoes, [
+    { kind: 'categories', categories: ['Animal', 'Cidade'] },
+    { kind: 'start' },
+  ]);
   view.destruir();
 });

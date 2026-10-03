@@ -102,6 +102,16 @@
     };
   }
 
+  /** A linha de estado do alto ("Blinds 10/20 · mão 3 · Flop"): o nome do jogo ja esta
+   * na barra da janela, entao nao se repete aqui. */
+  function linhaDeEstado(v) {
+    const h = v.hand;
+    const emMao = h && !h.result;
+    const mao = v.handNo ? ` · mão ${v.handNo}` : '';
+    const rua = emMao ? ` · ${RUAS[h.street]}` : '';
+    return `Blinds ${fichas(v.blinds.sb)}/${fichas(v.blinds.bb)}${mao}${rua}`;
+  }
+
   /** Segundos que faltam (arredondados para cima, nunca negativo). */
   function segundos(deadline, agora) {
     return Math.max(0, Math.ceil((deadline - agora) / 1000));
@@ -184,23 +194,27 @@
     const mesa = el('div', { class: 'mj-pq-mesa', attrs: { role: 'group', 'aria-label': 'Mesa de pôquer' } }, feltro, centro);
     for (let seat = 0; seat < N; seat += 1) {
       const nome = el('span', { class: 'mj-pq-nome' });
-      const dot = el('span', { class: 'mj-dot' });
       const botaoD = el('span', { class: 'mj-pq-d', text: 'D', attrs: { title: 'Botão do dealer', 'aria-hidden': 'true' } });
       const tag = el('span', { class: 'mj-pq-tag' });
       const pilha = el('span', { class: 'mj-pq-pilha' });
       const estado = el('span', { class: 'mj-pq-estado' });
       const cartas = el('span', { class: 'mj-pq-cartas' });
-      const sentar = C.botao({ text: 'Sentar', class: 'mj-cadeira-sentar' });
       const relogio = el('span', { class: 'mj-pq-relogio', attrs: { 'aria-hidden': 'true' } }, el('span'));
+      // O lugar e a cadeira comum (avatar na cor da pessoa, "Sentar" no livre).
+      // Levantar fica so no botao do alto: uma acao num lugar so.
+      const cad = C.cadeiras({
+        rotulo: `Lugar ${seat + 1}`,
+        aoSentar() { b.acao(caixa, { kind: 'sit', seat }); },
+        aoRecusar(motivo) { if (caixa.classList.contains('is-livre')) b.aviso.mostrar(motivo, caixa); },
+      });
       const caixa = el('div', { class: 'mj-pq-lugar' },
-        el('div', { class: 'mj-pq-linha' }, dot, nome, botaoD, tag),
+        el('div', { class: 'mj-pq-linha' }, cad.node, nome, botaoD, tag),
         el('div', { class: 'mj-pq-linha' }, pilha, cartas),
         estado,
-        relogio, sentar);
-      b.clique(sentar, caixa, () => b.acao(caixa, { kind: 'sit', seat }));
+        relogio);
       const aposta = el('span', { class: 'mj-pq-aposta' });
       mesa.append(aposta, caixa);
-      lugares.push({ caixa, nome, dot, botaoD, tag, pilha, estado, cartas, sentar, relogio, chave: '' });
+      lugares.push({ caixa, nome, botaoD, tag, pilha, estado, cartas, cad, relogio, chave: '' });
       apostas.push(aposta);
     }
 
@@ -313,7 +327,7 @@
     function pintarTopo(v) {
       const h = v.hand;
       const emMao = h && !h.result;
-      titulo.textContent = `Pôquer · ${fichas(v.blinds.sb)}/${fichas(v.blinds.bb)}${v.handNo ? ` · mão ${v.handNo}` : ''}${emMao ? ` · ${RUAS[h.street]}` : ''}`;
+      titulo.textContent = linhaDeEstado(v);
       const lider = safeBool(() => api.isLeader());
       selBlinds.hidden = !lider || !!emMao;
       if (!selBlinds.hidden && selBlinds.options.length !== v.levels.length) {
@@ -357,11 +371,21 @@
         L.caixa.classList.toggle('is-fora', !livre && !!h && !h.result && st !== 'in' && st !== 'allin');
         L.caixa.classList.toggle('is-vez', !!h && !h.result && h.toAct === seat);
         L.caixa.classList.toggle('is-vencedor', vencedores.has(seat));
-        L.sentar.hidden = !livre || !pode('sit');
-        L.nome.textContent = livre ? (pode('sit') ? '' : 'Livre') : nomeDaCadeira(seat);
-        const cor = livre ? null : C.corDe(api, id);
-        if (cor) L.dot.style.setProperty('--mj-cor', cor); else L.dot.style.removeProperty('--mj-cor');
-        L.dot.hidden = livre;
+        const podeSentar = livre && pode('sit');
+        L.cad.sync([{
+          peer: livre ? null : id,
+          nome: livre ? '' : nomeDaCadeira(seat),
+          cor: livre ? null : C.corDe(api, id),
+          peca: null,
+          vez: !!h && !h.result && h.toAct === seat,
+          eu: !livre && seat === base,
+          motivoSentar: podeSentar ? true : 'Indisponível agora',
+          motivoLevantar: 'Use o botão Levantar',
+        }]);
+        // Lugar livre que ninguem pode ocupar so mostra "Livre"; senao a cadeira diz tudo.
+        L.cad.node.hidden = livre && !podeSentar;
+        L.nome.hidden = !(livre && !podeSentar);
+        L.nome.textContent = L.nome.hidden ? '' : 'Livre';
         L.botaoD.hidden = livre || v.button !== seat;
         const tag = h && !h.result ? (h.sbSeat === seat ? 'SB' : h.bbSeat === seat ? 'BB' : '') : '';
         L.tag.textContent = tag;
@@ -383,7 +407,7 @@
         let lista = [];
         if (h && h.holes[seat]) lista = minhas && !h.result ? [] : h.holes[seat];
         else if (h && h.cards[seat] && !minhas) lista = [null, null];
-        cartasEm(L.cartas, lista, { tamanho: 'p' });
+        cartasEm(L.cartas, lista, { tamanho: 'p', vira: !!(h && h.result) });
         L.cartas.querySelectorAll('.mj-carta').forEach((node, i) => {
           node.classList.toggle('is-destaque', !!(lista[i] && destaque.has(lista[i])));
         });
@@ -422,7 +446,7 @@
         const chave = `${c || ''}|${c && destaque.has(c) ? 1 : 0}`;
         if (s.dataset.chave === chave) return;
         s.dataset.chave = chave;
-        s.replaceChildren(...(c ? [K.carta(c, { destaque: destaque.has(c) })] : []));
+        s.replaceChildren(...(c ? [K.carta(c, { destaque: destaque.has(c), vira: true })] : []));
         s.classList.toggle('is-vazio', !c);
       });
       board.setAttribute('aria-label', lista.length ? `Cartas da mesa: ${K.rotuloMao(lista)}` : 'Mesa sem cartas');
@@ -449,7 +473,7 @@
       const h = v.hand;
       const m = me();
       const minhasCartas = h && m.seat >= 0 && h.holes[m.seat] ? h.holes[m.seat] : [];
-      cartasEm(minhas, minhasCartas.length ? minhasCartas : [], { tamanho: 'g' });
+      cartasEm(minhas, minhasCartas.length ? minhasCartas : [], { tamanho: 'g', vira: true });
       eu.hidden = !minhasCartas.length;
       let jogo = '';
       if (h && h.result && h.result.hands && h.result.hands[m.seat]) jogo = h.result.hands[m.seat].name;
@@ -574,7 +598,9 @@
       update,
       destroy() { atualizarBarra(api, '', false); b.destruir(); },
       focus() {
-        const alvo = !acoes.hidden ? btPagar : [btDar, btRecompra].find((x) => !x.hidden) || lugares.find((L) => !L.sentar.hidden)?.sentar || status;
+        const livre = lugares.find((L) => !L.cad.node.hidden && L.cad.node.querySelector('.mj-cadeira-livre'));
+        const alvo = !acoes.hidden ? btPagar : [btDar, btRecompra].find((x) => !x.hidden)
+          || livre?.cad.node.querySelector('.mj-cadeira-livre') || status;
         alvo.focus();
       },
     };
@@ -648,8 +674,8 @@
   }
 
   const api = {
-    type: TYPE, mount, fichas, posicao, coordenada, textoEvento, textoResultado, atalhos, segundos, rotuloPagar,
-    rotuloAumentar, atualizarBarra,
+    type: TYPE, mount, fichas, posicao, coordenada, linhaDeEstado, textoEvento, textoResultado, atalhos, segundos,
+    rotuloPagar, rotuloAumentar, atualizarBarra,
   };
 
   registrar(api, ['comum.js', 'cartas.js']);

@@ -290,9 +290,9 @@ async function cenaTruco(browser) {
 
     const wAna = janela(ana.page, id);
     const wBia = janela(bia.page, id);
-    await wAna.locator('.mj-tr-lugar').nth(0).getByRole('button', { name: 'Sentar' }).click();
+    await wAna.locator('.mj-tr-pos-0').getByRole('button', { name: 'Sentar' }).click();
     await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id && m.state.seats[0]);
-    await wBia.locator('.mj-tr-lugar').nth(1).getByRole('button', { name: 'Sentar' }).click();
+    await wBia.locator('.mj-tr-pos-1').getByRole('button', { name: 'Sentar' }).click();
     await esperaMsg(ana.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id && m.state.seats[1]);
     await espera(200);
     await wAna.getByRole('button', { name: 'Dar as cartas' }).click();
@@ -324,7 +324,7 @@ async function cenaTruco(browser) {
 
     // Tamanho minimo: so sentar e conferir o layout (sem jogar a mao toda).
     await verTudo(ana);
-    await janela(ana.page, idMin).locator('.mj-tr-lugar').nth(0).getByRole('button', { name: 'Sentar' }).click();
+    await janela(ana.page, idMin).locator('.mj-tr-pos-0').getByRole('button', { name: 'Sentar' }).click();
     await espera(200);
 
     await conferirGeometria(ana.page, `${rotulo}/padrao`);

@@ -101,17 +101,30 @@
         input.value = value;
         list.append(input);
       });
-      const start = el('button', { class: 'mj-btn mj-pri', text: 'Começar rodada', attrs: { type: 'submit' } });
-      form.append(title, list, start);
-      form.addEventListener('submit', (event) => {
-        event.preventDefault();
+      // "Começar rodada" e a acao principal e mora no rodape (C.acoes), fora do form:
+      // o Enter nos campos faz o mesmo que o clique.
+      const start = C.botao({ text: 'Começar rodada' });
+      function comecar() {
         if (state.me?.canManage || api.isLeader()) {
           action(form, { kind: 'categories', categories: [...list.querySelectorAll('input')].map((i) => i.value) });
           action(form, { kind: 'start' });
         }
+      }
+      for (const input of list.querySelectorAll('input')) {
+        input.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          comecar();
+        });
+      }
+      start.addEventListener('click', comecar);
+      form.append(title, list);
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        comecar();
       });
       body.replaceChildren(form);
-      footer.replaceChildren();
+      footer.replaceChildren(C.acoes({ principal: start }));
       C.ligado(start, state.me?.canManage || api.isLeader() ? true : 'Só quem gere a janela começa');
     }
 
@@ -203,7 +216,10 @@
         });
         return input;
       });
-      form.append(title, ...inputs);
+      // Cada categoria e uma linha de caderno: o nome a esquerda e o traco para escrever.
+      const linhas = inputs.map((input, i) => el('label', { class: 'mj-stop-linha' },
+        el('span', { class: 'mj-stop-rotulo', text: state.categories[i] }), input));
+      form.append(title, ...linhas);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         salvarAgora();
@@ -247,8 +263,10 @@
     }
 
     function render() {
+      // Na preparacao nao ha letra: o alto some (o nome do jogo ja esta na barra da janela).
+      head.hidden = state.phase === 'setup';
       head.replaceChildren(
-        el('span', { class: 'mj-dica', text: state.phase === 'setup' ? 'Stop' : 'Letra' }),
+        el('span', { class: 'mj-dica', text: 'Letra' }),
         letter,
         el('span', { class: 'mj-mola' }),
         clock);

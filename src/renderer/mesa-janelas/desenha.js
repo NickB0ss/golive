@@ -54,10 +54,16 @@
 
     const btEntrar = C.botao({ text: 'Entrar na rodada', class: 'mj-pri' });
     const btSair = C.botao({ text: 'Sair da rodada' });
-    const btComecar = C.botao({ text: 'Começar', class: 'mj-pri' });
+    const btComecar = C.botao({ text: 'Começar' });
+    // Esperando gente: o vazio convida a entrar; "Começar" (principal) e "Sair" ficam em C.acoes.
+    const vazioLobby = C.vazio({
+      icone: 'lapis',
+      titulo: 'Entre na rodada',
+      texto: 'Quem entra participa do rodízio de quem desenha.',
+      acao: btEntrar,
+    });
     const secLobby = el('div', { class: 'mj-ds-lobby' },
-      el('p', { class: 'mj-dica', text: 'Quem entrar participa do rodízio de quem desenha.' }),
-      el('div', { class: 'mj-barra' }, btEntrar, btSair, el('span', { class: 'mj-mola' }), btComecar));
+      vazioLobby, C.acoes({ principal: btComecar, secundarias: [btSair] }));
     b.raiz.append(secLobby);
     b.clique(btEntrar, secLobby, () => b.acao(secLobby, { kind: 'join' }));
     b.clique(btSair, secLobby, () => b.acao(secLobby, { kind: 'leave' }));
@@ -302,6 +308,10 @@
         C.ligado(btComecar, C.podeFazer(api, { kind: 'start' }) === true);
         btEntrar.hidden = Boolean(me.joined);
         btSair.hidden = !me.joined;
+        vazioLobby.children[1].textContent = me.joined ? 'Você está na rodada' : 'Entre na rodada';
+        vazioLobby.children[2].textContent = me.joined
+          ? 'Comece quando todo mundo que vai jogar tiver entrado.'
+          : 'Quem entra participa do rodízio de quem desenha.';
       }
 
       if (fase === 'choosing' && me.isDrawer && Array.isArray(state.options)) {

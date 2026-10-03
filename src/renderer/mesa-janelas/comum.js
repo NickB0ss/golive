@@ -254,7 +254,8 @@
           : null;
       if (peca) peca.classList.add('mj-cadeira-peca');
       botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-ocupada';
-      botaoLugar.replaceChildren(avatar, nomeNode, peca);
+      botaoLugar.replaceChildren(avatar, nomeNode);
+      if (peca) botaoLugar.append(peca);
       ligado(botaoLugar, lugar.motivoLevantar ?? true, `Levantar ${nome}`);
       item.setAttribute('title', nome);
     }

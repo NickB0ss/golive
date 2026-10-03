@@ -17,7 +17,7 @@
 
 .mj-jogo-topo { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
 .mj-jogo-x { color: var(--tx3); font-size: var(--fs-small); }
-.mj-cadeira {
+.mj-jogo .mj-cadeira {
   display: inline-flex; align-items: center; gap: var(--s-15);
   min-width: 0; min-height: 32px;
   padding: 0 var(--s-05) 0 var(--s-15);
@@ -26,15 +26,15 @@
   box-shadow: inset 0 0 0 1px var(--line);
   font-size: var(--fs-small);
 }
-.mj-cadeira.is-vez { box-shadow: inset 0 0 0 2px var(--on-line); }
-.mj-cadeira.is-eu .mj-cadeira-nome { font-weight: 600; }
-.mj-cadeira:not(.is-livre)::after {
+.mj-jogo .mj-cadeira.is-vez { box-shadow: inset 0 0 0 2px var(--on-line); }
+.mj-jogo .mj-cadeira.is-eu .mj-cadeira-nome { font-weight: 600; }
+.mj-jogo .mj-cadeira:not(.is-livre)::after {
   /* a cor de quem sentou: so um fio embaixo do nome */
   content: ""; width: 6px; height: 6px; flex: none;
   border-radius: var(--r-full); background: var(--mj-cor, transparent);
   order: 3;
 }
-.mj-cadeira .mj-mini { order: 4; }
+.mj-jogo .mj-cadeira .mj-mini { order: 4; }
 .mj-cadeira-nome { min-width: 0; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mj .mj-cadeira-sentar { min-height: 28px; padding: 0 var(--s-2); border-radius: var(--r-full); font-size: var(--fs-small); }
 .mj-amostra {

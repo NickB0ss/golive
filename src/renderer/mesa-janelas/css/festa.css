@@ -1,7 +1,8 @@
 /* === desenha === */
-/* Desenha e adivinha (contrato, secao 10), por cima do Quadro: topo com
+/* Desenha e adivinha (contrato, secao 10), por cima do Quadro (lousa): topo com
    fase/relogio, placar horizontal, e o corpo troca de secao pela fase
-   (lobby | escolhendo | desenhando | fim). So uma secao visivel por vez. */
+   (lobby | escolhendo | desenhando | fim). So uma secao visivel por vez. Esperando
+   gente, o vazio convida a entrar e "Comecar" e a acao principal do rodape. */
 .mj-desenha { padding: var(--s-2); gap: var(--s-15); }
 .mj-ds-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-height: 22px; }
 /* O aviso (quem acertou, "quase", a revelacao da rodada) mora na barra do
@@ -10,7 +11,7 @@
 .mj-ds-topo .mj-aviso { flex-basis: 100%; }
 .mj-ds-status { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .mj-desenha.is-minha-vez .mj-ds-status { color: var(--wire); }
-.mj-ds-relogio { flex: none; color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-ds-relogio { flex: none; color: var(--tx2); font: var(--t-data); font-variant-numeric: tabular-nums; }
 .mj-ds-relogio.is-pouco { color: var(--warn); font-weight: 600; }
 .mj-ds-relogio[hidden] { display: none; }
 
@@ -20,12 +21,12 @@
   list-style: none; margin: 0; padding: 0;
 }
 .mj-ds-jogador {
-  display: flex; align-items: center; gap: var(--s-05);
-  padding: 2px var(--s-15) 2px var(--s-05);
+  display: flex; align-items: center; gap: var(--s-1);
+  padding: 2px var(--s-2) 2px var(--s-15);
   border-radius: var(--r-full);
   background: var(--s2);
   box-shadow: inset 0 0 0 1px var(--line2);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
 }
 .mj-ds-jogador.is-vez { box-shadow: inset 0 0 0 2px var(--wire); }
 .mj-ds-jogador.is-fora { opacity: 0.55; }
@@ -33,7 +34,6 @@
 .mj-ds-pontos { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tx2); }
 
 .mj-ds-lobby, .mj-ds-escolhendo, .mj-ds-desenhando, .mj-ds-fim { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
-.mj-ds-lobby { justify-content: center; }
 .mj-ds-fim { align-items: center; justify-content: center; }
 
 .mj-ds-escolhendo { align-items: center; justify-content: center; }
@@ -75,23 +75,26 @@
 @container mj (max-width: 420px) {
   .mj .mj-ds-opcao { min-width: 0; flex: 1 1 100%; }
 }
+@container mj (max-height: 440px) {
+  .mj-ds-lobby .mj-vazio-glifo { display: none; }
+}
 
-/* === stop === */
+/* === stop === (papel: cada categoria e uma linha de caderno) */
 .mj-stop-head,
 .mj-stop-footer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
 .mj-stop-letter {
   color: var(--tx);
-  font-size: var(--fs-hero);
-  line-height: 1;
+  font: 700 var(--fs-hero)/1 var(--font-display);
 }
 
 .mj-stop-clock {
   color: var(--tx2);
+  font: var(--t-data);
   font-variant-numeric: tabular-nums;
 }
 
@@ -106,7 +109,7 @@
 .mj-stop-review,
 .mj-stop-category-list {
   display: grid;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
 .mj-stop-category-list,
@@ -114,12 +117,44 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.mj-stop-answers { column-gap: var(--s-4); row-gap: var(--s-1); }
+.mj-stop-answers > .mj-dica { grid-column: 1 / -1; }
+
+.mj-stop-linha {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  border-bottom: 1px solid var(--line2);
+}
+.mj-stop-rotulo {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tx3);
+  font: var(--t-meta);
+}
+.mj .mj-stop-linha .mj-campo {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.mj .mj-stop-linha:focus-within { border-bottom-color: var(--wire); box-shadow: 0 1px 0 var(--wire); }
+
+/* O rodape: um filete em cima, como o das acoes comuns; no setup ele e o proprio C.acoes. */
+.mj-stop-footer { padding-top: var(--s-2); border-top: 1px solid var(--line); }
+.mj-stop-footer > .mj-acoes { flex: 1; padding-top: 0; border-top: 0; }
+
 .mj-stop-row {
   display: grid;
   grid-template-columns: minmax(96px, 1fr) minmax(80px, 1fr) auto auto auto;
   align-items: center;
-  gap: 6px;
-  padding: 6px 0;
+  gap: var(--s-15);
+  padding: var(--s-15) 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -144,51 +179,63 @@
   }
 }
 
-/* === quiz === */
+/* === quiz === (papel: alternativas como cartoes A-D) */
 .mj.mj-quiz { padding-top: 30px; gap: var(--s-2); }
 .mj-quiz-topo {
   display: flex; align-items: center; gap: var(--s-2); min-width: 0;
 }
-.mj-quiz-titulo { font: 700 var(--fs-lead) var(--font-display); }
-.mj-quiz-rodada { color: var(--tx2); font-size: var(--fs-small); }
+.mj-quiz-rodada { color: var(--tx2); font: var(--t-meta); }
 .mj-quiz-prazo {
   min-width: 42px; padding: 1px var(--s-2); border-radius: var(--r-full);
   background: var(--s3); color: var(--tx2); text-align: center;
+  font: var(--t-data);
   font-variant-numeric: tabular-nums;
 }
-.mj-quiz-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
+.mj-quiz-prazo.is-fim { background: color-mix(in oklab, var(--warn) 18%, transparent); color: var(--warn); }
 .mj-quiz-pergunta {
   margin: 0; min-height: 48px; font: 600 var(--fs-lead) var(--font-display);
 }
 .mj-quiz-alternativas {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2);
 }
-.mj-quiz-opcao {
-  min-width: 0; min-height: 48px; justify-content: flex-start;
+.mj .mj-quiz-opcao {
+  min-width: 0; min-height: 48px; justify-content: flex-start; gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--s1);
   text-align: left; white-space: normal;
+  box-shadow: 0 1px 0 var(--line2), 0 3px 6px var(--mj-mat-sombra);
+}
+.mj-quiz-letra {
+  display: inline-grid; place-items: center; flex: none;
+  width: 28px; height: 28px;
+  border-radius: var(--r-full);
+  background: var(--s3);
+  font: 700 var(--fs-small) var(--font-display);
 }
 .mj-quiz-opcao-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mj-quiz-opcao.is-escolhida { box-shadow: inset 0 0 0 2px var(--wire); }
+.mj .mj-quiz-opcao.is-escolhida { background: var(--wire-soft); box-shadow: inset 0 0 0 2px var(--wire); }
+.mj-quiz-opcao.is-escolhida .mj-quiz-letra { background: var(--wire); color: var(--on-act); }
 .mj-quiz-placar {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1);
   min-height: 0; overflow: hidden;
 }
 .mj-quiz-jogador {
-  display: flex; align-items: center; gap: var(--s-1); min-width: 0;
+  display: flex; align-items: center; gap: var(--s-2); min-width: 0;
   padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--s2);
 }
-.mj-quiz-jogador.is-eu { box-shadow: inset 0 0 0 1px var(--on-line); }
+.mj-quiz-jogador.is-eu { box-shadow: inset 0 0 0 1px var(--line2); }
 .mj-quiz-nome {
   min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-weight: 600;
 }
-.mj-quiz-respondeu { color: var(--tx3); font-size: var(--fs-micro); }
-.mj-quiz-pontos { margin-left: auto; white-space: nowrap; font-size: var(--fs-small); }
-.mj-quiz-status { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+.mj-quiz-respondeu { color: var(--tx3); font-size: var(--fs-small); }
+.mj-quiz-pontos { margin-left: auto; white-space: nowrap; font: 700 var(--fs-small) var(--font-display); }
+.mj-quiz-status { margin: 0; color: var(--tx2); font: var(--t-meta); }
 .mj-quiz-status:empty { display: none; }
 @container mj (max-width: 430px) {
   .mj-quiz-alternativas { grid-template-columns: 1fr; gap: var(--s-1); }
-  .mj-quiz-opcao { min-height: 40px; }
+  .mj .mj-quiz-opcao { min-height: 40px; }
   .mj-quiz-placar { grid-template-columns: 1fr; }
   .mj-quiz-pergunta { font-size: var(--fs-body); }
 }

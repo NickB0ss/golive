@@ -1,7 +1,8 @@
-/* --- Cartas (mesa-janelas/cartas.js): face clara com tinta preta ou
-   vermelha, como carta de verdade, em qualquer tema; verso neutro. O
-   vermelho das copas e ouros e o --danger travado (cor de naipe, nao de
-   alerta). --- */
+/* --- Cartas (mesa-janelas/cartas.js): face clara com tinta escura, como carta
+   de verdade, em qualquer tema (o feltro e uma ilha escura, entao a face usa
+   os tokens travados de sobre-video, nao --on-act). O vermelho de copas e
+   ouros e o --danger escurecido (cor de naipe, nao de alerta). Volume:
+   brilho (do .mj-volume) e sombra de contato. --- */
 .mj-carta {
   --mj-carta-w: 44px;
   position: relative;
@@ -11,21 +12,36 @@
   width: var(--mj-carta-w);
   aspect-ratio: 5 / 7;
   border-radius: var(--r-sm);
-  background: var(--on-act);
-  color: var(--video-bg);
-  box-shadow: inset 0 0 0 1px var(--line2);
+  background-color: var(--on-video);
+  color: var(--void);
+  box-shadow: inset 0 0 0 1px var(--mj-mat-contato), 0 2px 0 var(--mj-mat-contato), 0 4px 8px var(--mj-mat-sombra);
   font-family: var(--font-display);
   line-height: 1;
   user-select: none;
 }
 .mj-carta-p { --mj-carta-w: 30px; }
 .mj-carta-g { --mj-carta-w: 60px; }
-.mj-carta.is-vermelha { color: var(--danger); }
+.mj-carta.is-vermelha { color: color-mix(in oklab, var(--danger) 72%, var(--void)); }
+/* Verso: fundo azulado com losangos de gradiente e moldura clara. */
 .mj-carta.is-verso {
-  background: repeating-linear-gradient(45deg, var(--s3) 0 6px, var(--s4) 6px 12px);
-  box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2);
+  background-color: color-mix(in oklab, var(--wire) 42%, var(--void));
+  background-image:
+    radial-gradient(ellipse at 35% 30%, var(--mj-mat-brilho), transparent 42%),
+    repeating-linear-gradient(45deg, transparent 0 5px, var(--s4) 5px 6px),
+    repeating-linear-gradient(-45deg, transparent 0 5px, var(--s4) 5px 6px);
+  box-shadow:
+    inset 0 0 0 3px var(--on-video),
+    inset 0 0 0 4px var(--mj-mat-contato),
+    0 2px 0 var(--mj-mat-contato),
+    0 4px 8px var(--mj-mat-sombra);
 }
-.mj-carta.is-destaque { box-shadow: 0 0 0 2px var(--act); }
+.mj-carta.is-destaque {
+  box-shadow:
+    inset 0 0 0 1px var(--mj-mat-contato),
+    0 0 0 2px var(--wire),
+    0 2px 0 var(--mj-mat-contato),
+    0 4px 8px var(--mj-mat-sombra);
+}
 .mj-carta-canto {
   position: absolute;
   top: 3px;
@@ -36,14 +52,21 @@
 .mj-carta-naipe { font-size: calc(var(--mj-carta-w) * 0.5); }
 .mj-mao { display: inline-flex; gap: var(--s-1); flex-wrap: wrap; }
 
+/* A carta que acabou de ser revelada gira de lado para a frente. */
+.mj-carta.is-vira { animation: mj-carta-vira 240ms var(--ease-out) both; }
+@keyframes mj-carta-vira {
+  from { transform: perspective(240px) rotateY(88deg); opacity: 0.35; }
+  to { transform: perspective(240px) rotateY(0deg); opacity: 1; }
+}
+
 /* ---------- Pôquer (mesa-janelas/poquer.js) ----------
-   Mesa oval com 8 lugares (a de quem ve fica embaixo, no meio), as cartas
-   da mesa e o pote no meio, e embaixo as suas cartas e a barra de acoes.
-   A vez e o vencedor tem contorno no --act; o relogio fica no --warn quando
-   falta pouco. A cor da pessoa so na bolinha. */
+   Mesa oval de feltro com 8 lugares (a de quem ve fica embaixo, no meio): cada
+   lugar e uma cadeira comum (C.cadeiras) com a pilha e as cartas embaixo. Cartas
+   da mesa e pote no meio; embaixo, suas cartas e a barra de acoes. A vez e o
+   vencedor ganham anel no --wire; o relogio fica no --warn quando falta pouco. */
 
 .mj-poquer {
-  --pq-lugar-w: 116px;
+  --pq-lugar-w: 128px;
   --pq-carta-lugar: 22px;
   padding-top: 30px;
   gap: var(--s-1);
@@ -52,21 +75,26 @@
 .mj-pq-titulo {
   margin: 0; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font: 600 var(--fs-small) var(--font-display);
+  font: var(--t-meta);
   color: var(--tx2);
   font-variant-numeric: tabular-nums;
 }
 .mj-poquer .mj-pq-topo .mj-btn { min-height: 30px; }
 .mj-poquer .mj-pq-blinds { min-height: 30px; font-size: var(--fs-small); }
 
-/* A mesa: o feltro (oval) por tras, os lugares e as apostas por cima. */
+/* A mesa: o feltro (oval, com aro de madeira) por tras, os lugares e as apostas por cima. */
 .mj-pq-mesa { position: relative; flex: 1; min-height: 0; }
 .mj-pq-feltro {
   position: absolute;
   inset: 14% 13%;
+  border: var(--s-15) solid color-mix(in oklab, var(--mj-mat-madeira) 70%, var(--void));
   border-radius: var(--r-full);
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--line2), inset 0 0 0 7px var(--s1), inset 0 0 0 8px var(--line);
+  background: radial-gradient(ellipse at 50% 35%, var(--mj-mat-feltro-1), var(--mj-mat-feltro-2) 85%);
+  box-shadow:
+    inset 0 0 var(--s-4) var(--mj-mat-vinheta),
+    inset 0 0 0 1px var(--line2),
+    0 2px 0 var(--mj-mat-contato),
+    0 6px 14px var(--mj-mat-sombra);
 }
 .mj-pq-centro {
   position: absolute; left: 50%; top: 50%;
@@ -76,11 +104,23 @@
   text-align: center;
 }
 .mj-pq-pote {
+  display: inline-flex; align-items: center; gap: var(--s-1);
   margin: 0;
   font: 600 var(--fs-small) var(--font-display);
   color: var(--tx);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* Ficha do pote: a mesma da aposta, com volume (brilho e sombra de contato). */
+.mj-pq-pote::before,
+.mj-pq-aposta::before {
+  content: "";
+  width: 12px; height: 12px; flex: none;
+  border-radius: var(--r-full);
+  background:
+    radial-gradient(circle at 35% 30%, var(--mj-mat-brilho), transparent 45%),
+    color-mix(in oklab, var(--wire) 55%, var(--on-video));
+  box-shadow: inset 0 0 0 2px var(--on-video), 0 2px 0 var(--mj-mat-contato);
 }
 .mj-pq-board { display: flex; gap: var(--s-1); }
 .mj-pq-slot { display: inline-flex; }
@@ -88,7 +128,8 @@
 .mj-pq-slot.is-vazio {
   width: 38px; aspect-ratio: 5 / 7;
   border-radius: var(--r-sm);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: var(--mj-mat-vinheta);
+  box-shadow: inset 0 1px 3px var(--mj-mat-contato), 0 1px 0 var(--line);
 }
 /* No showdown, as cartas fora das maos vencedoras apagam. */
 .mj-poquer.is-showdown .mj-pq-board .mj-carta:not(.is-destaque),
@@ -108,53 +149,72 @@
   width: var(--pq-lugar-w);
   transform: translate(-50%, -50%);
   display: flex; flex-direction: column; gap: 2px;
-  padding: var(--s-05) var(--s-15);
+  padding: var(--s-05) var(--s-1) var(--s-1);
   border-radius: var(--r-md);
-  background: var(--s3);
-  box-shadow: inset 0 0 0 1px var(--line2);
+  background: color-mix(in oklab, var(--mj-mat-feltro-3) 82%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line2), 0 2px 0 var(--mj-mat-contato);
   font-size: var(--fs-small);
   line-height: 1.2;
 }
 .mj-pq-lugar.is-livre {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: none;
   align-items: center;
   color: var(--tx3);
 }
-.mj-pq-lugar.is-eu .mj-pq-nome { font-weight: 600; }
+.mj-pq-lugar.is-livre { width: auto; }
 .mj-pq-lugar.is-fora { opacity: 0.55; }
-.mj-pq-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--wire); }
-.mj-pq-lugar.is-vencedor { box-shadow: inset 0 0 0 2px var(--wire); background: var(--s4); }
+.mj-pq-lugar.is-vencedor {
+  box-shadow: inset 0 0 0 2px var(--wire), 0 2px 0 var(--mj-mat-contato);
+  background: var(--s4);
+}
 .mj-pq-linha { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
 .mj-pq-lugar.is-livre .mj-pq-linha + .mj-pq-linha { display: none; }
 .mj-pq-nome { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mj-pq-lugar.is-livre .mj-pq-nome { flex: none; }
+/* A cadeira dentro do lugar: o botao e o rotulo do lugar, sem caixa propria. */
+.mj-pq-lugar .mj-cadeiras { flex: 1; min-width: 0; flex-wrap: nowrap; }
+.mj-pq-lugar .mj-cadeira { flex: 1; min-width: 0; }
+.mj-pq-lugar .mj-cadeiras .mj-cadeira-botao {
+  width: 100%; min-height: 24px; padding: 0 var(--s-1) 0 0;
+  overflow: hidden;
+  font-size: var(--fs-small);
+}
+.mj-pq-lugar .mj-cadeiras .mj-cadeira-ocupada {
+  background: transparent; border-color: transparent;
+}
+/* Levantar mora so no botao do alto; a cadeira ocupada nao e controle, entao nao fica apagada. */
+.mj-pq-lugar .mj-cadeira-ocupada[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-pq-lugar .mj-cadeira-avatar { width: 20px; height: 20px; font-size: var(--fs-small); }
+.mj-pq-lugar .mj-cadeiras .mj-cadeira-livre { min-height: 26px; padding: 0 var(--s-2); }
+.mj-pq-lugar .mj-cadeira[data-vez='1'] .mj-cadeira-botao { box-shadow: 0 0 0 2px var(--wire); }
 .mj-pq-d {
   display: inline-grid; place-items: center; flex: none;
-  width: 16px; height: 16px;
+  width: 18px; height: 18px;
   border-radius: var(--r-full);
-  background: var(--on-act);
-  color: var(--video-bg);
-  box-shadow: inset 0 0 0 1px var(--line2);
-  font: 700 var(--fs-micro)/1 var(--font-display);
+  background: var(--on-video);
+  color: var(--void);
+  box-shadow: inset 0 0 0 1px var(--mj-mat-contato), 0 1px 0 var(--mj-mat-contato);
+  font: 700 var(--fs-small)/1 var(--font-display);
 }
 .mj-pq-tag {
-  font: 600 var(--fs-micro) var(--font-display);
-  letter-spacing: 0.06em;
+  font: 600 var(--fs-small) var(--font-display);
+  letter-spacing: 0.04em;
   color: var(--tx3);
 }
 .mj-pq-pilha { font-variant-numeric: tabular-nums; color: var(--tx2); }
 .mj-pq-estado {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: var(--fs-micro); line-height: 1.1; color: var(--tx3);
+  font-size: var(--fs-small); line-height: 1.1; color: var(--tx3);
 }
 .mj-pq-lugar.is-vencedor .mj-pq-estado { color: var(--tx); font-weight: 600; }
 .mj-pq-cartas { display: inline-flex; gap: 2px; margin-left: auto; }
 .mj-pq-cartas .mj-carta { --mj-carta-w: var(--pq-carta-lugar); border-radius: var(--r-xs); }
-.mj-pq-cartas .mj-carta-canto { top: 2px; left: 2px; font-size: var(--fs-micro); }
+.mj-pq-cartas .mj-carta-canto { top: 2px; left: 2px; font-size: var(--fs-small); }
 .mj-pq-cartas .mj-carta-naipe { display: none; }
-.mj-pq-cartas .mj-carta.is-verso { box-shadow: inset 0 0 0 1px var(--s2), inset 0 0 0 2px var(--line2); }
-.mj .mj-pq-lugar .mj-cadeira-sentar { min-height: 26px; }
+.mj-pq-cartas .mj-carta.is-verso {
+  box-shadow: inset 0 0 0 2px var(--on-video), inset 0 0 0 3px var(--mj-mat-contato), 0 1px 0 var(--mj-mat-contato);
+}
 
 /* O relogio de quem esta na vez: um fio que encolhe. */
 .mj-pq-relogio {
@@ -176,20 +236,14 @@
 .mj-pq-aposta {
   position: absolute;
   transform: translate(-50%, -50%);
-  display: inline-flex; align-items: center; gap: var(--s-05);
+  display: inline-flex; align-items: center; gap: var(--s-1);
   padding: 1px var(--s-15) 1px var(--s-05);
   border-radius: var(--r-full);
-  background: var(--s3);
+  background: var(--mj-mat-vinheta);
   box-shadow: inset 0 0 0 1px var(--line2);
-  font: 600 var(--fs-micro) var(--font-display);
+  font: 600 var(--fs-small) var(--font-display);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-.mj-pq-aposta::before {
-  content: ""; width: 10px; height: 10px; flex: none;
-  border-radius: var(--r-full);
-  background: var(--on-act);
-  box-shadow: inset 0 0 0 2px var(--tx3);
 }
 
 /* Embaixo: suas cartas (grandes) a esquerda; estado e acoes a direita. */
@@ -201,7 +255,7 @@
 .mj-pq-eu { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: none; }
 .mj-pq-minhas { display: inline-flex; gap: var(--s-1); }
 .mj-pq-minhas .mj-carta { --mj-carta-w: 50px; }
-.mj-pq-jogo { margin: 0; font-size: var(--fs-micro); color: var(--tx2); white-space: nowrap; }
+.mj-pq-jogo { margin: 0; font-size: var(--fs-small); color: var(--tx2); white-space: nowrap; }
 .mj-pq-direita {
   flex: 1; min-width: 0; min-height: 84px;
   display: flex; flex-direction: column; justify-content: flex-end; gap: var(--s-1);
@@ -222,7 +276,8 @@
 .mj-poquer .mj-aviso { justify-content: flex-start; }
 
 @container mj (max-width: 640px) {
-  .mj-poquer { --pq-lugar-w: 100px; --pq-carta-lugar: 18px; }
+  /* O .mj-poquer e o proprio container: a variavel vai para o filho que a usa. */
+  .mj-pq-mesa { --pq-lugar-w: 88px; --pq-carta-lugar: 18px; }
   .mj-pq-slot .mj-carta { --mj-carta-w: 32px; }
   .mj-pq-slot.is-vazio { width: 32px; }
   .mj-pq-minhas .mj-carta { --mj-carta-w: 42px; }
@@ -231,11 +286,23 @@
 @container mj (max-height: 400px) {
   .mj-pq-jogo { display: none; }
   .mj-pq-lugar .mj-pq-tag { display: none; }
+  /* Mesa baixa: o lugar perde o avatar (o nome e a cor no anel ficam) para caber em duas linhas. */
+  .mj-pq-lugar .mj-cadeira-avatar { display: none; }
+  .mj-pq-lugar .mj-cadeiras .mj-cadeira-botao { min-height: 20px; padding-left: var(--s-1); }
+  /* Os lugares de cima e de baixo encostam na borda da mesa baixa: ficam um pouco para dentro. */
+  .mj-pq-lugar[data-pos='3'], .mj-pq-lugar[data-pos='4'], .mj-pq-lugar[data-pos='5'] {
+    transform: translate(-50%, -20%);
+  }
+  .mj-pq-lugar[data-pos='7'], .mj-pq-lugar[data-pos='0'], .mj-pq-lugar[data-pos='1'] {
+    transform: translate(-50%, -80%);
+  }
 }
+
 /* ---------- Blackjack (mesa-janelas/blackjack.js) ----------
-   A banca em cima, os 5 lugares embaixo, a barra da pessoa no pe. Cartas
-   de cada mao se sobrepoem pela metade (maos longas cabem no lugar). A cor
-   da pessoa so na bolinha; a vez e o --act (contorno). */
+   A banca em arco no alto, os 5 lugares embaixo (cada um com a cadeira comum,
+   fichas, aposta, maos -- varias quando divide -- e o total), a barra da
+   pessoa no pe. Cartas de cada mao se sobrepoem pela metade. A cor da pessoa
+   so no avatar; a vez e o anel do --wire. */
 
 .mj.mj-bj { padding-top: 30px; gap: var(--s-2); }
 
@@ -259,17 +326,20 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.mj-bj-prazo.is-fim { background: var(--warn-dim); color: var(--warn); }
-.mj-bj-sapato { flex: none; color: var(--tx3); font-size: var(--fs-micro); }
+.mj-bj-prazo.is-fim { background: color-mix(in oklab, var(--warn) 18%, transparent); color: var(--warn); }
+.mj-bj-sapato { flex: none; color: var(--tx3); font: var(--t-data); }
 
-/* Banca */
+/* Banca: um arco de feltro (meia-lua) com aro de madeira embaixo. */
 .mj-bj-banca {
   display: flex; align-items: center; justify-content: center; gap: var(--s-3);
-  padding: var(--s-2);
-  border-radius: var(--r-md);
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--line);
   min-height: 80px;
+  padding: var(--s-2) var(--s-5) var(--s-3);
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  background: radial-gradient(ellipse at 50% 0, var(--mj-mat-feltro-1), var(--mj-mat-feltro-3));
+  box-shadow:
+    inset 0 -5px 0 color-mix(in oklab, var(--mj-mat-madeira) 70%, var(--void)),
+    inset 0 0 0 1px var(--line),
+    0 2px 0 var(--mj-mat-contato);
 }
 .mj-bj-banca-mao { display: flex; min-height: 62px; align-items: center; }
 .mj-bj-banca .mj-bj-total { min-width: 72px; font: 600 var(--fs-lead) var(--font-display); }
@@ -278,8 +348,6 @@
 /* Cartas de uma mao: sobrepostas, sem quebrar linha. */
 .mj-bj .mj-mao { flex-wrap: nowrap; gap: 0; }
 .mj-bj .mj-mao > .mj-carta + .mj-carta { margin-left: calc(var(--mj-carta-w) * -0.45); }
-.mj-bj .mj-carta { box-shadow: inset 0 0 0 1px var(--line2), -2px 0 3px var(--scrim-1); }
-.mj-bj .mj-carta.is-verso { box-shadow: inset 0 0 0 2px var(--s2), inset 0 0 0 3px var(--line2), -2px 0 3px var(--scrim-1); }
 
 /* Lugares */
 .mj-bj-lugares {
@@ -293,19 +361,33 @@
   display: flex; flex-direction: column; gap: var(--s-1);
   padding: var(--s-15);
   border-radius: var(--r-sm);
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: color-mix(in oklab, var(--mj-mat-feltro-3) 55%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line), 0 2px 0 var(--mj-mat-contato);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.mj-bj-lugar.is-vazio { align-items: center; justify-content: center; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); }
-.mj-bj-lugar.is-meu { box-shadow: inset 0 0 0 1px var(--on-line); }
-.mj-bj-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--wire); }
+.mj-bj-lugar.is-vazio {
+  align-items: stretch;
+  justify-content: center;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line2);
+}
+.mj-bj-lugar.is-meu { box-shadow: inset 0 0 0 1px var(--tx3), 0 2px 0 var(--mj-mat-contato); }
+.mj-bj-lugar.is-vez { box-shadow: inset 0 0 0 2px var(--wire), 0 2px 0 var(--mj-mat-contato); }
 .mj-bj-lugar .mj-btn { min-height: 32px; }
-.mj-bj-livre { color: var(--tx3); font-size: var(--fs-small); }
-.mj-bj-quem { display: flex; align-items: center; gap: var(--s-15); min-width: 0; }
-.mj-bj-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--fs-small); }
-.mj-bj-saldo { display: flex; flex-wrap: wrap; column-gap: var(--s-15); font-size: var(--fs-micro); color: var(--tx2); }
+.mj-bj-lugar .mj-cadeiras { flex: none; flex-wrap: nowrap; }
+.mj-bj-lugar .mj-cadeira { flex: 1; min-width: 0; }
+.mj-bj-lugar .mj-cadeiras .mj-cadeira-botao {
+  width: 100%; min-width: 0; overflow: hidden;
+  justify-content: flex-start;
+  padding: 0 var(--s-1);
+}
+.mj-bj-lugar .mj-cadeiras .mj-cadeira-livre { justify-content: center; }
+.mj-bj-lugar .mj-cadeiras .mj-cadeira-ocupada { background: transparent; border-color: transparent; }
+/* Levantar mora so no botao da barra; a cadeira ocupada nao e controle, entao nao fica apagada. */
+.mj-bj-lugar .mj-cadeira-ocupada[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-bj-corpo { display: flex; flex-direction: column; gap: var(--s-1); min-height: 0; }
+.mj-bj-saldo { display: flex; flex-wrap: wrap; column-gap: var(--s-15); font-size: var(--fs-small); color: var(--tx2); }
 .mj-bj-aposta { color: var(--tx); font-weight: 600; }
 .mj-bj-seguro { color: var(--tx2); }
 .mj-bj-maos { display: flex; flex-direction: column; gap: var(--s-1); }
@@ -320,15 +402,15 @@
 .mj-bj-mao > .mj-mao { grid-row: span 2; }
 .mj-bj-mao.is-vez { box-shadow: 0 0 0 2px var(--wire); }
 .mj-bj-mao .mj-bj-total { font: 600 var(--fs-small) var(--font-display); white-space: nowrap; }
-.mj-bj-mao-aposta { font-size: var(--fs-micro); color: var(--tx3); white-space: nowrap; }
+.mj-bj-mao-aposta { font-size: var(--fs-small); color: var(--tx3); white-space: nowrap; }
 .mj-bj-res {
   grid-column: 1 / -1;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
-.mj-bj-mao.is-ganhou .mj-bj-res { color: var(--on-text); }
+.mj-bj-mao.is-ganhou .mj-bj-res { color: var(--ok); }
 .mj-bj-mao.is-perdeu .mj-bj-res { color: var(--tx3); }
 .mj-bj-mao.is-empate .mj-bj-res { color: var(--tx2); }
 /* Nas apostas, as maos que ficaram sao da rodada anterior: apagadas. */
@@ -354,12 +436,13 @@
   .mj-bj-lugar { padding: var(--s-1); }
   .mj .mj-bj-ficha { min-width: 36px; padding: 0 var(--s-15); }
   .mj .mj-bj-campo { width: 64px; }
-  /* Lugar estreito: o total vai para baixo das cartas. */
+  /* Lugar estreito: a cadeira livre fica so com o "+" e o total vai para baixo das cartas. */
+  .mj-bj-lugar .mj-cadeira-livre span { display: none; }
   .mj-bj-mao { grid-template-columns: minmax(0, 1fr); }
   .mj-bj-mao > .mj-mao { grid-row: auto; }
 }
 @container mj (max-height: 360px) {
-  .mj-bj-banca { min-height: 0; padding: var(--s-1); }
+  .mj-bj-banca { min-height: 0; padding: var(--s-1) var(--s-5) var(--s-2); }
   .mj-bj-banca-mao { min-height: 0; }
   .mj-bj-banca .mj-carta-m { --mj-carta-w: 32px; }
 }
@@ -367,10 +450,14 @@
   .mj-bj .mj-bj-mao .mj-carta-p { --mj-carta-w: 40px; }
   .mj-bj-banca .mj-carta-m { --mj-carta-w: 60px; }
 }
-/* === truco === */
+
+/* ---------- Truco (mesa-janelas/truco.js) ----------
+   Sem mao: o vazio com as 4 cadeiras em cruz (as duplas ficam frente a frente).
+   Na mao: o feltro com as cartas viradas no centro, os lugares em cima e as suas
+   cartas embaixo; "Dar as cartas"/aceitar/jogar por 3 e a acao principal. */
 .mj-truco {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-1);
   padding: 30px var(--s-2) var(--s-2);
   container-type: size;
@@ -379,54 +466,135 @@
 .mj-tr-topo,
 .mj-tr-lugares,
 .mj-tr-mesa,
-.mj-tr-minhas,
-.mj-tr-acoes {
+.mj-tr-minhas {
   display: flex;
   align-items: center;
   gap: var(--s-1);
   min-width: 0;
 }
-.mj-tr-resumo { margin: 0; color: var(--tx2); font-size: var(--fs-micro); }
-.mj-tr-vira { display: flex; align-items: center; gap: var(--s-05); font-size: var(--fs-small); }
+.mj-tr-resumo { margin: 0; color: var(--tx2); font: var(--t-meta); }
+.mj-tr-vira { display: flex; align-items: center; gap: var(--s-1); font-size: var(--fs-small); }
 .mj-tr-lugares { justify-content: space-between; }
-.mj-tr-lugar { display: flex; align-items: center; gap: var(--s-1); min-width: 0; color: var(--tx2); font-size: var(--fs-small); }
-.mj-tr-lugar.is-vez { color: var(--tx); font-weight: 700; }
-.mj-tr-mesa { justify-content: center; align-content: center; flex-wrap: wrap; min-height: 0; }
-.mj-tr-jogada { display: grid; justify-items: center; gap: var(--s-05); color: var(--tx2); font-size: var(--fs-micro); }
+.mj-tr-lugar {
+  display: flex; align-items: center; gap: var(--s-1); min-width: 0;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--s2);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+}
+.mj-tr-lugar.is-vez { color: var(--tx); font-weight: 700; box-shadow: 0 0 0 2px var(--wire); }
+.mj-tr-lugar .mj-btn { min-height: 28px; }
+/* A mesa de feltro, com aro de madeira, e as cartas jogadas no centro. */
+.mj-tr-mesa {
+  flex: 1;
+  justify-content: center; align-content: center; flex-wrap: wrap;
+  min-height: 0;
+  gap: var(--s-3);
+  border: var(--s-1) solid color-mix(in oklab, var(--mj-mat-madeira) 70%, var(--void));
+  border-radius: var(--r-lg);
+  background: radial-gradient(ellipse at 50% 35%, var(--mj-mat-feltro-1), var(--mj-mat-feltro-2) 85%);
+  box-shadow: inset 0 0 var(--s-4) var(--mj-mat-vinheta), 0 2px 0 var(--mj-mat-contato);
+}
+.mj-tr-jogada { display: grid; justify-items: center; gap: var(--s-05); color: var(--tx2); font-size: var(--fs-small); }
 .mj-tr-minhas { justify-content: center; flex-wrap: wrap; min-height: 0; }
 .mj-tr-carta { display: grid; justify-items: center; gap: var(--s-05); }
-.mj-tr-acoes { justify-content: center; flex-wrap: wrap; }
-.mj-tr-parceiro { flex-basis: 100%; margin: 0; color: var(--tx2); font-size: var(--fs-micro); text-align: center; }
+.mj-tr-parceiro { flex-basis: 100%; margin: 0; color: var(--tx2); font-size: var(--fs-small); text-align: center; }
+.mj-tr-acoes { flex: none; }
+/* O vazio do truco: a cruz de 4 cadeiras (0 embaixo, 1 esquerda, 2 em cima, 3 direita). */
+.mj-truco .mj-vazio { max-width: none; }
+.mj-tr-cruz {
+  display: grid;
+  grid-template-areas: ". cima ." "esq meio dir" ". baixo .";
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  justify-items: center;
+  gap: var(--s-1) var(--s-3);
+}
+.mj-tr-cruz::before {
+  content: "";
+  grid-area: meio;
+  width: 64px; height: 36px;
+  border: var(--s-05) solid color-mix(in oklab, var(--mj-mat-madeira) 70%, var(--void));
+  border-radius: var(--r-full);
+  background: radial-gradient(ellipse at 50% 35%, var(--mj-mat-feltro-1), var(--mj-mat-feltro-2) 85%);
+  box-shadow: 0 2px 0 var(--mj-mat-contato);
+}
+.mj-tr-pos-0 { grid-area: baixo; }
+.mj-tr-pos-1 { grid-area: esq; justify-self: end; }
+.mj-tr-pos-2 { grid-area: cima; }
+.mj-tr-pos-3 { grid-area: dir; justify-self: start; }
+.mj-tr-cruz .mj-cadeiras { flex-wrap: nowrap; }
+.mj-tr-cruz .mj-cadeira-ocupada { background: var(--s2); }
+/* Levantar mora so no botao de baixo; a cadeira ocupada nao e controle, entao nao fica apagada. */
+.mj-tr-cruz .mj-cadeira-ocupada[aria-disabled="true"] { opacity: 1; cursor: default; }
 @container (max-width: 560px) {
   .mj-tr-lugares { gap: var(--s-05); }
-  .mj-tr-lugar { font-size: var(--fs-micro); }
   .mj-tr-carta .mj-carta-g { --mj-carta-w: 40px; }
 }
-@container (max-height: 360px) {
+@container (max-height: 380px) {
   .mj-tr-minhas .mj-carta-g { --mj-carta-w: 38px; }
   .mj-tr-lugar .mj-btn { min-height: 28px; }
+  .mj-truco .mj-vazio-glifo { display: none; }
 }
-/* === oito === */
+
+/* ---------- Oito maluco (mesa-janelas/oito.js) ----------
+   O alto e so a linha de estado (vez e prazo). No feltro: o monte (so desenho;
+   comprar e o botao de baixo), o descarte e o naipe escolhido em chip. */
 .mj-oito { display: flex; flex-direction: column; gap: var(--s-2); padding-top: 30px; }
 .mj-oito-topo, .mj-oito-acoes, .mj-oito-pessoas { display: flex; align-items: center; gap: var(--s-1); }
-.mj-oito-topo { justify-content: space-between; min-height: 26px; }
-.mj-oito-titulo { font: 600 var(--fs-lead) var(--font-display); }
+.mj-oito-topo { justify-content: space-between; min-height: 22px; }
 .mj-oito-status {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--tx2); font-size: var(--fs-small); text-align: left;
+  color: var(--tx2); font: var(--t-meta); text-align: left;
 }
-.mj-oito-relogio { color: var(--tx2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mj-oito-relogio { color: var(--tx2); font: var(--t-data); font-variant-numeric: tabular-nums; }
 .mj-oito-pessoas { flex-wrap: wrap; min-height: 26px; }
-.mj-oito-pessoa { padding: 2px var(--s-1); border-radius: var(--r-full); background: var(--s2); color: var(--tx2); font-size: var(--fs-micro); }
+.mj-oito-pessoa {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: 2px var(--s-2); border-radius: var(--r-full);
+  background: var(--s2); color: var(--tx2); font-size: var(--fs-small);
+}
 .mj-oito-pessoa.is-vez { box-shadow: inset 0 0 0 1px var(--wire); color: var(--wire); }
-.mj .mj-oito-sentar { min-height: 22px; padding: 0 var(--s-2); border-radius: var(--r-full); font-size: var(--fs-micro); }
-.mj-oito-mesa { flex: 1; min-height: 76px; display: flex; align-items: center; justify-content: center; gap: var(--s-3); border-radius: var(--r-md); background: var(--s2); }
-.mj-oito-descarte { min-width: 54px; min-height: 76px; display: grid; place-items: center; }
-.mj-oito-naipe { color: var(--tx2); font-size: var(--fs-small); }
+.mj .mj-oito-sentar {
+  min-height: 26px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-full);
+  font-size: var(--fs-small);
+}
+.mj-oito-mesa {
+  flex: 1; min-height: 76px;
+  display: flex; align-items: center; justify-content: center; gap: var(--s-4);
+  border: var(--s-1) solid color-mix(in oklab, var(--mj-mat-madeira) 70%, var(--void));
+  border-radius: var(--r-md);
+  background: radial-gradient(ellipse at 50% 35%, var(--mj-mat-feltro-1), var(--mj-mat-feltro-2) 85%);
+  box-shadow: inset 0 0 var(--s-4) var(--mj-mat-vinheta), 0 2px 0 var(--mj-mat-contato);
+}
+.mj-oito-monte, .mj-oito-descarte { min-width: 54px; min-height: 76px; display: grid; place-items: center; }
+/* O monte: o verso com a borda das cartas de baixo aparecendo. */
+.mj-oito-monte .mj-carta {
+  box-shadow:
+    inset 0 0 0 3px var(--on-video),
+    inset 0 0 0 4px var(--mj-mat-contato),
+    2px 2px 0 color-mix(in oklab, var(--on-video) 70%, var(--void)),
+    4px 4px 0 var(--mj-mat-contato),
+    6px 8px 8px var(--mj-mat-sombra);
+}
+.mj-oito-naipe {
+  padding: 2px var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--on-video);
+  color: var(--void);
+  font: 700 var(--fs-small) var(--font-display);
+  box-shadow: 0 2px 0 var(--mj-mat-contato);
+}
+.mj-oito-naipe.is-vermelho { color: color-mix(in oklab, var(--danger) 72%, var(--void)); }
 .mj-oito-minha { min-height: 70px; display: flex; justify-content: center; align-items: end; gap: var(--s-1); overflow: hidden; }
 .mj .mj-oito-carta { min-height: 0; padding: 0; border: 0; background: transparent; }
-.mj-oito-carta:not([disabled]):hover { transform: translateY(-4px); }
+.mj-oito-carta { transition: transform 120ms var(--ease-out); cursor: pointer; }
+.mj-oito-carta:not([aria-disabled="true"]):hover { transform: translateY(-4px); }
+.mj-oito-carta[aria-disabled="true"] { opacity: 0.6; cursor: default; }
 .mj-oito-acoes { flex-wrap: wrap; justify-content: center; }
 /* Altura fixa na dos botoes da mesma linha: com line-height normal o select
    segue a metrica da fonte e passava deles (40 px com a Instrument Sans). */
@@ -443,20 +611,21 @@
   .mj-oito { gap: var(--s-1); }
   .mj-oito-topo, .mj-oito-pessoas { min-height: 22px; }
   .mj-oito-mesa { min-height: 40px; }
-  .mj-oito-descarte { min-height: 40px; }
+  .mj-oito-monte, .mj-oito-descarte { min-height: 40px; }
   .mj-oito-minha { min-height: 44px; }
-  .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; }
+  .mj-oito-monte .mj-carta, .mj-oito-descarte .mj-carta { --mj-carta-w: 38px; }
   .mj-oito-minha .mj-carta { --mj-carta-w: 32px; }
 }
 
-/* === domino ===
-   Linha de pedras quebra dentro da mesa; não há imagens externas. */
+/* ---------- Domino (mesa-janelas/domino.js) ----------
+   Mesa de feltro com as pedras (marfim, com volume); sem ninguem, o vazio no
+   lugar da mesa. Os 4 lugares sao a cadeira comum + pedras e pontos. A linha de
+   pedras quebra dentro da mesa; nao ha imagens externas. */
 .mj.mj-domino {
   padding-top: 30px;
   gap: var(--s-2);
 }
-.mj-do-topo,
-.mj-do-acoes {
+.mj-do-topo {
   display: flex;
   align-items: center;
   gap: var(--s-2);
@@ -470,15 +639,17 @@
   white-space: nowrap;
   font-weight: 600;
 }
+.mj-do-prazo { color: var(--tx2); font: var(--t-data); font-variant-numeric: tabular-nums; }
 .mj-do-mesa {
   flex: 1;
   min-height: 92px;
   display: grid;
   place-items: center;
   padding: var(--s-2);
+  border: var(--s-1) solid color-mix(in oklab, var(--mj-mat-madeira) 70%, var(--void));
   border-radius: var(--r-md);
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: radial-gradient(ellipse at 50% 35%, var(--mj-mat-feltro-1), var(--mj-mat-feltro-2) 85%);
+  box-shadow: inset 0 0 var(--s-4) var(--mj-mat-vinheta), 0 2px 0 var(--mj-mat-contato);
   overflow: hidden;
 }
 .mj-do-linha {
@@ -486,28 +657,39 @@
   flex-wrap: wrap;
   justify-content: center;
   align-content: center;
-  gap: 2px;
+  gap: 3px;
   max-width: 100%;
 }
 .mj-do-pedra {
+  position: relative;
   flex: none;
   width: 60px;
   padding: 0;
   border: 0;
-  border-radius: var(--r-xs);
+  border-radius: 5px;
   background: transparent;
+  box-shadow: 0 2px 0 var(--mj-mat-contato), 0 4px 8px var(--mj-mat-sombra);
+}
+.mj-do-pedra::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 30% 25%, var(--mj-mat-brilho), transparent 45%);
+  pointer-events: none;
 }
 .mj-do-pedra svg {
   display: block;
   width: 100%;
-  fill: var(--tx);
-  stroke: var(--line2);
+  fill: var(--on-video);
+  stroke: var(--mj-mat-contato);
   stroke-width: 2;
 }
 .mj-do-pedra circle {
-  fill: var(--s4);
+  fill: var(--void);
   stroke: none;
 }
+.mj-do-pedra[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 .mj-do-mesa-pedra {
   width: 44px;
 }
@@ -517,22 +699,37 @@
   gap: var(--s-1);
 }
 .mj-do-lugar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
   padding: var(--s-1);
   border-radius: var(--r-sm);
-  background: var(--s2);
+  background: color-mix(in oklab, var(--mj-mat-feltro-3) 55%, transparent);
   box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj-do-lugar.is-vez { background: var(--wire-soft); }
+.mj-do-lugar .mj-cadeiras { flex: none; flex-wrap: nowrap; }
+.mj-do-lugar .mj-cadeira { flex: 1; min-width: 0; }
+.mj-do-lugar .mj-cadeiras .mj-cadeira-botao {
+  width: 100%; min-width: 0; overflow: hidden;
+  justify-content: flex-start;
+  padding: 0 var(--s-1);
+}
+.mj-do-lugar .mj-cadeiras .mj-cadeira-livre { justify-content: center; }
+.mj-do-lugar .mj-cadeiras .mj-cadeira-ocupada { background: transparent; border-color: transparent; }
+/* Levantar mora so no botao de baixo; a cadeira ocupada nao e controle, entao nao fica apagada. */
+.mj-do-lugar .mj-cadeira-ocupada[aria-disabled="true"] { opacity: 1; cursor: default; }
+.mj-do-placar {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-micro);
+  color: var(--tx2);
+  font: var(--t-meta);
+  text-align: center;
 }
-.mj-do-lugar.is-eu {
-  box-shadow: inset 0 0 0 1px var(--on-line);
-}
-.mj-do-lugar.is-vez {
-  box-shadow: inset 0 0 0 2px var(--act);
-}
+.mj-do-placar:empty { display: none; }
 .mj-do-mao {
   display: flex;
   flex-wrap: wrap;
@@ -564,8 +761,14 @@
     gap: 2px;
   }
   .mj-do-lugar {
+    flex-direction: row;
+    align-items: center;
     padding: 2px var(--s-1);
   }
+  /* Placar ao lado da cadeira: empilhado, as duas linhas de lugares estouravam os 300 px do minimo. */
+  .mj-do-lugar .mj-cadeiras { flex: 1; min-width: 0; }
+  .mj-do-lugar .mj-cadeiras .mj-cadeira-botao { min-height: 28px; padding-block: 2px; }
+  .mj-do-placar { flex: none; max-width: 50%; }
   .mj-do-topo .mj-btn,
   .mj-do-acoes .mj-btn {
     min-height: 30px;
@@ -582,4 +785,12 @@
   .mj-do-mesa-pedra {
     width: 30px;
   }
+}
+
+.mj-tr-cruz { margin-top: var(--s-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mj-carta.is-vira { animation: none; }
+  .mj-oito-carta { transition: none; }
+  .mj-pq-relogio > span { transition: none; }
 }

@@ -161,6 +161,16 @@ test('cadeiras sync monta lugar ocupado, livre e vez', () => {
   });
 });
 
+test('cadeiras sync sem peca nao escreve nada no lugar dela', () => {
+  comDocumento(() => {
+    const cadeiras = C.cadeiras({ aoSentar() {}, aoLevantar() {} });
+    cadeiras.sync([{ peer: 'ana', nome: 'Ana', cor: '#4ade80', peca: null }]);
+    const botaoLugar = cadeiras.node.children[0].children[0];
+    assert.equal(texto(botaoLugar), 'AAna');
+    assert.equal(botaoLugar.children.length, 2);
+  });
+});
+
 test('cadeiras sync reaproveita os mesmos nos com a mesma quantidade de lugares', () => {
   comDocumento(() => {
     const cadeiras = C.cadeiras({ aoSentar() {}, aoLevantar() {} });
