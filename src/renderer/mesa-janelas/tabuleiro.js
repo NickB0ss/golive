@@ -44,7 +44,7 @@
       return r.winner === eu ? 'Você venceu' : `${nomeCadeira(state, r.winner, labels, nameOf)} venceu`;
     }
     const livres = state.seats.filter((s) => s === null).length;
-    if (livres === 2) return 'Cadeiras livres: sente-se para jogar';
+    if (livres === 2) return '';
     if (livres === 1) return eu >= 0 ? 'Esperando alguém sentar na outra cadeira' : 'Uma cadeira livre: sente-se para jogar';
     if (state.turn === eu) return state.check ? 'Sua vez (xeque)' : 'Sua vez';
     return `Vez de ${nomeCadeira(state, state.turn, labels, nameOf)}${state.check ? ' (xeque)' : ''}`;
@@ -237,20 +237,15 @@
     const status = el('p', { class: 'mj-jogo-status', attrs: { role: 'status', 'aria-live': 'polite' } });
     // Onde as recusas aparecem: logo abaixo da situacao, perto do tabuleiro.
     const zona = el('div', { class: 'mj-jogo-rodape' }, status);
-    const cadeiras = [0, 1].map((i) => {
-      const amostra = el('span', { class: `mj-amostra s${i}`, attrs: { 'aria-hidden': 'true' } });
-      if (opts.amostra) opts.amostra(amostra, i);
-      const nome = el('span', { class: 'mj-cadeira-nome' });
-      const sentar = C.botao({ text: 'Sentar', class: 'mj-cadeira-sentar' });
-      const levantar = C.botao({ icone: 'x', class: 'mj-mini mj-fantasma', label: 'Levantar da cadeira' });
-      const caixa = el('div', { class: 'mj-cadeira' }, amostra, nome, sentar, levantar);
-      b.clique(sentar, zona, () => b.acao(zona, { kind: 'sit', seat: i }));
-      b.clique(levantar, zona, () => b.acao(zona, { kind: 'stand' }));
-      return { caixa, nome, sentar, levantar };
+    const cadeiras = C.cadeiras({
+      rotulo: 'Cadeiras do jogo',
+      aoSentar(i) { b.acao(zona, { kind: 'sit', seat: i }); },
+      aoLevantar() { b.acao(zona, { kind: 'stand' }); },
+      aoRecusar(motivo) { b.aviso.mostrar(motivo, zona); },
     });
     const nova = C.botao({ icone: 'zerar', class: 'mj-mini mj-fantasma', label: 'Nova partida' });
     const desistir = opts.desistir ? C.botao({ icone: 'bandeira', class: 'mj-mini mj-fantasma', label: 'Desistir' }) : null;
-    topo.append(cadeiras[0].caixa, el('span', { class: 'mj-jogo-x', text: '×', attrs: { 'aria-hidden': 'true' } }), cadeiras[1].caixa, el('span', { class: 'mj-mola' }), nova);
+    topo.append(cadeiras.node, nova);
     if (desistir) topo.append(desistir);
 
     b.raiz.classList.add('mj-jogo');
@@ -286,23 +281,27 @@
       state = novo;
       const me = api.me();
       const eu = minhaCadeira(state, me);
-      cadeiras.forEach((cd, i) => {
+      const lugares = [0, 1].map((i) => {
         const id = state.seats[i];
         const ocupada = id !== null && id !== undefined;
         const txt = ocupada ? (id === me ? 'Você' : nomeCadeira(state, i, opts.labels, nameOf)) : opts.labels[i];
-        cd.nome.textContent = txt;
-        cd.nome.hidden = !ocupada;
-        cd.sentar.hidden = ocupada || eu >= 0;
-        cd.sentar.setAttribute('aria-label', `Sentar: ${opts.labels[i]}`);
-        cd.levantar.hidden = id !== me || !ocupada;
-        cd.caixa.classList.toggle('is-livre', !ocupada);
-        cd.caixa.classList.toggle('is-vez', !state.result && ocupada && state.seats[1 - i] !== null && state.turn === i);
-        cd.caixa.classList.toggle('is-eu', ocupada && id === me);
-        cd.caixa.title = ocupada ? `${opts.labels[i]}: ${txt}` : `${opts.labels[i]}: cadeira livre`;
-        const cor = ocupada ? C.corDe(api, id) : null;
-        if (cor) cd.caixa.style.setProperty('--mj-cor', cor);
-        else cd.caixa.style.removeProperty('--mj-cor');
-        if (!ocupada && eu < 0) C.ligado(cd.sentar, pode({ kind: 'sit', seat: i }), `Sentar: ${opts.labels[i]}`);
+        return {
+          peer: ocupada ? id : null,
+          nome: txt,
+          cor: ocupada ? C.corDe(api, id) : null,
+          peca: opts.peca ? opts.peca(i) : null,
+          vez: !state.result && ocupada && state.seats[1 - i] !== null && state.turn === i,
+          eu: ocupada && id === me,
+          motivoSentar: eu < 0 ? pode({ kind: 'sit', seat: i }) : 'Você já está sentado',
+          motivoLevantar: id === me ? pode({ kind: 'stand' }) : 'Esta cadeira é de outra pessoa',
+        };
+      });
+      cadeiras.sync(lugares);
+      cadeiras.node.querySelectorAll('.mj-cadeira-botao').forEach((botaoLugar, i) => {
+        const ocupada = lugares[i].peer !== null;
+        let rotulo = `Sentar: ${opts.labels[i]}`;
+        if (ocupada) rotulo = lugares[i].eu ? 'Levantar da cadeira' : `${opts.labels[i]}: ${lugares[i].nome}`;
+        botaoLugar.setAttribute('aria-label', rotulo);
       });
       C.ligado(nova, pode({ kind: 'reset' }), 'Nova partida');
       nova.hidden = pode({ kind: 'reset' }) !== true;
@@ -316,7 +315,7 @@
       b.raiz.classList.toggle('is-fim', !!state.result);
     }
 
-    return { topo, placa, zona, status, update, nameOf };
+    return { topo, placa, zona, status, cadeiras, update, nameOf };
   }
 
   const api = {

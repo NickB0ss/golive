@@ -40,7 +40,7 @@
     const mold = T.moldura(b, api, {
       labels: LABELS,
       empate,
-      amostra(a, i) { a.textContent = LABELS[i]; },
+      peca(i) { return { texto: LABELS[i] }; },
     });
     const grade = el('div', { class: 'mj-velha-grade', attrs: { role: 'grid', 'aria-label': 'Jogo da velha' } });
     mold.placa.append(grade);
@@ -62,7 +62,13 @@
       casas.forEach((bt, i) => {
         const v = state.board[i];
         const txt = v === '.' ? '' : v;
-        if (bt.textContent !== txt) bt.textContent = txt;
+        if (bt.textContent !== txt) {
+          bt.textContent = txt;
+          bt.classList.toggle('is-nova', txt !== '');
+        }
+        const cor = v === '.' ? null : C.corDe(api, state.seats[LABELS.indexOf(v)]);
+        if (cor) bt.style.setProperty('--mj-cor', cor);
+        else bt.style.removeProperty('--mj-cor');
         bt.classList.toggle('is-o', v === 'O');
         bt.classList.toggle('is-linha', linha.has(i));
         bt.setAttribute('aria-label', rotuloCasa(state.board, i));

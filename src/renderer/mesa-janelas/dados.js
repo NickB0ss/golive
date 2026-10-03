@@ -83,10 +83,10 @@
 
     const corpo = el('div', { class: 'mj-dados-corpo' }, meio, colHist);
 
-    const ctrl = el('div', { class: 'mj-barra mj-dados-ctrl' });
     const rolar = C.botao({ icone: 'dado', text: 'Rolar', class: 'mj-pri' });
     const moeda = C.botao({ icone: 'moeda', text: 'Moeda', label: 'Jogar a moeda' });
-    ctrl.append(rolar, moeda);
+    const ctrl = C.acoes({ principal: rolar, secundarias: [moeda] });
+    ctrl.classList.add('mj-dados-ctrl');
 
     b.raiz.append(topo, corpo, ctrl);
 

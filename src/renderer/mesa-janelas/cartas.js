@@ -42,13 +42,20 @@
   /**
    * Elemento da carta. `opts.tamanho`: 'p' | 'm' (padrao) | 'g'.
    * `opts.destaque`: contorno (ex.: cartas da mao vencedora).
+   * `opts.vira`: a carta gira ao aparecer (so a de face; verso nao gira).
    */
   function carta(c, opts) {
     const o = opts || {};
     const doc = root.document;
     const node = doc.createElement('span');
     const virada = !isCard(c);
-    node.className = `mj-carta mj-carta-${o.tamanho || 'm'}${virada ? ' is-verso' : ''}${!virada && (c[1] === 'h' || c[1] === 'd') ? ' is-vermelha' : ''}${o.destaque ? ' is-destaque' : ''}`;
+    const classes = ['mj-carta', 'mj-volume', `mj-carta-${o.tamanho || 'm'}`];
+    if (virada) classes.push('is-verso');
+    if (!virada && (c[1] === 'h' || c[1] === 'd')) classes.push('is-vermelha');
+    if (o.destaque) classes.push('is-destaque');
+    // Carta que acabou de ser revelada gira de lado para a frente (cartas.css).
+    if (o.vira && !virada) classes.push('is-vira');
+    node.className = classes.join(' ');
     node.setAttribute('role', 'img');
     node.setAttribute('aria-label', rotulo(virada ? null : c));
     if (!virada) {

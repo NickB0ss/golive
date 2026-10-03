@@ -34,16 +34,28 @@
     return n;
   }
 
+  // O comum.js ainda nao tem o quadro de imagem.
+  const TRACO_IMAGEM = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/>'
+    + '<path d="M21 16l-5-5-8 8"/>';
+
   function mount(el) {
+    const C = root.GoLive.mesaJanelasComum;
     const store = () => root.GoLive.chatImagens || null;
     const raiz = h('div', 'mj mj-galeria');
+    raiz.dataset.superficie = C.SUPERFICIES[TYPE];
     const cabeca = h('div', 'mj-barra');
     const titulo = h('p', 'mj-rotulo', 'Imagens do chat');
     const conta = h('span', 'mj-gal-conta');
     cabeca.append(titulo, h('span', 'mj-mola'), conta);
     const grade = h('ul', 'mj-gal-grade mj-rola');
     grade.setAttribute('aria-label', 'Imagens do chat');
-    const vazio = h('p', 'mj-dica mj-gal-vazio', 'Nenhuma imagem no chat ainda. Mande uma pelo chat e ela aparece aqui.');
+    const vazio = C.vazio({
+      icone: 'imagem',
+      titulo: 'Nenhuma imagem no chat',
+      texto: 'Mande uma imagem no chat e ela aparece aqui, pronta para pôr na Mesa.',
+    });
+    const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
+    if (!vazioGlifo.innerHTML) vazioGlifo.innerHTML = TRACO_IMAGEM;
     const dica = h('p', 'mj-dica mj-gal-dica', 'O chat guarda as 8 imagens mais recentes.');
     raiz.append(cabeca, grade, vazio, dica);
     el.append(raiz);
@@ -88,6 +100,8 @@
         if (grade.children[i] !== li) grade.insertBefore(li, grade.children[i] || null);
       });
       conta.textContent = contagem(lista.length);
+      // Sem imagem a frase e uma so: o vazio diz tudo e o cabecalho (rotulo e contagem) sai.
+      cabeca.hidden = lista.length === 0;
       vazio.hidden = lista.length > 0;
       grade.hidden = lista.length === 0;
     }
@@ -107,11 +121,57 @@
     };
   }
 
+  // ---------- Registro ----------
+  // Igual aos outros conteudos: a Vista carrega so `mesa-janelas/galeria.js`;
+  // o apoio (comum.js) vem daqui, uma vez, da mesma pasta.
+  function registrar(api, arquivos) {
+    const G = (root.GoLive = root.GoLive || {});
+    G.mesaJanelas = G.mesaJanelas || {};
+    const GLOBAIS = { 'comum.js': 'mesaJanelasComum', 'tabuleiro.js': 'mesaJanelasTabuleiro' };
+    const doc = root.document;
+    const falta = () => arquivos.filter((a) => !G[GLOBAIS[a]]);
+    const esperas = [];
+    if (doc && falta().length) {
+      const base = (doc.currentScript && doc.currentScript.src) || doc.baseURI;
+      G.mesaJanelasApoio = G.mesaJanelasApoio || {};
+      for (const a of falta()) {
+        if (G.mesaJanelasApoio[a]) continue;
+        const s = doc.createElement('script');
+        s.src = new root.URL(a, base).href;
+        s.async = false;
+        G.mesaJanelasApoio[a] = s;
+        doc.head.appendChild(s);
+      }
+      for (const a of falta()) {
+        esperas.push(new Promise((ok) => {
+          G.mesaJanelasApoio[a].addEventListener('load', ok, { once: true });
+        }));
+      }
+    }
+    const montar = api.mount;
+    const pronto = esperas.length ? Promise.all(esperas) : null;
+    api.mount = function (el, vistaApi) {
+      if (!falta().length) return montar(el, vistaApi);
+      let inst = null;
+      let ultimo = null;
+      let morto = false;
+      pronto.then(() => {
+        if (morto) return;
+        inst = montar(el, vistaApi);
+        if (ultimo) inst.update(ultimo[0], ultimo[1]);
+      }, () => {});
+      return {
+        update(s, meta) { if (inst) inst.update(s, meta); else ultimo = [s, meta]; },
+        destroy() { morto = true; if (inst) inst.destroy(); },
+        focus() { if (inst && inst.focus) inst.focus(); },
+      };
+    };
+    G.mesaJanelas[api.type] = api;
+  }
+
   const api = { type: TYPE, mount, itens, contagem };
 
-  root.GoLive = root.GoLive || {};
-  root.GoLive.mesaJanelas = root.GoLive.mesaJanelas || {};
-  root.GoLive.mesaJanelas[TYPE] = api;
+  registrar(api, ['comum.js']);
 
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

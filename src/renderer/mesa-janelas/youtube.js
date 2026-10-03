@@ -61,7 +61,12 @@
     return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
   }
 
+  // Alto-falante e mudo: o `comum.js` ainda nao tem estes dois tracos.
+  const TRACO_SOM = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>';
+  const TRACO_MUDO = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/>';
+
   function mountReal(el, api) {
+    const C = root.GoLive.mesaJanelasComum;
     const M = mod();
     const L = root.GoLive.mesaMidiaLinks;
     const YP = root.GoLive.ytplayer;
@@ -83,7 +88,12 @@
     const submit = h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Pôr' });
     const cancel = h('button', { class: 'mjm-btn', type: 'button', text: 'Cancelar' });
     const form = h('form', { class: 'mjm-form' }, input, submit, cancel);
-    const empty = h('div', { class: 'mjm-empty' }, h('p', { class: 'mjm-hint', text: 'Vídeo do YouTube para todos verem juntos.' }), form);
+    const empty = h('div', { class: 'mjm-empty' }, C.vazio({
+      icone: 'play',
+      titulo: 'Um vídeo para todos',
+      texto: 'Cole um link do YouTube e a sala assiste junto.',
+      acao: form,
+    }));
 
     const host = h('div', { class: 'mjm-player' });
     const coverImg = h('img', { class: 'mjm-cover-img', alt: '', draggable: 'false' });
@@ -103,7 +113,8 @@
     const bar = h('div', { class: 'mjm-bar' }, playBtn, range, time, muteBtn, vol, swapBtn);
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
     const stage = h('div', { class: 'mjm-stage' }, host, cover, msg, bar);
-    const rootEl = h('div', { class: 'mjm mjm-yt' }, stage, empty, note);
+    const rootEl = h('div', { class: 'mj mjm mjm-yt' }, stage, empty, note);
+    rootEl.dataset.superficie = C.SUPERFICIES.youtube;
     el.appendChild(rootEl);
 
     // ---------- Coordenacao: um video com imagem por PC ----------
@@ -181,6 +192,8 @@
       const has = !!state.videoId;
       const active = slot.active();
       empty.hidden = has && !showForm;
+      // Sem video nao ha o que cancelar: o botao so existe para quem trocava o video.
+      cancel.hidden = !has;
       stage.hidden = !has;
       if (!has) {
         destroyPlayer();
@@ -201,12 +214,22 @@
       const failed = errorCode !== null && active;
       msg.hidden = !failed;
       retryBtn.hidden = !(errorCode === 'timeout' || errorCode === 'offline' || errorCode === 153 || errorCode === 152);
-      playBtn.textContent = state.playing ? '❚❚' : '▶';
+      paintIcon(playBtn, state.playing ? 'pausa' : 'play');
       playBtn.setAttribute('aria-label', state.playing ? 'Pausar para todos' : 'Tocar para todos');
-      muteBtn.textContent = volume.muted || volume.vol === 0 ? '🔇' : '🔊';
+      paintIcon(muteBtn, volume.muted || volume.vol === 0 ? 'mudo' : 'som');
       muteBtn.setAttribute('aria-label', volume.muted ? 'Ligar o som (só seu)' : 'Tirar o som (só seu)');
       muteBtn.setAttribute('aria-pressed', String(!!volume.muted));
       paintTime();
+    }
+
+    /** Troca o traco do botao so quando muda (o render roda a cada eco da sala). */
+    function paintIcon(btn, nome) {
+      if (btn.dataset.icone === nome) return;
+      btn.dataset.icone = nome;
+      const traco = C.icone(nome === 'pausa' ? 'pausa' : 'play');
+      if (nome === 'som') traco.innerHTML = TRACO_SOM;
+      else if (nome === 'mudo') traco.innerHTML = TRACO_MUDO;
+      btn.replaceChildren(traco);
     }
 
     function paintTime() {
@@ -345,7 +368,12 @@
   // coordenador de midia nao tem tag no index.html. O primeiro conteudo de
   // midia que monta injeta cada <script> uma vez (promessa dividida em
   // GoLive.mesaMidiaCarga) e so entao monta de verdade.
-  const DEPS = [['ytplayer.js', 'ytplayer'], ['mesa-sync-media.js', 'mesaSyncMedia'], ['mesa-midia.js', 'mesaMidia']];
+  const DEPS = [
+    ['mesa-janelas/comum.js', 'mesaJanelasComum'],
+    ['ytplayer.js', 'ytplayer'],
+    ['mesa-sync-media.js', 'mesaSyncMedia'],
+    ['mesa-midia.js', 'mesaMidia'],
+  ];
 
   function carregar(src, global) {
     if (root.GoLive[global]) return Promise.resolve();

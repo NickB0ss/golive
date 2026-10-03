@@ -59,7 +59,29 @@
     return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
   }
 
+  // ---------- Puras ----------
+
+  /** A fila como lista numerada: a ordem em que vai tocar e informacao.
+   * `pos` comeca em 1 (a faixa que toca agora nao entra na fila). */
+  function linhasDaFila(queue, nameOf) {
+    return (Array.isArray(queue) ? queue : []).map((it, i) => ({
+      id: it.id,
+      pos: i + 1,
+      titulo: it.title || it.videoId,
+      quem: it.name || (nameOf && it.by ? nameOf(it.by) : '') || '',
+    }));
+  }
+
+  /** O rotulo em cima da faixa em destaque. */
+  function rotuloDaFaixa(playing) {
+    return playing ? 'Tocando agora' : 'Pausado';
+  }
+
+  // O comum.js ainda nao tem a nota musical.
+  const TRACO_MUSICA = '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>';
+
   function mountReal(el, api) {
+    const C = root.GoLive.mesaJanelasComum;
     const M = mod();
     const L = root.GoLive.mesaMidiaLinks;
     const YP = root.GoLive.ytplayer;
@@ -80,6 +102,7 @@
 
     // ---------- DOM ----------
     const cover = h('img', { class: 'mjm-radio-cover', alt: '', draggable: 'false' });
+    const estado = h('p', { class: 'mjm-radio-estado' });
     const title = h('p', { class: 'mjm-radio-title' });
     const who = h('p', { class: 'mjm-radio-who' });
     const time = h('span', { class: 'mjm-time', text: '0:00' });
@@ -92,17 +115,38 @@
     const msg = h('p', { class: 'mjm-msg-text', role: 'status' });
     const nowBox = h('div', { class: 'mjm-radio-now' },
       cover,
-      h('div', { class: 'mjm-radio-info' }, title, who, h('div', { class: 'mjm-bar mjm-bar-static' }, playBtn, time, skipBtn, voteBtn, vol)));
-    const idle = h('p', { class: 'mjm-hint', text: 'Nada tocando. Cole um link do YouTube (ou YouTube Music) para começar.' });
+      h('div', { class: 'mjm-radio-info' }, estado, title, who),
+      h('div', { class: 'mjm-bar mjm-bar-static' }, playBtn, time, skipBtn, voteBtn, vol));
     const failed = h('p', { class: 'mjm-note mjm-radio-failed' });
     const list = h('ol', { class: 'mjm-radio-queue', 'aria-label': 'Fila do rádio' });
     const queueHead = h('p', { class: 'mjm-radio-head' });
     const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'Link do YouTube', 'aria-label': 'Link do YouTube para a fila', maxlength: 2048 });
     const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Pôr na fila' }));
+    // Sem musica o formulario e a acao do vazio; com musica ele desce para o pe da janela.
+    const idle = C.vazio({
+      icone: 'musica',
+      titulo: 'Nada tocando',
+      texto: 'Cole um link do YouTube (ou YouTube Music) e a fila toca para todos.',
+      acao: form,
+    });
+    const idleGlifo = idle.querySelector('.mj-vazio-glifo .mj-i');
+    if (!idleGlifo.innerHTML) idleGlifo.innerHTML = TRACO_MUSICA;
+    const idleAcao = idle.querySelector('.mj-vazio-acao');
+    const pe = h('div', { class: 'mjm-radio-pe' });
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
     const audio = h('div', { class: 'mjm-radio-audio', 'aria-hidden': 'true' });
-    const rootEl = h('div', { class: 'mjm mjm-radio' }, nowBox, idle, standby, msg, failed, queueHead, list, form, note, audio);
+    const rootEl = h('div', { class: 'mj mjm mjm-radio' },
+      nowBox, idle, standby, msg, failed, queueHead, list, pe, note, audio);
+    rootEl.dataset.superficie = C.SUPERFICIES.radio;
     el.appendChild(rootEl);
+
+    /** Leva o formulario para onde ele mora agora, sem derrubar o foco de quem digita. */
+    function moverForm(destino) {
+      if (form.parentNode === destino) return;
+      const comFoco = document.activeElement === input;
+      destino.appendChild(form);
+      if (comFoco) input.focus({ preventScroll: true });
+    }
 
     const slot = root.GoLive.mesaMidia.register('audio', () => render());
 
@@ -198,20 +242,25 @@
       if (key === queueKey) return;
       queueKey = key;
       list.textContent = '';
+      const linhas = linhasDaFila(state.queue, api.nameOf && ((id) => api.nameOf(id)));
       state.queue.forEach((it, i) => {
         const canRemove = api.validate({ kind: 'remove', id: it.id }) === true;
-        const up = h('button', { class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': 'Subir na fila', text: '↑', disabled: i === 0 });
-        const down = h('button', { class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': 'Descer na fila', text: '↓', disabled: i === state.queue.length - 1 });
-        const rm = h('button', { class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': 'Tirar da fila', text: '×', disabled: !canRemove });
+        const icone = (rotulo, desligado, nome) => h('button', {
+          class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': rotulo, disabled: desligado,
+        }, C.icone(nome));
+        const up = icone('Subir na fila', i === 0, 'sobe');
+        const down = icone('Descer na fila', i === state.queue.length - 1, 'desce');
+        const rm = icone('Tirar da fila', !canRemove, 'x');
         up.addEventListener('click', () => send({ kind: 'move', id: it.id, to: i - 1 }));
         down.addEventListener('click', () => send({ kind: 'move', id: it.id, to: i + 1 }));
         rm.addEventListener('click', () => send({ kind: 'remove', id: it.id }));
         const dot = h('span', { class: 'mjm-dot', 'aria-hidden': 'true' });
         if (typeof api.colorFor === 'function' && it.by) dot.style.background = api.colorFor(it.by);
         list.appendChild(h('li', { class: 'mjm-radio-item' },
+          h('span', { class: 'mjm-radio-num', text: String(linhas[i].pos), 'aria-hidden': 'true' }),
+          h('span', { class: 'mjm-radio-item-title', text: linhas[i].titulo }),
           dot,
-          h('span', { class: 'mjm-radio-item-title', text: it.title || it.videoId }),
-          h('span', { class: 'mjm-radio-item-who', text: it.name || (api.nameOf && api.nameOf(it.by)) || '' }),
+          h('span', { class: 'mjm-radio-item-who', text: linhas[i].quem }),
           up, down, rm));
       });
     }
@@ -221,6 +270,7 @@
       const active = slot.active();
       nowBox.hidden = !cur;
       idle.hidden = !!cur;
+      moverForm(cur ? pe : idleAcao);
       standby.hidden = !cur || active;
       if (!cur || !active) destroyPlayer();
       if (cur && active && !player && errorCode === null) createPlayer();
@@ -237,10 +287,11 @@
           cover.dataset.id = cur.videoId;
           cover.src = thumb(cur.videoId);
         }
+        estado.textContent = rotuloDaFaixa(state.playing);
         title.textContent = cur.title || cur.videoId;
         const name = cur.name || (api.nameOf && api.nameOf(cur.by)) || '';
         who.textContent = name ? `posta por ${name}` : '';
-        playBtn.textContent = state.playing ? '❚❚' : '▶';
+        playBtn.replaceChildren(C.icone(state.playing ? 'pausa' : 'play'));
         playBtn.setAttribute('aria-label', state.playing ? 'Pausar o rádio para todos' : 'Tocar o rádio para todos');
         const canSkip = api.validate({ kind: 'skip' }) === true;
         skipBtn.hidden = !canSkip;
@@ -253,6 +304,8 @@
       const last = state.failed[state.failed.length - 1];
       failed.hidden = !last;
       if (last) failed.textContent = `${last.title || last.videoId} não deixa tocar fora do YouTube; pulei.`;
+      queueHead.hidden = !cur;
+      list.hidden = !cur;
       queueHead.textContent = state.queue.length ? `Próximas (${state.queue.length}/${M.MAX_QUEUE})` : 'Fila vazia';
       paintQueue();
       paintTime();
@@ -331,7 +384,12 @@
   // coordenador de midia nao tem tag no index.html. O primeiro conteudo de
   // midia que monta injeta cada <script> uma vez (promessa dividida em
   // GoLive.mesaMidiaCarga) e so entao monta de verdade.
-  const DEPS = [['ytplayer.js', 'ytplayer'], ['mesa-sync-media.js', 'mesaSyncMedia'], ['mesa-midia.js', 'mesaMidia']];
+  const DEPS = [
+    ['mesa-janelas/comum.js', 'mesaJanelasComum'],
+    ['ytplayer.js', 'ytplayer'],
+    ['mesa-sync-media.js', 'mesaSyncMedia'],
+    ['mesa-midia.js', 'mesaMidia'],
+  ];
 
   function carregar(src, global) {
     if (root.GoLive[global]) return Promise.resolve();
@@ -386,7 +444,7 @@
 
   root.GoLive = root.GoLive || {};
   root.GoLive.mesaJanelas = root.GoLive.mesaJanelas || {};
-  root.GoLive.mesaJanelas.radio = { type: 'radio', mount };
+  root.GoLive.mesaJanelas.radio = { type: 'radio', mount, linhasDaFila, rotuloDaFaixa };
 
   if (typeof module !== 'undefined') module.exports = root.GoLive.mesaJanelas.radio;
 })(typeof window !== 'undefined' ? window : global);

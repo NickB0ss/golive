@@ -4,6 +4,7 @@
 
 (function (root) {
   const TYPE = 'domino';
+  const TEXTO_VAZIO = 'Sente 2 a 4 pessoas e dê as pedras';
   const POSICOES = [[50, 50], [25, 25], [75, 75], [25, 25], [75, 75], [25, 75], [75, 25]];
 
   function pontos(numero, deslocamento) {
@@ -49,21 +50,27 @@
     const status = el('p', { class: 'mj-do-status', attrs: { tabindex: '-1' } });
     const prazo = el('span', { class: 'mj-do-prazo' });
     const nova = botao({ text: 'Nova mão', label: 'Dar as pedras' });
-    const reiniciar = botao({ text: 'Recomeçar', label: 'Zerar o placar' });
+    const reiniciar = botao({ text: 'Recomeçar', label: 'Zerar o placar', class: 'mj-fantasma' });
     topo.append(status, prazo, nova, reiniciar);
 
     const mesa = el('div', { class: 'mj-do-mesa', attrs: { 'aria-label': 'Mesa de dominó' } });
     const linha = el('div', { class: 'mj-do-linha' });
     mesa.append(linha);
+    // Sem ninguem sentado a mesa vazia vira o convite (e a frase de situacao some, para nao repetir).
+    const vazio = C.vazio({
+      icone: 'pessoas',
+      titulo: 'Quatro lugares livres',
+      texto: TEXTO_VAZIO,
+    });
 
     const lugares = el('div', { class: 'mj-do-lugares' });
     const mao = el('div', { class: 'mj-do-mao', attrs: { 'aria-label': 'Suas pedras' } });
-    const acoes = el('div', { class: 'mj-do-acoes' });
     const comprar = botao({ text: 'Comprar', label: 'Comprar do monte' });
     const passar = botao({ text: 'Passar', label: 'Passar a vez' });
     const levantar = botao({ text: 'Levantar', label: 'Levantar da cadeira' });
-    acoes.append(comprar, passar, levantar);
-    b.raiz.append(topo, mesa, lugares, mao, acoes);
+    const acoes = C.acoes({ principal: comprar, secundarias: [passar, levantar] });
+    acoes.classList.add('mj-do-acoes');
+    b.raiz.append(topo, mesa, vazio, lugares, mao, acoes);
 
     b.clique(nova, topo, () => b.acao(topo, { kind: 'start' }));
     b.clique(reiniciar, topo, () => b.acao(topo, { kind: 'reset' }));
@@ -71,25 +78,45 @@
     b.clique(passar, acoes, () => b.acao(acoes, { kind: 'pass' }));
     b.clique(levantar, acoes, () => b.acao(acoes, { kind: 'stand' }));
 
+    // Um lugar = a cadeira comum (de um lugar so) e a linha de pedras e pontos embaixo.
+    // Os 4 cartoes sao montados uma vez: o foco do "Sentar" nao cai quando chega estado novo.
+    const cartoes = [0, 1, 2, 3].map((lugar) => {
+      const cartao = el('div', { class: 'mj-do-lugar' });
+      const cad = C.cadeiras({
+        rotulo: `Lugar ${lugar + 1}`,
+        aoSentar() { b.acao(cartao, { kind: 'sit', seat: lugar }); },
+        aoRecusar(motivo) { b.aviso.mostrar(motivo, cartao); },
+      });
+      const placar = el('span', { class: 'mj-do-placar' });
+      cartao.append(cad.node, placar);
+      lugares.append(cartao);
+      return { cartao, cad, placar };
+    });
+
     function desenharLugar(lugar) {
-      const ocupado = state.seats?.[lugar];
+      const { cartao, cad, placar } = cartoes[lugar];
+      const id = state.seats?.[lugar] || null;
+      const ocupado = Boolean(id);
       const meu = state.me?.seat === lugar;
       const vez = state.turn === lugar && state.phase === 'play';
-      const nome = state.names?.[lugar] || 'Lugar livre';
+      const nome = state.names?.[lugar] || 'Alguém';
       const pedras = state.counts?.[lugar] || 0;
-      const placar = state.scores?.[lugar] || 0;
-      const texto = ocupado ? `${nome}: ${pedras} pedras · ${placar} pontos` : nome;
-      const card = el('div', {
-        class: `mj-do-lugar${meu ? ' is-eu' : ''}${vez ? ' is-vez' : ''}`,
-        text: texto,
-      });
-      if (!ocupado) {
-        const sentar = botao({ text: 'Sentar', label: `Sentar no lugar ${lugar + 1}` });
-        C.ligado(sentar, state.me?.can?.sit?.[lugar] ? true : 'Lugar indisponível');
-        b.clique(sentar, card, () => b.acao(card, { kind: 'sit', seat: lugar }));
-        card.append(sentar);
-      }
-      return card;
+      cartao.classList.toggle('is-eu', meu);
+      cartao.classList.toggle('is-vez', vez);
+      cad.sync([{
+        peer: id,
+        nome: ocupado ? nome : '',
+        cor: ocupado ? C.corDe(api, id) : null,
+        peca: null,
+        vez,
+        eu: meu,
+        motivoSentar: state.me?.can?.sit?.[lugar] ? true : 'Lugar indisponível',
+        // Levantar mora so no botao "Levantar" de baixo: uma acao num lugar so.
+        motivoLevantar: 'Use o botão Levantar',
+      }]);
+      const botaoLugar = cad.node.children[0].children[0];
+      botaoLugar.setAttribute('aria-label', ocupado ? `${nome}: ${pedras} pedras` : `Sentar no lugar ${lugar + 1}`);
+      placar.textContent = ocupado ? `${pedras} pedras · ${state.scores?.[lugar] || 0} pontos` : '';
     }
 
     function desenharMesa() {
@@ -149,7 +176,13 @@
       C.ligado(comprar, state.me?.can?.draw ? true : 'Sem compra agora');
       C.ligado(passar, state.me?.can?.pass ? true : 'Sem passe agora');
       C.ligado(levantar, state.me?.can?.stand ? true : 'Você não está sentado');
-      lugares.replaceChildren(...Array.from({ length: 4 }, (_, lugar) => desenharLugar(lugar)));
+      for (let lugar = 0; lugar < 4; lugar += 1) desenharLugar(lugar);
+      const semGente = !(state.seats || []).some(Boolean);
+      vazio.hidden = !semGente;
+      mesa.hidden = semGente;
+      status.hidden = semGente;
+      mao.hidden = semGente;
+      acoes.hidden = semGente;
       desenharMesa();
       desenharMao();
       atualizarPrazo();

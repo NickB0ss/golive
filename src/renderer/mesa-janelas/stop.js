@@ -49,12 +49,22 @@
     const { el } = C;
     let state = null;
     let timer = null;
+    let saveTimer = null;
+    let roundKey = null;
+    let timeoutSent = false;
+    let lastTimeoutAt = null;
+    let inputs = [];
+    let lastSent = null;
+    const drafts = new Map();
     let page = 0;
     const head = el('div', { class: 'mj-stop-head' });
     const letter = el('strong', { class: 'mj-stop-letter' });
     const clock = el('span', { class: 'mj-stop-clock' });
     const body = el('div', { class: 'mj-stop-body' });
     const footer = el('div', { class: 'mj-barra mj-stop-footer' });
+    const count = el('span', { class: 'mj-dica' });
+    const status = el('span', { class: 'mj-dica' });
+    const stop = C.botao({ text: 'STOP', class: 'mj-pri' });
     b.raiz.append(head, body, footer);
 
     function action(where, a) { b.acao(where, a); }
@@ -62,6 +72,21 @@
       const btn = C.botao({ text, class: cls });
       btn.addEventListener('click', () => action(footer, a));
       return btn;
+    }
+
+    stop.addEventListener('click', () => {
+      cancelarSalvamento();
+      // makeApi encaminha deps.send sincronicamente; estas acoes preservam a ordem no canal.
+      if (salvarAgora() || JSON.stringify(respostasLocais()) === lastSent) action(footer, { kind: 'stop' });
+    });
+
+    if (typeof api.onDenied === 'function') {
+      const offDenied = api.onDenied((d) => {
+        if (d?.reason !== 'rate' || state?.phase !== 'writing') return;
+        lastSent = null;
+        agendarSalvamento();
+      });
+      if (typeof offDenied === 'function') b.faxina.push(offDenied);
     }
 
     function drawSetup() {
@@ -76,47 +101,132 @@
         input.value = value;
         list.append(input);
       });
-      const start = el('button', { class: 'mj-btn mj-pri', text: 'Começar rodada', attrs: { type: 'submit' } });
-      form.append(title, list, start);
-      form.addEventListener('submit', (event) => {
-        event.preventDefault();
+      // "Começar rodada" e a acao principal e mora no rodape (C.acoes), fora do form:
+      // o Enter nos campos faz o mesmo que o clique.
+      const start = C.botao({ text: 'Começar rodada' });
+      function comecar() {
         if (state.me?.canManage || api.isLeader()) {
           action(form, { kind: 'categories', categories: [...list.querySelectorAll('input')].map((i) => i.value) });
           action(form, { kind: 'start' });
         }
+      }
+      for (const input of list.querySelectorAll('input')) {
+        input.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          comecar();
+        });
+      }
+      start.addEventListener('click', comecar);
+      form.append(title, list);
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        comecar();
       });
       body.replaceChildren(form);
-      footer.replaceChildren();
+      footer.replaceChildren(C.acoes({ principal: start }));
       C.ligado(start, state.me?.canManage || api.isLeader() ? true : 'Só quem gere a janela começa');
+    }
+
+    function chaveRodada(next) {
+      return JSON.stringify([next.letter || '', next.deadline || null, next.categories || []]);
+    }
+
+    function respostasLocais() {
+      return inputs.map((input) => input.value);
+    }
+
+    function guardarRascunho() {
+      if (roundKey) drafts.set(roundKey, respostasLocais());
+    }
+
+    function cancelarSalvamento() {
+      if (saveTimer) root.clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+
+    // O servidor guarda a resposta ja limpa (mesa-modules/stop.js#text: espacos juntados e aparados);
+    // comparar cru deixaria "Salvando…" para sempre em "Ana ".
+    function limpa(answer) {
+      return String(answer || '').replace(/\s+/gu, ' ').trim();
+    }
+
+    function confirmadas() {
+      const local = respostasLocais();
+      const remoto = state.myAnswers || [];
+      return local.length === remoto.length && local.every((answer, i) => limpa(answer) === limpa(remoto[i]));
+    }
+
+    function salvarAgora() {
+      cancelarSalvamento();
+      if (state.phase !== 'writing') return false;
+      const answers = respostasLocais();
+      guardarRascunho();
+      const serial = JSON.stringify(answers);
+      if (serial === lastSent) {
+        atualizarRodape();
+        return false;
+      }
+      lastSent = serial;
+      action(footer, { kind: 'answer', answers });
+      atualizarRodape();
+      return true;
+    }
+
+    function agendarSalvamento() {
+      cancelarSalvamento();
+      guardarRascunho();
+      // Mesa aceita 20 acoes/s; 400 ms limita este autosave a no maximo 2,5/s.
+      saveTimer = root.setTimeout(() => {
+        saveTimer = null;
+        salvarAgora();
+      }, 400);
+      atualizarRodape();
+    }
+
+    function atualizarRodape() {
+      if (state.phase !== 'writing') return;
+      const responded = Object.values(state.answered || {}).filter(Boolean).length;
+      count.textContent = `${responded}/${state.players.length} responderam`;
+      status.textContent = confirmadas() ? 'Salvo' : 'Salvando…';
+      const allFilled = respostasLocais().every((answer) => answer.trim());
+      C.ligado(stop, allFilled ? true : 'Preencha todas as respostas');
     }
 
     function drawWriting() {
       const form = el('form', { class: 'mj-stop-answers' });
-      const title = el('p', { class: 'mj-dica', text: 'Suas respostas ficam escondidas até o STOP.' });
-      const inputs = state.categories.map((category, i) => {
+      const title = el('p', {
+        class: 'mj-dica',
+        text: 'Suas respostas ficam escondidas até o STOP e são salvas sozinhas.',
+      });
+      const draft = drafts.get(roundKey) || state.myAnswers || [];
+      inputs = state.categories.map((category, i) => {
         const input = el('input', {
           class: 'mj-campo',
           attrs: { maxlength: '40', type: 'text', placeholder: category, 'aria-label': category },
         });
-        input.value = state.myAnswers?.[i] || '';
+        input.value = draft[i] || '';
+        input.addEventListener('input', agendarSalvamento);
+        input.addEventListener('blur', salvarAgora);
+        input.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          salvarAgora();
+          inputs[i + 1]?.focus();
+        });
         return input;
       });
-      const save = el('button', { class: 'mj-btn', text: 'Guardar respostas', attrs: { type: 'submit' } });
-      form.append(title, ...inputs, save);
+      // Cada categoria e uma linha de caderno: o nome a esquerda e o traco para escrever.
+      const linhas = inputs.map((input, i) => el('label', { class: 'mj-stop-linha' },
+        el('span', { class: 'mj-stop-rotulo', text: state.categories[i] }), input));
+      form.append(title, ...linhas);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
-        action(form, { kind: 'answer', answers: inputs.map((i) => i.value) });
+        salvarAgora();
       });
       body.replaceChildren(form);
-      const stop = button('STOP', { kind: 'stop' }, 'mj-pri');
-      const count = Object.values(state.answered || {}).filter(Boolean).length;
-      footer.replaceChildren(
-        el('span', { class: 'mj-dica', text: `${count}/${state.players.length} responderam` }),
-        el('span', { class: 'mj-mola' }),
-        stop,
-      );
-      C.ligado(stop, Array.isArray(state.myAnswers) && state.myAnswers.length === state.categories.length
-        && state.myAnswers.every(Boolean) ? true : 'Preencha todas as respostas');
+      footer.replaceChildren(count, status, el('span', { class: 'mj-mola' }), stop);
+      atualizarRodape();
     }
 
     function drawReview() {
@@ -153,8 +263,10 @@
     }
 
     function render() {
+      // Na preparacao nao ha letra: o alto some (o nome do jogo ja esta na barra da janela).
+      head.hidden = state.phase === 'setup';
       head.replaceChildren(
-        el('span', { class: 'mj-dica', text: state.phase === 'setup' ? 'Stop' : 'Letra' }),
+        el('span', { class: 'mj-dica', text: 'Letra' }),
         letter,
         el('span', { class: 'mj-mola' }),
         clock);
@@ -166,21 +278,59 @@
     }
 
     function update(next) {
+      const nextRound = next.phase === 'writing' ? chaveRodada(next) : null;
+      const remount = state === null || state.phase !== next.phase || nextRound !== roundKey;
+      if (state?.phase === 'writing' && (next.phase !== 'writing' || nextRound !== roundKey)) {
+        cancelarSalvamento();
+      }
       state = next;
       atualizarBarra(api, textoBarra(state), Boolean(state.phase === 'writing' && state.me?.canStop));
       if (state.phase !== 'review') page = 0;
-      render();
+      if (state.phase === 'writing') {
+        if (remount) {
+          roundKey = nextRound;
+          lastSent = null;
+          timeoutSent = false;
+          lastTimeoutAt = null;
+          render();
+        } else {
+          letter.textContent = state.letter || '—';
+          clock.textContent = state.deadline ? tempo(state.deadline, api.serverNow()) : '';
+          atualizarRodape();
+        }
+      } else {
+        roundKey = null;
+        inputs = [];
+        timeoutSent = false;
+        lastTimeoutAt = null;
+        render();
+      }
       if (timer) root.clearInterval(timer);
       if (state.deadline) {
         timer = root.setInterval(() => {
-          if (api.serverNow() >= state.deadline) api.act({ kind: 'timeout' });
-          else clock.textContent = tempo(state.deadline, api.serverNow());
+          const agora = api.serverNow();
+          if (state.phase === 'writing' && agora >= state.deadline) {
+            if (!timeoutSent) {
+              timeoutSent = true;
+              salvarAgora();
+            }
+            if (lastTimeoutAt === null || agora - lastTimeoutAt >= 1000) {
+              lastTimeoutAt = agora;
+              action(footer, { kind: 'timeout' });
+            }
+          } else clock.textContent = tempo(state.deadline, agora);
         }, 500);
       }
     }
     return {
       update,
-      destroy() { if (timer) root.clearInterval(timer); atualizarBarra(api, '', false); b.destruir(); },
+      destroy() {
+        if (timer) root.clearInterval(timer);
+        if (state?.phase === 'writing' && saveTimer) salvarAgora();
+        cancelarSalvamento();
+        atualizarBarra(api, '', false);
+        b.destruir();
+      },
     };
   }
 

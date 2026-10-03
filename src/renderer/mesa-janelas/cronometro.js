@@ -106,12 +106,12 @@
     });
 
     // Controles.
-    const ctrl = el('div', { class: 'mj-barra mj-cron-ctrl' });
     const menos1 = C.botao({ text: '−1 min', class: 'mj-fantasma mj-sec', label: 'Tirar 1 minuto' });
     const mais1 = C.botao({ text: '+1 min', class: 'mj-fantasma mj-sec', label: 'Somar 1 minuto' });
     const play = C.botao({ icone: 'play', text: 'Iniciar', class: 'mj-pri mj-cron-play' });
     const zerar = C.botao({ icone: 'zerar', text: 'Zerar', class: 'mj-cron-zerar', label: 'Zerar o cronômetro' });
-    ctrl.append(menos1, play, zerar, mais1);
+    const ctrl = C.acoes({ principal: play, secundarias: [menos1, zerar, mais1] });
+    ctrl.classList.add('mj-cron-ctrl');
 
     const status = el('p', { class: 'mj-cron-status visually-hidden', attrs: { role: 'status', 'aria-live': 'polite' } });
 

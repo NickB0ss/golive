@@ -84,3 +84,27 @@ test('rotulos dos botoes e segundos', () => {
   assert.equal(J.segundos(10_500, 0), 11);
   assert.equal(J.segundos(0, 5000), 0);
 });
+
+test('linhaDeEstado nao repete o nome do jogo (ja esta na barra da janela)', () => {
+  const v = { blinds: { sb: 10, bb: 20 }, handNo: 3, hand: { street: 'flop', result: null } };
+  assert.equal(J.linhaDeEstado(v), 'Blinds 10/20 · mão 3 · Flop');
+  assert.equal(J.linhaDeEstado({ blinds: { sb: 10, bb: 20 }, handNo: 0, hand: null }), 'Blinds 10/20');
+  assert.ok(!J.linhaDeEstado(v).includes('Pôquer'));
+});
+
+// ---------- Montagem (DOM falso) ----------
+require('./comum');
+require('./cartas');
+const { montar } = require('./dom-falso-leva3');
+const pq = require('../mesa-modules/poquer');
+
+test('poquer: cada lugar e uma cadeira comum e o livre convida a sentar', () => {
+  const view = pq.view(pq.init({ random: () => 0.3 }), '1', { peers: [{ id: '1', name: 'Ana' }] });
+  const t = montar(J, view);
+  assert.equal(t.todos('.mj-pq-lugar').length, 8);
+  assert.equal(t.todos('.mj-cadeira-livre').length, 8);
+  assert.equal(t.achar('.mj-pq-titulo').textContent, 'Blinds 10/20');
+  t.todos('.mj-cadeira-livre')[5].click();
+  assert.deepEqual(t.acoes, [{ kind: 'sit', seat: 5 }]);
+  t.destruir();
+});

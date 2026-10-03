@@ -25,10 +25,10 @@
     const b = C.base(elRoot, api, 'quiz');
     const T = C.el;
     const topo = T('div', { class: 'mj-quiz-topo' });
-    const titulo = T('strong', { class: 'mj-quiz-titulo', text: 'Quiz' });
+    // O nome do jogo ja esta na barra da janela: o alto e so a linha de estado.
     const prazo = T('span', { class: 'mj-quiz-prazo', attrs: { 'aria-live': 'polite' } });
     const rodada = T('span', { class: 'mj-quiz-rodada' });
-    topo.append(titulo, rodada, T('span', { class: 'mj-mola' }), prazo);
+    topo.append(rodada, T('span', { class: 'mj-mola' }), prazo);
     const pergunta = T('p', { class: 'mj-quiz-pergunta' });
     const alternativas = T('div', { class: 'mj-quiz-alternativas', attrs: { role: 'group' } });
     const placar = T('div', { class: 'mj-quiz-placar', attrs: { 'aria-label': 'Placar' } });
@@ -43,9 +43,10 @@
     let pedido = false;
     const botoes = [];
     for (let i = 0; i < 4; i++) {
-      const botao = C.botao({ text: `${String.fromCharCode(65 + i)}.`, class: 'mj-quiz-opcao' });
+      const botao = C.botao({ class: 'mj-quiz-opcao' });
+      // Cartao A-D: a letra e o selo; o texto da alternativa ocupa o resto.
       const texto = T('span', { class: 'mj-quiz-opcao-texto' });
-      botao.append(texto);
+      botao.append(T('span', { class: 'mj-quiz-letra', text: `${String.fromCharCode(65 + i)}.` }), texto);
       const indice = i;
       b.clique(botao, alternativas, () => {
         if (state?.me?.canAnswer) {
@@ -65,7 +66,11 @@
       for (const jogador of s.players || []) {
         const linha = T('div', { class: `mj-quiz-jogador${jogador.by === api.me() ? ' is-eu' : ''}` });
         const resposta = jogador.answered ? 'respondeu' : 'pensando';
-        linha.append(T('span', { class: 'mj-quiz-nome', text: nome(jogador.by) }),
+        const inicial = String(nome(jogador.by) || '').trim().charAt(0).toUpperCase() || '?';
+        const avatar = T('span', { class: 'mj-cadeira-avatar', text: inicial });
+        const cor = C.corDe(api, jogador.by);
+        if (cor) avatar.style.setProperty('--mj-cor', cor);
+        linha.append(avatar, T('span', { class: 'mj-quiz-nome', text: nome(jogador.by) }),
           T('span', { class: 'mj-quiz-respondeu', text: resposta }),
           T('strong', { class: 'mj-quiz-pontos', text: `${jogador.score} pts` }));
         placar.append(linha);

@@ -30,6 +30,7 @@
   }
 
   function mountReal(el, api) {
+    const C = root.GoLive.mesaJanelasComum;
     const M = mod();
     let state = M.init({});
     let frame = null;
@@ -40,7 +41,12 @@
     const input = h('input', { class: 'mjm-input', type: 'text', placeholder: 'Canal ou link da Twitch', 'aria-label': 'Canal da Twitch', maxlength: 2048 });
     const cancel = h('button', { class: 'mjm-btn', type: 'button', text: 'Cancelar' });
     const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Abrir' }), cancel);
-    const empty = h('div', { class: 'mjm-empty' }, h('p', { class: 'mjm-hint', text: 'Uma live da Twitch para todos assistirem.' }), form);
+    const empty = h('div', { class: 'mjm-empty' }, C.vazio({
+      icone: 'play',
+      titulo: 'Uma live para todos',
+      texto: 'Cole o canal ou o link da Twitch e a sala assiste junto.',
+      acao: form,
+    }));
     const host = h('div', { class: 'mjm-player' });
     const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: 'Tocar este' });
     const coverName = h('p', { class: 'mjm-cover-name' });
@@ -50,7 +56,8 @@
     const bar = h('div', { class: 'mjm-bar mjm-bar-top' }, swapBtn);
     const stage = h('div', { class: 'mjm-stage' }, host, cover, msg, bar);
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
-    const rootEl = h('div', { class: 'mjm mjm-live' }, stage, empty, note);
+    const rootEl = h('div', { class: 'mj mjm mjm-live' }, stage, empty, note);
+    rootEl.dataset.superficie = C.SUPERFICIES.aovivo;
     el.appendChild(rootEl);
 
     const slot = root.GoLive.mesaMidia.register('image', () => render());
@@ -72,6 +79,8 @@
       const active = slot.active();
       const online = !root.navigator || root.navigator.onLine !== false;
       empty.hidden = !!ch && !showForm;
+      // Sem canal nao ha o que cancelar: o botao so existe para quem trocava o canal.
+      cancel.hidden = !ch;
       stage.hidden = !ch;
       cover.hidden = active;
       msg.hidden = !(active && !online);
@@ -158,7 +167,7 @@
   // coordenador de midia nao tem tag no index.html. O primeiro conteudo de
   // midia que monta injeta cada <script> uma vez (promessa dividida em
   // GoLive.mesaMidiaCarga) e so entao monta de verdade.
-  const DEPS = [['mesa-midia.js', 'mesaMidia']];
+  const DEPS = [['mesa-janelas/comum.js', 'mesaJanelasComum'], ['mesa-midia.js', 'mesaMidia']];
 
   function carregar(src, global) {
     if (root.GoLive[global]) return Promise.resolve();

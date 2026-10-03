@@ -25,3 +25,42 @@ test('dominó mostra prazo pela hora do servidor', () => {
   assert.equal(janela.segundos(31000, 1000), 30);
   assert.equal(janela.segundos(null, 1000), null);
 });
+
+// ---------- Montagem (DOM falso) ----------
+const { montar } = require('./dom-falso-leva3');
+
+const estadoDomino = (extra = {}) => ({
+  phase: 'waiting', seats: [null, null, null, null], names: [null, null, null, null], counts: [0, 0, 0, 0],
+  scores: [0, 0, 0, 0], table: [], hand: [], stock: 0, turn: 0,
+  me: { seat: -1, can: { sit: [true, true, true, true] } },
+  ...extra,
+});
+
+test('domino sem ninguem mostra o vazio no lugar da mesa e a frase de situacao some', () => {
+  const t = montar(janela, estadoDomino());
+  assert.equal(t.achar('.mj-vazio').hidden, false);
+  assert.equal(t.achar('.mj-do-mesa').hidden, true);
+  assert.equal(t.achar('.mj-do-status').hidden, true);
+  assert.equal(t.todos('.mj-cadeira-livre').length, 4);
+  assert.equal(t.achar('.mj-vazio-texto').textContent, 'Sente 2 a 4 pessoas e dê as pedras');
+  t.destruir();
+});
+
+test('domino com gente sentada mostra a mesa e Comprar/Passar/Levantar em C.acoes', () => {
+  const t = montar(janela, estadoDomino({ seats: ['1', '2', null, null], names: ['Ana', 'Bia', null, null] }));
+  assert.equal(t.achar('.mj-vazio').hidden, true);
+  assert.equal(t.achar('.mj-do-mesa').hidden, false);
+  assert.ok(t.botao('Comprar do monte').classList.contains('mj-pri'));
+  assert.ok(t.botao('Passar a vez').classList.contains('mj-fantasma'));
+  assert.ok(t.botao('Levantar da cadeira').classList.contains('mj-fantasma'));
+  assert.ok(t.achar('.mj-do-acoes').classList.contains('mj-acoes'));
+  t.destruir();
+});
+
+test('domino: o botao Sentar continua o mesmo entre atualizacoes (o foco nao cai)', () => {
+  const t = montar(janela, estadoDomino());
+  const antes = t.todos('.mj-cadeira-livre')[0];
+  t.atualizar(estadoDomino());
+  assert.equal(t.todos('.mj-cadeira-livre')[0], antes);
+  t.destruir();
+});

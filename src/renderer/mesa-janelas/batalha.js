@@ -70,7 +70,7 @@
   function textoPosicionando(state, nomeDe) {
     const eu = state.me ? state.me.seat : -1;
     const livres = state.seats.filter((s) => s === null).length;
-    if (livres === 2) return 'Cadeiras livres: sente-se para jogar';
+    if (livres === 2) return '';
     if (eu < 0) return livres ? 'Uma cadeira livre: sente-se para jogar' : 'Posicionando as frotas';
     if (!state.ready[eu]) return 'Sorteie a frota até gostar e diga Pronto';
     if (state.seats[1 - eu] === null) return 'Pronto. Esperando alguém sentar na outra cadeira';
@@ -120,7 +120,7 @@
       labels: LABELS,
       desistir: true,
       pode: (action) => podeDaView(state, action),
-      amostra(a, i) { a.textContent = String(i + 1); },
+      peca(i) { return { texto: String(i + 1) }; },
     });
 
     const mares = el('div', { class: 'mj-bn-mares' });

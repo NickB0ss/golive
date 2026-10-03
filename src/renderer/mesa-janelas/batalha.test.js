@@ -69,3 +69,8 @@ test('a janela liga os botoes pela view do servidor, nunca pelo validate', () =>
   assert.equal(J.textoPosicionando(batalha.view(s, '1', { peers: PEERS }), () => 'Bia'), 'Pronto. Esperando Bia');
   assert.equal(J.textoPosicionando(batalha.view(s, '9', { peers: PEERS }), () => 'Bia'), 'Posicionando as frotas');
 });
+
+test('posicionamento sem ninguem nao repete o convite das cadeiras', () => {
+  const vista = batalha.view(batalha.init({}), '1', { peers: PEERS });
+  assert.equal(J.textoPosicionando(vista, () => 'Bia'), '');
+});

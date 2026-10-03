@@ -1,0 +1,325 @@
+:root {
+  --mj-mat-feltro-1: #1C503B;
+  --mj-mat-feltro-2: #133A2B;
+  --mj-mat-feltro-3: #0F2F23;
+  --mj-mat-lousa: #1B2228;
+  --mj-mat-madeira: #7A5233;
+  --mj-mat-casa-clara: #D9B98C;
+  --mj-mat-casa-escura: #5B3B22;
+  --mj-mat-papel: #E9DFC8;
+  --mj-mat-mar: #1F4E79;
+  --mj-mat-vinheta: rgba(0, 0, 0, 0.28);
+  --mj-mat-giz-po: rgba(237, 237, 242, 0.05);
+  --mj-mat-veio: rgba(0, 0, 0, 0.05);
+  --mj-mat-brilho: rgba(255, 255, 255, 0.24);
+  --mj-mat-contato: rgba(0, 0, 0, 0.35);
+  --mj-mat-sombra: rgba(0, 0, 0, 0.25);
+}
+
+/* Conteudo das janelas da Mesa (contrato da Mesa, secao 6).
+ *
+ * A Vista (mesa-view.js) cuida da caixa da janela; aqui so o que vai DENTRO
+ * do `el` que ela entrega. Regras do arquivo:
+ *   - so tokens de style.css (cores, --fs-*, --s-*, --r-*); nada de --live;
+ *   - a cor de uma pessoa (--mj-cor) so em detalhe: bolinha, contorno, ou
+ *     misturada ao --tx para o nome ficar legivel no tema claro;
+ *   - so transform e opacity animam, e prefers-reduced-motion desliga
+ *     (a regra global de style.css ja zera as duracoes; as daqui tambem
+ *     saem explicitamente no fim do arquivo);
+ *   - cada conteudo e um container (`mj`) de tamanho: o secundario some por
+ *     @container quando a janela fica pequena, nunca por media query.
+ */
+
+/* ---------- Base ---------- */
+
+.mj {
+  container: mj / size;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  overflow: hidden;
+  color: var(--tx);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.4;
+}
+
+.mj[data-superficie='feltro'],
+.mj[data-superficie='lousa'],
+.mj[data-superficie='palco'] {
+  color-scheme: dark;
+  /* Ilha escura: as superficies viram veus sobre o material (cinza opaco pintaria caixas sobre o feltro). */
+  --tx: #EDEDF2;
+  --tx2: rgba(237, 237, 242, 0.84);
+  --tx3: rgba(237, 237, 242, 0.7);
+  --s1: rgba(7, 7, 11, 0.22);
+  --s2: rgba(237, 237, 242, 0.06);
+  --s3: rgba(237, 237, 242, 0.1);
+  --s4: rgba(237, 237, 242, 0.16);
+  --line: rgba(237, 237, 242, 0.12);
+  --line2: rgba(237, 237, 242, 0.22);
+  --act: #EDEDF2;
+  --act-hover: #FFFFFF;
+  --on-act: #0E0E14;
+  --wire: #8C92FF;
+  --wire-soft: rgba(140, 146, 255, 0.16);
+  --ok: #43D98C;
+  --warn: #F5C04A;
+  --danger: #FF8A3D;
+}
+
+.mj[data-superficie='feltro'] {
+  background: radial-gradient(
+    ellipse 120% 90% at 50% 30%,
+    var(--mj-mat-feltro-1),
+    var(--mj-mat-feltro-2) 70%,
+    var(--mj-mat-feltro-3)
+  );
+  box-shadow: inset 0 0 var(--s-5) var(--mj-mat-vinheta);
+}
+
+.mj[data-superficie='lousa'] {
+  background: radial-gradient(ellipse at 30% 15%, var(--mj-mat-giz-po), transparent 60%),
+    var(--mj-mat-lousa);
+}
+
+.mj[data-superficie='palco'] { background: var(--void); }
+
+.mj[data-superficie='tabuleiro'] {
+  --mj-moldura: color-mix(in oklab, var(--mj-mat-madeira) 40%, var(--s2));
+  --mj-casa-clara: color-mix(in oklab, var(--mj-mat-casa-clara) 55%, var(--s3));
+  --mj-casa-escura: color-mix(in oklab, var(--mj-mat-casa-escura) 60%, var(--s1));
+  background: repeating-linear-gradient(
+    100deg,
+    transparent 0 7px,
+    var(--mj-mat-veio) 7px 8px
+  ), var(--mj-moldura);
+}
+
+.mj[data-superficie='papel'] {
+  --mj-pauta: repeating-linear-gradient(to bottom, transparent 0 27px, var(--line) 27px 28px);
+  background: color-mix(in oklab, var(--s1) 88%, var(--mj-mat-papel) 12%);
+}
+
+.mj-volume {
+  background-image: radial-gradient(ellipse at 35% 30%, var(--mj-mat-brilho), transparent 42%);
+  box-shadow: 0 2px 0 var(--mj-mat-contato), 0 4px 8px var(--mj-mat-sombra);
+}
+
+.mj-cadeiras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.mj-cadeiras .mj-cadeira { min-width: 0; }
+
+.mj-cadeiras .mj-cadeira-botao {
+  min-height: 32px;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-full);
+}
+
+.mj-cadeiras .mj-cadeira-ocupada { justify-content: flex-start; }
+
+.mj-cadeira-avatar {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--s3);
+  box-shadow: 0 0 0 2px var(--mj-cor, var(--line2));
+  font: 700 var(--fs-small)/1 var(--font-display);
+}
+
+.mj-cadeiras .mj-cadeira-livre {
+  border: 1.5px dashed var(--line2);
+  background: transparent;
+}
+
+.mj-cadeiras .mj-cadeira-nome {
+  min-width: 0;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mj-cadeiras .mj-cadeira-peca {
+  display: inline-grid;
+  min-width: 18px;
+  min-height: 18px;
+  place-items: center;
+  border-radius: var(--r-full);
+  font: 700 var(--fs-small)/1 var(--font-display);
+}
+
+.mj-cadeiras .mj-cadeira[data-vez='1'] .mj-cadeira-botao {
+  background: var(--wire-soft);
+  box-shadow: 0 0 0 2px var(--wire), 0 0 var(--s-3) var(--wire-soft);
+}
+
+.mj-vazio {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  max-width: 36ch;
+  margin: auto;
+  text-align: center;
+}
+
+.mj-vazio-glifo {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--s2);
+}
+
+.mj-vazio-glifo .mj-i { width: 40px; height: 40px; }
+.mj .mj-vazio-titulo { margin: 0; font: var(--t-heading); }
+.mj-vazio-texto { max-width: 36ch; margin: 0; color: var(--tx2); font: var(--t-body); }
+.mj-vazio-acao { display: flex; justify-content: center; width: 100%; }
+
+.mj-acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-top: auto;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+
+.mj-acoes-secundarias { display: flex; gap: var(--s-1); min-width: 0; }
+
+@container mj (max-width: 280px) {
+  .mj-cadeiras .mj-cadeira-nome { display: none; }
+  .mj-acoes-secundarias .mj-btn span { display: none; }
+}
+
+.mj [hidden] { display: none !important; }
+
+.mj-i {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+.mj .mj-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  gap: var(--s-15);
+  background: var(--s3);
+  border-color: var(--line2);
+  color: var(--tx);
+  white-space: nowrap;
+}
+.mj .mj-btn:hover:not([aria-disabled="true"]) { background: var(--s4); }
+.mj .mj-btn[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.mj .mj-btn[aria-disabled="true"]:active { transform: none; }
+.mj .mj-btn svg { width: 16px; height: 16px; }
+.mj .mj-pri { background: var(--act); border-color: var(--act); color: var(--on-act); }
+.mj .mj-pri:hover:not([aria-disabled="true"]) { background: var(--act-hover); border-color: var(--act-hover); }
+.mj .mj-fantasma { background: transparent; border-color: transparent; color: var(--tx2); }
+.mj .mj-fantasma:hover:not([aria-disabled="true"]) { background: var(--s3); color: var(--tx); }
+.mj .mj-ic { width: 36px; padding: 0; }
+.mj .mj-mini { min-height: 28px; width: 28px; padding: 0; border-radius: var(--r-xs); }
+.mj .mj-mini svg { width: 14px; height: 14px; }
+
+.mj .mj-campo, .mj .mj-sel {
+  width: auto;
+  min-height: 36px;
+  min-width: 0;
+  padding: 0 var(--s-2);
+  background: var(--s2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+.mj-campo::placeholder { color: var(--tx3); }
+.mj-sel { cursor: pointer; }
+.mj-sel option { background: var(--s2); color: var(--tx); }
+
+.mj-barra { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.mj-barra > .mj-sel { flex: 0 1 auto; }
+.mj-mola { flex: 1; }
+.mj-form { display: flex; gap: var(--s-15); min-width: 0; }
+.mj-form .mj-campo { flex: 1; }
+
+.mj-dot {
+  width: 10px; height: 10px; flex: none;
+  border-radius: var(--r-full);
+  background: var(--mj-cor, var(--tx3));
+  box-shadow: 0 0 0 1px var(--line2);
+}
+
+.mj-rotulo {
+  margin: 0;
+  font: 600 var(--fs-micro) var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tx3);
+}
+
+.mj-dica { margin: 0; color: var(--tx2); font-size: var(--fs-small); }
+
+/* A recusa: texto curto, perto do controle, com um ponto de aviso. */
+.mj-aviso {
+  margin: 0;
+  display: flex; align-items: center; gap: var(--s-15);
+  color: var(--tx2);
+  font-size: var(--fs-small);
+  line-height: 1.3;
+}
+.mj-aviso::before {
+  content: ""; width: 6px; height: 6px; flex: none;
+  border-radius: var(--r-full); background: var(--warn);
+}
+.mj-aviso:not(.is-on) { display: none; }
+
+.mj-rola { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* ---------- Segmentado (modo, duracoes) ---------- */
+
+.mj-segs {
+  display: flex; gap: var(--s-05); padding: var(--s-05);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mj .mj-seg {
+  min-height: 32px; padding: 0 var(--s-2);
+  background: transparent; border-color: transparent;
+  color: var(--tx2); font-size: var(--fs-small);
+}
+.mj .mj-seg:hover:not([aria-disabled="true"]) { background: var(--s3); color: var(--tx); }
+.mj .mj-seg[aria-pressed="true"] { background: var(--s4); color: var(--tx); }
+
+/* ---------- Nome de pessoa na cor dela ----------
+   Misturado ao --tx: no escuro puxa para a cor, no Papel escurece o
+   bastante para ler (o gelo e o ambar puros somem no fundo claro). */
+
+.mj .is-pessoa > .mj-chip-nome,
+.mj .is-pessoa > span:not(.mj-dot) {
+  color: color-mix(in srgb, var(--mj-cor) 62%, var(--tx));
+  font-weight: 600;
+}
+
+/* ---------- Dentro da caixa da Vista ----------
+   Na Mesa a alca de arrastar ocupa os 28 px de cima do `el` (por cima do
+   conteudo): o topo do conteudo cede esse respiro. */
+
+.mesa-content > .mj { padding-top: calc(var(--s-6) - var(--s-05)); }

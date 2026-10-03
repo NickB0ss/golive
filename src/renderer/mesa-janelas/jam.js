@@ -73,6 +73,10 @@
 
   // ---------- DOM ----------
 
+  // O comum.js ainda nao tem a nota musical.
+  const TRACO_MUSICA = '<path d="M9 18V5l11-2v13"/>'
+    + '<circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>';
+
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const m = mod();
@@ -95,30 +99,41 @@
     por.type = 'submit';
     const cancelar = C.botao({ text: 'Cancelar', class: 'mj-fantasma' });
     const form = el('form', { class: 'mj-form' }, input, por, cancelar);
-    const dica = el('p', { class: 'mj-dica', text: 'Quem tem Premium cria o Jam no Spotify (Conectar → Iniciar um Jam), copia o link de convite e cola aqui.' });
-    const vazio = el('div', { class: 'mj-jam-vazio' }, el('p', { class: 'mj-jam-titulo', text: 'Ouvir junto no Spotify' }), dica, form);
+    const vazio = C.vazio({
+      icone: 'musica',
+      titulo: 'Ouvir junto',
+      texto: 'Quem tem Premium inicia um Jam no Spotify (Conectar → Iniciar um Jam) e cola aqui o link de convite.',
+      acao: form,
+    });
+    const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
+    if (!vazioGlifo.innerHTML) vazioGlifo.innerHTML = TRACO_MUSICA;
 
-    // Com Jam.
+    // Com Jam: quem e o Jam, quem entrou (e o "Entrei" junto da lista) e as acoes no pe.
+    const tracoMusica = C.icone('musica');
+    if (!tracoMusica.innerHTML) tracoMusica.innerHTML = TRACO_MUSICA;
+    const glifo = el('span', { class: 'mj-jam-glifo', attrs: { 'aria-hidden': 'true' } }, tracoMusica);
     const titulo = el('p', { class: 'mj-jam-titulo', text: 'Jam aberto' });
     const host = el('span', { class: 'mj-jam-host' });
     const autor = el('span', { class: 'mj-jam-autor' });
-    const cabeca = el('div', { class: 'mj-jam-cabeca' }, titulo, el('div', { class: 'mj-jam-meta' }, host, autor));
-    const entrar = C.botao({ text: 'Entrar no Jam', class: 'mj-pri mj-jam-entrar', title: 'Abre o link no Spotify deste PC' });
+    const cabeca = el('div', { class: 'mj-jam-cabeca' },
+      glifo, el('div', { class: 'mj-jam-quem' }, titulo, el('div', { class: 'mj-jam-meta' }, host, autor)));
+    const entrar = C.botao({ text: 'Entrar no Jam', class: 'mj-jam-entrar', title: 'Abre o link no Spotify deste PC' });
     const marcar = C.botao({ icone: 'check', text: 'Entrei' });
-    const acoes = el('div', { class: 'mj-barra mj-jam-acoes' }, entrar, marcar);
     const conta = el('p', { class: 'mj-rotulo' });
+    const mola = el('span', { class: 'mj-mola' });
+    const pessoasCabeca = el('div', { class: 'mj-barra mj-jam-pessoas' }, conta, mola, marcar);
     const lista = el('ul', { class: 'mj-jam-lista mj-rola', attrs: { 'aria-label': 'Quem entrou no Jam' } });
-    const trocar = C.botao({ text: 'Trocar', class: 'mj-fantasma', label: 'Trocar o link do Jam' });
-    const tirar = C.botao({ text: 'Tirar', class: 'mj-fantasma', label: 'Tirar o Jam da janela' });
-    const rodape = el('div', { class: 'mj-barra mj-jam-rodape' }, el('span', { class: 'mj-mola' }), trocar, tirar);
-    const cheio = el('div', { class: 'mj-jam-cheio' }, cabeca, acoes, conta, lista, rodape);
+    const trocar = C.botao({ icone: 'lapis', text: 'Trocar', label: 'Trocar o link do Jam' });
+    const tirar = C.botao({ icone: 'x', text: 'Tirar', label: 'Tirar o Jam da janela' });
+    const acoes = C.acoes({ principal: entrar, secundarias: [trocar, tirar] });
+    const cheio = el('div', { class: 'mj-jam-cheio' }, cabeca, pessoasCabeca, lista, acoes);
 
     b.raiz.append(vazio, cheio);
     b.aviso.em(b.raiz);
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      if (b.acao(form, { kind: 'set', url: input.value })) {
+      if (b.acao(b.raiz, { kind: 'set', url: input.value })) {
         input.value = '';
         trocando = false;
       }
@@ -129,24 +144,24 @@
       desenhar();
       trocar.focus();
     });
-    b.clique(entrar, acoes, () => {
+    b.clique(entrar, b.raiz, () => {
       if (abrindo || !state.link) return;
       abrindo = true;
       void abrirNoNavegador(root.golive, 'jam', state.link).then((r) => {
         abrindo = false;
-        if (r !== true) b.aviso.mostrar(r, acoes);
-        else if (!estouNoJam(state, api.me())) b.aviso.mostrar('Entrou? Marque “Entrei” para a sala ver', acoes);
+        if (r !== true) b.aviso.mostrar(r, b.raiz);
+        else if (!estouNoJam(state, api.me())) b.aviso.mostrar('Entrou? Marque “Entrei” para a sala ver', b.raiz);
       });
     });
-    b.clique(marcar, acoes, () => {
-      b.acao(acoes, { kind: estouNoJam(state, api.me()) ? 'leave' : 'join' });
+    b.clique(marcar, b.raiz, () => {
+      b.acao(b.raiz, { kind: estouNoJam(state, api.me()) ? 'leave' : 'join' });
     });
-    b.clique(trocar, rodape, () => {
+    b.clique(trocar, b.raiz, () => {
       trocando = true;
       desenhar();
       input.focus();
     });
-    b.clique(tirar, rodape, () => b.acao(rodape, { kind: 'clear' }));
+    b.clique(tirar, b.raiz, () => b.acao(b.raiz, { kind: 'clear' }));
 
     function desenharLista() {
       const chave = state.joined.join(',');

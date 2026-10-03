@@ -82,3 +82,26 @@ test('textoStatus e anuncio seguem a rodada', () => {
   assert.equal(J.esperaTimeout(bj.view(s, 'leo')), 700);
   assert.equal(J.esperaTimeout(bj.view(s, null)), 1500);
 });
+
+test('textoDica: com lugar para sentar nao ha dica (as cadeiras e a situacao ja dizem)', () => {
+  assert.equal(J.textoDica({ me: { seat: -1, actions: ['sit'] } }), '');
+  assert.equal(J.textoDica({ me: { seat: -1, actions: [] } }), 'Mesa cheia: assistindo');
+  assert.equal(J.textoDica({ phase: 'play', me: { seat: 0, actions: [] } }), 'Esperando a sua vez');
+  assert.equal(J.textoDica({ phase: 'bets', me: { seat: 0, actions: ['leave'] } }), '');
+});
+
+// ---------- Montagem (DOM falso) ----------
+require('./comum');
+require('./cartas');
+const { montar } = require('./dom-falso-leva3');
+
+test('blackjack monta os 5 lugares como cadeiras comuns e sem dica repetida', () => {
+  const view = bj.view(bj.init({ random: () => 0.3 }), '1', { peers: [{ id: '1', name: 'Ana' }] });
+  const t = montar(J, view);
+  assert.equal(t.todos('.mj-bj-lugar').length, 5);
+  assert.equal(t.todos('.mj-cadeira-livre').length, 5);
+  assert.equal(t.achar('.mj-bj-dica').hidden, true);
+  t.todos('.mj-cadeira-livre')[3].click();
+  assert.deepEqual(t.acoes, [{ kind: 'sit', seat: 3 }]);
+  t.destruir();
+});

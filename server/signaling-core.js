@@ -853,9 +853,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       return out.sort((a, b) => Number(a) - Number(b));
     }
 
-    function broadcastToMesa(room, exceptId, payload) {
+    function broadcastToMesa(room, exceptId, payload, canSend) {
       for (const [pid, peer] of peers) {
-        if (peer.room === room && peer.mesaView && pid !== exceptId) send(peer.ws, payload);
+        if (peer.room === room && peer.mesaView && pid !== exceptId && (!canSend || canSend(pid))) {
+          send(peer.ws, payload);
+        }
       }
     }
 
@@ -867,7 +869,9 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
     // quem pode desenhar AGORA (sem ela, qualquer um na Mesa pode -- e o
     // padrao do Quadro); `canAnnotateClear(state, from, ctx)` decide quem
     // pode apagar tudo (sem ela, ninguem pode -- limpar sem dono nem lider
-    // seria "qualquer um apaga o desenho dos outros"). As duas sao puras,
+    // seria "qualquer um apaga o desenho dos outros"). Opcionalmente,
+    // `canAnnotateSee(state, peerId, ctx)` filtra quem recebe o rabisco;
+    // sem o hook, todo mundo na Mesa recebe como antes. Os hooks sao puros,
     // do mesmo jeito que `validate`: excecao vira recusa silenciosa, nunca
     // queda da sala.
 
@@ -888,6 +892,18 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
         log(`mesa: modulo ${JSON.stringify(mod.type)} lancou em ${name}`);
         return false;
       }
+    }
+
+    function canSeeCursor(point, destino, ctx) {
+      for (const win of mesaState.mesa.windows) {
+        if (point.x < win.x || point.y < win.y || point.x > win.x + win.w || point.y > win.y + win.h) continue;
+        const mod = mesaRegistry.get(win.type);
+        if (typeof mod?.canAnnotateSee !== 'function') continue;
+        if (!safeAnnotateCheck(mod, 'canAnnotateSee', () => mod.canAnnotateSee(win.state, destino, ctx))) {
+          return false;
+        }
+      }
+      return true;
     }
 
     function announceMesaViewers(room) {
@@ -1865,7 +1881,19 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                   && !safeAnnotateCheck(mod, 'canAnnotateDraw', () => mod.canAnnotateDraw(win.state, peerId, ctx))) {
                   return;
                 }
-                broadcastToMesa(me.room, peerId, { ...op, type: 'annotate', surface: String(msg.surface), from: peerId });
+                const podeVer = typeof mod.canAnnotateSee === 'function'
+                  ? (destino) => safeAnnotateCheck(
+                    mod,
+                    'canAnnotateSee',
+                    () => mod.canAnnotateSee(win.state, destino, ctx),
+                  )
+                  : null;
+                broadcastToMesa(
+                  me.room,
+                  peerId,
+                  { ...op, type: 'annotate', surface: String(msg.surface), from: peerId },
+                  podeVer,
+                );
                 break;
               }
               // A chave e '<dono>:<kind>', nao o id cru: procurar a chave
@@ -1930,6 +1958,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 const ctx = { isLeader: me.owner === true, peers: mesaPeersCtx(me.room) };
                 if (typeof mod.canAnnotateDraw === 'function'
                   && !safeAnnotateCheck(mod, 'canAnnotateDraw', () => mod.canAnnotateDraw(win.state, peerId, ctx))) {
+                  return;
+                }
+                if (typeof mod.canAnnotateSee === 'function'
+                  && !safeAnnotateCheck(mod, 'canAnnotateSee', () => mod.canAnnotateSee(win.state, msg.to, ctx))) {
                   return;
                 }
                 surfaceOut = String(msg.surface);
@@ -2145,7 +2177,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               if (!me || !me.mesaView || !mesaHit(peerId, 'cursor')) return;
               const point = mesaModel.normCursor(msg);
               if (!point) return;
-              broadcastToMesa(me.room, peerId, { type: 'cursor', ...point, from: peerId });
+              const ctx = { isLeader: me.owner === true, peers: mesaPeersCtx(me.room) };
+              broadcastToMesa(
+                me.room,
+                peerId,
+                { type: 'cursor', ...point, from: peerId },
+                (destino) => canSeeCursor(point, destino, ctx),
+              );
               break;
             }
 
