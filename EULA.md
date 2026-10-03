@@ -8,7 +8,7 @@ Ao instalar, copiar ou de qualquer outra forma utilizar o Software, você concor
 
 ## 1. Concessão de Licença
 
-Sujeito ao cumprimento deste EULA e, quando aplicável, ao pagamento dos valores devidos, o Licenciante concede ao Usuário uma licença pessoal, não exclusiva, intransferível e revogável para instalar e utilizar o Software, exclusivamente para uso próprio, nos termos do plano/modalidade de acesso adquirido ou disponibilizado (uso gratuito limitado, compra única, assinatura periódica ou outro modelo informado no momento da aquisição).
+Sujeito ao cumprimento deste EULA, o Licenciante concede ao Usuário, gratuitamente, uma licença pessoal, não exclusiva, intransferível e revogável para instalar e utilizar o Software, exclusivamente para uso próprio.
 
 Esta licença não constitui venda do Software. O Licenciante retém todos os direitos não expressamente concedidos neste Termo.
 
@@ -32,7 +32,7 @@ d) Remover, ocultar ou alterar avisos de direitos autorais, marcas ou outros avi
 
 e) Utilizar o Software para desenvolver produto ou serviço concorrente;
 
-f) Compartilhar credenciais de acesso, chaves de licença ou permitir o uso do Software por terceiros não autorizados;
+f) Permitir o uso do Software por terceiros por meio de cópia não obtida nos canais oficiais;
 
 g) Utilizar o Software para fins ilícitos ou em desacordo com a legislação vigente.
 
@@ -40,11 +40,11 @@ g) Utilizar o Software para fins ilícitos ou em desacordo com a legislação vi
 
 O Software é disponibilizado exclusivamente por meio de download direto através dos canais oficiais indicados pelo Licenciante (site, link ou plataforma própria). Qualquer forma de redistribuição não autorizada do instalador, executável ou arquivos do Software é expressamente proibida.
 
-## 5. Pagamentos e Modalidades de Acesso
+## 5. Gratuidade e Doações
 
-O acesso ao Software pode estar condicionado ao pagamento de valores, conforme a modalidade vigente no momento da aquisição (compra única, assinatura recorrente, modelo gratuito com recursos limitados ou outra forma divulgada pelo Licenciante). As condições específicas de preço, renovação, cancelamento e reembolso serão informadas no momento da contratação e passam a integrar este EULA por referência.
+O Software é gratuito. O Usuário pode, se quiser, fazer doações ao Licenciante pelos canais indicados no site do projeto. Doações são voluntárias, não constituem compra nem assinatura e não condicionam o acesso ao Software.
 
-O não pagamento de valores devidos autoriza o Licenciante a suspender ou encerrar o acesso do Usuário ao Software, sem prejuízo de outras medidas cabíveis.
+Eventual reconhecimento simbólico oferecido a quem doa (como menção no site) é uma cortesia, pode ser alterado ou encerrado a qualquer momento e não gera direito a funcionalidades, suporte ou atualizações.
 
 ## 6. Atualizações
 
@@ -58,7 +58,7 @@ O SOFTWARE É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA" ("AS IS"), SEM GARANTIAS 
 
 Na máxima extensão permitida pela lei aplicável, o Licenciante não será responsável por danos indiretos, incidentais, especiais, punitivos ou consequenciais, incluindo perda de dados, lucros cessantes ou interrupção de negócios, decorrentes do uso ou da incapacidade de uso do Software, ainda que o Licenciante tenha sido advertido sobre a possibilidade de tais danos.
 
-Em qualquer hipótese, a responsabilidade total do Licenciante perante o Usuário estará limitada ao valor efetivamente pago pelo Usuário pelo Software nos 12 (doze) meses anteriores ao evento que originou a reclamação.
+Por se tratar de Software fornecido gratuitamente, o Usuário reconhece que o utiliza por sua conta e risco, na máxima extensão permitida pela lei aplicável.
 
 ## 9. Vigência e Rescisão
 
