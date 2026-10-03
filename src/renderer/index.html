@@ -114,25 +114,27 @@
     <div id="stage-header" class="head__room">
       <button id="btn-room-more" class="room-name" type="button" aria-haspopup="menu" aria-expanded="false"
               aria-controls="room-more"><span id="stage-room-name"></span><svg class="i i--sm"><use href="#i-chevron-down" /></svg></button>
-      <button id="btn-copy-address" class="addr" type="button" title="Copiar endereço" aria-label="Copiar endereço">
+      <button id="btn-copy-address" class="addr" type="button" title="Copiar endereço" aria-label="Copiar endereço"
+              data-i18n-attr="title:pagina.copiarEndereco;aria-label:pagina.copiarEndereco">
         <span id="stage-room-address"></span><svg class="i i--sm"><use href="#i-copy" /></svg>
       </button>
       <span id="stage-room-pin" class="tag hidden"></span>
       <span id="stage-status-dot" hidden></span><span id="stage-status-badge" hidden></span>
       <span id="stage-member-count" class="sr-only">0 pessoas</span>
       <span id="copy-address-status" class="sr-only" aria-live="polite"></span>
-      <div id="room-more" class="pop room-menu hidden" role="menu" aria-label="Menu da sala">
+      <div id="room-more" class="pop room-menu hidden" role="menu" aria-label="Menu da sala"
+           data-i18n-attr="aria-label:pagina.menuSala">
         <!-- So abaixo de 1024 px, quando o endereco (com o botao de copiar) sai da cabeca: shell.css. -->
-        <button class="menu__item room-menu__estreito" type="button" role="menuitem" data-copy="address"><svg class="i"><use href="#i-copy" /></svg>Copiar endereço</button>
+        <button class="menu__item room-menu__estreito" type="button" role="menuitem" data-copy="address"><svg class="i"><use href="#i-copy" /></svg><span data-i18n="pagina.copiarEndereco">Copiar endereço</span></button>
         <button id="room-copy-pin" class="menu__item hidden" type="button" role="menuitem" data-copy="pin"><svg class="i"><use href="#i-lock" /></svg>Copiar PIN</button>
         <button class="menu__item" type="button" role="menuitem" data-room-action="diagnostics"><svg class="i"><use href="#i-info" /></svg>Diagnóstico</button>
         <button class="menu__item" type="button" role="menuitem" data-room-action="theater"><svg class="i"><use href="#i-tv-minimal" /></svg>Modo teatro<span class="menu__hint">T</span></button>
         <div id="room-more-mesa-sep" class="menu__sep" role="separator"></div>
         <p id="room-more-mesa-label" class="menu__label">Mesa</p>
-        <label id="opt-mesa-cursors-row" class="menu__item" role="menuitemcheckbox" aria-checked="true" tabindex="-1"><input id="opt-mesa-cursors" class="sr-only" type="checkbox" checked />Mostrar ponteiros das pessoas</label>
-        <label id="opt-mesa-leader-only-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-leader-only" class="sr-only" type="checkbox" />Só o líder mexe nas janelas</label>
-        <label id="opt-mesa-lock-size-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-lock-size" class="sr-only" type="checkbox" />Travar o tamanho das janelas</label>
-        <p id="opt-mesa-locks-hint" class="menu__label hidden">Abra a Mesa para mudar as travas.</p>
+        <label id="opt-mesa-cursors-row" class="menu__item" role="menuitemcheckbox" aria-checked="true" tabindex="-1"><input id="opt-mesa-cursors" class="sr-only" type="checkbox" checked /><span data-i18n="pagina.mostrarPonteiros">Mostrar ponteiros das pessoas</span></label>
+        <label id="opt-mesa-leader-only-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-leader-only" class="sr-only" type="checkbox" /><span data-i18n="pagina.soLiderMoveJanelas">Só o líder mexe nas janelas</span></label>
+        <label id="opt-mesa-lock-size-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-lock-size" class="sr-only" type="checkbox" /><span data-i18n="pagina.travarTamanhoJanelas">Travar o tamanho das janelas</span></label>
+        <p id="opt-mesa-locks-hint" class="menu__label hidden" data-i18n="pagina.abrirMesaTravas">Abra a Mesa para mudar as travas.</p>
       </div>
     </div>
   </div>
@@ -148,7 +150,8 @@
       <span id="warn-center-live" class="sr-only" aria-live="polite"></span>
     </div>
     <span class="head__lobby-only">
-      <button id="user-panel-avatar" class="btn btn--quiet me-chip" type="button" title="Seu perfil">
+      <button id="user-panel-avatar" class="btn btn--quiet me-chip" type="button" title="Seu perfil"
+              data-i18n-attr="title:pagina.seuPerfil">
         <span class="node" data-size="24">
           <img id="user-panel-avatar-img" class="hidden" alt="" />
           <span id="user-panel-avatar-fallback"></span>
@@ -156,7 +159,7 @@
         <span id="user-panel-name" class="me-chip__name"></span>
       </button>
       <button id="btn-open-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações"
-              title="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
+              title="Configurações" data-i18n-attr="aria-label:pagina.configuracoes;title:pagina.configuracoes"><svg class="i"><use href="#i-settings" /></svg></button>
     </span>
     <span class="head__room-actions" hidden>
       <button id="btn-room-presence" class="btn btn--quiet btn--sm" type="button" aria-haspopup="dialog"
@@ -168,11 +171,11 @@
         <ul id="peer-list" class="presence__list"></ul>
         <section id="banned-section" class="presence__banned hidden"><div class="menu__sep" role="separator"></div><button class="menu__item banned-toggle" type="button" aria-expanded="false" aria-controls="banned-list"><svg class="i i--sm"><use href="#i-lock" /></svg>Banidos<svg class="i i--sm menu__hint"><use href="#i-chevron-down" /></svg></button><ul id="banned-list" class="presence__list" hidden></ul></section>
       </div>
-      <button id="btn-room-health" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Conexão"><span class="health" data-level="none"><span></span><span></span><span></span></span></button>
-      <button id="btn-room-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações"><svg class="i"><use href="#i-settings" /></svg></button>
+      <button id="btn-room-health" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Conexão" data-i18n-attr="aria-label:pagina.conexao"><span class="health" data-level="none"><span></span><span></span><span></span></span></button>
+      <button id="btn-room-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações" data-i18n-attr="aria-label:pagina.configuracoes"><svg class="i"><use href="#i-settings" /></svg></button>
       <span class="head__sep" role="presentation"></span>
-      <button id="btn-disconnect" class="btn btn--danger btn--sm" type="button" title="Sair da sala"><svg
-              class="i i--sm"><use href="#i-log-out" /></svg><span class="sair__cheio">Sair da sala</span><span
+      <button id="btn-disconnect" class="btn btn--danger btn--sm" type="button" title="Sair da sala" data-i18n-attr="title:pagina.sairSala"><svg
+              class="i i--sm"><use href="#i-log-out" /></svg><span class="sair__cheio" data-i18n="pagina.sairSala">Sair da sala</span><span
               class="sair__curto">Sair</span></button>
     </span>
     <div id="titlebar" class="winctl" hidden>
@@ -196,7 +199,7 @@
     <svg class="i i--sm tx-wire"><use href="#i-download" /></svg>
     <span class="band__text"><strong id="update-bar-title"></strong> <span id="update-bar-sub" class="tx-2"></span></span>
     <span id="update-bar-progress" class="band__meter hidden"><span id="update-bar-fill"></span></span>
-    <button id="btn-update-available" class="btn btn--secondary btn--sm" type="button">Atualizar agora</button>
+    <button id="btn-update-available" class="btn btn--secondary btn--sm" type="button" data-i18n="pagina.atualizarAgora">Atualizar agora</button>
   </section>
 </div>
 
@@ -206,34 +209,34 @@
     <section class="hello">
       <h1 id="home-greeting" class="hello__title" hidden></h1>
       <div id="home-whoami" class="whoami" hidden>
-        <button id="home-avatar" class="whoami__avatar" type="button" aria-label="Escolher foto">
+        <button id="home-avatar" class="whoami__avatar" type="button" aria-label="Escolher foto" data-i18n-attr="aria-label:pagina.escolherFoto">
           <span class="node" data-size="56"><svg class="i"><use href="#i-image" /></svg></span>
         </button>
         <input id="home-avatar-input" type="file" accept="image/*" hidden />
         <div class="field">
-          <label class="field__label" for="home-name">Seu nome</label>
-          <input id="home-name" class="input input--lg" placeholder="Como te chamam no grupo" spellcheck="false"
+          <label class="field__label" for="home-name" data-i18n="pagina.seuNome">Seu nome</label>
+          <input id="home-name" class="input input--lg" placeholder="Como te chamam no grupo" data-i18n-attr="placeholder:pagina.comoChamam" spellcheck="false"
                  maxlength="32" autocomplete="off" />
-          <p class="field__help">Aparece para quem está na sala. Dá para trocar depois.</p>
+          <p class="field__help" data-i18n="pagina.apareceSala">Aparece para quem está na sala. Dá para trocar depois.</p>
         </div>
       </div>
       <p class="hello__net">
         <span id="lobby-net-dot" class="health" data-level="none" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span id="lobby-net-kind">Procurando rede…</span>
+        <span id="lobby-net-kind" data-i18n="pagina.procurandoRede">Procurando rede…</span>
         <span id="lobby-net-addr" class="tx-data"></span>
         <button id="btn-copy-network" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Copiar endereço"
-                title="Copiar endereço" hidden><svg class="i i--sm"><use href="#i-copy" /></svg></button>
+                title="Copiar endereço" data-i18n-attr="aria-label:pagina.copiarEndereco;title:pagina.copiarEndereco" hidden><svg class="i i--sm"><use href="#i-copy" /></svg></button>
         <span id="home-network" class="tx-2"></span>
       </p>
     </section>
 
     <div class="lobby__actions">
       <button id="btn-create-room" class="btn btn--primary btn--lg" type="button">
-        <svg class="i"><use href="#i-plus" /></svg>Criar sala
+        <svg class="i"><use href="#i-plus" /></svg><span data-i18n="pagina.criarSala">Criar sala</span>
       </button>
       <form id="join-address-form" class="combo" novalidate>
-        <label class="sr-only" for="join-address">Endereço da sala</label>
-        <input id="join-address" class="input input--lg input--mono" placeholder="Entrar por endereço — 26.0.0.5:47800"
+        <label class="sr-only" for="join-address" data-i18n="pagina.enderecoSala">Endereço da sala</label>
+        <input id="join-address" class="input input--lg input--mono" placeholder="Entrar por endereço — 26.0.0.5:47800" data-i18n-attr="placeholder:pagina.entrarEndereco"
                spellcheck="false" autocomplete="off" aria-describedby="lobby-error" />
         <button class="btn btn--secondary btn--lg" type="submit">Entrar</button>
       </form>
@@ -245,9 +248,9 @@
 
     <section class="rooms" aria-labelledby="rooms-title">
       <div class="rooms__head">
-        <h2 id="rooms-title" class="tx-tag">Na sua rede<span id="rooms-count" class="rooms__count"></span></h2>
+        <h2 id="rooms-title" class="tx-tag"><span data-i18n="pagina.naSuaRede">Na sua rede</span><span id="rooms-count" class="rooms__count"></span></h2>
         <button id="btn-refresh-discovery" class="btn btn--quiet btn--sm" type="button">
-          <svg class="i i--sm"><use href="#i-refresh-cw" /></svg>Procurar de novo
+          <svg class="i i--sm"><use href="#i-refresh-cw" /></svg><span data-i18n="pagina.procurarNovo">Procurar de novo</span>
         </button>
       </div>
       <ul id="room-list-live" class="rooms__list"></ul>
@@ -255,7 +258,7 @@
 
     <footer class="lobby__foot">
       <span id="app-version" class="tx-data tx-3"></span>
-      <button id="btn-check-update" class="btn btn--quiet btn--sm" type="button">Procurar atualização</button>
+      <button id="btn-check-update" class="btn btn--quiet btn--sm" type="button" data-i18n="pagina.procurarAtualizacao">Procurar atualização</button>
     </footer>
   </div>
 </main>
@@ -266,28 +269,27 @@
 <!-- ============ DIALOGO: CRIAR SALA ============ -->
 <div id="dialog-create-room" class="dlg-layer hidden">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dialog-create-room-title">
-    <div class="dlg__head"><h2 id="dialog-create-room-title" class="dlg__title">Criar sala</h2></div>
+    <div class="dlg__head"><h2 id="dialog-create-room-title" class="dlg__title" data-i18n="pagina.criarSala">Criar sala</h2></div>
     <div class="dlg__body">
-      <!-- Opcional: sem nada digitado vale "Sala de <seu nome>", preenchido pelo JS
-           ao abrir. Mesmo teto do campo `room` no protocolo (40 caracteres). -->
+      <!-- Sem nada digitado, o JS preenche o nome da sala ao abrir. -->
       <div class="field">
-        <label class="field__label" for="in-room-name">Nome da sala</label>
+        <label class="field__label" for="in-room-name" data-i18n="pagina.nomeSala">Nome da sala</label>
         <input id="in-room-name" class="input" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
       </div>
       <!-- Tipo da sala: "Mesa" (padrao) ou "Só transmissões". Radiogroup: só o
            marcado entra na ordem de Tab; as setas trocam (ui.js). A ultima
            escolha fica lembrada, como o "Anunciar". -->
       <div class="field">
-        <span id="room-kind-label" class="field__label">Tipo de sala</span>
+        <span id="room-kind-label" class="field__label" data-i18n="pagina.tipoSala">Tipo de sala</span>
         <div id="room-kind" class="seg seg--tipo" role="radiogroup" aria-labelledby="room-kind-label">
           <button id="room-kind-mesa" class="seg__opt" type="button" role="radio" aria-checked="true" tabindex="0">
-            <span class="seg__title">Mesa</span>
-            <span class="seg__sub">Tudo acontece na Mesa: telas, câmeras, jogos, vídeos e notas</span>
+            <span class="seg__title" data-i18n="pagina.mesa">Mesa</span>
+            <span class="seg__sub" data-i18n="pagina.mesaDescricao">Tudo acontece na Mesa: telas, câmeras, jogos, vídeos e notas</span>
           </button>
           <button id="room-kind-transmissoes" class="seg__opt" type="button" role="radio" aria-checked="false"
                   tabindex="-1">
-            <span class="seg__title">Só transmissões</span>
-            <span class="seg__sub">Telas e câmeras no palco, sem a Mesa</span>
+            <span class="seg__title" data-i18n="pagina.soTransmissoes">Só transmissões</span>
+            <span class="seg__sub" data-i18n="pagina.transmissoesDescricao">Telas e câmeras no palco, sem a Mesa</span>
           </button>
         </div>
       </div>
@@ -295,25 +297,25 @@
            escolha fica lembrada. -->
       <div>
         <label class="opt">
-          <span class="opt__text"><span class="opt__title">Anunciar na minha rede</span>
-            <span class="opt__desc">Aparece sozinha para quem está na mesma rede.</span></span>
+          <span class="opt__text"><span class="opt__title" data-i18n="pagina.anunciarRede">Anunciar na minha rede</span>
+            <span class="opt__desc" data-i18n="pagina.anunciarRedeDescricao">Aparece sozinha para quem está na mesma rede.</span></span>
           <input id="chk-advertise-room" class="switch" type="checkbox" />
         </label>
         <label class="opt">
-          <span class="opt__text"><span class="opt__title">Proteger com PIN</span>
-            <span class="opt__desc">Quem entrar precisa digitar o PIN que você escolher.</span></span>
+          <span class="opt__text"><span class="opt__title" data-i18n="pagina.protegerPin">Proteger com PIN</span>
+            <span class="opt__desc" data-i18n="pagina.protegerPinDescricao">Quem entrar precisa digitar o PIN que você escolher.</span></span>
           <input id="chk-protect-room" class="switch" type="checkbox" />
         </label>
         <!-- PIN escolhido por quem cria: só aparece com o switch ligado. -->
         <div id="room-pin-field" class="field field--pin" hidden>
-          <label class="field__label" for="in-room-pin">PIN da sala</label>
+          <label class="field__label" for="in-room-pin" data-i18n="pagina.pinSala">PIN da sala</label>
           <div class="field__row">
             <input id="in-room-pin" class="input input--lg input--mono input--pin" type="text" inputmode="numeric"
                    autocomplete="off" maxlength="6" spellcheck="false" placeholder="000000"
                    aria-describedby="room-pin-help" />
-            <button id="btn-room-pin-random" class="btn btn--quiet btn--sm" type="button">Sortear</button>
+            <button id="btn-room-pin-random" class="btn btn--quiet btn--sm" type="button" data-i18n="pagina.sortear">Sortear</button>
           </div>
-          <p id="room-pin-help" class="field__help">6 dígitos. Você passa para quem vai entrar.</p>
+          <p id="room-pin-help" class="field__help" data-i18n="pagina.ajudaPin">6 dígitos. Você passa para quem vai entrar.</p>
         </div>
       </div>
       <p id="create-room-error" class="field__error" role="alert"></p>
@@ -331,17 +333,17 @@
 <!-- ============ DIALOGO: ENTRAR NUMA SALA (volta quando a sala pede PIN) ============ -->
 <div id="dialog-join-room" class="dlg-layer hidden">
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dialog-join-room-title">
-    <div class="dlg__head"><h2 id="dialog-join-room-title" class="dlg__title">Entrar na sala</h2></div>
+    <div class="dlg__head"><h2 id="dialog-join-room-title" class="dlg__title" data-i18n="pagina.entrarSala">Entrar na sala</h2></div>
     <div class="dlg__body">
       <div class="field">
-        <label class="field__label" for="in-server">Endereço da sala</label>
+        <label class="field__label" for="in-server" data-i18n="pagina.enderecoSala">Endereço da sala</label>
         <input id="in-server" class="input input--mono" type="text" placeholder="26.0.0.1:47800" spellcheck="false" />
       </div>
       <div id="join-pin-field" class="field hidden">
-        <label class="field__label" for="in-pin">PIN da sala</label>
+        <label class="field__label" for="in-pin" data-i18n="pagina.pinSala">PIN da sala</label>
         <input id="in-pin" class="input input--lg input--mono input--pin" type="text" inputmode="numeric" maxlength="16"
                pattern="[0-9]{6}" autocomplete="off" placeholder="000000" spellcheck="false" />
-        <p class="field__help">Peça o PIN a quem criou a sala.</p>
+        <p class="field__help" data-i18n="pagina.pecaPin">Peça o PIN a quem criou a sala.</p>
       </div>
       <p id="setup-error" class="field__error" role="alert"></p>
     </div>
@@ -361,26 +363,26 @@
     <section class="program" aria-labelledby="room-screen-title">
       <h1 id="room-screen-title" class="sr-only"></h1>
       <div id="grid" class="stage"></div>
-      <div id="chat-peek" class="peek" aria-label="Mensagens novas"></div>
+    <div id="chat-peek" class="peek" aria-label="Mensagens novas" data-i18n-attr="aria-label:pagina.mensagensNovas"></div>
     </section>
-    <aside id="chat-panel" class="conv" aria-label="Conversa">
+    <aside id="chat-panel" class="conv" aria-label="Conversa" data-i18n-attr="aria-label:pagina.conversa">
       <div class="conv__head">
-        <h2 class="conv__title">Conversa</h2>
+        <h2 class="conv__title" data-i18n="pagina.conversa">Conversa</h2>
         <button id="btn-conv-peek" class="btn btn--quiet btn--icon btn--sm" type="button"
                 aria-label="Espiar: esconder a coluna e mostrar só as mensagens novas"
-                title="Espiar: esconder a coluna e mostrar só as mensagens novas"><svg class="i i--sm"><use href="#i-panel-right" /></svg></button>
+                title="Espiar: esconder a coluna e mostrar só as mensagens novas" data-i18n-attr="aria-label:pagina.espiarConversa;title:pagina.espiarConversa"><svg class="i i--sm"><use href="#i-panel-right" /></svg></button>
         <button id="btn-conv-close" class="btn btn--quiet btn--icon btn--sm" type="button"
-                aria-label="Fechar conversa" title="Fechar conversa"><svg class="i i--sm"><use href="#i-x" /></svg></button>
+                aria-label="Fechar conversa" title="Fechar conversa" data-i18n-attr="aria-label:pagina.fecharConversa;title:pagina.fecharConversa"><svg class="i i--sm"><use href="#i-x" /></svg></button>
       </div>
       <div class="conv__list">
         <div id="chat-messages" class="conv__msgs" role="log" aria-live="polite" aria-label="Mensagens"
-             data-vazio="Nenhuma mensagem ainda. Diga oi para a sala."></div>
+             data-vazio="Nenhuma mensagem ainda. Diga oi para a sala." data-i18n-attr="aria-label:pagina.mensagens;data-vazio:pagina.chatVazio"></div>
         <button id="chat-jump-new" class="btn btn--secondary btn--sm conv__jump hidden" type="button">
-          <svg class="i i--sm"><use href="#i-chevron-down" /></svg>Novas mensagens
+          <svg class="i i--sm"><use href="#i-chevron-down" /></svg><span data-i18n="pagina.mensagensNovas">Novas mensagens</span>
         </button>
       </div>
       <p id="chat-offline-bar" class="conv__offline hidden" role="status">
-        Sem conexão com a sala — as mensagens voltam quando reconectar.
+        <span data-i18n="pagina.chatOffline">Sem conexão com a sala — as mensagens voltam quando reconectar.</span>
       </p>
       <form id="chat-compose" class="compose">
         <div id="chat-attachment" class="compose__attach hidden">
@@ -389,19 +391,19 @@
           <button id="chat-attachment-remove" class="btn btn--quiet btn--icon btn--sm" type="button"
                   aria-label="Tirar a imagem"><svg class="i i--sm"><use href="#i-x" /></svg></button>
         </div>
-        <label class="sr-only" for="chat-input">Mensagem para a sala</label>
+        <label class="sr-only" for="chat-input" data-i18n="pagina.mensagemSala">Mensagem para a sala</label>
         <div class="compose__box">
-          <textarea id="chat-input" class="compose__input" rows="1" placeholder="Mensagem para a sala" maxlength="500"
+          <textarea id="chat-input" class="compose__input" rows="1" placeholder="Mensagem para a sala" data-i18n-attr="placeholder:pagina.mensagemSala" maxlength="500"
                     aria-describedby="chat-input-hint"></textarea>
           <button id="btn-chat-emoji" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Emoji"
                   title="Emoji"><svg class="i i--sm"><use href="#i-smile" /></svg></button>
           <button id="btn-chat-attach" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Enviar imagem"
-                  title="Enviar imagem"><svg class="i i--sm"><use href="#i-image" /></svg></button>
+                  title="Enviar imagem" data-i18n-attr="aria-label:pagina.enviarImagem;title:pagina.enviarImagem"><svg class="i i--sm"><use href="#i-image" /></svg></button>
           <button id="btn-chat-send" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Enviar mensagem"
-                  title="Enviar" disabled><svg class="i i--sm"><use href="#i-send-horizontal" /></svg></button>
+                  title="Enviar" data-i18n-attr="aria-label:pagina.enviarMensagem;title:pagina.enviarMensagem" disabled><svg class="i i--sm"><use href="#i-send-horizontal" /></svg></button>
         </div>
         <div class="compose__meta">
-          <span id="chat-input-hint">Enter envia · Shift+Enter quebra a linha</span>
+          <span id="chat-input-hint" data-i18n="pagina.atalhoChat">Enter envia · Shift+Enter quebra a linha</span>
           <span id="chat-input-count" class="tx-data hidden"></span>
         </div>
         <input id="chat-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="sr-only"
@@ -410,40 +412,40 @@
     </aside>
   </div>
 
-  <footer class="bus" aria-label="Fontes e controles da sala">
-    <div id="bus-sources" class="bus__sources" role="listbox" aria-orientation="horizontal" aria-label="Fontes">
+  <footer class="bus" aria-label="Fontes e controles da sala" data-i18n-attr="aria-label:pagina.fontesControles">
+    <div id="bus-sources" class="bus__sources" role="listbox" aria-orientation="horizontal" aria-label="Fontes" data-i18n-attr="aria-label:pagina.fontes">
       <div id="bus-live" class="bus__live" role="presentation"></div>
     </div>
     <!-- Quem esta na Mesa (ir ate o ponteiro). Sala Mesa: todo mundo esta nela, e nao ha item "Mesa" nas
          fontes -- o tipo de sala e exclusivo, nao se alterna entre Mesa e palco. -->
-    <span id="stage-mesa-people" class="cluster__nodes" role="group" aria-label="Quem está na Mesa" hidden></span>
+    <span id="stage-mesa-people" class="cluster__nodes" role="group" aria-label="Quem está na Mesa" data-i18n-attr="aria-label:pagina.quemMesa" hidden></span>
     <span class="bus__sep"></span>
     <div class="bus__acts">
       <div id="me-source" class="me">
         <div class="me__live">
           <span id="me-node" class="node" data-size="32" data-state="live"></span>
           <span class="src__text">
-            <span class="src__name">Você</span>
-            <span id="me-source-sub" class="src__sub">ao vivo</span>
+            <span class="src__name" data-i18n="pagina.voce">Você</span>
+            <span id="me-source-sub" class="src__sub" data-i18n="pagina.aoVivo">ao vivo</span>
           </span>
           <div id="sound-meter" class="me__meter hidden" aria-hidden="true"><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i><i class="sound-meter-bar"></i></div>
         </div>
         <span class="me__ctl">
           <button id="btn-pause-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Pausar"
-                  aria-pressed="false"><svg class="i i--sm icon-off"><use href="#i-pause" /></svg><svg
-                  class="i i--sm icon-on hidden"><use href="#i-play" /></svg><span class="btn-label sr-only">Pausar</span></button>
+                  data-i18n-attr="aria-label:pagina.pausar" aria-pressed="false"><svg class="i i--sm icon-off"><use href="#i-pause" /></svg><svg
+                  class="i i--sm icon-on hidden"><use href="#i-play" /></svg><span class="btn-label sr-only" data-i18n="pagina.pausar">Pausar</span></button>
           <button id="btn-swap-share" class="btn btn--quiet btn--icon btn--sm hidden" type="button" aria-label="Trocar fonte"
-                  title="Trocar fonte"><svg class="i i--sm"><use href="#i-arrow-left-right" /></svg></button>
+                  title="Trocar fonte" data-i18n-attr="aria-label:pagina.trocarFonte;title:pagina.trocarFonte"><svg class="i i--sm"><use href="#i-arrow-left-right" /></svg></button>
         </span>
         <button id="btn-toggle-share" class="btn btn--primary me__share" type="button" aria-label="Transmitir tela"
-                aria-pressed="false"><svg class="i icon-off"><use href="#i-plus" /></svg><svg
-                class="i i--sm icon-on hidden"><use href="#i-square" /></svg><span class="btn-label">Transmitir tela</span></button>
+                data-i18n-attr="aria-label:pagina.transmitirTela" aria-pressed="false"><svg class="i icon-off"><use href="#i-plus" /></svg><svg
+                class="i i--sm icon-on hidden"><use href="#i-square" /></svg><span class="btn-label" data-i18n="pagina.transmitirTela">Transmitir tela</span></button>
       </div>
-      <button id="btn-toggle-camera" class="btn btn--quiet" type="button" aria-label="Câmera" aria-pressed="false"><svg
+      <button id="btn-toggle-camera" class="btn btn--quiet" type="button" aria-label="Câmera" data-i18n-attr="aria-label:pagina.camera" aria-pressed="false"><svg
               class="i icon-off"><use href="#i-video" /></svg><svg class="i icon-on hidden"><use href="#i-video" /></svg><span
-              class="spinner btn-spinner hidden" aria-hidden="true"></span><span class="btn-label">Câmera</span></button>
+              class="spinner btn-spinner hidden" aria-hidden="true"></span><span class="btn-label" data-i18n="pagina.camera">Câmera</span></button>
       <button id="btn-mesa-add" class="btn btn--quiet hidden" type="button" aria-haspopup="menu" data-mesa-add><svg
-              class="i"><use href="#i-plus" /></svg><span class="btn__label">Pôr na Mesa</span></button>
+              class="i"><use href="#i-plus" /></svg><span class="btn__label" data-i18n="pagina.porMesa">Pôr na Mesa</span></button>
     </div>
     <span class="bus__sep"></span>
     <div class="bus__end">
@@ -458,21 +460,21 @@
 <div id="member-menu" class="pop hidden" role="menu"></div>
 
 <!-- ============ PAINEL DE EMOJI (ancorado no compose por ui.js) ============ -->
-<div id="emoji-panel" class="pop emoji hidden" role="dialog" aria-label="Emoji">
+<div id="emoji-panel" class="pop emoji hidden" role="dialog" aria-label="Emoji" data-i18n-attr="aria-label:pagina.procurarEmoji">
   <div class="emoji__search">
     <svg class="i i--sm" aria-hidden="true"><use href="#i-search" /></svg>
-    <label for="emoji-search-input" class="sr-only">Procurar emoji</label>
-    <input id="emoji-search-input" class="input" type="text" placeholder="Procurar emoji" spellcheck="false" autocomplete="off" />
+    <label for="emoji-search-input" class="sr-only" data-i18n="pagina.procurarEmoji">Procurar emoji</label>
+    <input id="emoji-search-input" class="input" type="text" placeholder="Procurar emoji" data-i18n-attr="placeholder:pagina.procurarEmoji" spellcheck="false" autocomplete="off" />
   </div>
-  <div id="emoji-tabs" class="emoji__tabs" role="tablist" aria-label="Categorias"></div>
+  <div id="emoji-tabs" class="emoji__tabs" role="tablist" aria-label="Categorias" data-i18n-attr="aria-label:pagina.categorias"></div>
   <div id="emoji-list" class="emoji__list"></div>
 </div>
 
 <!-- ============ IMAGEM DO CHAT AMPLIADA ============ -->
-<div id="image-lightbox" class="dlg-layer lightbox hidden" role="dialog" aria-modal="true" aria-label="Imagem ampliada">
+<div id="image-lightbox" class="dlg-layer lightbox hidden" role="dialog" aria-modal="true" aria-label="Imagem ampliada" data-i18n-attr="aria-label:pagina.imagemAmpliada">
   <img id="image-lightbox-img" alt="" />
   <button id="image-lightbox-close" class="btn btn--secondary btn--icon lightbox__close" type="button" title="Fechar"
-          aria-label="Fechar"><svg class="i"><use href="#i-x" /></svg></button>
+          aria-label="Fechar" data-i18n-attr="title:pagina.fechar;aria-label:pagina.fechar"><svg class="i"><use href="#i-x" /></svg></button>
 </div>
 
 <!-- ============ DIALOGO: CONFIRMACAO ============ -->
@@ -484,8 +486,8 @@
     <div class="dlg__head"><h2 id="dialog-confirm-title" class="dlg__title"></h2></div>
     <div class="dlg__body"><p id="dialog-confirm-text" class="dlg__text"></p></div>
     <div class="dlg__foot">
-      <button id="btn-confirm-cancel" class="btn btn--quiet" type="button">Cancelar</button>
-      <button id="btn-confirm-ok" class="btn btn--danger-solid" type="button">Confirmar</button>
+      <button id="btn-confirm-cancel" class="btn btn--quiet" type="button" data-i18n="pagina.cancelar">Cancelar</button>
+      <button id="btn-confirm-ok" class="btn btn--danger-solid" type="button" data-i18n="pagina.confirmar">Confirmar</button>
     </div>
   </div>
 </div>
@@ -496,13 +498,13 @@
     <div class="dlg__head"><h2 id="dialog-text-title" class="dlg__title"></h2></div>
     <div class="dlg__body">
       <div class="field">
-        <label class="field__label" for="dialog-text-input">Nome</label>
+        <label class="field__label" for="dialog-text-input" data-i18n="pagina.nome">Nome</label>
         <input id="dialog-text-input" class="input" type="text" maxlength="48" autocomplete="off" />
       </div>
     </div>
     <div class="dlg__foot">
-      <button id="btn-text-cancel" class="btn btn--quiet" type="button">Cancelar</button>
-      <button id="btn-text-ok" class="btn btn--primary" type="button">Salvar</button>
+      <button id="btn-text-cancel" class="btn btn--quiet" type="button" data-i18n="pagina.cancelar">Cancelar</button>
+      <button id="btn-text-ok" class="btn btn--primary" type="button" data-i18n="pagina.salvar">Salvar</button>
     </div>
   </div>
 </div>
@@ -515,23 +517,23 @@
          aria-labelledby="settings-section-title">
   <header class="sheet__head">
     <div class="settings__titles">
-      <span class="tx-tag">Configurações</span>
-      <h2 id="settings-section-title" class="sheet__title">Perfil</h2>
+      <span class="tx-tag" data-i18n="pagina.configuracoes">Configurações</span>
+      <h2 id="settings-section-title" class="sheet__title" data-i18n="pagina.perfil">Perfil</h2>
     </div>
-    <span id="settings-live-tally" class="tag tag--live hidden">Ao vivo</span>
+    <span id="settings-live-tally" class="tag tag--live hidden" data-i18n="pagina.aoVivo">Ao vivo</span>
     <button id="btn-close-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Fechar configurações"
-            title="Fechar (Esc)"><svg class="i"><use href="#i-x" /></svg></button>
+            data-i18n-attr="aria-label:pagina.fecharConfiguracoes" title="Fechar (Esc)"><svg class="i"><use href="#i-x" /></svg></button>
   </header>
-  <nav class="settings__nav" aria-label="Seções das configurações" role="tablist">
+  <nav class="settings__nav" aria-label="Seções das configurações" data-i18n-attr="aria-label:pagina.secoesConfiguracoes" role="tablist">
     <div class="seg">
       <button id="settings-cat-profile" class="seg__opt settings-cat active" data-cat="profile" type="button" role="tab"
-              aria-selected="true" aria-controls="settings-profile" tabindex="0">Perfil</button>
+              aria-selected="true" aria-controls="settings-profile" tabindex="0" data-i18n="pagina.perfil">Perfil</button>
       <button id="settings-cat-appearance" class="seg__opt settings-cat" data-cat="appearance" type="button" role="tab"
-              aria-selected="false" aria-controls="settings-appearance" tabindex="-1">Aparência</button>
+              aria-selected="false" aria-controls="settings-appearance" tabindex="-1" data-i18n="pagina.aparencia">Aparência</button>
       <button id="settings-cat-voice" class="seg__opt settings-cat" data-cat="voice" type="button" role="tab"
-              aria-selected="false" aria-controls="settings-voice" tabindex="-1">Câmera e sons</button>
+              aria-selected="false" aria-controls="settings-voice" tabindex="-1" data-i18n="pagina.cameraSons">Câmera e sons</button>
       <button id="settings-cat-stats" class="seg__opt settings-cat" data-cat="stats" type="button" role="tab"
-              aria-selected="false" aria-controls="settings-stats" tabindex="-1">Diagnóstico</button>
+              aria-selected="false" aria-controls="settings-stats" tabindex="-1" data-i18n="pagina.diagnostico">Diagnóstico</button>
     </div>
   </nav>
   <div class="sheet__body settings-content">
@@ -547,46 +549,46 @@
 <div id="picker" class="dlg-layer hidden">
   <div class="dlg dlg--wide picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">
     <div class="dlg__head picker__head">
-      <h2 id="picker-title" class="dlg__title">Transmitir</h2>
-      <div id="picker-tabs" class="seg" role="tablist" aria-label="Tipo de fonte">
+      <h2 id="picker-title" class="dlg__title" data-i18n="pagina.transmitirTela">Transmitir</h2>
+      <div id="picker-tabs" class="seg" role="tablist" aria-label="Tipo de fonte" data-i18n-attr="aria-label:pagina.tipoFonte">
         <button class="seg__opt picker-tab active" data-tab="screen" type="button" role="tab" aria-selected="true">
-          Telas <span id="picker-count-screen" class="tx-data"></span>
+          <span data-i18n="pagina.telas">Telas</span> <span id="picker-count-screen" class="tx-data"></span>
         </button>
         <button class="seg__opt picker-tab" data-tab="window" type="button" role="tab" aria-selected="false">
-          Janelas <span id="picker-count-window" class="tx-data"></span>
+          <span data-i18n="pagina.janelas">Janelas</span> <span id="picker-count-window" class="tx-data"></span>
         </button>
       </div>
       <button id="picker-refresh" class="btn btn--quiet btn--icon btn--sm" type="button" title="Procurar de novo"
-              aria-label="Procurar fontes de novo"><svg class="i i--sm"><use href="#i-refresh-cw" /></svg></button>
+              aria-label="Procurar fontes de novo" data-i18n-attr="title:pagina.procurarNovo;aria-label:pagina.procurarFontesNovo"><svg class="i i--sm"><use href="#i-refresh-cw" /></svg></button>
     </div>
     <p id="picker-window-hint" class="picker__hint hidden">
-      Para jogos, prefira a tela inteira: capturar só a janela pesa mais e não funciona em tela cheia exclusiva.
+      <span data-i18n="pagina.dicaJogos">Para jogos, prefira a tela inteira: capturar só a janela pesa mais e não funciona em tela cheia exclusiva.</span>
     </p>
-    <div id="picker-grid" class="picker__grid" role="listbox" aria-label="Fontes"></div>
+    <div id="picker-grid" class="picker__grid" role="listbox" aria-label="Fontes" data-i18n-attr="aria-label:pagina.fontes"></div>
     <div class="picker__foot">
       <div class="picker__opts">
         <div class="picker__opt">
-          <span id="picker-quality-title" class="tx-tag">Qualidade</span>
+          <span id="picker-quality-title" class="tx-tag" data-i18n="pagina.qualidade">Qualidade</span>
           <div id="picker-quality" class="picker__quality"></div>
           <small id="picker-quality-bandwidth" class="tx-data tx-2" aria-live="polite"></small>
         </div>
         <div id="audio-mode" class="picker__opt">
-          <span class="tx-tag">Som</span>
-          <label class="picker__switch"><input type="checkbox" id="share-sound" class="switch" checked />Som do PC</label>
+          <span class="tx-tag" data-i18n="pagina.som">Som</span>
+          <label class="picker__switch"><input type="checkbox" id="share-sound" class="switch" checked /><span data-i18n="pagina.somPc">Som do PC</span></label>
           <label class="picker__switch hidden" id="share-discord-row"><input type="checkbox" id="share-discord"
                  class="switch" />Incluir o Discord</label>
         </div>
         <div class="picker__opt picker__permissions">
-          <span class="tx-tag">Na sua tela</span>
-          <label class="picker__switch" title="Todo mundo pode desenhar e escrever por cima, cada um com sua cor.">
-            <input type="checkbox" id="allow-annotations" class="switch" />Deixar a sala rabiscar</label>
-          <label class="picker__switch" title="As reações aparecem por cima da sua tela.">
-            <input type="checkbox" id="allow-reactions" class="switch" checked />Deixar a sala reagir</label>
-          <small class="tx-meta">As reações aparecem por cima da sua tela.</small>
+          <span class="tx-tag" data-i18n="pagina.naSuaTela">Na sua tela</span>
+          <label class="picker__switch" title="Todo mundo pode desenhar e escrever por cima, cada um com sua cor." data-i18n-attr="title:pagina.dicaRabisco">
+            <input type="checkbox" id="allow-annotations" class="switch" /><span data-i18n="pagina.deixarRabisco">Deixar a sala rabiscar</span></label>
+          <label class="picker__switch" title="As reações aparecem por cima da sua tela." data-i18n-attr="title:pagina.dicaReacao">
+            <input type="checkbox" id="allow-reactions" class="switch" checked /><span data-i18n="pagina.deixarReacao">Deixar a sala reagir</span></label>
+          <small class="tx-meta" data-i18n="pagina.dicaReacao">As reações aparecem por cima da sua tela.</small>
         </div>
       </div>
       <div class="picker__actions">
-        <span id="picker-go-live-hint" class="tx-meta">Escolha uma tela ou janela</span>
+        <span id="picker-go-live-hint" class="tx-meta" data-i18n="pagina.escolherFonte">Escolha uma tela ou janela</span>
         <button id="picker-cancel" class="btn btn--quiet" type="button">Cancelar</button>
         <button id="btn-go-live" class="btn btn--primary btn--lg" type="button" disabled
                 aria-describedby="picker-go-live-hint">Transmitir</button>
@@ -597,15 +599,15 @@
 
 <!-- ============ PAINEL DE COMANDO (Ctrl+K) ============ -->
 <div id="command-palette" class="dlg-layer command hidden">
-  <div class="dlg command__box" role="dialog" aria-modal="true" aria-label="Painel de comando">
+  <div class="dlg command__box" role="dialog" aria-modal="true" aria-label="Painel de comando" data-i18n-attr="aria-label:pagina.painelComando">
     <div class="command__search">
       <svg class="i" aria-hidden="true"><use href="#i-search" /></svg>
       <input id="command-input" class="command__input" type="text" role="combobox" aria-expanded="true"
-             aria-controls="command-list" aria-autocomplete="list" placeholder="O que você quer fazer?"
+             aria-controls="command-list" aria-autocomplete="list" placeholder="O que você quer fazer?" data-i18n-attr="placeholder:pagina.oQueFazer"
              spellcheck="false" autocomplete="off" />
       <kbd>Esc</kbd>
     </div>
-    <ul id="command-list" class="command__list" role="listbox" aria-label="Ações"></ul>
+    <ul id="command-list" class="command__list" role="listbox" aria-label="Ações" data-i18n-attr="aria-label:pagina.acoes"></ul>
   </div>
 </div>
 

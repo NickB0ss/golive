@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'none'; media-src blob: mediastream:; style-src 'unsafe-inline'; font-src 'self'; script-src 'self'" />
-<title>Espiar</title>
+<title data-i18n="pagina.espiar">Espiar</title>
 <style>
   @font-face {
     font-family: 'Atkinson Hyperlegible Next';
@@ -114,9 +114,10 @@
 <video id="video" autoplay playsinline muted></video>
 <header class="tile-bar">
   <span class="spy-node" aria-hidden="true"></span>
-  <span id="tile-name">Transmissão</span>
-  <button id="close" type="button" aria-label="Fechar Espiar" title="Fechar Espiar">
-    ×
+  <span id="tile-name" data-i18n="pagina.transmissao">Transmissão</span>
+  <button id="close" type="button" aria-label="Fechar Espiar" title="Fechar Espiar"
+          data-i18n-attr="aria-label:pagina.fecharEspiar;title:pagina.fecharEspiar">
+    <span data-i18n="pagina.simboloFechar">×</span>
   </button>
 </header>
 <script src="i18n/pt-BR.js"></script>
