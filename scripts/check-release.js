@@ -100,14 +100,6 @@ function checkRelease({ version, release, latestYmlText }) {
 
 // --- CLI -------------------------------------------------------------------
 
-/*
- * Os instaladores moram no repositorio PUBLICO golive-releases desde
- * 2026-10-02: o golive (codigo) ficou privado, e o electron-updater e o site
- * leem os releases sem token. GOLIVE_RELEASES_REPO sobrescreve, para
- * conferir o rascunho espelhado no golive durante a release ponte.
- */
-const RELEASES_REPO = process.env.GOLIVE_RELEASES_REPO || 'NickB0ss/golive-releases';
-
 function sh(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
 }
@@ -119,7 +111,7 @@ function main() {
 
   let release;
   try {
-    release = JSON.parse(sh('gh', ['release', 'view', tag, '--repo', RELEASES_REPO, '--json', 'tagName,isDraft,isPrerelease,assets']));
+    release = JSON.parse(sh('gh', ['release', 'view', tag, '--json', 'tagName,isDraft,isPrerelease,assets']));
   } catch {
     console.error(`x nao achei o release ${tag} no GitHub (o \`gh\` esta autenticado?)`);
     process.exit(1);
@@ -129,7 +121,7 @@ function main() {
   if ((release.assets || []).some((a) => a.name === 'latest.yml')) {
     try {
       latestYmlText = sh('gh', [
-        'release', 'download', tag, '--repo', RELEASES_REPO, '--pattern', 'latest.yml', '--output', '-',
+        'release', 'download', tag, '--pattern', 'latest.yml', '--output', '-',
       ]);
     } catch {
       latestYmlText = null;

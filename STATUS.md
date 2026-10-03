@@ -102,13 +102,14 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Painel de estatísticas mostra os dois lados: o que sai e o que está
   **sendo recebido**.
 - Atualização via GitHub Releases, disparada pelo usuário (não baixa sozinha).
-  **Desde 2026-10-02 os releases moram no repositório público
-  `NickB0ss/golive-releases`** (só binários): o `golive` vai ficar privado.
-  O `release.yml` sobe lá com o secret `RELEASES_TOKEN` e, enquanto
-  `ESPELHO_NO_GOLIVE` for `'true'`, espelha o rascunho aqui — a release ponte
-  que move quem está em versão antiga. Publicar:
-  `gh release edit vX --repo NickB0ss/golive-releases --draft=false --latest`
-  (e o espelho aqui), depois rodar o workflow `release` na mão com a tag.
+  Os releases moram aqui no `golive`. Exceção única: a 0.23.0 saiu com o
+  updater apontando para `NickB0ss/golive-releases` (plano de deixar o
+  código privado, desfeito em 2026-10-03). Quem está nela só enxerga a
+  próxima versão se ela também estiver lá, então, **uma vez**, depois de
+  publicar a próxima release aqui, copie-a à mão:
+  `gh release download vX -R NickB0ss/golive -D ponte` e
+  `gh release create vX -R NickB0ss/golive-releases --title X --notes "Ponte de volta para o golive." ponte/*`.
+  Daí em diante o `golive-releases` só fica arquivado.
 - Log em arquivo por sessão (Configurações > Estatísticas > "Abrir pasta de
   logs").
 

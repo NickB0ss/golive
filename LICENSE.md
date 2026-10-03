@@ -16,9 +16,11 @@ prévia e expressa, por escrito, do Autor.
 Nenhuma licença ou direito é concedido a qualquer pessoa, implícita ou
 explicitamente, por este documento ou pelo mero acesso a este repositório.
 
-O uso do aplicativo "golive" distribuído em sua forma compilada/executável
-é regido por termo de licença de uso específico (ver EULA.md), que não
-transfere nenhum direito sobre o código-fonte aqui contido.
+O aplicativo "golive" em sua forma compilada/executável é gratuito para uso
+pessoal quando obtido pelos canais oficiais (os releases deste repositório e
+o site do projeto). Doações são voluntárias e não condicionam o uso do
+aplicativo. Esse uso não transfere nenhum direito sobre o código-fonte aqui
+contido.
 
 O SOFTWARE É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA", SEM GARANTIAS DE
 QUALQUER NATUREZA, EXPRESSAS OU IMPLÍCITAS. EM NENHUMA HIPÓTESE O AUTOR
