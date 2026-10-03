@@ -9,6 +9,7 @@
  * (`object-fit: contain`), inclusive na tela cheia da janela, que so faz o
  * `el` crescer. Se a imagem saiu do historico, a janela diz isso -- e volta
  * sozinha a mostrar se o historico mudar (nova entrada na sala com ela).
+ * Sem imagem, o vazio (`C.vazio`) ensina o caminho: "Pôr na Mesa" no chat.
  */
 
 (function (root) {
@@ -16,12 +17,23 @@
 
   // ---------- Puras ----------
 
-  /** O que dizer no lugar da imagem, ou null quando ha imagem. */
-  function textoFalta(state, img) {
-    if (!state || !state.msgId) return 'Nenhuma imagem. Use “Pôr na Mesa” numa imagem do chat ou na Galeria.';
-    if (!img) return 'Esta imagem saiu do histórico do chat, que guarda só as 8 mais recentes.';
+  /** O vazio que ocupa o lugar da imagem (titulo e uma frase), ou null quando ha imagem. */
+  function faltaDaImagem(state, img) {
+    if (!state || !state.msgId) {
+      return { titulo: 'Nenhuma imagem', texto: 'Use “Pôr na Mesa” numa imagem do chat ou na Galeria.' };
+    }
+    if (!img) {
+      return {
+        titulo: 'Imagem fora do chat',
+        texto: 'Esta imagem saiu do histórico do chat, que guarda só as 8 mais recentes.',
+      };
+    }
     return null;
   }
+
+  // O comum.js ainda nao tem o quadro de imagem.
+  const TRACO_IMAGEM = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/>'
+    + '<path d="M21 16l-5-5-8 8"/>';
 
   /** "Enviada por Bia" (ou vazio sem nome). */
   function legenda(img) {
@@ -38,13 +50,21 @@
   }
 
   function mount(el) {
+    const C = root.GoLive.mesaJanelasComum;
     const store = () => root.GoLive.chatImagens || null;
     const raiz = h('div', 'mj mj-imagem');
+    raiz.dataset.superficie = C.SUPERFICIES[TYPE];
     const quadro = h('div', 'mj-img-quadro');
     const foto = h('img', 'mj-img-foto');
     foto.draggable = false;
     foto.decoding = 'async';
-    const falta = h('p', 'mj-img-falta');
+    const semImagem = faltaDaImagem(null, null);
+    const falta = C.vazio({ icone: 'imagem', titulo: semImagem.titulo, texto: semImagem.texto });
+    falta.classList.add('mj-img-falta');
+    const faltaGlifo = falta.querySelector('.mj-vazio-glifo .mj-i');
+    if (!faltaGlifo.innerHTML) faltaGlifo.innerHTML = TRACO_IMAGEM;
+    const faltaTitulo = falta.querySelector('.mj-vazio-titulo');
+    const faltaTexto = falta.querySelector('.mj-vazio-texto');
     const rodape = h('p', 'mj-img-legenda');
     quadro.append(foto, falta);
     raiz.append(quadro, rodape);
@@ -54,9 +74,10 @@
 
     function render() {
       const img = state && state.msgId ? store()?.get(state.msgId) || null : null;
-      const msg = textoFalta(state, img);
+      const msg = faltaDaImagem(state, img);
       falta.hidden = !msg;
-      falta.textContent = msg || '';
+      faltaTitulo.textContent = msg ? msg.titulo : '';
+      faltaTexto.textContent = msg ? msg.texto : '';
       foto.hidden = Boolean(msg);
       if (msg) {
         if (foto.getAttribute('src')) foto.removeAttribute('src');
@@ -84,11 +105,57 @@
     };
   }
 
-  const api = { type: TYPE, mount, textoFalta, legenda };
+  // ---------- Registro ----------
+  // Igual aos outros conteudos: a Vista carrega so `mesa-janelas/imagem.js`;
+  // o apoio (comum.js) vem daqui, uma vez, da mesma pasta.
+  function registrar(api, arquivos) {
+    const G = (root.GoLive = root.GoLive || {});
+    G.mesaJanelas = G.mesaJanelas || {};
+    const GLOBAIS = { 'comum.js': 'mesaJanelasComum', 'tabuleiro.js': 'mesaJanelasTabuleiro' };
+    const doc = root.document;
+    const falta = () => arquivos.filter((a) => !G[GLOBAIS[a]]);
+    const esperas = [];
+    if (doc && falta().length) {
+      const base = (doc.currentScript && doc.currentScript.src) || doc.baseURI;
+      G.mesaJanelasApoio = G.mesaJanelasApoio || {};
+      for (const a of falta()) {
+        if (G.mesaJanelasApoio[a]) continue;
+        const s = doc.createElement('script');
+        s.src = new root.URL(a, base).href;
+        s.async = false;
+        G.mesaJanelasApoio[a] = s;
+        doc.head.appendChild(s);
+      }
+      for (const a of falta()) {
+        esperas.push(new Promise((ok) => {
+          G.mesaJanelasApoio[a].addEventListener('load', ok, { once: true });
+        }));
+      }
+    }
+    const montar = api.mount;
+    const pronto = esperas.length ? Promise.all(esperas) : null;
+    api.mount = function (el, vistaApi) {
+      if (!falta().length) return montar(el, vistaApi);
+      let inst = null;
+      let ultimo = null;
+      let morto = false;
+      pronto.then(() => {
+        if (morto) return;
+        inst = montar(el, vistaApi);
+        if (ultimo) inst.update(ultimo[0], ultimo[1]);
+      }, () => {});
+      return {
+        update(s, meta) { if (inst) inst.update(s, meta); else ultimo = [s, meta]; },
+        destroy() { morto = true; if (inst) inst.destroy(); },
+        focus() { if (inst && inst.focus) inst.focus(); },
+      };
+    };
+    G.mesaJanelas[api.type] = api;
+  }
 
-  root.GoLive = root.GoLive || {};
-  root.GoLive.mesaJanelas = root.GoLive.mesaJanelas || {};
-  root.GoLive.mesaJanelas[TYPE] = api;
+  const api = { type: TYPE, mount, faltaDaImagem, legenda };
+
+  registrar(api, ['comum.js']);
 
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
