@@ -42,7 +42,8 @@ const DIR = __dirname;
 // sinonimos proibidos; os demais conceitos tem um so termo permitido. Ver
 // docs/glossario.md pro porque de "líder da sala" ter vencido "dono da sala"
 // na contagem.
-const PROHIBITED = [
+const PROIBIDOS = {
+  'pt-BR': [
   [/\bhost\b/i, 'use "líder da sala" (nunca "host")'],
   [/\banfitri[ãa]o\b/i, 'use "líder da sala" (nunca "anfitrião")'],
   [/\bdono\b/i, 'use "líder da sala" (nunca "dono" -- ver docs/glossario.md)'],
@@ -65,7 +66,48 @@ const PROHIBITED = [
   [/\bremover da mesa\b/i, 'use "Tirar da mesa" (nunca "remover")'],
   [/\bmaximizar\b/i, 'use "Tela cheia" (nunca "maximizar")'],
   [/\bviewport\b/i, 'use "Ver tudo" / "Ir até" (nunca "viewport")'],
-];
+  ],
+  en: [
+    [/\bhost\b/i, 'use "room leader" (never "host")'],
+    [/\bowners?\b/i, 'use "room leader" (never "owner")'],
+    [/\bbroadcast\b/i, 'use "stream" / "go live" (never "broadcast")'],
+    [/\bviewers?\b/i, 'use "people watching" (never "viewer")'],
+    [/\bspectators?\b/i, 'use "people watching" (never "spectator")'],
+    [/\bmembers?\b/i, 'use "person" / "people" (never "member")'],
+    [/\bparticipants?\b/i, 'use "person" / "people" (never "participant")'],
+    [/\bpeers?\b/i, 'use "person" / "people" (never "peer")'],
+    [/\bannotations?\b/i, 'use "scribble" (never "annotation")'],
+    [/\bdisconnect\b/i, 'use "Leave room" (never "disconnect")'],
+    [/\bwidgets?\b/i, 'use "window" (never "widget")'],
+    [/\bcards?\b/i, 'use "window" (never "card")'],
+    [/\binsert\b/i, 'use "Add window" (never "insert")'],
+    [/\bmode\b/i, 'use "view" (never "mode")'],
+    [/\blayout\b/i, 'use "view" (never "layout")'],
+    [/\bcanvas\b/i, 'use "Table" (never "canvas")'],
+    [/\bmaximi[sz]e\b/i, 'use "Full screen" (never "maximize")'],
+    [/\bviewport\b/i, 'use "See all" / "Go to" (never "viewport")'],
+    [/\bpreferences?\b/i, 'use "Settings" (never "Preferences")'],
+  ],
+  es: [
+    [/\banfitri[oó]n(?:es)?\b/i, 'usa "lider de la sala" (nunca "anfitrion")'],
+    [/\bdueñ[oa]s?\b/i, 'usa "lider de la sala" (nunca "dueño")'],
+    [/\bhost\b/i, 'usa "lider de la sala" (nunca "host")'],
+    [/\bemisi[oó]n\b/i, 'usa "transmision" (nunca "emision")'],
+    [/\bespectador(?:a|as|es)?\b/i, 'usa "quien esta viendo" (nunca "espectador")'],
+    [/\bmiembros?\b/i, 'usa "persona" / "personas" (nunca "miembro")'],
+    [/\bparticipantes?\b/i, 'usa "persona" / "personas" (nunca "participante")'],
+    [/\banotaci[oó]n(?:es)?\b/i, 'usa "garabato" (nunca "anotacion")'],
+    [/\bdesconectar\b/i, 'usa "Salir de la sala" (nunca "desconectar")'],
+    [/\bwidgets?\b/i, 'usa "ventana" (nunca "widget")'],
+    [/\btarjetas?\b/i, 'usa "ventana" (nunca "tarjeta")'],
+    [/\binsertar\b/i, 'usa "Añadir ventana" (nunca "insertar")'],
+    [/\bmodo\b/i, 'usa "vista" (nunca "modo")'],
+    [/\blayout\b/i, 'usa "vista" (nunca "layout")'],
+    [/\blienzo\b/i, 'usa "Mesa" (nunca "lienzo")'],
+    [/\bmaximizar\b/i, 'usa "Pantalla completa" (nunca "maximizar")'],
+    [/\bpreferencias?\b/i, 'usa "Configuracion" (nunca "Preferencias")'],
+  ],
+};
 
 const HAS_SPACE_OR_ACCENT = /[ À-ÿ]/; // espaco, ou acento/cedilha latino-1
 
@@ -73,11 +115,11 @@ function isVisibleText(literal) {
   return HAS_SPACE_OR_ACCENT.test(literal);
 }
 
-function checkTexts(texts, label, violations) {
+function checkTexts(texts, label, violations, idioma = 'pt-BR') {
   for (const raw of texts) {
     for (const text of fragmentosVisiveis(raw)) {
       if (!isVisibleText(text)) continue;
-      for (const [re, hint] of PROHIBITED) {
+      for (const [re, hint] of PROIBIDOS[idioma]) {
         if (re.test(text)) violations.push(`${label}: "${text.trim().slice(0, 80)}" -- ${hint}`);
       }
     }
@@ -148,8 +190,23 @@ test('os nomes dos tipos de janela da Mesa seguem o glossario', () => {
 });
 
 test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o certo', () => {
-  const reprova = ['Mudar o tipo da sala', 'modo Mesa', 'Fechar janela', 'Remover da mesa', 'Maximizar a janela', 'Novo widget'];
-  const passa = ['Adicionar janela', 'Tirar da mesa', 'Tela cheia', 'Ver tudo', 'Ir até Bia', 'vista Mesa', 'Escolha uma tela ou janela'];
+  const reprova = [
+    'Mudar o tipo da sala',
+    'modo Mesa',
+    'Fechar janela',
+    'Remover da mesa',
+    'Maximizar a janela',
+    'Novo widget',
+  ];
+  const passa = [
+    'Adicionar janela',
+    'Tirar da mesa',
+    'Tela cheia',
+    'Ver tudo',
+    'Ir até Bia',
+    'vista Mesa',
+    'Escolha uma tela ou janela',
+  ];
   for (const text of reprova) {
     const v = [];
     checkTexts([text], 'amostra', v);
@@ -160,6 +217,50 @@ test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o cert
     checkTexts([text], 'amostra', v);
     assert.deepEqual(v, [], `devia passar: ${text}`);
   }
+});
+
+test('os termos proibidos em ingles reprovam o papel errado sem pegar palavras legitimas', () => {
+  const violations = [];
+  checkTexts(['The owner left the room', 'Hosting starts soon'], 'amostra', violations, 'en');
+  assert.equal(violations.length, 1, 'owner deve reprovar, mas hosting nao');
+});
+
+test('cada regex novo encontra o termo proibido sem pegar a palavra legitima parecida', () => {
+  const samples = {
+    en: [
+      'host', 'owner', 'broadcast', 'viewer', 'spectator', 'member', 'participant', 'peer', 'annotation',
+      'disconnect', 'widget', 'card', 'insert', 'mode', 'layout', 'canvas', 'maximize', 'viewport', 'Preferences',
+    ],
+    es: [
+      'anfitriones', 'dueña', 'host', 'emisión', 'espectadoras', 'miembro', 'participante', 'anotaciones',
+      'desconectar', 'widget', 'tarjeta', 'insertar', 'modo', 'layout', 'lienzo', 'maximizar', 'Preferencias',
+    ],
+  };
+  for (const [idioma, terms] of Object.entries(samples)) {
+    const regras = PROIBIDOS[idioma];
+    assert.equal(regras.length, terms.length, `amostras de ${idioma} devem cobrir todos os regex`);
+    for (const [index, term] of terms.entries()) {
+      assert.match(`texto ${term} texto`, regras[index][0], `${idioma} deve reprovar: ${term}`);
+    }
+  }
+  assert.doesNotMatch('hosting', PROIBIDOS.en[0][0], 'host nao pode pegar hosting');
+  assert.doesNotMatch('hosting', PROIBIDOS.es[2][0], 'host nao pode pegar hosting em espanhol');
+});
+
+test('dicionarios respeitam o glossario de cada lingua', () => {
+  const violations = [];
+  for (const [idioma, lista] of Object.entries(PROIBIDOS)) {
+    const dictionary = require(`./i18n/${idioma}`);
+    for (const [key, value] of Object.entries(dictionary)) {
+      const texts = typeof value === 'string' ? [value] : Object.values(value);
+      for (const text of texts) {
+        for (const [re, hint] of lista) {
+          if (re.test(text)) violations.push(`${idioma} ${key}: "${text}" -- ${hint}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
 });
 
 // Controle de sanidade: se a heuristica de extracao quebrar (ex: o

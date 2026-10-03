@@ -6,29 +6,32 @@ quem manda na sala tinha **quatro** nomes na interface ("dono", "líder",
 pessoa menos quer decifrar sinônimo. Este arquivo fixa um termo por conceito;
 `src/renderer/glossario.test.js` reprova os proibidos em string visível.
 
-| Conceito | Termo | Nunca use |
-|---|---|---|
-| A sala em si | **sala** | — |
-| Quem manda na sala (pode moderar, migra em queda) | **líder da sala** (ação: "passar a liderança") | dono, host, anfitrião |
-| O que sai da sua máquina pra sala | **transmissão** | — |
-| O que aparece num tile | **tela** | — |
-| Estar vendo uma transmissão | **assistir** / **quem está assistindo** | espectador |
-| Desenhar por cima de uma tela | **rabisco** / **rabiscar** | anotação |
-| Encerrar a própria conexão com a sala | **Sair da sala** (rótulo real do botão) | desconectar |
-| Qualquer pessoa na sala | **pessoa** | membro, participante, peer |
-| Os dois jeitos de ver a sala, que cada pessoa escolhe para si | **vista**: **Transmissão** e **Mesa** | modo, tipo da sala, layout, canvas |
-| O que se põe na Mesa | **janela** ("janela na mesa" quando puder confundir) | widget, card, item |
-| Pôr / tirar uma janela | **Adicionar janela** / **Tirar da mesa** | inserir, fechar, remover |
-| Ocupar a tela toda com uma janela | **Tela cheia** | maximizar |
-| Para onde você olha dentro da Mesa | sem nome na interface: os botões dizem **Ver tudo** e **Ir até** | câmera (é a webcam), viewport |
-| Indicação de que é a vez da pessoa | **Sua vez** | — |
-| Faixa superior de uma janela da Mesa | **barra da janela** | — |
-| Linha da coluna de pessoas e suas seções | **presença**; **AO VIVO** / **NA SALA** | — |
-| Teto de resolução que você recebe | **Qualidade que você recebe**: **Auto**, **1080p**, **720p** e **480p**; não vale quando você repassa a tela | — |
-| Palco vazio | **Ninguém em foco** | — |
-| Navegação do lobby para a lista de salas | **Salas** | — |
-| Navegação do lobby para os ajustes do app | **Configurações** | — |
-| Tema padrão do app | **Estúdio** | — |
+As traduções em **en** usam inglês americano. As em **es** são neutras e
+tratam a pessoa por **tú**, sem *vosotros* nem regionalismos.
+
+| Conceito | pt-BR | en | es | Nunca use (pt-BR · en · es) |
+|---|---|---|---|---|
+| A sala em si | **sala** | **room** | **sala** | — |
+| Quem manda na sala (pode moderar, migra em queda) | **líder da sala** (ação: "passar a liderança") | **room leader** ("hand over leadership") | **líder de la sala** ("pasar el liderazgo") | dono, host, anfitrião · host, owner · anfitrión, dueño, host |
+| O que sai da sua máquina pra sala | **transmissão**; transmitir | **stream**; go live | **transmisión**; transmitir | — · broadcast · emisión |
+| O que aparece num tile | **tela** | **screen** | **pantalla** | — |
+| Estar vendo uma transmissão | **assistir** / **quem está assistindo** | **watch** / **people watching** | **ver** / **quien está viendo** | espectador · viewer, spectator · espectador |
+| Desenhar por cima de uma tela | **rabisco** / **rabiscar** | **scribble** | **garabato** / **garabatear** | anotação · annotation · anotación |
+| Encerrar a própria conexão com a sala | **Sair da sala** (rótulo real do botão) | **Leave room** | **Salir de la sala** | desconectar · disconnect · desconectar |
+| Qualquer pessoa na sala | **pessoa** | **person**, **people** | **persona**, **personas** | membro, participante, peer · member, participant, peer · miembro, participante |
+| Os dois jeitos de ver a sala, que cada pessoa escolhe para si | **vista**: **Transmissão** e **Mesa** | **view**: **Stream** and **Table** | **vista**: **Transmisión** y **Mesa** | modo, tipo da sala, layout, canvas · mode, layout, canvas · modo, layout, lienzo |
+| O que se põe na Mesa | **janela** ("janela na mesa" quando puder confundir) | **window** | **ventana** | widget, card, item · widget, card · widget, tarjeta |
+| Pôr / tirar uma janela | **Adicionar janela** / **Tirar da mesa** | **Add window** / **Take off the table** | **Añadir ventana** / **Quitar de la mesa** | inserir, fechar, remover · insert · insertar |
+| Ocupar a tela toda com uma janela | **Tela cheia** | **Full screen** | **Pantalla completa** | maximizar · maximize · maximizar |
+| Para onde você olha dentro da Mesa | sem nome na interface: os botões dizem **Ver tudo** e **Ir até** | **See all** / **Go to** | **Ver todo** / **Ir a** | câmera (é a webcam), viewport · viewport · viewport |
+| Indicação de que é a vez da pessoa | **Sua vez** | **Your turn** | **Tu turno** | — |
+| Faixa superior de uma janela da Mesa | **barra da janela** | **window bar** | **barra de la ventana** | — |
+| Linha da coluna de pessoas e suas seções | **presença**; **AO VIVO** / **NA SALA** | **presence**; **LIVE** / **IN THE ROOM** | **presencia**; **EN VIVO** / **EN LA SALA** | — |
+| Teto de resolução que você recebe | **Qualidade que você recebe**: **Auto**, **1080p**, **720p** e **480p**; não vale quando você repassa a tela | **Quality you receive** | **Calidad que recibes** | — |
+| Palco vazio | **Ninguém em foco** | **Nobody in focus** | **Nadie en foco** | — |
+| Navegação do lobby para a lista de salas | **Salas** | **Rooms** | **Salas** | — |
+| Navegação do lobby para os ajustes do app | **Configurações** | **Settings** | **Configuración** | — · Preferences · Preferencias |
+| Tema padrão do app | **Estúdio** | **Studio** | **Estudio** | — |
 
 ### A Mesa (2026-09-24)
 
