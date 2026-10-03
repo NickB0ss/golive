@@ -4,6 +4,10 @@
 
 (function (root) {
   const textos = {
+    'config.idioma.titulo': 'Language',
+    'config.idioma.rotulo': 'App language',
+    'config.idioma.auto': 'Automatic (system language)',
+    'config.idioma.aoSair': 'Applies when you leave the room.',
     'splash.procurando': 'Checking for updates…',
     'splash.baixando': 'Downloading update — {pct}%',
     'splash.instalando': 'Installing…',

@@ -55,6 +55,7 @@
   // way a late event from a torn-down or superseded session is a no-op
   // instead of throwing on stale/null state.
   let currentSession = null; // { sig, mesh } | null
+  let idiomaPendente = false;
   // Sessao orfa (H1): a sinalizacao caiu, mas as RTCPeerConnection P2P
   // seguem vivas entregando video. A sinalizacao so e necessaria pra
   // ESTABELECER conexao -- depois pode sumir por minutos sem consequencia.
@@ -65,6 +66,10 @@
   // (teardownPeers -- preserva a captura), leaveRoom e troca de sala (ambos
   // teardownSession completo).
   let orphanSession = null;
+
+  function aplicarIdiomaPendente() {
+    if (idiomaPendente && !currentSession && !orphanSession) window.location.reload();
+  }
   // Credencial rotativa da cadeia de reconexao da sala atual. Nunca vai pra
   // UI nem log; o proximo welcome substitui o valor antes de qualquer retry.
   let resumeToken = null;
@@ -984,6 +989,18 @@
         cfg = { ...cfg, soundsEnabled: enabled };
         persist();
         sound.setEnabled(enabled);
+      },
+      // Fora da sala recarrega na hora; dentro, recarregar derrubaria a conexao
+      // -- grava e aplica ao sair (spec 2.3).
+      onIdiomaChange: async (preferencia) => {
+        await window.golive.setIdioma(preferencia);
+        if (!currentSession && !orphanSession) {
+          window.location.reload();
+          return;
+        }
+        idiomaPendente = true;
+        const nota = document.getElementById('settings-language-note');
+        if (nota) nota.textContent = window.GoLive.i18n.t('config.idioma.aoSair');
       },
       onLiveNotifyChange: (enabled) => {
         cfg = { ...cfg, liveNotifyEnabled: enabled };
@@ -2302,6 +2319,7 @@
               ui.dialogs.closeJoinRoom();
               renderMembersPanel();
               renderRoomList();
+              aplicarIdiomaPendente();
               onSettled?.();
               return;
             }
@@ -2322,6 +2340,7 @@
               : 'A sala recusou a entrada.';
             renderMembersPanel();
             renderRoomList();
+            aplicarIdiomaPendente();
             onSettled?.();
             return;
           }
@@ -2360,6 +2379,7 @@
             ui.dialogs.closeJoinRoom();
             renderMembersPanel();
             renderRoomList();
+            aplicarIdiomaPendente();
             onSettled?.();
             return;
           }
@@ -2391,6 +2411,7 @@
             ui.dialogs.closeJoinRoom();
             renderMembersPanel();
             renderRoomList();
+            aplicarIdiomaPendente();
             onSettled?.();
             return;
           }
@@ -2540,6 +2561,7 @@
           }
           renderMembersPanel();
           renderRoomList();
+          aplicarIdiomaPendente();
         },
       });
     } catch {
@@ -3068,6 +3090,7 @@
       // zerou), nao ha endereco pra marcar -- e sair de um estado quebrado
       // nao deve ficar em cooldown.
       renderRoomList();
+      aplicarIdiomaPendente();
       return;
     }
     if (!currentSession) return;
@@ -3099,6 +3122,7 @@
     teardownSession(session);
     markCooldown(leavingAddress);
     renderRoomList();
+    aplicarIdiomaPendente();
   }
   $('btn-disconnect').addEventListener('click', () => {
     if (cooldownRemaining(activeRoomAddress) > 0) return;

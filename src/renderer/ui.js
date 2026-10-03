@@ -4,6 +4,7 @@
 (function (root) {
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
+  const { t } = root.GoLive.i18n;
   const version = root.GoLive.version;
   const theme = root.GoLive.theme;
   const emoji = root.GoLive.emoji;
@@ -4537,6 +4538,20 @@
 
     settingsPanes.appearance.innerHTML = `
       <div class="settings__block">
+        <h3 class="settings__h">${t('config.idioma.titulo')}</h3>
+        <div class="field">
+          <label class="field__label" for="settings-language">${t('config.idioma.rotulo')}</label>
+          <select id="settings-language" class="input">
+            <option value="auto">${t('config.idioma.auto')}</option>
+            <option value="pt-BR">Português</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+          <p id="settings-language-note" class="field__help" role="status"></p>
+        </div>
+      </div>
+
+      <div class="settings__block">
         <h3 class="settings__h">Tema</h3>
         <div id="theme-presets" class="theme-grid"></div>
       </div>
@@ -4654,6 +4669,9 @@
     $('settings-sounds').addEventListener('change', () => {
       deps.onSoundsChange($('settings-sounds').checked);
     });
+    const idiomaSel = $('settings-language');
+    idiomaSel.value = window.golive?.idioma?.preferencia || 'auto';
+    idiomaSel.addEventListener('change', () => deps.onIdiomaChange(idiomaSel.value));
     $('settings-live-notify').addEventListener('change', () => {
       deps.onLiveNotifyChange($('settings-live-notify').checked);
     });

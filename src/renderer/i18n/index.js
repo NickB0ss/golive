@@ -146,5 +146,8 @@
   };
   root.GoLive = root.GoLive || {};
   root.GoLive.i18n = api;
+  // O HTML estatico ja foi lido (os scripts ficam no fim do body): troca o
+  // texto fixo antes de config.js, ui.js, app.js e do primeiro desenho.
+  if (root.document && root.document.body) aplicarNoDom();
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

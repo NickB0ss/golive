@@ -132,6 +132,9 @@ const FORMA_CHAVE = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+(\?.*)?$/;
 
 const EXCECOES = new Set([
   'GoLive LAN', // marca
+  'Português', // nome da lingua na propria lingua (spec 2.2)
+  'English', // nome da lingua na propria lingua (spec 2.2)
+  'Español', // nome da lingua na propria lingua (spec 2.2)
   'use strict', // diretiva JavaScript, nao texto de tela
 ]);
 
