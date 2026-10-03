@@ -35,6 +35,41 @@ const ESTADO_PCS = `(() => {
   };
 })()`;
 
+// So pra quando falha: contadores de video de cada conexao viva. Duas
+// leituras seguidas dizem onde a imagem para -- captura (media-source),
+// encoder (framesEncoded) ou envio -- e os ids de track mostram se um relay
+// repassa a track que ele de fato recebe agora.
+const QUADROS_PCS = `(async () => {
+  const vivas = (window.__labPcs || []).map((pc, i) => ({ pc, i })).filter(({ pc }) => pc.connectionState !== 'closed');
+  return Promise.all(vivas.map(async ({ pc, i }) => {
+    const r = await pc.getStats();
+    const fonte = {};
+    const saida = [];
+    const entrada = [];
+    r.forEach((s) => {
+      if (s.type === 'media-source' && s.kind === 'video') fonte[s.id] = s.frames;
+      if (s.type === 'outbound-rtp' && s.kind === 'video') saida.push({ cod: s.framesEncoded, env: s.framesSent, bytes: s.bytesSent, fonte: s.mediaSourceId });
+      if (s.type === 'inbound-rtp' && s.kind === 'video') entrada.push({ dec: s.framesDecoded, bytes: s.bytesReceived });
+    });
+    return {
+      pc: i,
+      estado: pc.connectionState,
+      envia: pc.getSenders().filter((s) => s.track?.kind === 'video').map((s) => ({ track: s.track.id.slice(0, 8), estado: s.track.readyState, muda: s.track.muted })),
+      recebe: pc.getReceivers().filter((x) => x.track?.kind === 'video').map((x) => ({ track: x.track.id.slice(0, 8), estado: x.track.readyState, muda: x.track.muted })),
+      saida: saida.map((o) => ({ ...o, fonte: fonte[o.fonte] ?? null })),
+      entrada,
+    };
+  }));
+})()`;
+
+async function despejarQuadros(lab, instancias) {
+  for (const i of instancias) {
+    if (i.saiu !== null) continue;
+    const linhas = await i.js(QUADROS_PCS).catch((err) => [{ erro: err.message }]);
+    for (const l of linhas) lab.passo(`  ${i.nome} ${JSON.stringify(l)}`);
+  }
+}
+
 module.exports = {
   nome: 'sala-de-6',
   descricao: 'Ana transmite pra 5 pessoas: a arvore monta 2 relays (2 encoders na Ana), cada um repassa, todos veem a tela andando e a topologia fica parada; um relay cai e as folhas do outro nao mudam.',
@@ -137,7 +172,15 @@ module.exports = {
       // seis instancias codificando em software, isso acontece.
       lab.passo(`${ficou.nome} perdeu o posto de relay na reeleicao (saude de encode, H2); as folhas dele foram redistribuidas`);
     }
-    await Promise.all(vivos.map((i) => i.esperarImagemAndando(30000)));
+    try {
+      await Promise.all(vivos.map((i) => i.esperarImagemAndando(30000)));
+    } catch (err) {
+      lab.passo('quadros por conexao (duas leituras, 3 s entre elas):');
+      await despejarQuadros(lab, ativos);
+      await lab.sleep(3000);
+      await despejarQuadros(lab, ativos);
+      throw err;
+    }
     lab.verificar(true, 'os quatro que ficaram seguem com a tela andando');
   },
 };

@@ -193,12 +193,31 @@ const CAPTURA_FALSA = `(() => {
     g.font = '64px sans-serif';
     g.fillText('laboratorio ' + t, 80, 360);
   };
+  const trilhas = [];
   window.__lab = {
     retomar() { if (!timer) timer = setInterval(desenhar, 33); },
     parar() { clearInterval(timer); timer = null; },
+    // Pra falha dizer ONDE a imagem parou: o canvas ainda pinta? a track
+    // da captura falsa ainda entrega quadro (stats, quando o Chromium tem)?
+    estado() {
+      return {
+        pintados: t,
+        pintando: Boolean(timer),
+        trilhas: trilhas.map((tr) => ({
+          estado: tr.readyState,
+          muda: tr.muted,
+          entregues: tr.stats?.deliveredFrames ?? null,
+          descartados: tr.stats?.discardedFrames ?? null,
+        })),
+      };
+    },
   };
   window.__lab.retomar();
-  navigator.mediaDevices.getDisplayMedia = async () => c.captureStream(30);
+  navigator.mediaDevices.getDisplayMedia = async () => {
+    const s = c.captureStream(30);
+    trilhas.push(...s.getVideoTracks());
+    return s;
+  };
   return true;
 })()`;
 
@@ -311,6 +330,11 @@ class Instancia {
 
   async print(nome, janela) {
     return this.chamar('print', { caminho: path.join(this.dir, `${nome}.png`), janela }, 20000).catch(() => null);
+  }
+
+  /** Estado da captura falsa (null se a instancia ja saiu ou nao respondeu). */
+  estadoDaCaptura() {
+    return this.chamar('js', { codigo: 'window.__lab?.estado?.() ?? null' }, 5000).catch(() => null);
   }
 
   // ---------- Acoes do app ----------
