@@ -13,12 +13,13 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const RANKS = Object.freeze(['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']);
   const SUITS = Object.freeze(['s', 'h', 'd', 'c']);
-  const SUIT_NAMES = Object.freeze({ s: 'espadas', h: 'copas', d: 'ouros', c: 'paus' });
+  const SUIT_NAMES = Object.freeze({ s: 's', h: 'h', d: 'd', c: 'c' });
   const RANK_NAMES = Object.freeze({
-    2: 'dois', 3: 'três', 4: 'quatro', 5: 'cinco', 6: 'seis', 7: 'sete', 8: 'oito', 9: 'nove',
-    T: 'dez', J: 'valete', Q: 'dama', K: 'rei', A: 'ás',
+    2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', T: 'T', J: 'J', Q: 'Q', K: 'K', A: 'A',
   });
   const MAX_DECKS = 8;
 
@@ -75,8 +76,13 @@
   }
 
   /** "ás de espadas", "dez de copas". */
-  function cardName(c) {
-    return isCard(c) ? `${RANK_NAMES[c[0]]} de ${SUIT_NAMES[c[1]]}` : 'carta';
+  function cardName(c, t) {
+    if (!isCard(c)) return t ? t('mesa.carta') : codigo('mesa.carta');
+    const valores = {
+      valor: t ? t(`mesa.carta.valor.${RANK_NAMES[c[0]]}`) : codigo(`mesa.carta.valor.${RANK_NAMES[c[0]]}`),
+      naipe: t ? t(`mesa.carta.naipe.${SUIT_NAMES[c[1]]}`) : codigo(`mesa.carta.naipe.${SUIT_NAMES[c[1]]}`),
+    };
+    return t ? t('mesa.carta.nome', valores) : codigo('mesa.carta.nome', valores);
   }
 
   /** Copas e ouros sao vermelhos. */

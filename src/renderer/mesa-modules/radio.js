@@ -32,6 +32,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const L = (root.GoLive && root.GoLive.mesaMidiaLinks)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./midialinks') : null);
 
@@ -68,14 +70,14 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     const extra = {};
     if (L.isTime(action.at)) extra.at = action.at;
     switch (action.kind) {
       case 'add': {
         // A acao preparada leva `videoId` + `start` (o link ja foi lido).
         const link = L.parseYouTube(typeof action.videoId === 'string' ? action.videoId : action.url);
-        if (!link) return 'Link do YouTube não reconhecido';
+        if (!link) return codigo('mesa.midia.linkYoutubeNaoReconhecido');
         const start = link.start || (L.isPos(action.start) ? Math.floor(action.start) : 0);
         const a = { kind: 'add', videoId: link.videoId, start, ...extra };
         const name = L.cleanText(action.name, MAX_NAME);
@@ -83,14 +85,14 @@
         return a;
       }
       case 'remove':
-        return typeof action.id === 'string' && ID_RE.test(action.id) ? { kind: 'remove', id: action.id, ...extra } : 'Música inválida';
+        return typeof action.id === 'string' && ID_RE.test(action.id) ? { kind: 'remove', id: action.id, ...extra } : codigo('mesa.radio.musicaInvalida');
       case 'move':
-        if (typeof action.id !== 'string' || !ID_RE.test(action.id)) return 'Música inválida';
-        if (!Number.isInteger(action.to) || action.to < 0 || action.to >= MAX_QUEUE) return 'Posição inválida';
+        if (typeof action.id !== 'string' || !ID_RE.test(action.id)) return codigo('mesa.radio.musicaInvalida');
+        if (!Number.isInteger(action.to) || action.to < 0 || action.to >= MAX_QUEUE) return codigo('mesa.midia.posicaoInvalida');
         return { kind: 'move', id: action.id, to: action.to };
       case 'play':
       case 'pause': {
-        if (action.pos !== undefined && action.pos !== null && !L.isPos(action.pos)) return 'Posição inválida';
+        if (action.pos !== undefined && action.pos !== null && !L.isPos(action.pos)) return codigo('mesa.midia.posicaoInvalida');
         const a = { kind: action.kind, ...extra };
         if (L.isPos(action.pos)) a.pos = action.pos;
         return a;
@@ -105,20 +107,20 @@
       }
       case 'failed':
       case 'ended': {
-        if (!L.isVideoId(action.videoId)) return 'Vídeo inválido';
-        if (action.id !== undefined && (typeof action.id !== 'string' || !ID_RE.test(action.id))) return 'Música inválida';
+        if (!L.isVideoId(action.videoId)) return codigo('mesa.midia.videoInvalido');
+        if (action.id !== undefined && (typeof action.id !== 'string' || !ID_RE.test(action.id))) return codigo('mesa.radio.musicaInvalida');
         const a = { kind: action.kind, videoId: action.videoId, ...extra };
         if (action.id !== undefined) a.id = action.id;
         return a;
       }
       case 'title': {
-        if (typeof action.id !== 'string' || !ID_RE.test(action.id)) return 'Música inválida';
+        if (typeof action.id !== 'string' || !ID_RE.test(action.id)) return codigo('mesa.radio.musicaInvalida');
         const title = L.cleanText(action.title, MAX_TITLE);
-        if (!title) return 'Título inválido';
+        if (!title) return codigo('mesa.midia.tituloInvalido');
         return { kind: 'title', id: action.id, title };
       }
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -156,31 +158,31 @@
     if (typeof a === 'string') return a;
     switch (a.kind) {
       case 'add':
-        if (state.queue.length >= MAX_QUEUE) return `Fila cheia (máx. ${MAX_QUEUE})`;
+        if (state.queue.length >= MAX_QUEUE) return codigo('mesa.radio.filaCheia', { max: MAX_QUEUE });
         return true;
       case 'remove': {
         const item = findItem(state, a.id);
-        if (!item) return 'Essa música já saiu';
-        return canManage(item, ctx) ? true : 'Só quem pôs ou o líder tira';
+        if (!item) return codigo('mesa.radio.musicaJaSaiu');
+        return canManage(item, ctx) ? true : codigo('mesa.radio.soQuemPosTira');
       }
       case 'move':
-        if (!state.queue.some((it) => it.id === a.id)) return 'Essa música não está na fila';
+        if (!state.queue.some((it) => it.id === a.id)) return codigo('mesa.radio.naoEstaNaFila');
         return true;
       case 'play':
-        if (!state.current) return 'Nada para tocar';
-        return state.playing ? 'Já está tocando' : true;
+        if (!state.current) return codigo('mesa.radio.nadaParaTocar');
+        return state.playing ? codigo('mesa.midia.jaTocando') : true;
       case 'pause':
-        if (!state.current) return 'Nada tocando';
-        return state.playing ? true : 'Já está pausado';
+        if (!state.current) return codigo('mesa.midia.nadaTocando');
+        return state.playing ? true : codigo('mesa.midia.jaPausado');
       case 'skip':
-        if (!state.current) return 'Nada tocando';
-        return canManage(state.current, ctx) ? true : 'Só quem pôs ou o líder pula; vote para pular';
+        if (!state.current) return codigo('mesa.midia.nadaTocando');
+        return canManage(state.current, ctx) ? true : codigo('mesa.radio.soQuemPosPula');
       case 'vote-skip':
-        if (!state.current) return 'Nada tocando';
-        if (ctx && ctx.from != null && state.votes.includes(String(ctx.from))) return 'Você já votou';
+        if (!state.current) return codigo('mesa.midia.nadaTocando');
+        if (ctx && ctx.from != null && state.votes.includes(String(ctx.from))) return codigo('mesa.radio.jaVotou');
         return true;
       case 'title':
-        return findItem(state, a.id) ? true : 'Essa música já saiu';
+        return findItem(state, a.id) ? true : codigo('mesa.radio.musicaJaSaiu');
       default:
         return true; // failed / ended: idempotentes, o reduce ignora o que nao e a atual
     }
@@ -267,17 +269,25 @@
     }
   }
 
+  const CHAVES_TOCANDO = { sozinho: 'mesa.resumo.radioTocando', fila: 'mesa.resumo.radioTocandoFila' };
+  const CHAVES_PAUSADO = { sozinho: 'mesa.resumo.radioPausado', fila: 'mesa.resumo.radioPausadoFila' };
+
   function summary(state, serverNow) {
-    if (!state || !state.current) return state && state.queue.length ? `${state.queue.length} na fila` : 'Fila vazia';
-    const name = state.current.title || state.current.videoId;
+    if (!state || !state.current) {
+      return state && state.queue.length
+        ? { chave: 'mesa.resumo.radioNaFila', valores: { n: state.queue.length } }
+        : { chave: 'mesa.resumo.radioVazia' };
+    }
+    const nome = state.current.title || state.current.videoId;
     const pos = L.formatPos(L.positionAt(state, serverNow));
-    const fila = state.queue.length ? ` · +${state.queue.length} na fila` : '';
-    return `${state.playing ? 'Tocando' : 'Pausado'}: ${name} · ${pos}${fila}`;
+    const n = state.queue.length;
+    const chaves = state.playing ? CHAVES_TOCANDO : CHAVES_PAUSADO;
+    return { chave: n ? chaves.fila : chaves.sozinho, valores: { nome, pos, n } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Rádio da sala',
+    title: 'mesa.titulo.radio',
     group: 'assistir',
     size: { w: 360, h: 480, minW: 280, minH: 320, aspect: null },
     maxStateBytes: 16 * 1024,

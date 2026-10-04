@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('./i18n');
 const catalogo = require('./mesa-catalogo');
 
 test('busca por tecla deixa Espaco e Enter no cartao focado', () => {
@@ -11,6 +12,7 @@ test('busca por tecla deixa Espaco e Enter no cartao focado', () => {
   assert.equal(catalogo.deveRedirecionarParaBusca('a', false), false);
 });
 const registro = require('./mesa-modules');
+const { t, existe } = require('./i18n');
 
 test('todo tipo adicionavel tem metadados no catalogo', () => {
   for (const mod of registro.addable()) {
@@ -41,8 +43,16 @@ test('lembrarRecente sobe o novo tipo, remove repeticao e guarda quatro', () => 
 
 test('descricao curta, com texto proprio e sem repetir o titulo', () => {
   for (const mod of registro.addable()) {
-    const { desc } = catalogo.itens[mod.type];
+    const { descricao } = catalogo.itens[mod.type];
+    assert.ok(existe(descricao), `${mod.type}: falta ${descricao}`);
+    const desc = t(descricao);
+    const titulo = t(mod.title);
     assert.ok(desc.length > 0 && desc.length <= 48, `${mod.type}: descricao com ${desc.length} caracteres`);
-    assert.ok(!desc.toLowerCase().startsWith(mod.title.toLowerCase()), `${mod.type}: descricao repete o titulo`);
+    assert.ok(!desc.toLowerCase().startsWith(titulo.toLowerCase()), `${mod.type}: descricao repete o titulo`);
   }
+});
+
+test('grupos do catalogo sao chaves que existem', () => {
+  for (const chave of Object.values(catalogo.GRUPOS)) assert.ok(existe(chave), chave);
+  assert.equal(t(catalogo.GRUPOS.assistir), 'Assistir e ouvir');
 });

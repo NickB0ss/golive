@@ -19,11 +19,21 @@
     progressFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
   }
 
+  // Textos ja traduzidos pelo processo principal. O fallback em portugues so
+  // vale se o preload falhar.
+  const T = window.goliveBoot?.textos || {
+    checking: 'Procurando atualizações…',
+    downloading: 'Baixando atualização — {pct}%',
+    installing: 'Instalando…',
+    release: 'Abrindo…',
+  };
+  document.documentElement.lang = T.idioma || 'pt-BR';
+
   const TEXT = {
-    checking: () => 'Procurando atualizações…',
-    downloading: (extra) => `Baixando atualização — ${Math.round(extra.progress ?? 0)}%`,
-    installing: () => 'Instalando…',
-    release: () => 'Abrindo…',
+    checking: () => T.checking,
+    downloading: (extra) => T.downloading.replace('{pct}', String(Math.round(extra.progress ?? 0))),
+    installing: () => T.installing,
+    release: () => T.release,
   };
 
   window.goliveBoot?.onPhase((payload) => {

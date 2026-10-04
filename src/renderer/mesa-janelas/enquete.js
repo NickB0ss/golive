@@ -14,6 +14,7 @@
  */
 
 (function (root) {
+  const { t, traduzirCodigo } = root.GoLive.i18n;
   const TYPE = 'enquete';
   const MAX_BOLINHAS = 6;
 
@@ -31,7 +32,7 @@
     const max = Math.max(0, ...counts);
     const meu = me === null || me === undefined ? null : m.voteOf(state, me);
     return state.options.map((texto, i) => ({
-      texto,
+      texto: traduzirCodigo(texto),
       n: counts[i],
       frac: total ? counts[i] / total : 0,
       meu: meu === i,
@@ -41,10 +42,9 @@
   }
 
   function rotuloOpcao(b, fechada) {
-    const votos = `${b.n} ${b.n === 1 ? 'voto' : 'votos'}`;
-    let s = `${b.texto}: ${votos}`;
-    if (b.meu) s += fechada ? '. Seu voto' : '. Seu voto; clique para tirar';
-    return s;
+    const valores = { texto: b.texto, n: b.n };
+    if (!b.meu) return t('mesa.enquete.rotuloOpcao', valores);
+    return t(fechada ? 'mesa.enquete.rotuloOpcaoMeuFechada' : 'mesa.enquete.rotuloOpcaoMeu', valores);
   }
 
   /** Clicar numa opcao: vota, ou tira o voto se ja era a minha. */
@@ -54,8 +54,8 @@
 
   function textoTotal(state) {
     const n = state.votes.length;
-    const base = n === 0 ? 'Ninguém votou ainda' : `${n} ${n === 1 ? 'voto' : 'votos'}`;
-    return state.closed ? `${base} · encerrada` : base;
+    if (n === 0) return t(state.closed ? 'mesa.enquete.ninguemVotouEncerrada' : 'mesa.enquete.ninguemVotou');
+    return t(state.closed ? 'mesa.enquete.totalVotosEncerrada' : 'mesa.enquete.totalVotos', { n });
   }
 
   /** Bolinhas visiveis e o "+N" do resto. */
@@ -81,12 +81,12 @@
     const pergunta = el('h3', { class: 'mj-enq-pergunta' });
     const lista = el('ul', {
       class: 'mj-enq-opcoes mj-rola',
-      attrs: { 'aria-label': 'Opções', 'data-caber-rola': '' },
+      attrs: { 'aria-label': t('mesa.enquete.opcoes'), 'data-caber-rola': '' },
     });
     const total = el('span', { class: 'mj-enq-total' });
-    const editar = C.botao({ icone: 'lapis', class: 'mj-ic mj-fantasma', label: 'Editar a enquete' });
-    const encerrar = C.botao({ text: 'Encerrar', class: 'mj-fantasma' });
-    const zerar = C.botao({ icone: 'zerar', class: 'mj-ic mj-fantasma', label: 'Zerar os votos' });
+    const editar = C.botao({ icone: 'lapis', class: 'mj-ic mj-fantasma', label: t('mesa.enquete.editar') });
+    const encerrar = C.botao({ text: t('mesa.enquete.encerrar'), class: 'mj-fantasma' });
+    const zerar = C.botao({ icone: 'zerar', class: 'mj-ic mj-fantasma', label: t('mesa.enquete.zerar') });
     const gestao = el('span', { class: 'mj-enq-gestao' }, editar, encerrar, zerar);
     const rodape = el('div', { class: 'mj-barra mj-enq-rodape' }, total, el('span', { class: 'mj-mola' }), gestao);
     votar.append(pergunta, lista, rodape);
@@ -111,7 +111,7 @@
       const li = el('li', null, btn);
       const no = { li, btn, fundo, texto, conta, quem, i, chaveQuem: '' };
       btn.addEventListener('click', () => {
-        if (C.estaDesligado(btn)) return b.aviso.mostrar(btn.title || 'Indisponível', li);
+        if (C.estaDesligado(btn)) return b.aviso.mostrar(btn.title || t('mesa.tabuleiro.indisponivel'), li);
         b.acao(li, acaoVoto(m, state, api.me(), no.i));
       });
       return no;
@@ -149,23 +149,26 @@
     const form = el('form', { class: 'mj-enq-form mj-rola' });
     const campoPergunta = el('input', {
       class: 'mj-campo',
-      attrs: { type: 'text', maxlength: String(m.MAX_QUESTION), placeholder: 'Pergunta', 'aria-label': 'Pergunta', spellcheck: 'false' },
+      attrs: { type: 'text', maxlength: String(m.MAX_QUESTION), placeholder: t('mesa.enquete.pergunta'), 'aria-label': t('mesa.enquete.pergunta'), spellcheck: 'false' },
     });
     const listaEd = el('ol', { class: 'mj-enq-ed' });
-    const addOpcao = C.botao({ icone: 'mais', text: 'Opção', class: 'mj-fantasma', label: 'Adicionar opção' });
-    const cancelar = C.botao({ text: 'Cancelar', class: 'mj-fantasma' });
-    const publicar = el('button', { class: 'mj-btn mj-pri', text: 'Publicar', attrs: { type: 'submit' } });
-    const barraForm = el('div', { class: 'mj-barra' }, addOpcao, el('span', { class: 'mj-mola' }), cancelar, publicar);
+    const addOpcao = C.botao({
+      icone: 'mais', text: t('mesa.enquete.opcao'), class: 'mj-fantasma', label: t('mesa.enquete.adicionarOpcao'),
+    });
+    const cancelar = C.botao({ text: t('mesa.enquete.cancelar'), class: 'mj-fantasma' });
+    const publicar = el('button', { class: 'mj-btn mj-pri', text: t('mesa.enquete.publicar'), attrs: { type: 'submit' } });
+    const barraForm = C.acoes({ principal: publicar, secundarias: [addOpcao, cancelar] });
     const esperando = el('p', { class: 'mj-dica mj-enq-espera' });
-    form.append(el('p', { class: 'mj-rotulo', text: 'Nova enquete' }), campoPergunta, listaEd, barraForm);
+    form.append(el('p', { class: 'mj-rotulo', text: t('mesa.enquete.nova') }), campoPergunta, listaEd, barraForm);
 
     function linhaOpcao(valor) {
       const inp = el('input', {
         class: 'mj-campo',
-        attrs: { type: 'text', maxlength: String(m.MAX_OPTION), placeholder: 'Opção', spellcheck: 'false' },
+        attrs: { type: 'text', maxlength: String(m.MAX_OPTION), placeholder: t('mesa.enquete.opcao'), spellcheck: 'false' },
       });
-      inp.value = valor;
-      const x = C.botao({ icone: 'x', class: 'mj-ic mj-fantasma', label: 'Tirar esta opção' });
+      inp.value = traduzirCodigo(valor);
+      inp.codigoOriginal = valor;
+      const x = C.botao({ icone: 'x', class: 'mj-ic mj-fantasma', label: t('mesa.enquete.tirarOpcao') });
       const li = el('li', { class: 'mj-form' }, inp, x);
       x.addEventListener('click', () => {
         if (listaEd.children.length <= m.MIN_OPTIONS) return;
@@ -179,10 +182,12 @@
 
     function renumerar() {
       [...listaEd.children].forEach((li, i) => {
-        li.querySelector('input').setAttribute('aria-label', `Opção ${i + 1}`);
-        C.ligado(li.querySelector('button'), listaEd.children.length > m.MIN_OPTIONS ? true : `Pelo menos ${m.MIN_OPTIONS} opções`, 'Tirar esta opção');
+        li.querySelector('input').setAttribute('aria-label', t('mesa.enquete.opcaoN', { n: i + 1 }));
+        C.ligado(li.querySelector('button'), listaEd.children.length > m.MIN_OPTIONS ? true : t('mesa.enquete.peloMenos', { n: m.MIN_OPTIONS }),
+          t('mesa.enquete.tirarOpcao'));
       });
-      C.ligado(addOpcao, listaEd.children.length < m.MAX_OPTIONS ? true : `No máximo ${m.MAX_OPTIONS} opções`, 'Adicionar opção');
+      C.ligado(addOpcao, listaEd.children.length < m.MAX_OPTIONS ? true : t('mesa.enquete.noMaximo', { n: m.MAX_OPTIONS }),
+        t('mesa.enquete.adicionarOpcao'));
     }
 
     b.clique(addOpcao, barraForm, () => {
@@ -197,7 +202,10 @@
       const action = {
         kind: 'edit',
         question: campoPergunta.value,
-        options: [...listaEd.querySelectorAll('input')].map((i) => i.value),
+        // Opcao padrao que ninguem mexeu segue como codigo: cada um a le na sua lingua.
+        options: [...listaEd.querySelectorAll('input')].map((i) => (
+          i.codigoOriginal !== undefined && i.value === traduzirCodigo(i.codigoOriginal) ? i.codigoOriginal : i.value
+        )),
       };
       if (b.acao(barraForm, action)) fecharEdicao(true);
     });
@@ -242,8 +250,9 @@
       votar.hidden = editando || semPergunta;
       esperando.hidden = editando || !semPergunta;
       if (!esperando.hidden) {
-        const quem = state.createdBy ? C.nomeDe(api, state.createdBy) : 'o líder da sala';
-        esperando.textContent = `Esperando ${quem} escrever a pergunta.`;
+        esperando.textContent = state.createdBy
+          ? t('mesa.enquete.esperandoNome', { nome: C.nomeDe(api, state.createdBy) })
+          : t('mesa.enquete.esperandoLider');
       }
     }
 
@@ -255,9 +264,11 @@
       const gerir = podeGerir();
       gestao.hidden = !gerir;
       if (gerir) {
-        C.ligado(editar, C.podeFazer(api, { kind: 'edit', question: state.question || 'x', options: state.options }), 'Editar a enquete');
-        C.ligado(encerrar, C.podeFazer(api, { kind: 'close' }), 'Encerrar a votação');
-        C.ligado(zerar, state.votes.length || state.closed ? true : 'Não há votos', 'Zerar os votos');
+        C.ligado(editar, C.podeFazer(api, { kind: 'edit', question: state.question || 'x', options: state.options }),
+          t('mesa.enquete.editar'));
+        C.ligado(encerrar, C.podeFazer(api, { kind: 'close' }), t('mesa.enquete.encerrarVotacao'));
+        C.ligado(zerar, state.votes.length || state.closed ? true : t('mesa.enquete.naoHaVotos'),
+          t('mesa.enquete.zerar'));
       }
       b.raiz.classList.toggle('is-fechada', state.closed);
       // Outra pessoa publicou enquanto o rascunho estava aberto e intocado:
@@ -265,7 +276,7 @@
       if (editando && state.question && !mexeu && !form.contains(root.document.activeElement)) {
         editando = false;
       } else if (editando && state.votes.length > 0 && state.question) {
-        b.aviso.mostrar('Já tem voto; zere para editar', barraForm);
+        b.aviso.mostrar(t('mesa.enquete.jaTemVoto'), barraForm);
       }
       mostrar();
     }

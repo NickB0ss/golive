@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const lig4 = require('./lig4');
 
 const PEERS = [{ id: 'bia', name: 'Bia' }, { id: 'leo', name: 'Leo' }, { id: 'ana', name: 'Ana' }];
@@ -35,7 +36,7 @@ function playCols(s, cols) {
 
 test('descritor segue o contrato', () => {
   assert.equal(lig4.type, 'lig4');
-  assert.equal(lig4.title, 'Lig 4');
+  assert.equal(tx(lig4.title), 'Lig 4');
   assert.equal(lig4.group, 'jogos');
   assert.equal(lig4.size.aspect, lig4.size.w / lig4.size.h);
   assert.equal(lig4.size.minW / lig4.size.minH, lig4.size.aspect);
@@ -53,36 +54,36 @@ test('a peca cai ate o fundo e empilha', () => {
   assert.equal(s.board[5], '...V...');
   assert.equal(s.board[4], '...A...');
   assert.deepEqual(s.last, [4, 3]);
-  assert.equal(lig4.summary(s), 'Bia × Leo — vez de Bia');
+  assert.equal(R(lig4.summary(s)), 'Bia × Leo — vez de Bia');
 });
 
 test('coluna cheia e coluna fora do tabuleiro sao recusadas', () => {
   const s = playCols(seated(), [0, 0, 0, 0, 0, 0]);
-  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('bia')), 'Coluna cheia');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('bia')), 'mesa.lig4.colunaCheia');
   for (const col of [-1, 7, 2.5, '1', null]) {
-    assert.equal(lig4.validate(s, { kind: 'move', col }, ctx('bia')), 'Coluna inválida');
+    assert.equal(lig4.validate(s, { kind: 'move', col }, ctx('bia')), 'mesa.lig4.colunaInvalida');
   }
 });
 
 test('fora da vez e quem assiste nao jogam', () => {
   const s = seated();
-  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('leo')), 'Não é a sua vez');
-  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('leo')), 'mesa.jogo.naoESuaVez');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
 });
 
 test('quatro na horizontal vence', () => {
   const s = playCols(seated(), [0, 0, 1, 1, 2, 2, 3]);
   assert.deepEqual(s.result, { winner: 0, reason: 'linha' });
   assert.deepEqual(s.line, [[5, 0], [5, 1], [5, 2], [5, 3]]);
-  assert.equal(lig4.summary(s), 'Bia venceu');
-  assert.equal(lig4.validate(s, { kind: 'move', col: 4 }, ctx('leo')), 'A partida acabou');
+  assert.equal(R(lig4.summary(s)), 'Bia venceu');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 4 }, ctx('leo')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('quatro na vertical vence', () => {
   const s = playCols(seated(), [0, 1, 0, 1, 0, 1, 6, 1]);
   assert.deepEqual(s.result, { winner: 1, reason: 'linha' });
   assert.deepEqual(s.line, [[2, 1], [3, 1], [4, 1], [5, 1]]);
-  assert.equal(lig4.summary(s), 'Leo venceu');
+  assert.equal(R(lig4.summary(s)), 'Leo venceu');
 });
 
 test('diagonal subindo para a direita vence', () => {
@@ -105,20 +106,20 @@ test('tabuleiro cheio sem quatro em linha empata', () => {
     6, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6];
   const s = playCols(seated(), order);
   assert.deepEqual(s.result, { winner: null, reason: 'empate' });
-  assert.equal(lig4.summary(s), 'Empate, tabuleiro cheio');
+  assert.equal(R(lig4.summary(s)), 'Empate, tabuleiro cheio');
   assert.ok(JSON.stringify(s).length < lig4.maxStateBytes);
 });
 
 test('reset e dropPeer mantem o combinado das cadeiras', () => {
   let s = playCols(seated(), [0, 0, 1, 1, 2, 2, 3]);
-  assert.equal(lig4.validate(s, { kind: 'reset' }, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(lig4.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   s = act(s, { kind: 'reset' }, 'bia');
   assert.deepEqual(s.seats, ['bia', 'leo']);
   assert.equal(s.result, null);
   assert.equal(s.moves, 0);
   s = deepFreeze(lig4.dropPeer(s, 'bia'));
   assert.deepEqual(s.seats, [null, 'leo']);
-  assert.equal(lig4.summary(s), 'Leo espera adversário');
+  assert.equal(R(lig4.summary(s)), 'Leo espera adversário');
 });
 
 test('mensagem malformada nunca lanca e nao muda o estado', () => {
@@ -130,5 +131,5 @@ test('mensagem malformada nunca lanca e nao muda o estado', () => {
       assert.equal(lig4.reduce(s, action, c), s);
     }
   }
-  assert.equal(typeof lig4.summary(null), 'string');
+  assert.equal(typeof R(lig4.summary(null)), 'string');
 });

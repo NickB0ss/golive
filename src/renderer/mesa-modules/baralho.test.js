@@ -2,6 +2,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const B = require('./baralho');
+const i18n = require('../i18n');
+
+i18n.definirIdioma('pt-BR');
 
 /** Sorte deterministica (LCG) para os testes. */
 function seeded(seed) {
@@ -51,7 +54,12 @@ test('isCard, rankIndex, isRed e cardName', () => {
   assert.equal(B.rankIndex('As'), 12);
   assert.equal(B.isRed('Th'), true);
   assert.equal(B.isRed('Ts'), false);
-  assert.equal(B.cardName('Ah'), 'ás de copas');
-  assert.equal(B.cardName('Tc'), 'dez de paus');
-  assert.equal(B.cardName('zz'), 'carta');
+  assert.equal(B.cardName('Ah', i18n.t), 'ás de copas');
+  assert.equal(B.cardName('Tc', i18n.t), 'dez de paus');
+  assert.equal(B.cardName('zz', i18n.t), 'carta');
+});
+
+test('cardName deixa a traducao do nome acessivel para quem exibe', () => {
+  const t = (chave, valores) => valores ? `${chave}:${valores.valor}/${valores.naipe}` : chave;
+  assert.equal(B.cardName('Ah', t), 'mesa.carta.nome:mesa.carta.valor.A/mesa.carta.naipe.h');
 });

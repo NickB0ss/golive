@@ -25,29 +25,72 @@
 (function (root) {
   // ---------- Puras ----------
 
-  /** Recusa do servidor (`mesa-denied.reason`) -> frase curta em PT. O
-   * `invalid` traz o motivo do `validate` do modulo em `detail`, que ja e
-   * texto para a pessoa. */
+  const i18n = root.GoLive && root.GoLive.i18n;
+  // Os testes puros podem carregar este apoio sem os scripts do renderer.
+  const t = i18n ? i18n.t : (chave) => chave;
+  const traduzirCodigo = i18n ? i18n.traduzirCodigo : (texto) => texto;
+  const maiuscula = i18n
+    ? i18n.maiuscula
+    : (texto) => texto && texto[0].toUpperCase() + texto.slice(1);
+
+  /** Recusa do servidor (`mesa-denied.reason`) -> chave de traducao. O
+   * `invalid` traz o motivo do `validate` do modulo, como codigo ou texto
+   * antigo durante a migracao. */
   const RECUSAS = {
-    rate: 'Muitas ações seguidas; espere um instante',
-    locked: 'Só o líder da sala mexe na Mesa agora',
-    'leader-only': 'Só o líder da sala pode',
-    'not-found': 'Esta janela saiu da Mesa',
-    'not-viewing': 'Abra a Mesa para mexer aqui',
-    'state-too-big': 'Passou do tamanho que a janela guarda',
-    'too-big': 'Grande demais para mandar',
-    'no-act': 'Esta janela não aceita ações',
-    'bad-request': 'Pedido inválido',
-    error: 'Não deu certo; tente de novo',
+    rate: 'mesa.recusa.rate',
+    locked: 'mesa.recusa.locked',
+    'leader-only': 'mesa.recusa.leaderOnly',
+    'not-found': 'mesa.recusa.notFound',
+    'not-viewing': 'mesa.recusa.notViewing',
+    'state-too-big': 'mesa.recusa.stateTooBig',
+    'too-big': 'mesa.recusa.tooBig',
+    'no-act': 'mesa.recusa.noAct',
+    'bad-request': 'mesa.recusa.badRequest',
+    error: 'mesa.recusa.error',
   };
 
+  const SUPERFICIES = Object.freeze({
+    poquer: 'feltro',
+    blackjack: 'feltro',
+    truco: 'feltro',
+    oito: 'feltro',
+    domino: 'feltro',
+    dados: 'feltro',
+    roleta: 'feltro',
+    velha: 'tabuleiro',
+    lig4: 'tabuleiro',
+    damas: 'tabuleiro',
+    xadrez: 'tabuleiro',
+    batalha: 'tabuleiro',
+    nota: 'papel',
+    lista: 'papel',
+    enquete: 'papel',
+    sorteio: 'papel',
+    stop: 'papel',
+    quiz: 'papel',
+    placar: 'lousa',
+    cronometro: 'lousa',
+    quadro: 'lousa',
+    desenha: 'lousa',
+    youtube: 'palco',
+    aovivo: 'palco',
+    radio: 'palco',
+    imagem: 'palco',
+    galeria: 'palco',
+    jam: 'palco',
+    link: 'palco',
+    sons: 'palco',
+  });
+
   function motivoRecusa(reason, detail) {
-    if (reason === 'invalid' && typeof detail === 'string' && detail.trim()) return primeiraMaiuscula(detail.trim());
-    return RECUSAS[reason] || 'Não deu certo; tente de novo';
+    if (reason === 'invalid' && typeof detail === 'string' && detail.trim()) {
+      return primeiraMaiuscula(traduzirCodigo(detail.trim()));
+    }
+    return t(RECUSAS[reason] || RECUSAS.error);
   }
 
   function primeiraMaiuscula(s) {
-    return s ? s[0].toUpperCase() + s.slice(1) : s;
+    return maiuscula(s);
   }
 
   /** 1000 -> "1 000" (espaco fino inseparavel, como o resto da interface). */
@@ -55,29 +98,24 @@
     return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   }
 
-  /** "1 voto", "3 votos". */
-  function plural(n, um, varios) {
-    return `${n} ${n === 1 ? um : varios}`;
-  }
-
   /** O `validate` da api sem deixar um modulo que lanca derrubar a janela. */
   function podeFazer(api, action) {
     try {
       const r = api.validate(action);
       if (r === true) return true;
-      return typeof r === 'string' && r ? primeiraMaiuscula(r) : 'Indisponível';
+      return typeof r === 'string' && r ? primeiraMaiuscula(traduzirCodigo(r)) : t('mesa.tabuleiro.indisponivel');
     } catch {
-      return 'Indisponível';
+      return t('mesa.tabuleiro.indisponivel');
     }
   }
 
   function nomeDe(api, peerId) {
-    if (peerId === null || peerId === undefined) return 'Alguém';
+    if (peerId === null || peerId === undefined) return t('sala.alguem');
     try {
       const n = api.nameOf(peerId);
-      return typeof n === 'string' && n.trim() ? n : 'Alguém';
+      return typeof n === 'string' && n.trim() ? n : t('sala.alguem');
     } catch {
-      return 'Alguém';
+      return t('sala.alguem');
     }
   }
 
@@ -111,6 +149,11 @@
     pessoas: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 11a3 3 0 1 0 0-6M21 20a6 6 0 0 0-4-5.6"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
     bandeira: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+    imagem: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/>'
+      + '<path d="M21 16l-5-5-8 8"/>',
+    musica: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
+      + '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   };
 
   function icone(nome) {
@@ -158,7 +201,7 @@
       return true;
     }
     btn.setAttribute('aria-disabled', 'true');
-    btn.title = motivo;
+    btn.title = traduzirCodigo(motivo);
     return false;
   }
 
@@ -171,6 +214,103 @@
     const b = el('span', { class: 'mj-dot', attrs: { title: titulo || null } });
     if (cor) b.style.setProperty('--mj-cor', cor);
     return b;
+  }
+
+  function cadeiras(opcoes) {
+    const opts = opcoes || {};
+    const node = el('div', { class: 'mj-cadeiras', attrs: { 'aria-label': opts.rotulo || t('mesa.vista.lugaresAMesa') } });
+    const lugares = [];
+
+    function criarLugar() {
+      const item = el('div', { class: 'mj-cadeira' });
+      const botaoLugar = botao({ class: 'mj-cadeira-botao' });
+      botaoLugar.addEventListener('click', () => {
+        if (estaDesligado(botaoLugar)) {
+          // Como o `clique` da base: desligado mostra o motivo em vez de ficar mudo.
+          opts.aoRecusar?.(botaoLugar.title || t('mesa.tabuleiro.indisponivel'), item);
+          return;
+        }
+        if (botaoLugar.dataset.ocupado === '1') opts.aoLevantar?.(botaoLugar.indice);
+        else opts.aoSentar?.(botaoLugar.indice);
+      });
+      item.append(botaoLugar);
+      return { item, botao: botaoLugar };
+    }
+
+    function atualizarLugar(registro, lugar, indice) {
+      const ocupado = lugar.peer !== null && lugar.peer !== undefined;
+      const nome = lugar.eu ? t('mesa.tabuleiro.voce') : (lugar.nome || t('sala.alguem'));
+      const { item, botao: botaoLugar } = registro;
+      botaoLugar.indice = indice;
+      botaoLugar.dataset.ocupado = ocupado ? '1' : '0';
+      if (lugar.vez) item.dataset.vez = '1';
+      else delete item.dataset.vez;
+
+      if (!ocupado) {
+        botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-livre';
+        botaoLugar.replaceChildren(icone('mais'), el('span', { text: t('mesa.cartas.sentar') }));
+        ligado(botaoLugar, lugar.motivoSentar ?? true, t('mesa.cartas.sentar'));
+        item.removeAttribute('title');
+        return;
+      }
+
+      const avatar = el('span', { class: 'mj-cadeira-avatar', text: nome.trim().charAt(0).toUpperCase() || '?' });
+      if (lugar.cor) avatar.style.setProperty('--mj-cor', lugar.cor);
+      const nomeNode = el('span', { class: 'mj-cadeira-nome', text: nome, attrs: { title: nome } });
+      const peca = lugar.peca && lugar.peca.texto
+        ? el('span', { class: 'mj-cadeira-peca', text: lugar.peca.texto })
+        : lugar.peca && lugar.peca.cor
+          ? bolinha(lugar.peca.cor, t('mesa.vista.peca'))
+          : null;
+      if (peca) peca.classList.add('mj-cadeira-peca');
+      botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-ocupada';
+      botaoLugar.replaceChildren(avatar, nomeNode);
+      if (peca) botaoLugar.append(peca);
+      ligado(botaoLugar, lugar.motivoLevantar ?? true, t('mesa.vista.levantarNome', { nome }));
+      item.setAttribute('title', nome);
+    }
+
+    function sync(novosLugares) {
+      const lista = Array.isArray(novosLugares) ? novosLugares : [];
+      while (lugares.length > lista.length) lugares.pop().item.remove();
+      while (lugares.length < lista.length) lugares.push(criarLugar());
+      for (let indice = 0; indice < lista.length; indice += 1) {
+        atualizarLugar(lugares[indice], lista[indice], indice);
+        porNaPosicao(node, lugares[indice].item, indice);
+      }
+    }
+
+    return { node, sync };
+  }
+
+  function vazio(opcoes) {
+    const opts = opcoes || {};
+    const node = el('section', { class: 'mj-vazio' });
+    const glifo = el('div', { class: 'mj-vazio-glifo', attrs: { 'aria-hidden': 'true' } }, icone(opts.icone));
+    const titulo = el('h2', { class: 'mj-vazio-titulo', text: opts.titulo || '' });
+    const texto = el('p', { class: 'mj-vazio-texto', text: opts.texto || '' });
+    node.append(glifo, titulo, texto);
+    if (opts.acao) node.append(el('div', { class: 'mj-vazio-acao' }, opts.acao));
+    return node;
+  }
+
+  function acoes(opcoes) {
+    const opts = opcoes || {};
+    const node = el('footer', { class: 'mj-acoes' });
+    const secundarias = el('div', { class: 'mj-acoes-secundarias' });
+    for (const botaoSecundario of opts.secundarias || []) {
+      botaoSecundario.classList.add('mj-fantasma');
+      const rotulo = botaoSecundario.getAttribute('aria-label') || botaoSecundario.textContent.trim();
+      if (rotulo) botaoSecundario.setAttribute('aria-label', rotulo);
+      if (rotulo && !botaoSecundario.getAttribute('title')) botaoSecundario.setAttribute('title', rotulo);
+      secundarias.append(botaoSecundario);
+    }
+    node.append(secundarias, el('span', { class: 'mj-mola', attrs: { 'aria-hidden': 'true' } }));
+    if (opts.principal) {
+      opts.principal.classList.add('mj-pri');
+      node.append(opts.principal);
+    }
+    return node;
   }
 
   /** A linha de recusa. Uma por janela: ela vai morar perto do controle da
@@ -206,6 +346,7 @@
    * pode, manda se pode. */
   function base(elRoot, api, tipo) {
     const raiz = el('div', { class: `mj mj-${tipo}` });
+    if (SUPERFICIES[tipo]) raiz.dataset.superficie = SUPERFICIES[tipo];
     elRoot.append(raiz);
     const aviso = criarAviso();
     const faxina = [];
@@ -242,7 +383,7 @@
       btn.addEventListener('click', (e) => {
         if (estaDesligado(btn)) {
           e.preventDefault();
-          aviso.mostrar(btn.title || 'Indisponível', zona);
+          aviso.mostrar(btn.title || t('mesa.tabuleiro.indisponivel'), zona);
           return;
         }
         fazer(e);
@@ -404,9 +545,9 @@
 
   const api = {
     RECUSAS,
+    SUPERFICIES,
     motivoRecusa,
     milhar,
-    plural,
     primeiraMaiuscula,
     podeFazer,
     nomeDe,
@@ -417,6 +558,9 @@
     ligado,
     estaDesligado,
     bolinha,
+    cadeiras,
+    vazio,
+    acoes,
     criarAviso,
     base,
     campoLocal,

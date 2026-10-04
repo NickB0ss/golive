@@ -11,11 +11,13 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const MAX_CHARS = 1000;
 
   const nota = {
     type: 'nota',
-    title: 'Nota',
+    title: 'mesa.titulo.nota',
     group: 'ferramentas',
     size: { w: 320, h: 240, minW: 160, minH: 120, aspect: null },
     // 1 000 caracteres de ate 4 bytes, ou de escape JSON (\u0000 = 6), mais
@@ -27,10 +29,10 @@
     },
 
     validate(state, action) {
-      if (!action || typeof action !== 'object' || action.kind !== 'set') return 'ação desconhecida';
-      if (typeof action.text !== 'string') return 'texto inválido';
+      if (!action || typeof action !== 'object' || action.kind !== 'set') return codigo('mesa.nota.acaoDesconhecida');
+      if (typeof action.text !== 'string') return codigo('mesa.nota.textoInvalido');
       // Caracteres, nao unidades UTF-16: um emoji conta como um.
-      if (Array.from(action.text).length > MAX_CHARS) return `a nota passa de ${MAX_CHARS} caracteres`;
+      if (Array.from(action.text).length > MAX_CHARS) return codigo('mesa.nota.passaDe', { max: MAX_CHARS });
       return true;
     },
 

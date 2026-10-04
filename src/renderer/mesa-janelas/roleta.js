@@ -12,6 +12,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'roleta';
   const GIRO_MS = 4200;
   const R = 96; // raio no viewBox -100..100
@@ -73,8 +74,13 @@
 
   /** "Deu Pizza" -- o resultado do giro que esta no estado. */
   function resultado(state) {
-    if (!state.spin) return state.last !== null ? `Da última vez: ${state.last}` : '';
-    return `Deu ${state.options[state.spin.index]}`;
+    if (!state.spin) return state.last !== null ? t('mesa.roleta.ultimaVez', { opcao: state.last }) : '';
+    return t('mesa.roleta.deu', { opcao: state.options[state.spin.index] });
+  }
+
+  /** Sem opcoes, o convite ocupa a lateral e nunca o centro da roda. */
+  function mostraVazio(state) {
+    return !state.options.length;
   }
 
   /** Anima este giro? So se e novo para mim e ainda esta dentro do tempo. */
@@ -111,24 +117,38 @@
     const roda = el('div', { class: 'mj-rol-roda' }, disco, ponteiro);
     const saida = el('p', { class: 'mj-rol-saida', attrs: { role: 'status', 'aria-live': 'polite' } });
     const quem = el('span', { class: 'mj-dados-quem mj-rol-quem' });
-    const girar = C.botao({ icone: 'zerar', text: 'Girar', class: 'mj-pri' });
-    const ctrl = el('div', { class: 'mj-barra mj-rol-ctrl' }, el('span', { class: 'mj-mola' }), girar);
-    const lado = el('div', { class: 'mj-rol-lado' }, roda, el('div', { class: 'mj-rol-res' }, saida, quem), ctrl);
+    const girar = C.botao({ icone: 'zerar', text: t('mesa.roleta.girar'), class: 'mj-pri' });
+    const ctrl = C.acoes({ principal: girar, secundarias: [] });
+    ctrl.classList.add('mj-rol-ctrl');
+    const vazio = C.vazio({
+      icone: 'mais',
+      titulo: t('mesa.roleta.semOpcoes'),
+      texto: t('mesa.roleta.vazioTexto'),
+    });
+    vazio.classList.add('mj-rol-vazio-fora');
+    const lado = el(
+      'div',
+      { class: 'mj-rol-lado' },
+      roda,
+      vazio,
+      el('div', { class: 'mj-rol-res' }, saida, quem),
+      ctrl,
+    );
 
     // Opcoes.
     const painel = el('section', {
       class: 'mj-rol-painel',
-      attrs: { 'aria-label': 'Opções da roleta', 'data-caber-rola': '' },
+      attrs: { 'aria-label': t('mesa.roleta.painel'), 'data-caber-rola': '' },
     });
     const listaOp = el('ol', { class: 'mj-rol-lista mj-rola' });
     const campoNova = el('input', {
       class: 'mj-campo',
-      attrs: { type: 'text', maxlength: String(m.MAX_TEXT), placeholder: 'Nova opção', 'aria-label': 'Nova opção', spellcheck: 'false' },
+      attrs: { type: 'text', maxlength: String(m.MAX_TEXT), placeholder: t('mesa.roleta.novaOpcao'), 'aria-label': t('mesa.roleta.novaOpcao'), spellcheck: 'false' },
     });
-    const addBtn = C.botao({ icone: 'mais', class: 'mj-ic', label: 'Adicionar opção' });
+    const addBtn = C.botao({ icone: 'mais', class: 'mj-ic', label: t('mesa.roleta.adicionarOpcao') });
     const form = el('form', { class: 'mj-form' }, campoNova, addBtn);
     const dicaPainel = el('p', { class: 'mj-dica' });
-    painel.append(el('p', { class: 'mj-rotulo', text: 'Opções' }), form, listaOp, dicaPainel);
+    painel.append(el('p', { class: 'mj-rotulo', text: t('mesa.roleta.opcoes') }), form, listaOp, dicaPainel);
 
     b.raiz.append(lado, painel);
 
@@ -164,13 +184,13 @@
       ops.forEach((o, i) => {
         const l = linhas[i];
         l.campo.sync(o);
-        l.input.setAttribute('aria-label', `Opção ${i + 1}`);
-        l.x.setAttribute('aria-label', `Tirar ${o}`);
-        C.ligado(l.x, true, `Tirar ${o}`);
+        l.input.setAttribute('aria-label', t('mesa.roleta.opcaoN', { n: i + 1 }));
+        l.x.setAttribute('aria-label', t('mesa.roleta.tirar', { opcao: o }));
+        C.ligado(l.x, true, t('mesa.roleta.tirar', { opcao: o }));
       });
-      C.ligado(addBtn, C.podeFazer(api, { kind: 'add', text: 'x' }), 'Adicionar opção');
+      C.ligado(addBtn, C.podeFazer(api, { kind: 'add', text: 'x' }), t('mesa.roleta.adicionarOpcao'));
       const faltam = m.MIN_SPIN_OPTIONS - ops.length;
-      dicaPainel.textContent = faltam > 0 ? `Ponha pelo menos ${m.MIN_SPIN_OPTIONS} opções para girar.` : '';
+      dicaPainel.textContent = faltam > 0 ? t('mesa.roleta.dicaMinimo', { n: m.MIN_SPIN_OPTIONS }) : '';
       dicaPainel.hidden = faltam <= 0;
     }
 
@@ -184,15 +204,18 @@
       for (const f of fatias(n)) {
         const g = svg('g', { class: `mj-rol-fatia t${f.tom}`, 'data-i': String(f.i) });
         g.append(svg('path', { d: f.path }));
-        const t = svg('text', { transform: transformRotulo(f.mid, 0), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'data-mid': String(f.mid) });
-        t.textContent = rotuloFatia(state.options[f.i], n);
-        g.append(t);
+        const tx = svg('text', {
+          transform: transformRotulo(f.mid, 0), 'text-anchor': 'middle', 'dominant-baseline': 'central',
+          'data-mid': String(f.mid),
+        });
+        tx.textContent = rotuloFatia(state.options[f.i], n);
+        g.append(tx);
         desenho.append(g);
       }
       if (n === 0) {
-        const t = svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'mj-rol-vazio' });
-        t.textContent = 'Sem opções';
-        desenho.append(t);
+        const tx = svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'mj-rol-vazio' });
+        tx.textContent = t('mesa.roleta.semOpcoes');
+        desenho.append(tx);
       }
       desenho.append(svg('circle', { r: '9', class: 'mj-rol-eixo' }));
     }
@@ -200,7 +223,7 @@
     function pintarQuem() {
       quem.replaceChildren();
       if (!state.spin || state.spin.by === null || rodando) return;
-      quem.append(C.bolinha(C.corDe(api, state.spin.by)), el('span', { text: `${C.nomeDe(api, state.spin.by)} girou` }));
+      quem.append(C.bolinha(C.corDe(api, state.spin.by)), el('span', { text: t('mesa.roleta.girou', { nome: C.nomeDe(api, state.spin.by) }) }));
     }
 
     function marcarSorteada(i) {
@@ -215,8 +238,8 @@
 
     /** Disco parado: cada texto le da esquerda para a direita na tela. */
     function orientarRotulos(angulo) {
-      for (const t of desenho.querySelectorAll('text[data-mid]')) {
-        t.setAttribute('transform', transformRotulo(Number(t.dataset.mid), angulo));
+      for (const tx of desenho.querySelectorAll('text[data-mid]')) {
+        tx.setAttribute('transform', transformRotulo(Number(tx.dataset.mid), angulo));
       }
     }
 
@@ -245,7 +268,7 @@
       rodando = true;
       b.raiz.classList.add('is-girando');
       marcarSorteada(-1);
-      saida.textContent = 'Girando…';
+      saida.textContent = t('mesa.roleta.girando');
       if (timer) clearTimeout(timer);
       timer = setTimeout(terminarGiro, GIRO_MS + 60);
     }
@@ -256,13 +279,17 @@
     }
 
     function pintarBotao() {
-      C.ligado(girar, rodando ? 'A roleta está girando' : C.podeFazer(api, { kind: 'spin' }), 'Girar a roleta');
+      C.ligado(girar, rodando ? t('mesa.roleta.estaGirando') : C.podeFazer(api, { kind: 'spin' }),
+        t('mesa.roleta.girarARoleta'));
     }
 
     function update(novo, meta) {
       state = novo;
       desenharDisco();
       desenharLista();
+      const semOpcoes = mostraVazio(state);
+      roda.hidden = semOpcoes;
+      vazio.hidden = !semOpcoes;
       const spin = state.spin;
       if (!spin) {
         if (timer) clearTimeout(timer);
@@ -340,7 +367,18 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, pontoEm, fatias, rotuloFatia, transformRotulo, resultado, precisaAnimar, GIRO_MS };
+  const api = {
+    type: TYPE,
+    mount,
+    pontoEm,
+    fatias,
+    rotuloFatia,
+    transformRotulo,
+    resultado,
+    mostraVazio,
+    precisaAnimar,
+    GIRO_MS,
+  };
 
   registrar(api, ['comum.js']);
 

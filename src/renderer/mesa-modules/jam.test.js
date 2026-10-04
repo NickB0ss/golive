@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const jam = require('./jam');
 const { jsonBytes } = require('../mesa');
 
@@ -63,7 +64,7 @@ test('link do Jam: o resto e recusado', () => {
 
 test('nasce vazio', () => {
   assert.deepEqual(jam.init({}), { link: null, by: null, joined: [], rev: 0 });
-  assert.equal(jam.summary(jam.init({})), 'Nenhum Jam ainda');
+  assert.equal(R(jam.summary(jam.init({}))), 'Nenhum Jam ainda');
 });
 
 test('colar, entrar, sair, tirar: sem mutar o anterior', () => {
@@ -72,10 +73,10 @@ test('colar, entrar, sair, tirar: sem mutar o anterior', () => {
   assert.deepEqual(s1, { link: CURTO, by: '1', joined: ['1'], rev: 1 });
   const s2 = gelar(jam.reduce(s1, gelar({ kind: 'join' }), { from: '2' }));
   assert.deepEqual(s2.joined, ['1', '2']);
-  assert.equal(jam.summary(s2), 'Jam aberto · 2 pessoas entraram');
+  assert.equal(R(jam.summary(s2)), 'Jam aberto · 2 pessoas entraram');
   const s3 = gelar(jam.reduce(s2, { kind: 'leave' }, { from: '1' }));
   assert.deepEqual(s3.joined, ['2']);
-  assert.equal(jam.summary(s3), 'Jam aberto · 1 pessoa entrou');
+  assert.equal(R(jam.summary(s3)), 'Jam aberto · 1 pessoa entrou');
   // Jam novo: a lista recomeca.
   const s4 = gelar(jam.reduce(s3, { kind: 'set', url: ABERTO }, { from: '3' }));
   assert.deepEqual(s4, { link: ABERTO, by: '3', joined: ['3'], rev: 4 });
@@ -87,7 +88,7 @@ test('validate da os motivos', () => {
   const s0 = jam.init({});
   const s1 = jam.reduce(s0, { kind: 'set', url: CURTO }, { from: '1' });
   assert.equal(jam.validate(s0, { kind: 'set', url: CURTO }, { from: '1' }), true);
-  assert.match(jam.validate(s0, { kind: 'set', url: 'https://example.com/' }, { from: '1' }), /link do Jam/);
+  assert.match(jam.validate(s0, { kind: 'set', url: 'https://example.com/' }, { from: '1' }), /^mesa.jam.linkInvalido$/);
   assert.equal(typeof jam.validate(s1, { kind: 'set', url: `${CURTO}?si=2` }, { from: '2' }), 'string');
   assert.equal(typeof jam.validate(s0, { kind: 'join' }, { from: '2' }), 'string');
   assert.equal(typeof jam.validate(s0, { kind: 'clear' }, { from: '2' }), 'string');
@@ -141,6 +142,6 @@ test('esta no registro, no grupo assistir', () => {
   const reg = require('./index');
   assert.ok(reg.MODULE_NAMES.includes('jam'));
   const m = reg.get('jam');
-  assert.equal(m.title, 'Spotify Jam');
+  assert.equal(tx(m.title), 'Spotify Jam');
   assert.equal(m.group, 'assistir');
 });

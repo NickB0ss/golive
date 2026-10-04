@@ -20,6 +20,11 @@
   const q = new URLSearchParams(location.search);
   const tipo = q.get('tipo') || 'placar';
   const tam = q.get('tam') || 'padrao';
+  // ?idioma=en|es: o i18n ja carregou em pt-BR (sem preload aqui); troca antes de montar qualquer janela.
+  if (q.get('idioma')) {
+    GoLive.i18n.definirIdioma(q.get('idioma'));
+    GoLive.i18n.aplicarNoDom();
+  }
   const atraso = Math.max(0, Number(q.get('atraso')) || 0);
   if (q.get('tema')) {
     document.documentElement.dataset.theme = q.get('tema');

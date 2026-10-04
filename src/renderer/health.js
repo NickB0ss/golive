@@ -44,16 +44,15 @@
       : null;
   }
 
-  const BLAME_TEXT = {
-    bandwidth: 'travando — a rede de quem está transmitindo não aguenta',
-    cpu: 'travando — a máquina de quem está transmitindo está apertada',
-    other: 'travando — o encoder de quem está transmitindo está no limite',
-  };
-  const GENERIC_TEXT = 'travando — a rede entre vocês';
-
   function textFor(level, blame) {
     if (level === 'ok') return '';
-    return blame ? BLAME_TEXT[blame] : GENERIC_TEXT;
+    const { t } = root.GoLive.i18n;
+    switch (blame) {
+      case 'bandwidth': return t('sistema.travandoRedeOrigem');
+      case 'cpu': return t('sistema.travandoMaquinaOrigem');
+      case 'other': return t('sistema.travandoEncoderOrigem');
+      default: return t('sistema.travandoRedeEntreVoces');
+    }
   }
 
   function initialState() {

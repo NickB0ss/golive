@@ -17,12 +17,17 @@
  */
 
 (function (root) {
+  const { t, idiomaAtivo, traduzirCodigo } = root.GoLive.i18n;
   const TYPE = 'desenha';
   const LOCAL = 'desenha-local';
   const PEN_WIDTH = 4;
   const FOLGA_NAO_DESENHISTA_MS = 0; // quem adivinha manda o timeout na hora
   const FOLGA_DESENHISTA_MS = 3000; // o desenhista espera, dando chance ao resto
   const REPETE_MS = 2000;
+
+  function modulo() {
+    return root.GoLive.mesaModules[TYPE];
+  }
 
   function atualizarBarra(api, texto, vez) {
     api.setStatus?.(texto);
@@ -47,17 +52,23 @@
     const topo = el('div', { class: 'mj-ds-topo' }, status, el('span', { class: 'mj-mola' }), relogio);
     b.raiz.append(topo);
 
-    const placar = el('ul', { class: 'mj-ds-placar', attrs: { 'aria-label': 'Placar' } });
+    const placar = el('ul', { class: 'mj-ds-placar', attrs: { 'aria-label': t('mesa.desenha.placar') } });
     b.raiz.append(placar);
 
     // ---------- lobby ----------
 
-    const btEntrar = C.botao({ text: 'Entrar na rodada', class: 'mj-pri' });
-    const btSair = C.botao({ text: 'Sair da rodada' });
-    const btComecar = C.botao({ text: 'Começar', class: 'mj-pri' });
+    const btEntrar = C.botao({ text: t('mesa.desenha.entrarRodada'), class: 'mj-pri' });
+    const btSair = C.botao({ text: t('mesa.desenha.sairRodada') });
+    const btComecar = C.botao({ text: t('mesa.desenha.comecar') });
+    // Esperando gente: o vazio convida a entrar; "Começar" (principal) e "Sair" ficam em C.acoes.
+    const vazioLobby = C.vazio({
+      icone: 'lapis',
+      titulo: t('mesa.desenha.entreRodada'),
+      texto: t('mesa.desenha.rodizio'),
+      acao: btEntrar,
+    });
     const secLobby = el('div', { class: 'mj-ds-lobby' },
-      el('p', { class: 'mj-dica', text: 'Quem entrar participa do rodízio de quem desenha.' }),
-      el('div', { class: 'mj-barra' }, btEntrar, btSair, el('span', { class: 'mj-mola' }), btComecar));
+      vazioLobby, C.acoes({ principal: btComecar, secundarias: [btSair] }));
     b.raiz.append(secLobby);
     b.clique(btEntrar, secLobby, () => b.acao(secLobby, { kind: 'join' }));
     b.clique(btSair, secLobby, () => b.acao(secLobby, { kind: 'leave' }));
@@ -67,7 +78,7 @@
 
     const opcoesBtns = [0, 1, 2].map(() => el('button', { class: 'mj-btn mj-ds-opcao', attrs: { type: 'button' } }));
     const secEscolhendo = el('div', { class: 'mj-ds-escolhendo' },
-      el('p', { class: 'mj-rotulo', text: 'Escolha uma palavra' }),
+      el('p', { class: 'mj-rotulo', text: t('mesa.desenha.escolhaPalavra') }),
       el('div', { class: 'mj-ds-opcoes' }, ...opcoesBtns));
     b.raiz.append(secEscolhendo);
     opcoesBtns.forEach((btn, i) => b.clique(btn, secEscolhendo, () => b.acao(secEscolhendo, { kind: 'choose', index: i })));
@@ -80,10 +91,11 @@
     palco.append(canvas);
     palco.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    const campoPalpite = el('input', { class: 'mj-campo mj-ds-campo', attrs: { type: 'text', placeholder: 'seu palpite...', maxlength: '40' } });
+    const campoPalpite = el('input', { class: 'mj-campo mj-ds-campo', attrs: { type: 'text',
+      placeholder: t('mesa.desenha.seuPalpite'), maxlength: '40' } });
     // C.botao() poe type="button" por padrao (o objeto do meio, sem isto o
     // clique nao confirma o form nenhum -- so o Enter no campo submetia).
-    const btPalpite = C.botao({ text: 'Enviar', class: 'mj-pri', attrs: { type: 'submit' } });
+    const btPalpite = C.botao({ text: t('mesa.desenha.enviar'), class: 'mj-pri', attrs: { type: 'submit' } });
     const formPalpite = el('form', { class: 'mj-form mj-ds-palpite' }, campoPalpite, btPalpite);
     const secDesenhando = el('div', { class: 'mj-ds-desenhando' }, palavraLinha, palco, formPalpite);
     b.raiz.append(secDesenhando);
@@ -97,7 +109,8 @@
 
     // ---------- fim de jogo ----------
 
-    const secFim = el('div', { class: 'mj-ds-fim' }, el('p', { class: 'mj-rotulo', text: 'Fim de jogo' }));
+    const secFim = el('div', { class: 'mj-ds-fim' },
+      el('p', { class: 'mj-rotulo', text: t('mesa.desenha.fimDeJogo') }));
     b.raiz.append(secFim);
 
     // ---------- desenho: canvas local + rede (mesmo molde do Quadro) ----------
@@ -214,8 +227,8 @@
     // ---------- render por fase ----------
 
     function nomeDe(id) {
-      if (id == null) return 'Alguém';
-      return C.nomeDe(api, id);
+      if (id == null) return t('mesa.desenha.alguem');
+      return traduzirCodigo(C.nomeDe(api, id));
     }
 
     function renderPlacar() {
@@ -229,7 +242,7 @@
         if (p.id === state.drawerId) li.classList.add('is-vez');
         if (!p.naSala) li.classList.add('is-fora');
         li.append(C.bolinha(api.colorFor(p.id), nomeDe(p.id)));
-        li.append(el('span', { class: 'mj-ds-nome', text: p.id === api.me() ? 'Você' : nomeDe(p.id) }));
+        li.append(el('span', { class: 'mj-ds-nome', text: p.id === api.me() ? t('mesa.desenha.voce') : nomeDe(p.id) }));
         li.append(el('span', { class: 'mj-ds-pontos', text: C.milhar(p.score) }));
         placar.append(li);
       }
@@ -241,18 +254,25 @@
         return;
       }
       let texto;
-      if (state.phase === 'lobby') texto = state.players.length ? `${state.players.length} na rodada` : 'Esperando gente entrar';
-      else if (state.phase === 'gameend') texto = 'Fim de jogo';
-      else if (state.phase === 'choosing') texto = state.me.isDrawer ? 'Escolha uma palavra' : `${nomeDe(state.drawerId)} está escolhendo a palavra`;
-      else texto = state.me.isDrawer ? 'Sua vez de desenhar' : `${nomeDe(state.drawerId)} está desenhando`;
+      if (state.phase === 'lobby') texto = state.players.length
+        ? t('mesa.desenha.naRodada', { n: state.players.length }) : t('mesa.desenha.esperandoEntrar');
+      else if (state.phase === 'gameend') texto = t('mesa.desenha.fimDeJogo');
+      else if (state.phase === 'choosing') texto = state.me.isDrawer
+        ? t('mesa.desenha.escolhaPalavra') : t('mesa.desenha.escolhendo', { nome: nomeDe(state.drawerId) });
+      else texto = state.me.isDrawer
+        ? t('mesa.desenha.suaVezDesenhar') : t('mesa.desenha.desenhando', { nome: nomeDe(state.drawerId) });
       if (status.textContent !== texto) status.textContent = texto;
     }
 
     function renderPalavra() {
       if (!state || state.phase !== 'drawing') return;
       let texto;
-      if (state.me.isDrawer || state.iGuessed) texto = state.word || '';
-      else texto = typeof state.wordLen === 'number' ? '_ '.repeat(state.wordLen).trim() : '';
+      if (state.me.isDrawer || state.iGuessed) texto = modulo().palavraEm(state.word, idiomaAtivo());
+      else {
+        const idioma = idiomaAtivo() === 'pt-BR' ? 'pt' : idiomaAtivo();
+        const tamanho = state.wordLens && state.wordLens[idioma];
+        texto = typeof tamanho === 'number' ? '_ '.repeat(tamanho).trim() : '';
+      }
       if (palavraLinha.textContent !== texto) palavraLinha.textContent = texto;
     }
 
@@ -263,16 +283,19 @@
       if (!state || !state.event || state.event.seq === ultimoEventoSeq) return;
       ultimoEventoSeq = state.event.seq;
       const { kind, by } = state.event;
-      if (kind === 'correct') b.aviso.mostrar(`${nomeDe(by)} acertou!`, topo);
-      else if (kind === 'close') b.aviso.mostrar('Quase! Uma letra de diferença.', topo);
-      else if (kind === 'wrong' && by !== api.me()) b.aviso.mostrar(`${nomeDe(by)} chutou "${state.event.text}"`, topo);
+      if (kind === 'correct') b.aviso.mostrar(t('mesa.desenha.acertou', { nome: nomeDe(by) }), topo);
+      else if (kind === 'close') b.aviso.mostrar(t('mesa.desenha.quase'), topo);
+      else if (kind === 'wrong' && by !== api.me()) b.aviso.mostrar(
+        t('mesa.desenha.chutou', { nome: nomeDe(by), palpite: state.event.text }), topo);
     }
 
     function mostrarRevelacao() {
       if (!state || !state.lastRound) return;
       if (state.lastRound.round === rodadaRevelada) return;
       rodadaRevelada = state.lastRound.round;
-      b.aviso.mostrar(`A palavra era "${state.lastRound.word}" (${nomeDe(state.lastRound.drawerId)})`, topo);
+      b.aviso.mostrar(t('mesa.desenha.palavraEra', {
+        palavra: modulo().palavraEm(state.lastRound.word, idiomaAtivo()), nome: nomeDe(state.lastRound.drawerId),
+      }), topo);
     }
     let rodadaRevelada = -1;
 
@@ -302,10 +325,14 @@
         C.ligado(btComecar, C.podeFazer(api, { kind: 'start' }) === true);
         btEntrar.hidden = Boolean(me.joined);
         btSair.hidden = !me.joined;
+        vazioLobby.children[1].textContent = me.joined ? t('mesa.desenha.voceNaRodada') : t('mesa.desenha.entreRodada');
+        vazioLobby.children[2].textContent = me.joined
+          ? t('mesa.desenha.comeceQuandoPronto') : t('mesa.desenha.rodizio');
       }
 
       if (fase === 'choosing' && me.isDrawer && Array.isArray(state.options)) {
-        state.options.forEach((palavra, i) => {
+        state.options.forEach((id, i) => {
+          const palavra = modulo().palavraEm(id, idiomaAtivo());
           if (opcoesBtns[i].textContent !== palavra) opcoesBtns[i].textContent = palavra;
         });
       }

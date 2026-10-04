@@ -9,7 +9,17 @@ const DIR = path.join(__dirname, 'sinal');
 // Toda folha do Sinal entra: um arquivo novo nao pode escapar das regras.
 const FILES = fs.readdirSync(DIR).filter((file) => file.endsWith('.css')).sort();
 const cssByFile = new Map(FILES.map((file) => [file, fs.readFileSync(path.join(DIR, file), 'utf8')]));
-const mesaJanelas = fs.readFileSync(path.join(__dirname, 'mesa-janelas.css'), 'utf8');
+const CSS_MESA_DIR = path.join(__dirname, 'mesa-janelas', 'css');
+const entradaMesaJanelas = fs.readFileSync(path.join(__dirname, 'mesa-janelas.css'), 'utf8');
+const folhasMesaJanelas = [...entradaMesaJanelas
+  .matchAll(/@import url\('mesa-janelas\/css\/([\w-]+\.css)'\);/g)]
+  .map((match) => match[1]);
+const mesaJanelas = fs.existsSync(CSS_MESA_DIR)
+  ? folhasMesaJanelas.map((file) => fs.readFileSync(path.join(CSS_MESA_DIR, file), 'utf8')).join('\n')
+  : entradaMesaJanelas;
+const baseMesaJanelas = fs.existsSync(CSS_MESA_DIR)
+  ? fs.readFileSync(path.join(CSS_MESA_DIR, 'base.css'), 'utf8')
+  : '';
 
 function declarations(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -71,6 +81,17 @@ function isRootBlock(stack) {
   return stack.some((entry) => /^:root(?:\[data-(?:theme|tone)=(?:"[^"]+"|'[^']+'|[^\]]+)\])?$/.test(entry));
 }
 
+test('mesa-janelas.css so importa, e importa toda folha de mesa-janelas/css', () => {
+  const entrada = fs.readFileSync(path.join(__dirname, 'mesa-janelas.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').trim();
+  const importados = [...entrada.matchAll(/@import url\('mesa-janelas\/css\/([\w-]+\.css)'\);/g)]
+    .map((match) => match[1]);
+  const semImport = entrada.replace(/@import url\('[^']+'\);/g, '').trim();
+  assert.equal(semImport, '', 'mesa-janelas.css so pode ter @import');
+  const folhas = fs.readdirSync(CSS_MESA_DIR).filter((file) => file.endsWith('.css')).sort();
+  assert.deepEqual([...importados].sort(), folhas);
+});
+
 test('as fontes Sinal apontam para arquivos locais existentes', () => {
   const fonts = [...cssByFile.get('tokens.css').matchAll(/@font-face\s*\{([\s\S]*?)\}/g)];
   assert.ok(fonts.length > 0);
@@ -126,7 +147,15 @@ test('z-index usa apenas a escala de tokens', () => {
 
 test('conteudos da Mesa tambem so usam tokens de cor, fonte e profundidade', () => {
   const source = mesaJanelas.replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|\brgba?\(/i);
+  // Cor literal so como valor de custom property na base (materiais --mj-mat-* e a ilha escura);
+  // toda propriedade de verdade usa var().
+  const COR = /#[0-9a-f]{3,8}\b|\brgba?\(/i;
+  const semBase = source.replace(baseMesaJanelas.replace(/\/\*[\s\S]*?\*\//g, ''), '');
+  assert.doesNotMatch(semBase, COR);
+  for (const decl of declarations(baseMesaJanelas)) {
+    if (!COR.test(decl.value)) continue;
+    assert.ok(decl.property.startsWith('--'), `base.css: cor literal fora de custom property: ${decl.property}`);
+  }
   assert.doesNotMatch(source, /var\(--live\)/);
   assert.doesNotMatch(source, /(?:font|font-size)\s*:[^;}]*\b\d+(?:px|rem)\b/);
   for (const match of source.matchAll(/z-index\s*:\s*([^;}]*)/g)) {
@@ -271,7 +300,11 @@ test('Pessoas e Sair da sala na cabeca usam os componentes do Sinal', () => {
   assert.match(pessoas, /title="Pessoas"/);
   assert.ok(!/Pessoas na sala|'NA SALA'/.test(html + lerRenderer('ui.js')), 'so "Pessoas", sem "na sala"');
   assert.ok(!html.includes('presence-nodes'), 'sem o aglomerado de bolinhas');
-  assert.ok(html.includes('<span class="tx-tag">Pessoas · '), 'cabecalho do popover sem repetir "Na sala"');
+  assert.match(
+    html,
+    /<span class="tx-tag"><span data-i18n="pagina\.pessoasPonto">Pessoas ·<\/span>\s+<span id="presence-count">/,
+    'cabecalho do popover traduz o rotulo sem apagar a contagem',
+  );
   const sair = html.match(/<button id="btn-disconnect"[\s\S]*?<\/button>/)[0];
   assert.match(sair, /class="btn btn--danger btn--sm"/);
   assert.match(sair, /href="#i-log-out"/);
@@ -293,7 +326,9 @@ test('espiar mostra as ultimas mensagens na hora e explica quando nao ha nenhuma
   const ui = lerRenderer('ui.js');
   const app = lerRenderer('app.js');
   assert.match(ui, /function espiarRecentes\(\)/);
-  assert.match(ui, /Espiando: mensagens novas aparecem aqui\./);
+  // O texto mora no dicionario desde a migracao de idiomas; o ui.js usa a chave.
+  assert.match(ui, /t\('ui\.chat\.espiandoVazio'\)/);
+  assert.equal(require('./i18n/pt-BR')['ui.chat.espiandoVazio'], 'Espiando: mensagens novas aparecem aqui.');
   assert.match(app, /setConversation\('peek', \{ persist: true \}\);\s*[^]*?ui\.chat\.espiarRecentes\(\);/);
   const html = lerRenderer('index.html');
   const botao = html.match(/<button id="btn-conv-peek"[\s\S]*?<\/button>/)[0];

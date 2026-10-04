@@ -91,17 +91,18 @@
 
   /** Texto para quem esta vendo, por codigo de erro do player. */
   function errorText(code) {
+    const { t } = root.GoLive.i18n;
     switch (code) {
-      case 2: return 'Link de vídeo inválido.';
-      case 5: return 'O player do YouTube não conseguiu tocar este vídeo neste PC.';
-      case 100: return 'Vídeo não encontrado: foi removido ou é privado.';
+      case 2: return t('sistema.ytLinkInvalido');
+      case 5: return t('sistema.ytNaoTocouNestePc');
+      case 100: return t('sistema.ytNaoEncontrado');
       case 101:
-      case 150: return 'O dono deste vídeo não deixa tocar fora do YouTube.';
+      case 150: return t('sistema.ytDonoNaoDeixa');
       case 152:
-      case 153: return 'O YouTube recusou o player deste app (erro de configuração). Atualize o GoLive; se continuar, avise.';
+      case 153: return t('sistema.ytRecusouPlayer');
       case 'offline':
-      case 'timeout': return 'Sem internet: o YouTube não carregou neste PC.';
-      default: return 'O YouTube não conseguiu tocar este vídeo.';
+      case 'timeout': return t('sistema.ytSemInternet');
+      default: return t('sistema.ytNaoTocou');
     }
   }
 
@@ -172,7 +173,7 @@
     iframe.setAttribute('sandbox', SANDBOX);
     iframe.setAttribute('allow', ALLOW);
     iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-    iframe.setAttribute('title', o.title || 'Player do YouTube');
+    iframe.setAttribute('title', o.title || root.GoLive.i18n.t('sistema.ytTituloPlayer'));
     iframe.setAttribute('tabindex', '-1'); // os controles sao os do app
     iframe.src = embedUrl(o.videoId, { origin: o.origin || win.location.origin, start: o.start, mute: o.mute });
     let ready = false;

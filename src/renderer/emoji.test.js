@@ -1,6 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const KEYWORDS_EN = require('./emoji-en');
+const KEYWORDS_ES = require('./emoji-es');
 const { GROUPS, MAX_RECENTS, normalize, search, labelFor, isKnown, pushRecent, loadRecents } = require('./emoji');
 
 test('a lista tem grupos com id, rotulo, icone e itens', () => {
@@ -51,6 +53,36 @@ test('busca acha com e sem acento', () => {
   assert.deepEqual(search('coração').slice(0, 1), search('coracao').slice(0, 1));
   assert.ok(search('pizza').includes('🍕'));
   assert.ok(search('cachorro').includes('🐶'));
+});
+
+test('busca acha em ingles e espanhol, alem do portugues', () => {
+  const coracao = '❤️';
+  for (const termo of ['coracao', 'heart', 'corazon']) {
+    assert.ok(search(termo).includes(coracao), termo);
+  }
+});
+
+test('todo emoji tem palavras en e es e o rotulo acompanha o idioma', () => {
+  for (const g of GROUPS) {
+    for (const [char] of g.items) {
+      assert.ok(KEYWORDS_EN[char], `${char} sem palavra en`);
+      assert.ok(KEYWORDS_ES[char], `${char} sem palavra es`);
+    }
+  }
+  const anterior = global.GoLive.i18n;
+  const idioma = 'pt-BR';
+  const ativo = { idioma };
+  global.GoLive.i18n = {
+    idiomaAtivo: () => ativo.idioma,
+    definirIdioma: (codigo) => { ativo.idioma = codigo; },
+  };
+  const i18n = global.GoLive.i18n;
+  i18n.definirIdioma('en');
+  assert.equal(labelFor('❤️'), 'heart');
+  i18n.definirIdioma('es');
+  assert.equal(labelFor('❤️'), 'corazon');
+  i18n.definirIdioma('pt-BR');
+  global.GoLive.i18n = anterior;
 });
 
 test('busca e por prefixo de palavra, nao por pedaco no meio', () => {

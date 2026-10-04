@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 const janela = require('./velha');
 
 test('Velha envia estado proprio e alheio para a barra', () => {

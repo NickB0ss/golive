@@ -18,6 +18,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'link';
   const MAX_URL = 2048;
   const MAX_TITLE = 80;
@@ -69,27 +71,27 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'set': {
         const l = parseLink(action.url);
-        if (!l) return 'Cole um endereço https:// de um site (sem usuário, senha ou porta)';
+        if (!l) return codigo('mesa.link.enderecoInvalido');
         const title = cleanTitle(action.title);
-        if (title === undefined) return `Título longo demais (máx. ${MAX_TITLE})`;
+        if (title === undefined) return codigo('mesa.link.tituloLongo', { max: MAX_TITLE });
         return { kind: 'set', url: l.url, host: l.host, title };
       }
       case 'clear':
         return { kind: 'clear' };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
   function validate(state, action) {
     const a = parse(action);
     if (typeof a === 'string') return a;
-    if (a.kind === 'set' && a.url === state.url && a.title === state.title) return 'Este link já está na janela';
-    if (a.kind === 'clear' && !state.url) return 'Não há link para tirar';
+    if (a.kind === 'set' && a.url === state.url && a.title === state.title) return codigo('mesa.link.jaNaJanela');
+    if (a.kind === 'clear' && !state.url) return codigo('mesa.link.naoHaParaTirar');
     return true;
   }
 
@@ -103,13 +105,14 @@
   }
 
   function summary(state) {
-    if (!state.url) return 'Nenhum link ainda';
-    return state.title ? `${state.title} (${state.host})` : state.host;
+    if (!state.url) return { chave: 'mesa.resumo.linkNenhum' };
+    if (state.title) return { chave: 'mesa.resumo.linkTitulo', valores: { titulo: state.title, dominio: state.host } };
+    return { chave: 'mesa.resumo.linha', valores: { linha: state.host } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Link',
+    title: 'mesa.titulo.link',
     group: 'ferramentas',
     size: { w: 360, h: 200, minW: 240, minH: 150, aspect: null },
     // 2 048 do endereco (ja em %XX, ASCII) + 80 caracteres de titulo (ate 6

@@ -7,6 +7,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('goliveBoot', {
+  textos: ipcRenderer.sendSync('i18n:splash'),
   /** { phase, version?, progress?, reason? } -- phase em 'checking' |
    * 'downloading' | 'installing' | 'release'. Ver src/main/boot.js. */
   onPhase: (callback) =>

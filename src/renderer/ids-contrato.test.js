@@ -6,12 +6,22 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
 const idsContratados = require('./ids-contrato.json');
+const IDS_DINAMICOS = new Set([
+  'settings-language',
+  'settings-language-note',
+]);
 
-test('index.html preserva os ids do contrato', () => {
-  const indexPath = path.join(__dirname, 'index.html');
-  const indexHtml = fs.readFileSync(indexPath, 'utf8');
-  const idsAtuais = new Set([...indexHtml.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
-  const sumidos = idsContratados.filter((id) => !idsAtuais.has(id));
+function idsDoArquivo(arquivo) {
+  const fonte = fs.readFileSync(path.join(__dirname, arquivo), 'utf8');
+  return new Set([...fonte.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+}
 
-  assert.deepEqual(sumidos, [], `ids removidos do index.html: ${sumidos.join(', ')}`);
+test('o renderer preserva os ids do contrato', () => {
+  const idsDoIndex = idsDoArquivo('index.html');
+  const idsDoUi = idsDoArquivo('ui.js');
+  const sumidosDoIndex = idsContratados.filter((id) => !IDS_DINAMICOS.has(id) && !idsDoIndex.has(id));
+  const sumidosDoUi = [...IDS_DINAMICOS].filter((id) => !idsDoUi.has(id));
+
+  assert.deepEqual(sumidosDoIndex, [], `ids removidos do index.html: ${sumidosDoIndex.join(', ')}`);
+  assert.deepEqual(sumidosDoUi, [], `ids dinamicos removidos do ui.js: ${sumidosDoUi.join(', ')}`);
 });

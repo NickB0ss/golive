@@ -17,6 +17,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'stop';
   const ROUND_MS = 3 * 60 * 1000;
   const MAX_CATEGORIES = 10;
@@ -25,7 +27,9 @@
   const MAX_PLAYERS = 24;
   const LETTERS = Object.freeze('ABCDEFGHIJLMNOPQRSTUVZ'.split(''));
   const DEFAULT_CATEGORIES = Object.freeze([
-    'Nome', 'Animal', 'Cor', 'Fruta', 'Cidade/Estado/País', 'Objeto', 'Profissão', 'Marca',
+    codigo('mesa.stop.cat.nome'), codigo('mesa.stop.cat.animal'), codigo('mesa.stop.cat.cor'),
+    codigo('mesa.stop.cat.fruta'), codigo('mesa.stop.cat.cidadeEstadoPais'), codigo('mesa.stop.cat.objeto'),
+    codigo('mesa.stop.cat.profissao'), codigo('mesa.stop.cat.marca'),
   ]);
 
   function obj(v) {
@@ -64,21 +68,21 @@
   }
 
   function parsedCategories(categories) {
-    if (!Array.isArray(categories) || categories.length < 1) return 'Informe pelo menos uma categoria';
-    if (categories.length > MAX_CATEGORIES) return `No máximo ${MAX_CATEGORIES} categorias`;
+    if (!Array.isArray(categories) || categories.length < 1) return codigo('mesa.stop.informeUma');
+    if (categories.length > MAX_CATEGORIES) return codigo('mesa.stop.maxCategorias', { n: MAX_CATEGORIES });
     const out = [];
     for (const raw of categories) {
       const v = text(raw, MAX_CATEGORY);
-      if (v === null) return 'Categoria inválida';
-      if (!v) return 'Categoria vazia';
+      if (v === null) return codigo('mesa.stop.categoriaInvalida');
+      if (!v) return codigo('mesa.stop.categoriaVazia');
       out.push(v);
     }
-    if (new Set(out.map(normalized)).size !== out.length) return 'Categorias repetidas';
+    if (new Set(out.map(normalized)).size !== out.length) return codigo('mesa.stop.categoriasRepetidas');
     return out;
   }
 
   function parse(action) {
-    if (!obj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!obj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'categories': {
         const categories = parsedCategories(action.categories);
@@ -90,22 +94,22 @@
       case 'finish':
         return { kind: action.kind };
       case 'answer': {
-        if (!Array.isArray(action.answers)) return 'Respostas inválidas';
+        if (!Array.isArray(action.answers)) return codigo('mesa.stop.respostasInvalidas');
         const answers = [];
         for (const raw of action.answers) {
           const v = text(raw, MAX_ANSWER);
-          if (v === null) return `Resposta longa demais (máx. ${MAX_ANSWER})`;
+          if (v === null) return codigo('mesa.stop.respostaLonga', { max: MAX_ANSWER });
           answers.push(v);
         }
         return { kind: 'answer', answers };
       }
       case 'vote':
         if (!peerId(action.player) || !Number.isInteger(action.category) || typeof action.annul !== 'boolean') {
-          return 'Voto inválido';
+          return codigo('mesa.stop.votoInvalido');
         }
         return { kind: 'vote', player: action.player, category: action.category, annul: action.annul };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -150,38 +154,38 @@
     const from = ctx && peerId(ctx.from) ? ctx.from : null;
     switch (a.kind) {
       case 'categories':
-        if (!canManage(state, ctx)) return 'Só quem criou a janela';
-        return state.phase === 'setup' ? true : 'Troque as categorias entre rodadas';
+        if (!canManage(state, ctx)) return codigo('mesa.stop.soQuemCriou');
+        return state.phase === 'setup' ? true : codigo('mesa.stop.trocarEntreRodadas');
       case 'start':
-        if (!canManage(state, ctx)) return 'Só quem criou a janela';
-        if (state.phase !== 'setup') return 'A rodada já está em andamento';
-        if (peersOf(ctx).length < 1) return 'Ninguém na sala';
-        if (peersOf(ctx).length > MAX_PLAYERS) return `No máximo ${MAX_PLAYERS} pessoas por rodada`;
+        if (!canManage(state, ctx)) return codigo('mesa.stop.soQuemCriou');
+        if (state.phase !== 'setup') return codigo('mesa.stop.rodadaEmAndamento');
+        if (peersOf(ctx).length < 1) return codigo('mesa.stop.ninguemNaSala');
+        if (peersOf(ctx).length > MAX_PLAYERS) return codigo('mesa.stop.maxPessoas', { n: MAX_PLAYERS });
         return true;
       case 'answer':
         if (state.phase !== 'writing') {
-          return state.phase === 'setup' ? 'A rodada ainda não começou' : 'A rodada já parou';
+          return state.phase === 'setup' ? codigo('mesa.stop.rodadaNaoComecou') : codigo('mesa.stop.rodadaParou');
         }
-        if (!from || !activePlayers(state, ctx).includes(from)) return 'Você não está nesta rodada';
-        return a.answers.length === state.categories.length ? true : 'Responda todas as categorias';
+        if (!from || !activePlayers(state, ctx).includes(from)) return codigo('mesa.stop.naoEstaNaRodada');
+        return a.answers.length === state.categories.length ? true : codigo('mesa.stop.respondaTodas');
       case 'stop':
-        if (state.phase !== 'writing') return 'A rodada já parou';
-        if (!from || !activePlayers(state, ctx).includes(from)) return 'Você não está nesta rodada';
-        return allAnswered(state, from) ? true : 'Preencha todas as respostas';
+        if (state.phase !== 'writing') return codigo('mesa.stop.rodadaParou');
+        if (!from || !activePlayers(state, ctx).includes(from)) return codigo('mesa.stop.naoEstaNaRodada');
+        return allAnswered(state, from) ? true : codigo('mesa.stop.preenchaTodas');
       case 'timeout':
-        return state.phase === 'writing' ? true : 'Nada correndo';
+        return state.phase === 'writing' ? true : codigo('mesa.stop.nadaCorrendo');
       case 'vote':
-        if (state.phase !== 'review') return 'Ainda não é hora de corrigir';
-        if (!from || !activePlayers(state, ctx).includes(from)) return 'Você não está nesta rodada';
+        if (state.phase !== 'review') return codigo('mesa.stop.aindaNaoCorrigir');
+        if (!from || !activePlayers(state, ctx).includes(from)) return codigo('mesa.stop.naoEstaNaRodada');
         if (!activePlayers(state, ctx).includes(a.player) || a.category >= state.categories.length) {
-          return 'Resposta inválida';
+          return codigo('mesa.stop.respostaInvalida');
         }
         return true;
       case 'finish':
-        if (!canManage(state, ctx)) return 'Só quem criou a janela';
-        return state.phase === 'review' ? true : 'Nada para encerrar';
+        if (!canManage(state, ctx)) return codigo('mesa.stop.soQuemCriou');
+        return state.phase === 'review' ? true : codigo('mesa.stop.nadaEncerrar');
       default:
-        return 'Ação inválida';
+        return codigo('mesa.jogo.acaoInvalida');
     }
   }
 
@@ -358,14 +362,14 @@
   }
 
   function summary(state) {
-    if (state.phase === 'writing') return `Letra ${state.letter} · respostas escondidas`;
-    if (state.phase === 'review') return `Letra ${state.letter} · corrigindo`;
-    return state.categories.length ? 'Pronto para a próxima rodada' : 'Stop';
+    if (state.phase === 'writing') return { chave: 'mesa.resumo.stopEscrevendo', valores: { letra: state.letter } };
+    if (state.phase === 'review') return { chave: 'mesa.resumo.stopCorrigindo', valores: { letra: state.letter } };
+    return { chave: state.categories.length ? 'mesa.resumo.stopProxima' : 'mesa.titulo.stop' };
   }
 
   const api = {
     type: TYPE,
-    title: 'Stop',
+    title: 'mesa.titulo.stop',
     group: 'noite',
     size: { w: 720, h: 460, minW: 520, minH: 340, aspect: null },
     maxStateBytes: 16 * 1024,

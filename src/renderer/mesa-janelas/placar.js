@@ -10,6 +10,7 @@
  */
 
 (function (root) {
+  const { t, traduzirCodigo } = root.GoLive.i18n;
   const TYPE = 'placar';
 
   function mod() {
@@ -20,22 +21,22 @@
 
   /** Opcoes do seletor "melhor de": null (sem serie) e os impares validos. */
   function opcoesSerie(m) {
-    const out = [{ valor: null, texto: 'Sem série' }];
-    for (let n = m.MIN_BEST_OF; n <= m.MAX_BEST_OF; n += 2) out.push({ valor: n, texto: `Melhor de ${n}` });
+    const out = [{ valor: null, texto: t('mesa.placar.semSerie') }];
+    for (let n = m.MIN_BEST_OF; n <= m.MAX_BEST_OF; n += 2) out.push({ valor: n, texto: t('mesa.placar.melhorDe', { n }) });
     return out;
   }
 
   /** "Azul venceu a série" ou '' enquanto ninguem fechou. */
   function textoVencedor(m, state) {
     const w = m.winner(state);
-    return w === -1 ? '' : `${state.teams[w].name} venceu a série`;
+    return w === -1 ? '' : t('mesa.placar.venceuSerie', { nome: traduzirCodigo(state.teams[w].name) });
   }
 
   /** Dica abaixo dos times: quantas vitorias fecham a serie. */
   function textoSerie(state) {
     if (state.bestOf === null) return '';
     const alvo = Math.floor(state.bestOf / 2) + 1;
-    return `Melhor de ${state.bestOf}: fecha com ${alvo}`;
+    return t('mesa.placar.melhorDeFecha', { n: state.bestOf, alvo });
   }
 
   /** Motivo (ou true) de cada botao de um time, pelo validate do modulo. */
@@ -57,11 +58,15 @@
 
     // Topo: times, serie, zerar.
     const topo = el('div', { class: 'mj-barra mj-sec' });
-    const selTimes = el('select', { class: 'mj-sel', attrs: { 'aria-label': 'Número de times' } });
-    for (let n = m.MIN_TEAMS; n <= m.MAX_TEAMS; n++) selTimes.append(el('option', { text: `${n} times`, attrs: { value: String(n) } }));
-    const selSerie = el('select', { class: 'mj-sel', attrs: { 'aria-label': 'Série' } });
-    for (const o of opcoesSerie(m)) selSerie.append(el('option', { text: o.texto, attrs: { value: o.valor === null ? '' : String(o.valor) } }));
-    const zerar = C.botao({ icone: 'zerar', text: 'Zerar', label: 'Zerar o placar', class: 'mj-fantasma' });
+    const selTimes = el('select', { class: 'mj-sel', attrs: { 'aria-label': t('mesa.placar.numeroDeTimes') } });
+    for (let n = m.MIN_TEAMS; n <= m.MAX_TEAMS; n++) {
+      selTimes.append(el('option', { text: t('mesa.placar.nTimes', { n }), attrs: { value: String(n) } }));
+    }
+    const selSerie = el('select', { class: 'mj-sel', attrs: { 'aria-label': t('mesa.placar.serie') } });
+    for (const o of opcoesSerie(m)) {
+      selSerie.append(el('option', { text: o.texto, attrs: { value: o.valor === null ? '' : String(o.valor) } }));
+    }
+    const zerar = C.botao({ icone: 'zerar', text: t('mesa.placar.zerar'), label: t('mesa.placar.zerarPlacar'), class: 'mj-fantasma' });
     topo.append(selTimes, selSerie, el('span', { class: 'mj-mola' }), zerar);
 
     const times = el('div', { class: 'mj-times' });
@@ -83,7 +88,12 @@
       const caixa = el('div', { class: 'mj-time' });
       const nome = el('input', {
         class: 'mj-nome',
-        attrs: { type: 'text', maxlength: String(m.MAX_NAME), 'aria-label': `Nome do time ${i + 1}`, spellcheck: 'false' },
+        attrs: {
+          type: 'text',
+          maxlength: String(m.MAX_NAME),
+          'aria-label': t('mesa.placar.nomeDoTime', { n: i + 1 }),
+          spellcheck: 'false',
+        },
       });
       const pontos = el('output', { class: 'mj-pontos', attrs: { 'aria-live': 'off' } });
       const menos = C.botao({ icone: 'menos', class: 'mj-ic' });
@@ -104,34 +114,40 @@
       state = novo;
       const n = state.teams.length;
       while (nos.length < n) {
-        const t = criarTime(nos.length);
-        nos.push(t);
-        times.append(t.caixa);
+        const novoTime = criarTime(nos.length);
+        nos.push(novoTime);
+        times.append(novoTime.caixa);
       }
       while (nos.length > n) nos.pop().caixa.remove();
       times.style.setProperty('--mj-n', String(n));
 
       const w = m.winner(state);
       const validar = (a) => C.podeFazer(api, a);
-      state.teams.forEach((t, i) => {
+      state.teams.forEach((time, i) => {
         const no = nos[i];
-        no.campo.sync(t.name);
-        if (no.valor !== t.score) {
-          no.pontos.textContent = String(t.score);
-          no.valor = t.score;
+        const nomeDoTime = traduzirCodigo(time.name);
+        no.campo.sync(nomeDoTime);
+        if (no.valor !== time.score) {
+          no.pontos.textContent = String(time.score);
+          if (no.valor !== null && !C.reduzMovimento()) {
+            no.pontos.classList.remove('is-mudou');
+            void no.pontos.offsetWidth;
+            no.pontos.classList.add('is-mudou');
+          }
+          no.valor = time.score;
         }
-        no.pontos.setAttribute('aria-label', `${t.name}: ${t.score}`);
-        no.mais.setAttribute('aria-label', `Somar 1 para ${t.name}`);
-        no.menos.setAttribute('aria-label', `Tirar 1 de ${t.name}`);
+        no.pontos.setAttribute('aria-label', t('mesa.placar.pontosDe', { nome: nomeDoTime, n: time.score }));
+        no.mais.setAttribute('aria-label', t('mesa.placar.somarPara', { nome: nomeDoTime }));
+        no.menos.setAttribute('aria-label', t('mesa.placar.tirarDe', { nome: nomeDoTime }));
         const mot = botoesDoTime(validar, i);
-        C.ligado(no.mais, mot.mais, `Somar 1 para ${t.name}`);
-        C.ligado(no.menos, mot.menos, `Tirar 1 de ${t.name}`);
+        C.ligado(no.mais, mot.mais, t('mesa.placar.somarPara', { nome: nomeDoTime }));
+        C.ligado(no.menos, mot.menos, t('mesa.placar.tirarDe', { nome: nomeDoTime }));
         no.caixa.classList.toggle('is-vence', i === w);
       });
 
       if (document.activeElement !== selTimes) selTimes.value = String(n);
       if (document.activeElement !== selSerie) selSerie.value = state.bestOf === null ? '' : String(state.bestOf);
-      C.ligado(zerar, state.teams.some((t) => t.score > 0) ? true : 'O placar já está zerado');
+      C.ligado(zerar, state.teams.some((time) => time.score > 0) ? true : t('mesa.placar.jaZerado'));
 
       const venc = textoVencedor(m, state);
       rodape.textContent = venc || textoSerie(state);

@@ -20,6 +20,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const L = (root.GoLive && root.GoLive.mesaMidiaLinks)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./midialinks') : null);
 
@@ -40,14 +42,14 @@
 
   /** Forma da acao (ou o motivo da recusa). `at` so e lido depois do prepare. */
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     const at = L.isTime(action.at) ? action.at : undefined;
     const withAt = (a) => (at === undefined ? a : { ...a, at });
     switch (action.kind) {
       case 'load': {
         const src = typeof action.videoId === 'string' ? action.videoId : action.url;
         const link = L.parseYouTube(src);
-        if (!link) return 'Link do YouTube não reconhecido';
+        if (!link) return codigo('mesa.midia.linkYoutubeNaoReconhecido');
         // A acao preparada leva `videoId` + `start` (o link ja foi lido).
         const start = link.start || (L.isPos(action.start) ? Math.floor(action.start) : 0);
         return withAt({ kind: 'load', videoId: link.videoId, start });
@@ -56,23 +58,23 @@
       case 'pause':
       case 'seek': {
         const p = optPos(action);
-        if (!p.ok) return 'Posição inválida';
-        if (action.kind === 'seek' && p.pos === undefined) return 'Posição inválida';
+        if (!p.ok) return codigo('mesa.midia.posicaoInvalida');
+        if (action.kind === 'seek' && p.pos === undefined) return codigo('mesa.midia.posicaoInvalida');
         const a = { kind: action.kind };
         if (p.pos !== undefined) a.pos = p.pos;
         return withAt(a);
       }
       case 'ended': {
         const p = optPos(action);
-        if (!p.ok) return 'Posição inválida';
-        if (action.videoId !== undefined && !L.isVideoId(action.videoId)) return 'Vídeo inválido';
+        if (!p.ok) return codigo('mesa.midia.posicaoInvalida');
+        if (action.videoId !== undefined && !L.isVideoId(action.videoId)) return codigo('mesa.midia.videoInvalido');
         const a = { kind: 'ended' };
         if (action.videoId !== undefined) a.videoId = action.videoId;
         if (p.pos !== undefined) a.pos = p.pos;
         return withAt(a);
       }
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -89,9 +91,9 @@
     const a = parse(action);
     if (typeof a === 'string') return a;
     if (a.kind === 'load') return true;
-    if (!state.videoId) return 'Nenhum vídeo';
-    if (a.kind === 'play' && state.playing) return 'Já está tocando';
-    if (a.kind === 'pause' && !state.playing) return 'Já está pausado';
+    if (!state.videoId) return codigo('mesa.youtube.nenhumVideo');
+    if (a.kind === 'play' && state.playing) return codigo('mesa.midia.jaTocando');
+    if (a.kind === 'pause' && !state.playing) return codigo('mesa.midia.jaPausado');
     return true;
   }
 
@@ -121,14 +123,14 @@
   }
 
   function summary(state, serverNow) {
-    if (!state || !state.videoId) return 'Nenhum vídeo';
+    if (!state || !state.videoId) return { chave: 'mesa.youtube.nenhumVideo' };
     const pos = L.formatPos(L.positionAt(state, serverNow));
-    return state.playing ? `Tocando · ${pos}` : `Pausado · ${pos}`;
+    return { chave: state.playing ? 'mesa.resumo.youtubeTocando' : 'mesa.resumo.youtubePausado', valores: { pos } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Vídeo do YouTube',
+    title: 'mesa.titulo.youtube',
     group: 'assistir',
     size: { w: 640, h: 360, minW: 320, minH: 180, aspect: 16 / 9 },
     maxStateBytes: 256,

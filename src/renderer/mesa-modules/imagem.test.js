@@ -1,20 +1,21 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const imagem = require('./imagem');
 const registry = require('./index');
 const { jsonBytes } = require('../mesa');
 
 test('imagem esta no registro, no grupo ferramentas', () => {
   const m = registry.get('imagem');
-  assert.equal(m.title, 'Imagem');
+  assert.equal(tx(m.title), 'Imagem');
   assert.equal(m.group, 'ferramentas');
   assert.ok(registry.addable().some((x) => x.type === 'imagem'));
 });
 
 test('nasce sem imagem', () => {
   assert.deepEqual(imagem.init({}), { msgId: null, by: null, rev: 0 });
-  assert.equal(imagem.summary(imagem.init({})), 'Nenhuma imagem');
+  assert.equal(R(imagem.summary(imagem.init({}))), 'Nenhuma imagem');
 });
 
 test('validate: so o id da mensagem, nunca a imagem', () => {
@@ -34,7 +35,7 @@ test('reduce troca a imagem, sem mutar o anterior, e o estado fica pequeno', () 
   assert.deepEqual(s0, { msgId: null, by: null, rev: 0 });
   assert.deepEqual(s1, { msgId: '12', by: '3', rev: 1 });
   assert.deepEqual(s2, { msgId: '15', by: '4', rev: 2 });
-  assert.equal(imagem.summary(s2), 'Imagem do chat');
+  assert.equal(R(imagem.summary(s2)), 'Imagem do chat');
   const pior = imagem.reduce(s0, { kind: 'set', msgId: 'x'.repeat(32) }, { from: 'y'.repeat(100) });
   assert.ok(jsonBytes(pior) <= imagem.maxStateBytes);
 });

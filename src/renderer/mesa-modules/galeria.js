@@ -10,11 +10,13 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'galeria';
 
   const galeria = {
     type: TYPE,
-    title: 'Galeria',
+    title: 'mesa.titulo.galeria',
     group: 'ferramentas',
     size: { w: 480, h: 360, minW: 240, minH: 180, aspect: null },
     maxStateBytes: 64,
@@ -24,7 +26,7 @@
     },
 
     validate() {
-      return 'a galeria não tem ações';
+      return codigo('mesa.galeria.semAcoes');
     },
 
     reduce(state) {
@@ -32,7 +34,7 @@
     },
 
     summary() {
-      return 'Imagens do chat';
+      return { chave: 'mesa.galeria.titulo' };
     },
   };
 

@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const sorteio = require('./sorteio');
 
 function deepFreeze(v) {
@@ -79,7 +80,7 @@ test('init traz as pessoas da sala com o id de cada uma', () => {
     ],
     teamCount: 2, teams: null, round: 0,
   });
-  assert.equal(sorteio.summary(s), '3 nomes, 2 times');
+  assert.equal(R(sorteio.summary(s)), '3 nomes, 2 times');
   assert.deepEqual(sorteio.init({}).entries, []);
 });
 
@@ -92,7 +93,7 @@ test('init pula pessoa malformada e repetida', () => {
 
 test('metadados seguem o contrato', () => {
   assert.equal(sorteio.type, 'sorteio');
-  assert.equal(sorteio.title, 'Sorteio de times');
+  assert.equal(tx(sorteio.title), 'Sorteio de times');
   assert.equal(sorteio.group, 'noite');
 });
 
@@ -112,7 +113,7 @@ test('addPeers: prepare poe a sala na acao e so quem falta entra', () => {
   assert.deepEqual(pronta, { kind: 'addPeers', peers: SALA });
   s = sorteio.reduce(deepFreeze(s), pronta, ctxCliente);
   assert.deepEqual(s.entries.map((e) => e.peerId), ['1', '2', '3']);
-  assert.equal(sorteio.validate(s, { kind: 'addPeers' }, { peers: SALA }), 'Todo mundo da sala já está na lista');
+  assert.equal(sorteio.validate(s, { kind: 'addPeers' }, { peers: SALA }), 'mesa.sorteio.todosNaLista');
   // Sem a lista preparada, reduce nao inventa ninguem.
   assert.equal(sorteio.reduce(deepFreeze(s), { kind: 'addPeers' }, ctxCliente), s);
 });
@@ -129,7 +130,7 @@ test('sorteio: prepare grava a permutacao e reduce reparte em rodizio', () => {
     [{ name: 'Bia', peerId: '2' }, { name: 'Caio', peerId: '3' }],
   ]);
   assert.equal(r.round, 1);
-  assert.equal(sorteio.summary(r), 'Duda, Ana × Bia, Caio');
+  assert.equal(R(sorteio.summary(r)), 'Duda, Ana × Bia, Caio');
 });
 
 test('sortear de novo usa sorte nova e conta a rodada', () => {
@@ -160,15 +161,15 @@ test('sorte fora de [0, 1) nao gera indice fora do alcance', () => {
 
 test('poucos nomes: recusa com motivo', () => {
   const s = sorteio.init({ peers: SALA.slice(0, 1) });
-  assert.equal(sorteio.validate(s, { kind: 'draw' }), 'Ponha pelo menos 2 nomes');
+  assert.equal(sorteio.validate(s, { kind: 'draw' }), 'mesa.sorteio.minimoDois');
   const t = { ...sorteio.init({ peers: SALA }), teamCount: 4 };
-  assert.equal(sorteio.validate(t, { kind: 'draw' }), 'Poucos nomes para 4 times');
+  assert.equal(sorteio.validate(t, { kind: 'draw' }), 'mesa.sorteio.poucosParaTimes?n=4');
   assert.equal(sorteio.reduce(deepFreeze(t), { kind: 'draw', order: [0, 1, 2] }), t);
 });
 
 test('permutacao que nao casa com a lista e ignorada', () => {
   const s = deepFreeze(sorteio.init({ peers: SALA }));
-  assert.equal(sorteio.validate(s, { kind: 'draw', order: [0, 1] }), 'Sorteio inválido');
+  assert.equal(sorteio.validate(s, { kind: 'draw', order: [0, 1] }), 'mesa.sorteio.sorteioInvalido');
   assert.equal(sorteio.reduce(s, { kind: 'draw', order: [0, 1] }, ctxCliente), s);
   assert.equal(sorteio.reduce(s, { kind: 'draw', order: [2, 2, 1] }, ctxCliente), s);
   assert.equal(sorteio.reduce(s, { kind: 'draw' }, ctxCliente), s);
@@ -178,7 +179,7 @@ test('lista tem teto', () => {
   let s = sorteio.init({});
   for (let i = 0; i < sorteio.MAX_ENTRIES; i++) s = sorteio.reduce(s, { kind: 'add', name: `N${i}` });
   assert.equal(s.entries.length, sorteio.MAX_ENTRIES);
-  assert.equal(sorteio.validate(s, { kind: 'add', name: 'X' }), `A lista está cheia (máx. ${sorteio.MAX_ENTRIES})`);
+  assert.equal(sorteio.validate(s, { kind: 'add', name: 'X' }), `mesa.sorteio.listaCheia?max=${sorteio.MAX_ENTRIES}`);
   assert.equal(sorteio.reduce(deepFreeze(s), { kind: 'add', name: 'X' }), s);
   const cheio = sorteio.reduce(deepFreeze(s), { kind: 'addPeers', peers: SALA });
   assert.equal(cheio, s);
@@ -188,7 +189,7 @@ test('limpar tira nomes e resultado', () => {
   const { state } = roda(sorteio.init({ peers: SALA }), [{ kind: 'draw' }, { kind: 'clear' }]);
   assert.deepEqual(state.entries, []);
   assert.equal(state.teams, null);
-  assert.equal(sorteio.summary(state), '0 nomes, 2 times');
+  assert.equal(R(sorteio.summary(state)), '0 nomes, 2 times');
 });
 
 test('acao malformada e recusada com motivo e nunca lanca', () => {

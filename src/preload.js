@@ -6,6 +6,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('golive', {
+  /** Idioma desta janela. Sincrono de proposito: i18n le isto antes de
+   * qualquer texto ser montado. */
+  idioma: ipcRenderer.sendSync('i18n:get'),
+  /** Grava 'auto' | 'pt-BR' | 'en' | 'es'. Quem chama decide quando recarregar. */
+  setIdioma: (preferencia) => ipcRenderer.invoke('i18n:set', preferencia),
+
   /** Lista telas e janelas capturaveis, com thumbnail em data URL. Aceita
    * um filtro de tipos (['screen'] | ['window']) pra buscar em duas etapas
    * e nao segurar o dialogo esperando o lote todo. */

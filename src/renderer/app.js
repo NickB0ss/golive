@@ -9,6 +9,7 @@
     migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
     health, audiometer, viewhold, warnings: warningsModule, reactionsPermission,
   } = window.GoLive;
+  const { t } = window.GoLive.i18n;
   const warningRegistry = warningsModule.create();
 
   // Faixa de titulo propria (Windows). Antes de qualquer render pra nao
@@ -55,6 +56,7 @@
   // way a late event from a torn-down or superseded session is a no-op
   // instead of throwing on stale/null state.
   let currentSession = null; // { sig, mesh } | null
+  let idiomaPendente = false;
   // Sessao orfa (H1): a sinalizacao caiu, mas as RTCPeerConnection P2P
   // seguem vivas entregando video. A sinalizacao so e necessaria pra
   // ESTABELECER conexao -- depois pode sumir por minutos sem consequencia.
@@ -65,6 +67,10 @@
   // (teardownPeers -- preserva a captura), leaveRoom e troca de sala (ambos
   // teardownSession completo).
   let orphanSession = null;
+
+  function aplicarIdiomaPendente() {
+    if (idiomaPendente && !currentSession && !orphanSession) window.location.reload();
+  }
   // Credencial rotativa da cadeia de reconexao da sala atual. Nunca vai pra
   // UI nem log; o proximo welcome substitui o valor antes de qualquer retry.
   let resumeToken = null;
@@ -804,7 +810,7 @@
     if (value && kind === 'screen') {
       // So a tela tem cadeia de degradacao; a camera ja esta no piso, entao
       // avisar que "baixei a qualidade" dela seria mentira.
-      showToast('Sem ninguém pra retransmitir: baixei a qualidade pra sala aguentar.');
+      showToast(t('aviso.semNinguemRetransmitir'));
     }
     renderRoomStatus();
   }
@@ -829,7 +835,7 @@
   const avatarFallback = $('user-panel-avatar-fallback');
 
   function renderUserPanel() {
-    nameDisplay.textContent = cfg.name || 'anônimo';
+    nameDisplay.textContent = cfg.name || t('sala.anonimo');
     if (cfg.avatar) {
       avatarImg.src = cfg.avatar;
       avatarImg.classList.remove('hidden');
@@ -849,8 +855,10 @@
     if (!greeting || !whoami || !nameInput) return;
     const name = (cfg.name || '').trim();
     const hour = new Date().getHours();
-    const salutation = hour >= 5 && hour <= 11 ? 'Bom dia' : hour >= 12 && hour <= 17 ? 'Boa tarde' : 'Boa noite';
-    greeting.textContent = name ? `${salutation}, ${name}.` : 'Como seus amigos vão te ver?';
+    const salutation = hour >= 5 && hour <= 11 ? t('lobby.bomDia')
+      : hour >= 12 && hour <= 17 ? t('lobby.boaTarde') : t('lobby.boaNoite');
+    greeting.textContent = name ? t('lobby.saudacao', { saudacao: salutation, nome: name })
+      : t('lobby.comoVaoVer');
     greeting.hidden = false;
     whoami.hidden = Boolean(name);
     if (document.activeElement !== nameInput) nameInput.value = name;
@@ -921,7 +929,7 @@
   async function saveAvatar(file) {
     if (!file) return;
     if (file.type === 'image/gif' && file.size > MAX_AVATAR_BYTES) {
-      showToast('GIF animado muito grande. Escolha um GIF de até 64 KB.');
+      showToast(t('erro.gifMuitoGrande'));
       return;
     }
     try {
@@ -931,8 +939,8 @@
       renderUserPanel();
     } catch (err) {
       showToast(err?.message === AVATAR_TOO_LARGE
-        ? 'Avatar muito grande. Escolha uma imagem de até 64 KB.'
-        : 'Não consegui processar essa imagem.');
+        ? t('erro.avatarMuitoGrande')
+        : t('erro.processarImagem'));
     }
   }
 
@@ -984,6 +992,18 @@
         cfg = { ...cfg, soundsEnabled: enabled };
         persist();
         sound.setEnabled(enabled);
+      },
+      // Fora da sala recarrega na hora; dentro, recarregar derrubaria a conexao
+      // -- grava e aplica ao sair (spec 2.3).
+      onIdiomaChange: async (preferencia) => {
+        await window.golive.setIdioma(preferencia);
+        if (!currentSession && !orphanSession) {
+          window.location.reload();
+          return;
+        }
+        idiomaPendente = true;
+        const nota = document.getElementById('settings-language-note');
+        if (nota) nota.textContent = window.GoLive.i18n.t('config.idioma.aoSair');
       },
       onLiveNotifyChange: (enabled) => {
         cfg = { ...cfg, liveNotifyEnabled: enabled };
@@ -1182,15 +1202,14 @@
   // aqui, que e onde vive todo o texto de interface. Sem motivo conhecido,
   // cai no generico -- melhor que despejar a mensagem crua do updater.
   const UPDATE_ERROR_TEXT = {
-    'release-incompleto':
-      'A última versão publicada está incompleta (falta o latest.yml). Avise quem cuida do app.',
-    'sem-release': 'Ainda não há nenhuma versão publicada pra atualizar.',
-    'sem-rede': 'Não consegui falar com o GitHub. Confira sua internet e tente de novo.',
-    limite: 'O GitHub limitou os pedidos agora. Tente de novo em alguns minutos.',
-    'feed-quebrado': 'A lista de versões do GitHub veio quebrada. Tente de novo mais tarde.',
+    'release-incompleto': 'atualizacao.releaseIncompleto',
+    'sem-release': 'atualizacao.semRelease',
+    'sem-rede': 'atualizacao.semRede',
+    limite: 'atualizacao.limite',
+    'feed-quebrado': 'atualizacao.feedQuebrado',
   };
   const updateErrorText = (reason) =>
-    UPDATE_ERROR_TEXT[reason] || 'Não consegui verificar a atualização. Tente de novo mais tarde.';
+    t(UPDATE_ERROR_TEXT[reason] || 'atualizacao.verificarErro');
 
   // Um lugar so, trocando de estado (spec 2026-09-15, decisao 1). O banner
   // do canto inferior direito saiu: dentro da sala nada de atualizacao
@@ -1212,9 +1231,11 @@
     }
     const v = version || 'nova';
     const textos = {
-      disponivel: [`Atualização ${v} disponível`, 'Reinicia rápido e volta sozinho.', 'Atualizar agora'],
-      baixando:   ['Baixando atualização…', `${v} — ${progress ?? 0}%`, 'Atualizar agora'],
-      pronta:     ['Atualização pronta', `${v} — instala ao reiniciar.`, 'Reiniciar e instalar'],
+      disponivel: [t('atualizacao.disponivel', { versao: v }), t('atualizacao.reinicia'), t('atualizacao.atualizarAgora')],
+      baixando: [t('atualizacao.baixando'), t('atualizacao.progresso', { versao: v, progresso: progress ?? 0 }),
+        t('atualizacao.atualizarAgora')],
+      pronta: [t('atualizacao.pronta'), t('atualizacao.instalaAoReiniciar', { versao: v }),
+        t('atualizacao.reiniciarInstalar')],
     };
     const [titulo, sub, rotulo] = textos[estado];
     $('update-bar-title').textContent = titulo;
@@ -1238,7 +1259,7 @@
         spinCheck(false);
         if (version) lastUpdateVersion = version;
         renderUpdateBar(ready === true ? 'pronta' : 'disponivel', { version });
-        if (manual) showToast(`Atualização ${version || 'nova'} disponível.`);
+        if (manual) showToast(t('atualizacao.disponivelPonto', { versao: version || t('atualizacao.nova') }));
         break;
       case 'downloading':
         renderUpdateBar('baixando', { version: version || lastUpdateVersion, progress: progress ?? 0 });
@@ -1250,7 +1271,7 @@
       case 'not-available':
         spinCheck(false);
         renderUpdateBar(null);
-        if (manual) showToast(`Você já está na versão mais recente${appVersion ? ` (${appVersion})` : ''}.`);
+        if (manual) showToast(t('atualizacao.versaoMaisRecente', { versao: appVersion || '' }));
         break;
       case 'error':
         spinCheck(false);
@@ -1260,8 +1281,8 @@
         spinCheck(false);
         if (manual) {
           showToast(reason === 'atualizacao-ja-baixada'
-            ? 'A atualização já foi baixada. Clique em "Atualizar" para instalar.'
-            : 'A atualização já está sendo baixada.');
+            ? t('atualizacao.jaBaixada')
+            : t('atualizacao.jaBaixando'));
         }
         break;
       default:
@@ -1342,7 +1363,7 @@
   function handleJoinConnect({ address, pin }) {
     const addr = (address || '').trim();
     if (!addr) {
-      $('setup-error').textContent = 'Informe o endereço do servidor.';
+      $('setup-error').textContent = t('erro.informeEnderecoServidor');
       return;
     }
     hostInfo = null;
@@ -1360,11 +1381,11 @@
     const valido = /^(?:wss?:\/\/)?[^\s:]+:\d+$/.test(address);
     $('join-address').setAttribute('aria-invalid', String(!valido));
     if (!address) {
-      showLobbyError('Digite o endereço da sala, no formato IP:porta.');
+      showLobbyError(t('erro.digiteEnderecoSala'));
       return;
     }
     if (!valido) {
-      showLobbyError('Esse endereço não está no formato IP:porta (ex.: 26.0.0.5:47800).');
+      showLobbyError(t('erro.enderecoInvalido'));
       return;
     }
     showLobbyError('');
@@ -1378,9 +1399,9 @@
     if (!address) return;
     navigator.clipboard.writeText(address).then(() => {
       const button = $('btn-copy-network');
-      button.setAttribute('aria-label', 'Copiado');
-      showToast('Copiado', 1500);
-      setTimeout(() => button.setAttribute('aria-label', 'Copiar endereço'), 1500);
+      button.setAttribute('aria-label', t('lobby.copiado'));
+      showToast(t('lobby.copiado'), 1500);
+      setTimeout(() => button.setAttribute('aria-label', t('lobby.copiarEndereco')), 1500);
     }).catch(() => {});
   });
 
@@ -1393,19 +1414,19 @@
   /** Texto do erro do room:host para o dialogo de criar sala. */
   function hostErrorText(code) {
     if (code === 'PORTS_EXHAUSTED') {
-      return 'Todas as portas 9000-9010 estão ocupadas. Feche outras instâncias do GoLive e tente de novo.';
+      return t('erro.portasOcupadas');
     }
-    if (code === 'PIN_INVALIDO') return 'O PIN precisa ter 6 dígitos.';
-    return `Não consegui subir a sala: ${code}`;
+    if (code === 'PIN_INVALIDO') return t('erro.pinSeisDigitos');
+    return t('erro.subirSalaCodigo', { codigo: code });
   }
 
   async function hostRoomFlow(protect, advertise, seed = {}, preserveMigrationOrphan = false, canContinue = null) {
     showLobbyError('');
     let result;
     try {
-      result = await window.golive.hostRoom({ name: cfg.name || 'anônimo', advertise, protect, ...seed });
+      result = await window.golive.hostRoom({ name: cfg.name || t('sala.anonimo'), advertise, protect, ...seed });
     } catch {
-      return { ok: false, error: 'Não consegui subir a sala: erro inesperado. Tente de novo.' };
+      return { ok: false, error: t('erro.subirSalaInesperado') };
     }
     if (!result.ok) {
       return {
@@ -1715,7 +1736,7 @@
       mesa: cfg.network.roomMesa !== false,
       // P1: padrao do campo "Nome da sala" -- quem nao digita nada mantem o
       // comportamento de sempre (a sala se chama "Sala de <seu nome>").
-      roomNameDefault: `Sala de ${cfg.name || 'anônimo'}`,
+      roomNameDefault: t('sala.nomePadrao', { nome: cfg.name || t('sala.anonimo') }),
       // O dialogo so fecha quando hostRoomFlow resolve com sucesso -- uma
       // falha (porta ocupada, erro inesperado) mantem o dialogo aberto com
       // a mensagem, em vez de fechar e escrever num #setup-error invisivel.
@@ -1728,7 +1749,12 @@
           persist();
         }
         // O PIN so vai quando a sala e protegida; o main valida de novo.
-        const res = await hostRoomFlow(protect, advertise, { roomName, mesa, ...(protect ? { pin } : {}) });
+        // O renderer resolve no idioma ativo; main e servidor mantem os fallbacks defensivos em pt-BR.
+        const nome = cfg.name || t('sala.anonimo');
+        const nomePadrao = t('sala.nomePadrao', { nome });
+        const res = await hostRoomFlow(protect, advertise, {
+          roomName: (roomName || '').trim() || nomePadrao, mesa, ...(protect ? { pin } : {}),
+        });
         if (res.ok) ui.dialogs.closeCreateRoom();
         else ui.dialogs.setCreateRoomError(res.error);
       },
@@ -1754,9 +1780,9 @@
     setWarning('tailscale', info?.kind === 'tailscale'
       ? {
         severidade: 'info',
-        titulo: 'Salas no Tailscale',
-        detalhe: 'No Tailscale as salas não aparecem sozinhas — entre pelo endereço de quem criou.',
-        acao: { id: 'tailscale:join-address', texto: 'Entrar por endereço' },
+        titulo: t('aviso.salasTailscale'),
+        detalhe: t('aviso.tailscaleEndereco'),
+        acao: { id: 'tailscale:join-address', texto: t('aviso.entrarEndereco') },
         dispensavel: true,
       }
       : null);
@@ -1768,32 +1794,33 @@
     setWarning('captura', captureWarning
       ? {
         severidade: 'grave',
-        titulo: 'Falha na captura',
+        titulo: t('aviso.falhaCaptura'),
         detalhe: captureWarning,
-        rotuloCurto: 'Sem imagem',
+        rotuloCurto: t('aviso.semImagem'),
         dispensavel: false,
       }
       : null);
     setWarning('endereco', hostInfo?.addressWarning
       ? {
         severidade: 'atencao',
-        titulo: 'Endereço limitado à rede local',
-        detalhe: `${hostInfo.addressWarning} — o endereço abaixo só funciona na mesma rede local.`,
+        titulo: t('aviso.enderecoRedeLocal'),
+        // O main devolve so um codigo ('sem-rede-virtual'): o texto e daqui, no idioma ativo.
+        detalhe: t('sistema.enderecoSoRedeLocal'),
         dispensavel: true,
       }
       : null);
     setWarning('encoder', encoderWarning
       ? {
         severidade: 'atencao',
-        titulo: 'Encoder em software',
-        detalhe: encoderWarning.replace('Encoder em software — ', ''),
+        titulo: t('aviso.encoderSoftware'),
+        detalhe: encoderWarning.replace(t('aviso.encoderSoftwareInicio'), ''),
         dispensavel: true,
       }
       : null);
     setWarning('som', soundWarning
       ? {
         severidade: 'atencao',
-        titulo: 'Silêncio no áudio compartilhado',
+        titulo: t('aviso.silencioAudio'),
         detalhe: soundWarning,
         dispensavel: true,
       }
@@ -1801,10 +1828,10 @@
     setWarning('firewall', firewallBroken
       ? {
         severidade: 'grave',
-        titulo: 'Porta bloqueada no firewall',
-        detalhe: `A porta da sala não está liberada no firewall do Windows — quem tentar entrar pela rede pode não conseguir.${firewallRetryDetail}`,
+        titulo: t('aviso.portaFirewall'),
+        detalhe: t('aviso.portaFirewallDetalhe', { detalhe: firewallRetryDetail }),
         rotuloCurto: 'Firewall',
-        acao: { id: 'firewall:retry', texto: 'Permitir acesso à rede' },
+        acao: { id: 'firewall:retry', texto: t('aviso.permitirRede') },
         dispensavel: false,
       }
       : null);
@@ -1827,8 +1854,8 @@
     }
     const cmd = res?.manualCommand || hostInfo?.firewall?.manualCommand;
     firewallRetryDetail = cmd
-      ? ` Se continuar sem funcionar, abra o PowerShell como administrador e rode: ${cmd}`
-      : ' Não consegui liberar a porta. Confirme que aceitou o pedido do Windows e tente de novo.';
+      ? t('erro.firewallComando', { comando: cmd })
+      : t('erro.liberarPorta');
     renderHostWarning();
   }
   renderHostWarning();
@@ -1928,7 +1955,7 @@
     // video P2P continua, o painel segue mostrando voce e a sala -- some so
     // quando nao ha nem sessao viva nem orfa.
     if (!currentSession && !orphanSession) return null;
-    return { name: cfg.name || 'anônimo', avatar: cfg.avatar || null, live: !!localStream };
+    return { name: cfg.name || t('sala.anonimo'), avatar: cfg.avatar || null, live: !!localStream };
   }
 
   // Chamada pelo menu de moderacao das linhas de membro (ui.js). "Silenciar"
@@ -2001,7 +2028,7 @@
     });
     const people = (session ? session.mesh.peers.size : 0) + (currentSelfInfo() ? 1 : 0);
     $('room-people-count').textContent = String(people);
-    $('stage-member-count').textContent = `${people} ${people === 1 ? 'pessoa' : 'pessoas'}`;
+    $('stage-member-count').textContent = t('sala.contagemPessoas', { n: people });
     renderRoomStatus();
   }
 
@@ -2033,9 +2060,10 @@
       // Saude e da CONEXAO: sala sem ninguem ao vivo ou pausada esta bem.
       const nivel = { offline: 'none', reconnecting: 'bad', degraded: 'warn' }[roomHealth.level] || 'ok';
       health.dataset.level = nivel;
-      const rotulo = { none: 'Sem conexão', bad: 'Reconectando…', warn: `Qualidade reduzida: ${roomHealth.label}` };
-      $('btn-room-health').setAttribute('aria-label', rotulo[nivel] || 'Conexão boa');
-      $('btn-room-health').title = rotulo[nivel] || 'Conexão boa';
+      const rotulo = { none: t('sala.semConexao'), bad: t('sala.reconectando'),
+        warn: t('sala.qualidadeReduzida', { qualidade: roomHealth.label }) };
+      $('btn-room-health').setAttribute('aria-label', rotulo[nivel] || t('sala.conexaoBoa'));
+      $('btn-room-health').title = rotulo[nivel] || t('sala.conexaoBoa');
     }
     // Chat: o compose so aceita texto enquanto a sinalizacao esta viva. Com a
     // sessao orfa (H1) `currentSession` e null e o `currentSession?.sig.send`
@@ -2222,13 +2250,13 @@
           void appVersionReady.then(() => {
             if (currentSession !== session) return;
             session.sig.send({
-              type: 'join', room: 'geral', name: name || 'anônimo', avatar: cfg.avatar || null,
+              type: 'join', room: 'geral', name: name || t('sala.anonimo'), avatar: cfg.avatar || null,
               pin: pin || undefined, clientId: cfg.clientId, ownerToken: hostInfo?.ownerToken || undefined,
               ...(reconnectAttempt > 0 && resumeToken ? { resumeToken } : {}),
               appVersion: appVersion || undefined,
             });
           });
-          ui.stageHeader.set({ name: `Sala de ${name || 'anônimo'}`, address: roomAddress, pin: hostInfo?.pin || null });
+          ui.stageHeader.set({ name: t('sala.nomePadrao', { nome: name || t('sala.anonimo') }), address: roomAddress, pin: hostInfo?.pin || null });
           window.golive.setRoomActive?.(true);
           if (attempts > 0) $('setup-error').textContent = '';
           showLobbyError(''); // limpa erro/countdown de reconexao pendente
@@ -2257,7 +2285,7 @@
             // aberto esperando esta tentativa.
             showLobbyStatus('');
             showLobbyError(
-              'Não consegui conectar. Confira o IP, se o servidor está rodando e se a porta está liberada no firewall.'
+              t('erro.conectar')
             );
             ui.dialogs.closeJoinRoom();
           }
@@ -2302,6 +2330,7 @@
               ui.dialogs.closeJoinRoom();
               renderMembersPanel();
               renderRoomList();
+              aplicarIdiomaPendente();
               onSettled?.();
               return;
             }
@@ -2316,12 +2345,13 @@
             showLobbyStatus('');
             showLobbyError(''); // o aviso vai pro #setup-error do dialogo reaberto
             $('setup-error').textContent =
-              reason === 'pin' ? 'PIN incorreto ou ausente. Confira o PIN da sala e tente de novo.'
-              : reason === 'banned' ? 'Você foi banido desta sala.'
-              : reason === 'full' ? 'A sala está cheia.'
-              : 'A sala recusou a entrada.';
+              reason === 'pin' ? t('erro.pinIncorreto')
+              : reason === 'banned' ? t('erro.banido')
+              : reason === 'full' ? t('erro.salaCheia')
+              : t('erro.salaRecusou');
             renderMembersPanel();
             renderRoomList();
+            aplicarIdiomaPendente();
             onSettled?.();
             return;
           }
@@ -2356,10 +2386,11 @@
             window.golive.setRoomActive?.(false);
             renderHostWarning();
             showLobbyStatus('');
-            showLobbyError('Quem criou a sala encerrou.');
+            showLobbyError(t('erro.criadorEncerrou'));
             ui.dialogs.closeJoinRoom();
             renderMembersPanel();
             renderRoomList();
+            aplicarIdiomaPendente();
             onSettled?.();
             return;
           }
@@ -2391,6 +2422,7 @@
             ui.dialogs.closeJoinRoom();
             renderMembersPanel();
             renderRoomList();
+            aplicarIdiomaPendente();
             onSettled?.();
             return;
           }
@@ -2462,7 +2494,7 @@
             // deliberado / o onOpen de uma reconexao que abriu o cancelam.
             const next = attempts + 1;
             showLobbyError(
-              `Conexão com a sala caiu. O vídeo continua enquanto durar. Reconectando… (${next}/${MAX_RECONNECT})`
+              t('erro.conexaoCaiuReconectando', { tentativa: next, maximo: MAX_RECONNECT })
             );
             renderMembersPanel();
             renderRoomList();
@@ -2492,7 +2524,7 @@
               const newOwnerConnectionId = succession.chooseNewOwner(survivors, currentOwnerId, successorId);
               // O cliente nao conhece o clientId de terceiros, entao nao pode
               // semear a lideranca deles no servidor novo depois de uma queda.
-              showLobbyError('O líder da sala sumiu. Tentando restaurar a sala automaticamente...');
+              showLobbyError(t('erro.liderSumiu'));
               // Prazo absoluto desde a QUEDA (roomDropAt, gravado quando a
               // sessao virou orfa), nao desde esta desistencia: cada maquina
               // desiste num tempo diferente (60-116 s), mas todas contam a
@@ -2514,7 +2546,7 @@
               }, { candidates, dropAt: roomDropAt ?? performance.now(), abrupt: true });
             } else {
               showLobbyError(
-                'Perdi a conexão com a sala e não consegui reconectar. O vídeo continua enquanto os outros seguirem na sala — use Sair da sala pra encerrar.'
+                t('erro.perdiConexao')
               );
             }
           } else if (session.opened && !abnormal && !migratingRoomClosed) {
@@ -2524,7 +2556,7 @@
             // acima: o video segue e o usuario precisa saber disso e que o
             // botao Desconectar e a saida.
             showLobbyError(
-              'A conexão com a sala foi encerrada. O vídeo continua enquanto os outros seguirem na sala — use Sair da sala pra encerrar.'
+              t('erro.conexaoEncerrada')
             );
           }
 
@@ -2540,13 +2572,14 @@
           }
           renderMembersPanel();
           renderRoomList();
+          aplicarIdiomaPendente();
         },
       });
     } catch {
       // Endereco malformado (ex: porta nao numerica) faz `new WebSocket`
       // estourar de forma sincrona. Sem isso o botao que chamou joinRoom
       // ficava travado em "Conectando…" pra sempre.
-      showLobbyError('Não consegui conectar: endereço inválido.');
+      showLobbyError(t('erro.enderecoConectarInvalido'));
       onSettled?.();
       return;
     }
@@ -2732,16 +2765,16 @@
 
     const btn = event.currentTarget;
     if (copiedTimer) clearTimeout(copiedTimer);
-    else btn.dataset.label = btn.getAttribute('aria-label') || 'Copiar endereço';
-    btn.setAttribute('aria-label', 'Endereço copiado');
-    btn.title = 'Endereço copiado';
+    else btn.dataset.label = btn.getAttribute('aria-label') || t('lobby.copiarEndereco');
+    btn.setAttribute('aria-label', t('lobby.enderecoCopiado'));
+    btn.title = t('lobby.enderecoCopiado');
     const copyStatus = $('copy-address-status');
     copyStatus.textContent = '';
-    setTimeout(() => { copyStatus.textContent = 'Endereço copiado'; }, 0);
+    setTimeout(() => { copyStatus.textContent = t('lobby.enderecoCopiado'); }, 0);
     btn.classList.add('copied-flash');
     copiedTimer = setTimeout(() => {
-      btn.setAttribute('aria-label', btn.dataset.label || 'Copiar endereço');
-      btn.title = btn.dataset.label || 'Copiar endereço';
+      btn.setAttribute('aria-label', btn.dataset.label || t('lobby.copiarEndereco'));
+      btn.title = btn.dataset.label || t('lobby.copiarEndereco');
       btn.classList.remove('copied-flash');
       copiedTimer = null;
     }, COPIED_HOLD_MS);
@@ -2763,7 +2796,7 @@
         if (att) ui.chat.setAttachment(att);
       } catch (err) {
         console.error('[chat] preparo da imagem falhou:', err);
-        showToast('Não consegui preparar essa imagem.');
+        showToast(t('erro.prepararImagem'));
       }
     },
     // "Pôr na mesa" num link do YouTube ou numa imagem do chat.
@@ -2784,7 +2817,7 @@
    * couber -- melhor recusar do que mandar algo irreconhecivel. */
   async function prepareChatImage(file) {
     if (!chatmedia.isAcceptedType(file.type)) {
-      showToast('Só dá pra mandar imagem (PNG, JPEG, GIF ou WebP).');
+      showToast(t('erro.tipoImagem'));
       return null;
     }
     const limiteKB = Math.round(chatmedia.MAX_IMAGE_CHARS / 1024);
@@ -2794,7 +2827,7 @@
     if (!chatmedia.needsCanvas(file.type)) {
       const dataUrl = await readFileAsDataUrl(file);
       if (!chatmedia.fitsBudget(dataUrl)) {
-        showToast(`Esse GIF é grande demais (máx. ${limiteKB} KB) — GIF não dá pra reduzir sem perder a animação.`);
+        showToast(t('erro.gifChatMuitoGrande', { limite: limiteKB }));
         return null;
       }
       const dims = await imageSize(dataUrl);
@@ -2813,7 +2846,7 @@
         return { dataUrl, w: box.w, h: box.h, label: `${box.w}×${box.h} · ${Math.round(chatmedia.dataUrlBytes(dataUrl) / 1024)} KB` };
       }
     }
-    showToast(`Não consegui deixar essa imagem abaixo de ${limiteKB} KB.`);
+    showToast(t('erro.reduzirImagem', { limite: limiteKB }));
     return null;
   }
 
@@ -2977,7 +3010,7 @@
     if (next === 'pinned') {
       naoLidas = 0;
       $('chat-unread-dot').classList.add('hidden');
-      $('btn-conv-toggle').setAttribute('aria-label', 'Conversa');
+      $('btn-conv-toggle').setAttribute('aria-label', t('pagina.conversa'));
     }
     // Fixada ou fechada: o que estava espiando some junto.
     if (next !== 'peek') $('chat-peek').replaceChildren();
@@ -3068,6 +3101,7 @@
       // zerou), nao ha endereco pra marcar -- e sair de um estado quebrado
       // nao deve ficar em cooldown.
       renderRoomList();
+      aplicarIdiomaPendente();
       return;
     }
     if (!currentSession) return;
@@ -3099,6 +3133,7 @@
     teardownSession(session);
     markCooldown(leavingAddress);
     renderRoomList();
+    aplicarIdiomaPendente();
   }
   $('btn-disconnect').addEventListener('click', () => {
     if (cooldownRemaining(activeRoomAddress) > 0) return;
@@ -3965,7 +4000,7 @@
         // P1: server antigo sem o campo cai no que o welcome anterior ja
         // ensinou (mesmo padrao do ramo de queda abrupta acima).
         if (typeof msg.roomName === 'string' && msg.roomName) currentRoomName = msg.roomName;
-        showLobbyError(`O líder da sala saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
+        showLobbyError(t('sala.liderSaiuAssumindo', { nome: msg.successorName || t('sala.alguem') }));
         renderRoomStatus();
         // Caminho gracioso: todos recebem isto no mesmo instante, entao a
         // queda e agora e a base do prazo e zero (tempos iguais aos de
@@ -4045,13 +4080,13 @@
         if (msg.action === 'stop-share') {
           if (localStream) stopShare(); // reusa o caminho que ja para de compartilhar
           playSoundEvent('moderated', { action: msg.action });
-          showToast(`${msg.by} parou sua transmissão.`);
+          showToast(t('sala.parouTransmissao', { nome: msg.by }));
         } else {
           resumeToken = null;
           playSoundEvent('moderated', { action: msg.action });
           // 'kick'/'ban': o servidor fecha o socket em seguida (1008) -- o
           // onClose padrao (room-closed) cuida de voltar pro lobby.
-          showToast(msg.action === 'ban' ? `${msg.by} baniu você da sala.` : `${msg.by} expulsou você da sala.`);
+          showToast(t(msg.action === 'ban' ? 'sala.baniuVoce' : 'sala.expulsouVoce', { nome: msg.by }));
         }
         break;
       }
@@ -4106,7 +4141,7 @@
         const souEu = ownerId === 'me';
         if (!souEu) ui.members.renderBanned([], {}); // a lista de banidos e ferramenta de dono
         if (msg.id != null) {
-          showToast(souEu ? 'Você é o líder da sala agora.' : `${msg.name} é o líder da sala agora.`);
+          showToast(t(souEu ? 'sala.voceELiderAgora' : 'sala.eLiderAgora', { nome: msg.name }));
         }
         renderMembersPanel();
         mesaView?.onLeaderChange();
@@ -4174,8 +4209,8 @@
           playSoundEvent('broadcast-state', { live: true, wasLive, bootstrap });
           if (!wasLive) maybeNotifyLive(peer, msg.id, { bootstrap });
           ui.grid.setPaused(msg.id, peer.paused, {
-            title: 'Transmissão pausada',
-            subtitle: `${peer.name || 'Alguém'} pausou a tela`,
+            title: t('sala.transmissaoPausadaTitulo'),
+            subtitle: t('sala.pausouTela', { nome: peer.name || t('sala.alguem') }),
           });
         }
         // A sala mudou de "quantas telas ha pra escolher": pode ser a
@@ -4732,8 +4767,8 @@
         // (janela fechada, captura que nao iniciou). "Invalid capture
         // constraints", o texto do Chromium, nao diz o que fazer.
         showToast(err?.name === 'AbortError'
-          ? 'Não consegui capturar essa tela ou janela. Atualize a lista e escolha de novo.'
-          : `Não consegui capturar a tela: ${err.message}`);
+          ? t('erro.capturarTelaJanela')
+          : t('erro.capturarTela', { erro: err.message }));
         return;
       }
 
@@ -4828,7 +4863,7 @@
       // P7: medidor de som -- so faz sentido com audio de fato saindo.
       startSoundMeter(audioTrack || null);
 
-      ui.grid.showTile('me', 'Você (prévia)', localStream, { muted: true, avatar: cfg.avatar || null, kind: 'screen', displayName: cfg.name || 'anônimo' });
+      ui.grid.showTile('me', t('sala.vocePrevia'), localStream, { muted: true, avatar: cfg.avatar || null, kind: 'screen', displayName: cfg.name || t('sala.anonimo') });
 
       // A escolha vale pra ESTA transmissao e fica lembrada pra proxima.
       shareAnnotations = Boolean(allowAnnotations);
@@ -4943,7 +4978,7 @@
           audio: strategy.mode === 'system-loopback',
         });
       } catch (err) {
-        showToast('Não consegui trocar a fonte — a transmissão continua com a anterior.');
+        showToast(t('erro.trocarFonteMantemAnterior'));
         return;
       }
       if (!canContinue()) {
@@ -4959,7 +4994,7 @@
       });
       if (!captureCommit.commitVideo) {
         stopNewCapture();
-        showToast('Não consegui trocar a fonte — a transmissão continua com a anterior.');
+        showToast(t('erro.trocarFonteMantemAnterior'));
         return;
       }
 
@@ -5077,7 +5112,7 @@
         pendingAudioTrack = null;
 
         if (commit.audio === 'disable') {
-          showToast('Não consegui capturar o som só desta janela — a transmissão seguiu sem som');
+          showToast(t('erro.capturarSomJanela'));
         }
       }
       // P7: a troca pode ter trocado, adicionado ou removido a track de
@@ -5104,10 +5139,10 @@
         stopNewCapture();
         return;
       }
-      if (!shareSound || currentShareSound) showToast('Fonte trocada sem interromper a transmissão.');
+      if (!shareSound || currentShareSound) showToast(t('sala.fonteTrocada'));
     } catch (err) {
       if (!capturePromoted) stopNewCapture();
-      showToast(`Não consegui trocar a fonte: ${err.message}`);
+      showToast(t('erro.trocarFonte', { erro: err.message }));
     } finally {
       // eslint-disable-next-line require-atomic-updates -- latch pertence a esta troca serializada
       swapping = false;
@@ -5196,7 +5231,7 @@
   function handleCaptureTransition(transition) {
     if (transition.state === 'instavel') {
       console.warn(`[captura] instavel: ${transition.mutes} quedas em 20 s (surface=${captureSurface})`);
-      captureWarning = 'A captura da tela está falhando — o jogo pode estar em tela cheia exclusiva ou bloqueando captura. Tente o modo janela sem borda, ou compartilhe só a janela do jogo.';
+      captureWarning = t('aviso.capturaFalhando');
     } else {
       console.info('[captura] estavel de novo');
       captureWarning = '';
@@ -5327,7 +5362,7 @@
     while (soundHistory.length && soundHistory[0].atMs < cutoff) soundHistory.shift();
     const silent = audiometer.silenceVerdict(soundHistory, now);
     const next = silent
-      ? 'Estou compartilhando som, mas não sai áudio nenhum. Se você usa saída exclusiva (WASAPI), o loopback vem mudo.'
+      ? t('aviso.somSemAudio')
       : '';
     if (next === soundWarning) return;
     soundWarning = next;
@@ -5368,11 +5403,11 @@
         reactions: shareReactions, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
     }
     ui.grid.setPaused('me', paused, {
-      title: paused ? 'Você pausou' : '',
-      subtitle: paused ? 'Ninguém está vendo' : '',
+      title: paused ? t('sala.vocePausou') : '',
+      subtitle: paused ? t('sala.ninguemVendo') : '',
     });
     ui.setToggleState('pause', paused ? 'on' : 'off');
-    showToast(paused ? 'Transmissão pausada — ninguém está vendo sua tela.' : 'Transmissão retomada.');
+    showToast(paused ? t('sala.transmissaoPausada') : t('sala.transmissaoRetomada'));
     renderMembersPanel();
     renderRoomStatus();
   }
@@ -5424,7 +5459,7 @@
       let timer = setTimeout(() => {
         timer = null;
         promise.then((stream) => stream.getTracks().forEach((t) => t.stop()), () => {});
-        reject(new Error('a câmera não respondeu'));
+        reject(new Error(t('erro.cameraNaoRespondeu')));
       }, ms);
       promise.then(
         (stream) => { if (timer !== null) { clearTimeout(timer); resolve(stream); } },
@@ -5452,7 +5487,7 @@
           CAMERA_OPEN_TIMEOUT_MS
         );
       } catch (err) {
-        showToast(`Não consegui acessar a câmera: ${err.message}`);
+        showToast(t('erro.acessarCamera', { erro: err.message }));
         return; // o finally devolve o botao pro estado real
       }
 
@@ -5469,7 +5504,7 @@
       const track = cameraStream.getVideoTracks()[0];
       if (track) track.addEventListener('ended', stopCamera);
 
-      ui.grid.showTile('cam-me', 'Você (câmera)', cameraStream, { muted: true, avatar: cfg.avatar || null, kind: 'camera', displayName: cfg.name || 'anônimo' });
+      ui.grid.showTile('cam-me', t('sala.voceCamera'), cameraStream, { muted: true, avatar: cfg.avatar || null, kind: 'camera', displayName: cfg.name || t('sala.anonimo') });
       ui.setToggleState('camera', 'on');
       // Mesmos papeis do tile da propria tela: a camera e minha, entao eu
       // limpo a lousa inteira e nao desenho nela.
@@ -5690,7 +5725,7 @@
     const id = String(ownerId);
     const peer = currentSession?.mesh?.peers.get(id);
     ui.grid.setWatched(`cam-${id}`, watchingCamera(id), {
-      name: peer?.name || 'Alguém',
+      name: peer?.name || t('sala.alguem'),
       avatar: peer?.avatar || null,
       kind: 'camera',
     });
@@ -5727,7 +5762,7 @@
       const peer = session?.mesh?.peers.get(id);
       const assistindo = watchingScreen(id);
       ui.grid.setWatched(id, assistindo, {
-        name: peer?.name || 'Alguém',
+        name: peer?.name || t('sala.alguem'),
         avatar: peer?.avatar || null,
         // "+ Ver junto" so faz sentido havendo outra tela ja no ar; largar
         // uma so faz sentido havendo outra pra ficar.
@@ -5760,7 +5795,7 @@
     });
     if (!ok) return;
     livenotify.markNotified(notifyTracker, peerId, Date.now());
-    const n = new Notification(`${peer?.name || 'Alguém'} ficou ao vivo`, {
+    const n = new Notification(t('sala.ficouAoVivo', { nome: peer?.name || t('sala.alguem') }), {
       icon: peer?.avatar || undefined,
       silent: true, // o app ja tem tom proprio (playLiveSound); o ding nativo dobraria o aviso
     });
@@ -5834,10 +5869,10 @@
   }
 
   function mesaPeerName(id) {
-    if (id == null) return 'Alguém';
-    if (String(id) === String(myId)) return cfg.name || 'Você';
+    if (id == null) return t('sala.alguem');
+    if (String(id) === String(myId)) return cfg.name || t('sala.voce');
     const peer = (currentSession || orphanSession)?.mesh?.peers.get(String(id));
-    return peer?.name || 'Alguém';
+    return peer?.name || t('sala.alguem');
   }
 
   mesaView = window.GoLive.mesaView.create({
@@ -5851,7 +5886,7 @@
     me: () => myId,
     isLeader: () => ownerId === 'me',
     peers: () => {
-      const out = myId != null ? [{ id: String(myId), name: cfg.name || 'Você' }] : [];
+      const out = myId != null ? [{ id: String(myId), name: cfg.name || t('sala.voce') }] : [];
       for (const p of currentSession?.mesh?.peers.values() || []) out.push({ id: String(p.id), name: p.name });
       return out;
     },
@@ -6019,7 +6054,7 @@
     if (copy) {
       const texto = copy === 'pin' ? (hostInfo?.pin || $('stage-room-pin').textContent.replace(/\D/g, ''))
         : $('stage-room-address').textContent;
-      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(copy === 'pin' ? 'PIN copiado' : 'Endereço copiado', 1500)).catch(() => {});
+      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(t(copy === 'pin' ? 'sala.pinCopiado' : 'sala.enderecoCopiado'), 1500)).catch(() => {});
       setRoomMoreOpen(false);
       return;
     }
@@ -6818,9 +6853,9 @@
   }
 
   const LIMITATION_LABELS = {
-    bandwidth: 'banda da rede insuficiente',
-    cpu: 'CPU no limite',
-    other: 'limite do encoder',
+    bandwidth: 'diag.limiteBanda',
+    cpu: 'diag.limiteCpu',
+    other: 'diag.limiteEncoder',
   };
 
   async function updateStats() {
@@ -7114,9 +7149,9 @@
     // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador
     // puro tem rows vazio e e justamente quem precisa deste painel.
     const rxHtml = !rxRows.length ? '' : `
-      <h4 class="stats-subtitle">Recebendo</h4>
+      <h4 class="stats-subtitle">${t('diag.recebendo')}</h4>
       <table class="stats-table">
-        <tr><th>de</th><th>fps</th><th>resolução</th><th>perda</th><th>travadas</th><th>buffer</th></tr>
+        <tr><th>${t('diag.colDe')}</th><th>fps</th><th>${t('diag.resolucao')}</th><th>${t('diag.colPerda')}</th><th>${t('diag.colTravadas')}</th><th>buffer</th></tr>
         ${rxRows.map((r) => `
           <tr>
             <td>${esc(r.name)}</td>
@@ -7130,7 +7165,7 @@
 
     if (!rows.length) {
       ui.settings.setStatsHtml(
-        rxHtml || '<div class="stat"><span>enviando pra</span><b>0 pessoas</b></div>'
+        rxHtml || `<div class="stat"><span>${t('diag.enviandoPra')}</span><b>${t('diag.zeroPessoas')}</b></div>`
       );
       return;
     }
@@ -7147,17 +7182,17 @@
     const targetBitrate = qualityFor(rows[0].kind).bitrate;
 
     const summary = `
-      <div class="stat"><span>enviando pra</span><b>${rows.length} sender(s)</b></div>
-      <div class="stat"><span>resolução</span><b>${first.width}x${first.height}</b></div>
-      <div class="stat"><span>saída total</span><b>${totalMbps.toFixed(1)} Mbps</b></div>
+      <div class="stat"><span>${t('diag.enviandoPra')}</span><b>${t('diag.senders', { n: rows.length })}</b></div>
+      <div class="stat"><span>${t('diag.resolucao')}</span><b>${first.width}x${first.height}</b></div>
+      <div class="stat"><span>${t('diag.saidaTotal')}</span><b>${totalMbps.toFixed(1)} Mbps</b></div>
       <div class="stat"><span>codec</span><b>${esc(first.codec || '-')}</b></div>
       <div class="stat"><span>encoder</span><b class="${anySoftware ? 'warn-text' : 'good'}">${
-        anySoftware ? 'software (CPU)' : 'hardware'
+        t(anySoftware ? 'diag.encoderSoftwareCpu' : 'diag.encoderHardware')
       }</b></div>
-      <div class="stat"><span>encode somado</span><b class="${
+      <div class="stat"><span>${t('diag.encodeSomado')}</span><b class="${
         encodeMsRows.length && totalEncodeMs > budget ? 'warn-text' : 'good'
       }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>
-      <div class="stat"><span>banda disponível</span><b class="${
+      <div class="stat"><span>${t('diag.bandaDisponivel')}</span><b class="${
         minAvailableBps != null && minAvailableBps < targetBitrate ? 'warn-text' : ''
       }">${minAvailableBps != null ? `${(minAvailableBps / 1_000_000).toFixed(1)} Mbps` : '-'}</b></div>`;
 
@@ -7166,7 +7201,7 @@
         const software = isSoftwareEncoder(r.encoder);
         const dropped = Math.max(r.framesEncoded - r.framesSent, 0);
         return `<tr>
-          <td>${esc(r.name)}<span class="stats-kind">${r.kind === 'camera' ? 'câmera' : 'tela'}</span></td>
+          <td>${esc(r.name)}<span class="stats-kind">${t(r.kind === 'camera' ? 'diag.kindCamera' : 'diag.kindTela')}</span></td>
           <td class="${r.fps >= 50 ? 'good' : 'warn-text'}">${Math.round(r.fps)}${
             r.captureFps != null ? `<span class="stats-kind">cap ${Math.round(r.captureFps)}</span>` : ''
           }</td>
@@ -7174,7 +7209,7 @@
             r.msPerFrame != null ? `${r.msPerFrame.toFixed(1)} ms` : '-'
           }</td>
           <td class="${software ? 'warn-text' : ''}">${esc(r.encoder || '-')}${
-            r.powerEfficient === false ? '<span class="stats-kind">não eficiente</span>' : ''
+            r.powerEfficient === false ? `<span class="stats-kind">${t('diag.naoEficiente')}</span>` : ''
           }</td>
           <td>${r.mbps.toFixed(1)}</td>
           <td>${r.rtt != null ? `${Math.round(r.rtt)} ms` : '-'}</td>
@@ -7188,14 +7223,14 @@
 
     const limited = rows.filter((r) => r.limitation);
     const limitWarn = limited.length
-      ? `<div class="stat-warn">Limitado por: ${limited
-          .map((r) => `${esc(r.name)} — ${LIMITATION_LABELS[r.limitation] || esc(r.limitation)}`)
+      ? `<div class="stat-warn">${t('diag.limitadoPor')} ${limited
+          .map((r) => `${esc(r.name)} — ${LIMITATION_LABELS[r.limitation] ? t(LIMITATION_LABELS[r.limitation]) : esc(r.limitation)}`)
           .join('; ')}</div>`
       : '';
 
     ui.settings.setStatsHtml(`${summary}
       <table class="stats-table">
-        <thead><tr><th>pessoa</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perda rede</th><th>perdidos</th></tr></thead>
+        <thead><tr><th>${t('diag.colPessoa')}</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>${t('diag.colPerdaRede')}</th><th>${t('diag.colPerdidos')}</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       ${limitWarn}
@@ -7213,7 +7248,7 @@
     const software = screen.filter((r) => isSoftwareEncoder(r.encoder));
     const next =
       software.length && screen.length > 1
-        ? 'Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de pessoas assistindo.'
+        ? t('aviso.encoderSoftwareDetalhe')
         : '';
     if (next === encoderWarning) return;
     encoderWarning = next;

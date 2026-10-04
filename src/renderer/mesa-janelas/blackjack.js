@@ -18,10 +18,14 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'blackjack';
   const LUGARES = 5;
   const FICHAS = [10, 25, 100, 500];
-  const NOMES_ACAO = { hit: 'Pedir', stand: 'Parar', double: 'Dobrar', split: 'Dividir' };
+  const NOMES_ACAO = {
+    hit: 'mesa.cartas.blackjack.pedir', stand: 'mesa.cartas.blackjack.parar',
+    double: 'mesa.cartas.blackjack.dobrar', split: 'mesa.cartas.blackjack.dividir',
+  };
 
   // ---------- Puras ----------
 
@@ -32,24 +36,27 @@
   /** "17 macio", "Blackjack!", "Estourou", "21". */
   function textoTotal(h) {
     if (!h || !Array.isArray(h.cards) || !h.cards.length) return '';
-    if (h.blackjack) return 'Blackjack!';
-    if (h.bust) return 'Estourou';
-    return h.soft ? `${h.total} macio` : String(h.total);
+    if (h.blackjack) return t('mesa.cartas.blackjack.blackjack');
+    if (h.bust) return t('mesa.cartas.blackjack.estourou');
+    return h.soft ? t('mesa.cartas.blackjack.macio', { total: h.total }) : String(h.total);
   }
 
   /** O total da banca: so a aberta enquanto a fechada nao vira. */
   function textoBanca(d) {
     if (!d || !Array.isArray(d.cards) || !d.cards.length) return '';
-    if (!d.revealed) return typeof d.cards[0] === 'string' && d.cards[0][0] === 'A' ? 'Mostra ás' : `Mostra ${d.total}`;
+    if (!d.revealed) return typeof d.cards[0] === 'string' && d.cards[0][0] === 'A'
+      ? t('mesa.cartas.blackjack.mostraAs') : t('mesa.cartas.blackjack.mostraTotal', { total: d.total });
     return textoTotal(d);
   }
 
   /** "Ganhou 30", "Empate", "Perdeu 10" (null antes do fim). */
   function textoResultado(h) {
     if (!h || !h.result) return null;
-    if (h.result === 'push') return 'Empate';
-    if (h.win > 0) return h.result === 'blackjack' ? `Blackjack! Ganhou ${milhar(h.win)}` : `Ganhou ${milhar(h.win)}`;
-    return `Perdeu ${milhar(-h.win)}`;
+    if (h.result === 'push') return t('mesa.cartas.blackjack.empate');
+    if (h.win > 0) return h.result === 'blackjack'
+      ? t('mesa.cartas.blackjack.blackjackGanhou', { valor: milhar(h.win) })
+      : t('mesa.cartas.blackjack.ganhou', { valor: milhar(h.win) });
+    return t('mesa.cartas.blackjack.perdeu', { valor: milhar(-h.win) });
   }
 
   /** Segundos inteiros que faltam (arredonda para cima; nunca negativo). */
@@ -61,7 +68,7 @@
   function nomeLugar(v, i, nameOf) {
     const id = v.seats && v.seats[i];
     const vivo = id && nameOf ? nameOf(id) : null;
-    return vivo || (v.names && v.names[i]) || `Lugar ${i + 1}`;
+    return vivo || (v.names && v.names[i]) || t('mesa.cartas.lugar', { n: i + 1 });
   }
 
   /** A linha de situacao, para todos. */
@@ -70,24 +77,37 @@
     const me = v.me || { seat: -1, actions: [] };
     const sentados = v.seats.filter((x) => x !== null).length;
     if (v.phase === 'bets') {
-      if (!sentados) return 'Lugares livres: sente-se para jogar';
-      if (me.seat >= 0 && (me.actions || []).includes('rebuy')) return 'Sem fichas: faça a recompra para apostar';
-      if (me.seat >= 0 && me.bet > 0) return `Você apostou ${milhar(me.bet)}; esperando os outros`;
-      return 'Façam as apostas';
+      if (!sentados) return t('mesa.cartas.blackjack.lugaresLivres');
+      if (me.seat >= 0 && (me.actions || []).includes('rebuy')) return t('mesa.cartas.blackjack.recompraApostar');
+      if (me.seat >= 0 && me.bet > 0) return t('mesa.cartas.blackjack.voceApostou', { valor: milhar(me.bet) });
+      return t('mesa.cartas.blackjack.facamApostas');
     }
     if (v.phase === 'insurance') {
-      return (me.actions || []).includes('insurance') ? 'A banca mostra ás: quer seguro?' : 'A banca mostra ás: seguro';
+      return t((me.actions || []).includes('insurance')
+        ? 'mesa.cartas.blackjack.perguntaSeguro' : 'mesa.cartas.blackjack.seguroBanca');
     }
     if (v.phase === 'play' && v.turn !== null && v.hands[v.turn]) {
       const h = v.hands[v.turn];
       if (h.seat === me.seat) {
         const minhas = v.hands.filter((x) => x.seat === me.seat);
         const k = minhas.indexOf(h);
-        return minhas.length > 1 ? `Sua vez (mão ${k + 1} de ${minhas.length})` : 'Sua vez';
+        return minhas.length > 1
+          ? t('mesa.cartas.blackjack.suaVezMao', { atual: k + 1, total: minhas.length })
+          : t('mesa.jogo.suaVez');
       }
-      return `Vez de ${nomeLugar(v, h.seat, nameOf)}`;
+      return t('mesa.jogo.vezDe', { nome: nomeLugar(v, h.seat, nameOf) });
     }
-    return 'Vez da banca';
+    return t('mesa.cartas.blackjack.vezBanca');
+  }
+
+  /** A dica da barra da pessoa. Com lugar livre para sentar nao ha dica: as proprias
+   * cadeiras ("Sentar") ja convidam, e a situacao do alto ja diz o mesmo. */
+  function textoDica(v) {
+    const me = (v && v.me) || { seat: -1, actions: [] };
+    const a = new Set(me.actions || []);
+    if (me.seat < 0) return a.has('sit') ? '' : t('mesa.cartas.blackjack.mesaCheiaAssistindo');
+    if (!a.size || (a.size === 1 && a.has('leave'))) return v.phase === 'bets' ? '' : t('mesa.cartas.blackjack.esperandoVez');
+    return '';
   }
 
   /** Anuncio curto para o leitor de tela quando algo importante muda
@@ -98,27 +118,27 @@
     const partes = [];
     const novaRodada = !antes || v.round !== antes.round;
     if (novaRodada && v.round > 0 && v.phase !== 'bets') {
-      if (v.reshuffled) partes.push('Sapato novo embaralhado');
-      partes.push(`Cartas na mesa. Banca mostra ${textoBanca(v.dealer).replace('Mostra ', '')}`);
+      if (v.reshuffled) partes.push(t('mesa.cartas.blackjack.sapatoEmbaralhado'));
+      partes.push(t('mesa.cartas.blackjack.cartasMesa', { total: textoBanca(v.dealer) }));
       const minhas = v.hands.filter((h) => h.seat === me.seat);
-      if (minhas.length) partes.push(`você tem ${textoTotal(minhas[0])}`);
+      if (minhas.length) partes.push(t('mesa.cartas.blackjack.voceTem', { total: textoTotal(minhas[0]) }));
     }
     const fimAgora = antes && antes.phase !== 'bets' && v.phase === 'bets' && v.round === antes.round;
     const fimDireto = novaRodada && v.phase === 'bets' && v.round > 0 && v.hands.length && v.hands.every((h) => h.result);
     if (fimAgora || fimDireto) {
-      if (fimDireto && v.reshuffled) partes.push('Sapato novo embaralhado');
-      partes.push(`Banca: ${textoBanca(v.dealer)}`);
+      if (fimDireto && v.reshuffled) partes.push(t('mesa.cartas.blackjack.sapatoEmbaralhado'));
+      partes.push(t('mesa.cartas.blackjack.bancaTotal', { total: textoBanca(v.dealer) }));
       const minhas = v.hands.filter((h) => h.seat === me.seat).map(textoResultado).filter(Boolean);
-      if (minhas.length) partes.push(`você: ${minhas.join(', ')}`);
+      if (minhas.length) partes.push(t('mesa.cartas.blackjack.seusResultados', { resultados: minhas.join(', ') }));
     }
     if (v.phase === 'insurance' && (!antes || antes.phase !== 'insurance') && (me.actions || []).includes('insurance')) {
-      partes.push('Seguro?');
+      partes.push(t('mesa.cartas.blackjack.seguroPergunta'));
     }
     const minhaVez = (x) => x && x.phase === 'play' && x.me && x.me.hand !== null && x.me.hand !== undefined;
     if (minhaVez(v) && (!minhaVez(antes) || antes.me.hand !== v.me.hand || novaRodada)) {
-      partes.push(`Sua vez: ${textoTotal(v.hands[v.turn])}`);
+      partes.push(t('mesa.cartas.blackjack.suaVezTotal', { total: textoTotal(v.hands[v.turn]) }));
     } else if (!novaRodada && antes && v.phase === 'play' && v.turn !== antes.turn && v.turn !== null && v.hands[v.turn] && v.hands[v.turn].seat !== me.seat) {
-      partes.push(`Vez de ${nomeLugar(v, v.hands[v.turn].seat, nameOf)}`);
+      partes.push(t('mesa.jogo.vezDe', { nome: nomeLugar(v, v.hands[v.turn].seat, nameOf) }));
     }
     return partes.length ? partes.join('. ') : null;
   }
@@ -174,44 +194,54 @@
     // Banca.
     const bancaMao = el('div', { class: 'mj-bj-banca-mao' });
     const bancaTotal = el('span', { class: 'mj-bj-total' });
-    const banca = el('section', { class: 'mj-bj-banca', attrs: { 'aria-label': 'Banca' } },
-      el('span', { class: 'mj-rotulo', text: 'Banca' }), bancaMao, bancaTotal);
+    const banca = el('section', { class: 'mj-bj-banca', attrs: { 'aria-label': t('mesa.cartas.blackjack.banca') } },
+      el('span', { class: 'mj-rotulo', text: t('mesa.cartas.blackjack.banca') }), bancaMao, bancaTotal);
 
     // Lugares.
     const lugaresEl = el('div', { class: 'mj-bj-lugares' });
     const lugares = [];
     for (let i = 0; i < LUGARES; i += 1) {
-      const node = el('section', { class: 'mj-bj-lugar', attrs: { 'aria-label': `Lugar ${i + 1}` } });
+      const node = el('section', { class: 'mj-bj-lugar', attrs: { 'aria-label': t('mesa.cartas.lugar', { n: i + 1 }) } });
+      const lugar = { node, chave: null, livre: true };
+      // A cadeira comum de um lugar so; Levantar mora so no botao da barra (uma acao num lugar so).
+      const cad = C.cadeiras({
+        rotulo: t('mesa.cartas.lugar', { n: i + 1 }),
+        aoSentar() { b.acao(zona, { kind: 'sit', seat: i }); },
+        aoRecusar(motivo) { if (lugar.livre) b.aviso.mostrar(motivo, zona); },
+      });
+      const corpo = el('div', { class: 'mj-bj-corpo' });
+      node.append(cad.node, corpo);
       lugaresEl.append(node);
-      lugares.push({ node, chave: null });
+      Object.assign(lugar, { cad, corpo });
+      lugares.push(lugar);
     }
 
     // Barra da pessoa.
     const zona = el('div', { class: 'mj-bj-barra' });
     const apostaCampo = el('input', {
       class: 'mj-campo mj-bj-campo',
-      attrs: { type: 'number', inputmode: 'numeric', min: '10', max: '500', step: '1', 'aria-label': 'Valor da aposta', id: `mj-bj-aposta-${Math.random().toString(36).slice(2, 8)}` },
+      attrs: { type: 'number', inputmode: 'numeric', min: '10', max: '500', step: '1', 'aria-label': t('mesa.cartas.valorAposta'), id: `mj-bj-aposta-${Math.random().toString(36).slice(2, 8)}` },
     });
-    const apostaRot = el('label', { class: 'mj-bj-rot', text: 'Aposta', attrs: { for: apostaCampo.id } });
+    const apostaRot = el('label', { class: 'mj-bj-rot', text: t('mesa.cartas.aposta'), attrs: { for: apostaCampo.id } });
     const fichas = FICHAS.map((n) => {
-      const bt = C.botao({ text: `+${n}`, class: 'mj-bj-ficha', label: `Somar ${n} à aposta` });
+      const bt = C.botao({ text: `+${n}`, class: 'mj-bj-ficha', label: t('mesa.cartas.somarAposta', { valor: n }) });
       bt.dataset.ficha = String(n);
       b.clique(bt, zona, () => somar(n));
       return bt;
     });
-    const btApostar = C.botao({ text: 'Apostar', class: 'mj-pri' });
-    const btTirar = C.botao({ text: 'Tirar aposta', class: 'mj-fantasma' });
-    const grupoAposta = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Aposta' } },
+    const btApostar = C.botao({ text: t('mesa.cartas.apostar'), class: 'mj-pri' });
+    const btTirar = C.botao({ text: t('mesa.cartas.tirarAposta'), class: 'mj-fantasma' });
+    const grupoAposta = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': t('mesa.cartas.aposta') } },
       apostaRot, apostaCampo, ...fichas, btApostar, btTirar);
 
-    const btSeguro = C.botao({ text: 'Seguro', class: 'mj-pri' });
-    const btSemSeguro = C.botao({ text: 'Sem seguro' });
-    const grupoSeguro = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Seguro' } }, btSeguro, btSemSeguro);
+    const btSeguro = C.botao({ text: t('mesa.cartas.seguro'), class: 'mj-pri' });
+    const btSemSeguro = C.botao({ text: t('mesa.cartas.semSeguro') });
+    const grupoSeguro = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': t('mesa.cartas.seguro') } }, btSeguro, btSemSeguro);
 
     const jogadas = {};
-    const grupoJogo = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Sua jogada' } });
+    const grupoJogo = el('div', { class: 'mj-bj-grupo', attrs: { 'aria-label': t('mesa.cartas.suaJogada'), role: 'group' } });
     for (const k of ['hit', 'stand', 'double', 'split']) {
-      const bt = C.botao({ text: NOMES_ACAO[k], class: k === 'hit' || k === 'stand' ? 'mj-pri' : '' });
+      const bt = C.botao({ text: t(NOMES_ACAO[k]), class: k === 'hit' || k === 'stand' ? 'mj-pri' : '' });
       bt.dataset.acao = k;
       b.clique(bt, zona, () => b.acao(zona, { kind: k }));
       jogadas[k] = bt;
@@ -219,8 +249,8 @@
     }
 
     const dica = el('p', { class: 'mj-dica mj-bj-dica' });
-    const btRecompra = C.botao({ text: 'Recompra', class: 'mj-pri' });
-    const btLevantar = C.botao({ text: 'Levantar', class: 'mj-fantasma' });
+    const btRecompra = C.botao({ text: t('mesa.jogo.recompra'), class: 'mj-pri' });
+    const btLevantar = C.botao({ text: t('mesa.jogo.levantar'), class: 'mj-fantasma' });
     zona.append(grupoAposta, grupoSeguro, grupoJogo, dica, el('span', { class: 'mj-mola' }), btRecompra, btLevantar);
 
     b.raiz.append(topo, falado, banca, lugaresEl, zona);
@@ -254,7 +284,9 @@
       const n = valorCampo();
       const me = (v && v.me) || { minBet: 10, maxBet: 500 };
       if (n < me.minBet || n > me.maxBet) {
-        b.aviso.mostrar(me.maxBet < me.minBet ? 'Fichas insuficientes' : `Aposta de ${me.minBet} a ${milhar(me.maxBet)}`, zona);
+        b.aviso.mostrar(me.maxBet < me.minBet
+          ? t('mesa.cartas.fichasInsuficientes')
+          : t('mesa.cartas.apostaIntervalo', { min: me.minBet, max: milhar(me.maxBet) }), zona);
         return;
       }
       ultimaAposta = n;
@@ -272,53 +304,74 @@
       const vez = v.phase === 'play' && v.turn !== null && v.hands[v.turn] && v.hands[v.turn].seat === i;
       const podeSentar = id === null && (me.actions || []).includes('sit');
       const nome = id !== null ? nomeLugar(v, i, (x) => C.nomeDe(api, x)) : null;
-      const chave = JSON.stringify([id, nome, v.chips[i], v.bets[i], v.insurance[i], v.insuranceNet[i], maos, vez, v.turn, podeSentar, me.seat === i, v.phase]);
+      const chave = JSON.stringify([
+        id, nome, v.chips[i], v.bets[i], v.insurance[i], v.insuranceNet[i],
+        maos, vez, v.turn, podeSentar, me.seat, v.phase,
+      ]);
       if (chave === L.chave) return;
       L.chave = chave;
-      const tinhaFoco = L.node.contains(root.document.activeElement);
-      L.node.replaceChildren();
+      L.livre = id === null;
+      L.cad.sync([{
+        peer: id,
+        nome: nome || '',
+        cor: id === null ? null : C.corDe(api, id),
+        peca: null,
+        vez: !!vez,
+        eu: me.seat === i,
+        motivoSentar: podeSentar ? true : (me.seat >= 0
+          ? t('mesa.cartas.voceJaEstaSentado') : t('mesa.cartas.indisponivelAgora')),
+        motivoLevantar: t('mesa.cartas.useBotaoLevantar'),
+      }]);
+      const botaoLugar = L.cad.node.children[0].children[0];
+      L.corpo.replaceChildren();
       L.node.classList.toggle('is-vazio', id === null);
       L.node.classList.toggle('is-vez', !!vez);
       L.node.classList.toggle('is-meu', me.seat === i);
       L.node.classList.toggle('is-anterior', v.phase === 'bets');
       if (id === null) {
-        L.node.setAttribute('aria-label', `Lugar ${i + 1}, livre`);
-        if (podeSentar) {
-          const bt = C.botao({ text: 'Sentar', label: `Sentar no lugar ${i + 1}` });
-          b.clique(bt, zona, () => b.acao(zona, { kind: 'sit', seat: i }));
-          L.node.append(bt);
-          if (tinhaFoco) bt.focus();
-        } else {
-          L.node.append(el('span', { class: 'mj-bj-livre', text: 'Livre' }));
-        }
+        L.node.setAttribute('aria-label', t('mesa.cartas.lugarLivre', { n: i + 1 }));
+        botaoLugar.setAttribute('aria-label', t('mesa.cartas.sentarLugar', { n: i + 1 }));
         return;
       }
-      L.node.setAttribute('aria-label', `Lugar ${i + 1}: ${nome}${me.seat === i ? ' (você)' : ''}`);
-      const cab = el('div', { class: 'mj-bj-quem' },
-        C.bolinha(C.corDe(api, id), nome),
-        el('span', { class: 'mj-bj-nome', text: me.seat === i ? `${nome} (você)` : nome }));
+      L.node.setAttribute('aria-label', me.seat === i
+        ? t('mesa.cartas.lugarComNomeVoce', { n: i + 1, nome })
+        : t('mesa.cartas.lugarComNome', { n: i + 1, nome }));
+      botaoLugar.setAttribute('aria-label', t('mesa.cartas.lugarComNome', { n: i + 1, nome }));
       const saldo = el('div', { class: 'mj-bj-saldo' },
-        el('span', { class: 'mj-bj-fichas', text: `${milhar(v.chips[i])} fichas` }));
-      if (v.bets[i] > 0) saldo.append(el('span', { class: 'mj-bj-aposta', text: `Aposta ${milhar(v.bets[i])}` }));
+        el('span', { class: 'mj-bj-fichas', text: t('mesa.cartas.fichas', { valor: milhar(v.chips[i]) }) }));
+      if (v.bets[i] > 0) saldo.append(el('span', {
+        class: 'mj-bj-aposta', text: t('mesa.cartas.apostaValor', { valor: milhar(v.bets[i]) }),
+      }));
       if (v.insurance[i] > 0) {
         const net = v.insuranceNet[i];
-        const t = net === null ? `Seguro ${milhar(v.insurance[i])}` : net > 0 ? `Seguro: ganhou ${milhar(net)}` : `Seguro: perdeu ${milhar(-net)}`;
-        saldo.append(el('span', { class: 'mj-bj-seguro', text: t }));
+        const seguro = net === null ? t('mesa.cartas.seguroValor', { valor: milhar(v.insurance[i]) })
+          : net > 0 ? t('mesa.cartas.seguroGanhou', { valor: milhar(net) })
+            : t('mesa.cartas.seguroPerdeu', { valor: milhar(-net) });
+        saldo.append(el('span', { class: 'mj-bj-seguro', text: seguro }));
       }
-      L.node.append(cab, saldo);
+      L.corpo.append(saldo);
       const lista = el('div', { class: 'mj-bj-maos' });
       for (const { h, k } of maos) {
         const res = textoResultado(h);
         const mao = el('div', { class: `mj-bj-mao${k === v.turn && vez ? ' is-vez' : ''}${h.result ? ` is-${h.result === 'push' ? 'empate' : h.win > 0 ? 'ganhou' : 'perdeu'}` : ''}` },
           K.mao(h.cards, { tamanho: 'p' }),
           el('span', { class: 'mj-bj-total', text: textoTotal(h) }),
-          el('span', { class: 'mj-bj-mao-aposta', text: milhar(h.bet), attrs: { title: h.doubled ? 'Aposta dobrada' : 'Aposta' } }));
+          el('span', { class: 'mj-bj-mao-aposta', text: milhar(h.bet), attrs: {
+            title: h.doubled ? t('mesa.cartas.apostaDobrada') : t('mesa.cartas.aposta'),
+          } }));
         if (res) mao.append(el('span', { class: 'mj-bj-res', text: res }));
-        mao.setAttribute('aria-label', `${maos.length > 1 ? `Mão ${maos.findIndex((x) => x.k === k) + 1}: ` : ''}${K.rotuloMao(h.cards)}; ${textoTotal(h)}; aposta ${h.bet}${h.doubled ? ', dobrada' : ''}${res ? `; ${res}` : ''}`);
+        const cartasAria = maos.length > 1
+          ? t('mesa.cartas.blackjack.maoComCartasAria', {
+            n: maos.findIndex((x) => x.k === k) + 1, cartas: K.rotuloMao(h.cards),
+          })
+          : K.rotuloMao(h.cards);
+        const apostaAria = t(h.doubled ? 'mesa.cartas.blackjack.apostaDobradaAria'
+          : 'mesa.cartas.blackjack.apostaAria', { valor: h.bet });
+        mao.setAttribute('aria-label', [cartasAria, textoTotal(h), apostaAria, res].filter(Boolean).join('; '));
         mao.setAttribute('role', 'group');
         lista.append(mao);
       }
-      L.node.append(lista);
+      L.corpo.append(lista);
     }
 
     let bancaChave = null;
@@ -327,7 +380,7 @@
       const chave = JSON.stringify(d);
       if (chave === bancaChave) return;
       bancaChave = chave;
-      bancaMao.replaceChildren(K.mao(d.cards, { tamanho: 'm' }));
+      bancaMao.replaceChildren(K.mao(d.cards, { tamanho: 'm', vira: true }));
       bancaTotal.textContent = textoBanca(d);
       banca.classList.toggle('is-estourou', !!d.bust);
     }
@@ -342,13 +395,15 @@
         if (apostaCampo.dataset.tocado !== '1' && root.document.activeElement !== apostaCampo) {
           apostaCampo.value = String(Math.min(me.maxBet, me.bet > 0 ? me.bet : ultimaAposta));
         }
-        btApostar.querySelector('span').textContent = me.bet > 0 ? 'Trocar aposta' : 'Apostar';
+        btApostar.querySelector('span').textContent = me.bet > 0
+          ? t('mesa.cartas.trocarAposta') : t('mesa.cartas.apostar');
         btTirar.hidden = !(me.bet > 0);
-        for (const f of fichas) C.ligado(f, Number(f.dataset.ficha) <= me.maxBet ? true : 'Fichas insuficientes');
+        for (const f of fichas) C.ligado(f, Number(f.dataset.ficha) <= me.maxBet
+          ? true : t('mesa.cartas.fichasInsuficientes'));
       }
       grupoSeguro.hidden = !a.has('insurance');
       if (a.has('insurance')) {
-        btSeguro.querySelector('span').textContent = `Seguro de ${milhar(me.insuranceMax)}`;
+        btSeguro.querySelector('span').textContent = t('mesa.cartas.seguroDe', { valor: milhar(me.insuranceMax) });
         btSeguro.hidden = !(me.insuranceMax > 0);
       }
       const joga = ['hit', 'stand', 'double', 'split'].some((k) => a.has(k));
@@ -356,9 +411,7 @@
       for (const k of Object.keys(jogadas)) jogadas[k].hidden = !a.has(k);
       btRecompra.hidden = !a.has('rebuy');
       btLevantar.hidden = !a.has('leave');
-      let texto = '';
-      if (me.seat < 0) texto = a.has('sit') ? 'Escolha um lugar livre para jogar' : 'Mesa cheia: assistindo';
-      else if (!a.size || (a.size === 1 && a.has('leave'))) texto = v.phase === 'bets' ? '' : 'Esperando a sua vez';
+      const texto = textoDica(v);
       dica.textContent = texto;
       dica.hidden = !texto;
     }
@@ -387,7 +440,7 @@
       prazo.hidden = false;
       prazo.textContent = `${s} s`;
       prazo.classList.toggle('is-fim', s <= 5);
-      prazo.title = v.phase === 'bets' ? 'Tempo para apostar' : 'Tempo para decidir';
+      prazo.title = v.phase === 'bets' ? t('mesa.cartas.tempoApostar') : t('mesa.cartas.tempoDecidir');
       if (agora >= v.deadline + esperaTimeout(v)) {
         if (enviado && enviado.deadline === v.deadline && agora - enviado.em < 2000) return;
         enviado = { deadline: v.deadline, em: agora };
@@ -415,9 +468,9 @@
       }
       status.textContent = textoStatus(v, (x) => C.nomeDe(api, x));
       atualizarBarra(api, status.textContent, Boolean(v.me?.hand !== null && v.me?.hand !== undefined && !v.finished));
-      sapato.textContent = `Sapato: ${v.shoeLeft}`;
-      sapato.title = `${v.shoeLeft} de ${v.shoeTotal} cartas no sapato`;
-      sapato.setAttribute('aria-label', `${v.shoeLeft} cartas no sapato`);
+      sapato.textContent = t('mesa.cartas.blackjack.sapatoQuantas', { n: v.shoeLeft });
+      sapato.title = t('mesa.cartas.sapatoTitulo', { atual: v.shoeLeft, total: v.shoeTotal });
+      sapato.setAttribute('aria-label', t('mesa.cartas.sapatoAria', { atual: v.shoeLeft }));
       desenharBanca();
       for (let i = 0; i < LUGARES; i += 1) desenharLugar(i);
       desenharBarra();
@@ -493,8 +546,8 @@
   }
 
   const api = {
-    type: TYPE, mount, textoTotal, textoBanca, textoResultado, textoStatus, anuncio, segundos, esperaTimeout,
-    milhar, atualizarBarra,
+    type: TYPE, mount, textoTotal, textoBanca, textoResultado, textoStatus, textoDica, anuncio, segundos,
+    esperaTimeout, milhar, atualizarBarra,
   };
 
   registrar(api, ['comum.js', 'cartas.js']);

@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const velha = require('./velha');
 
 const PEERS = [{ id: 'bia', name: 'Bia' }, { id: 'leo', name: 'Leo' }, { id: 'ana', name: 'Ana' }];
@@ -36,7 +37,7 @@ function playCells(s, cells) {
 
 test('descritor segue o contrato', () => {
   assert.equal(velha.type, 'velha');
-  assert.equal(velha.title, 'Jogo da velha');
+  assert.equal(tx(velha.title), 'Jogo da velha');
   assert.equal(velha.group, 'jogos');
   assert.equal(velha.size.aspect, velha.size.w / velha.size.h);
   assert.ok(JSON.stringify(velha.init({})).length < velha.maxStateBytes);
@@ -47,36 +48,36 @@ test('init comeca com cadeiras livres e a vez da cadeira 0', () => {
   assert.deepEqual(s.seats, [null, null]);
   assert.equal(s.board, '.........');
   assert.equal(s.turn, 0);
-  assert.equal(velha.summary(s), 'Cadeiras livres');
+  assert.equal(R(velha.summary(s)), 'Cadeiras livres');
 });
 
 test('X na cadeira 0 comeca e as vezes alternam', () => {
   let s = seated();
-  assert.equal(velha.summary(s), 'Bia × Leo — vez de Bia');
+  assert.equal(R(velha.summary(s)), 'Bia × Leo — vez de Bia');
   s = act(s, { kind: 'move', cell: 4 }, 'bia');
   assert.equal(s.board, '....X....');
-  assert.equal(velha.summary(s), 'Bia × Leo — vez de Leo');
-  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'Não é a sua vez');
+  assert.equal(R(velha.summary(s)), 'Bia × Leo — vez de Leo');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'mesa.jogo.naoESuaVez');
   s = act(s, { kind: 'move', cell: 0 }, 'leo');
   assert.equal(s.board, 'O...X....');
 });
 
 test('so quem esta sentado joga; quem assiste e recusado', () => {
   const s = seated();
-  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
 });
 
 test('sem adversario sentado ninguem joga', () => {
   const s = act(deepFreeze(velha.init({})), { kind: 'sit', seat: 0 }, 'bia');
-  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'Espere alguém sentar na outra cadeira');
-  assert.equal(velha.summary(s), 'Bia espera adversário');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'mesa.cadeiras.esperaOutra');
+  assert.equal(R(velha.summary(s)), 'Bia espera adversário');
 });
 
 test('casa ocupada e casa fora do tabuleiro sao recusadas', () => {
   const s = playCells(seated(), [4]);
-  assert.equal(velha.validate(s, { kind: 'move', cell: 4 }, ctx('leo')), 'Casa ocupada');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 4 }, ctx('leo')), 'mesa.velha.casaOcupada');
   for (const cell of [-1, 9, 1.5, '3', null, undefined]) {
-    assert.equal(velha.validate(s, { kind: 'move', cell }, ctx('leo')), 'Casa inválida');
+    assert.equal(velha.validate(s, { kind: 'move', cell }, ctx('leo')), 'mesa.velha.casaInvalida');
   }
 });
 
@@ -85,8 +86,8 @@ test('tres em linha vence e marca a linha', () => {
   const s = playCells(seated(), [0, 3, 1, 4, 2]);
   assert.deepEqual(s.result, { winner: 0, reason: 'linha' });
   assert.deepEqual(s.line, [0, 1, 2]);
-  assert.equal(velha.summary(s), 'Bia venceu');
-  assert.equal(velha.validate(s, { kind: 'move', cell: 5 }, ctx('leo')), 'A partida acabou');
+  assert.equal(R(velha.summary(s)), 'Bia venceu');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 5 }, ctx('leo')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('diagonal da cadeira 1 tambem vence', () => {
@@ -94,7 +95,7 @@ test('diagonal da cadeira 1 tambem vence', () => {
   const s = playCells(seated(), [0, 2, 1, 4, 5, 6]);
   assert.deepEqual(s.result, { winner: 1, reason: 'linha' });
   assert.deepEqual(s.line, [2, 4, 6]);
-  assert.equal(velha.summary(s), 'Leo venceu');
+  assert.equal(R(velha.summary(s)), 'Leo venceu');
 });
 
 test('tabuleiro cheio sem linha da velha', () => {
@@ -102,7 +103,7 @@ test('tabuleiro cheio sem linha da velha', () => {
   const s = playCells(seated(), [0, 1, 2, 4, 3, 5, 7, 6, 8]);
   assert.equal(s.board, 'XOXXOOOXX');
   assert.deepEqual(s.result, { winner: null, reason: 'velha' });
-  assert.equal(velha.summary(s), 'Deu velha');
+  assert.equal(R(velha.summary(s)), 'Deu velha');
 });
 
 test('vitoria na nona jogada conta como vitoria, nao como velha', () => {
@@ -114,7 +115,7 @@ test('vitoria na nona jogada conta como vitoria, nao como velha', () => {
 
 test('reset mantem as cadeiras; pode sentado ou lider, nao quem assiste', () => {
   const s = playCells(seated(), [0, 3, 1, 4, 2]);
-  assert.equal(velha.validate(s, { kind: 'reset' }, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(velha.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   const r = act(s, { kind: 'reset' }, 'ana', { isLeader: true });
   assert.deepEqual(r.seats, ['bia', 'leo']);
   assert.equal(r.board, '.........');
@@ -151,7 +152,7 @@ test('estado estranho nao derruba validate, reduce nem summary', () => {
   for (const s of [null, undefined, {}, { seats: 'x' }]) {
     assert.equal(typeof velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'string');
     assert.equal(velha.reduce(s, { kind: 'move', cell: 0 }, ctx('bia')), s);
-    assert.equal(typeof velha.summary(s), 'string');
+    assert.equal(typeof R(velha.summary(s)), 'string');
     assert.equal(velha.dropPeer(s, 'bia'), s);
   }
 });

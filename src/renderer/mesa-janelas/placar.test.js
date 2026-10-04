@@ -34,7 +34,7 @@ test('botoesDoTime: -1 desliga no zero, +1 desliga quando a serie fecha', () => 
   let s = m.init();
   const validar = (a) => m.validate(s, a);
   assert.equal(janela.botoesDoTime(validar, 0).mais, true);
-  assert.equal(janela.botoesDoTime(validar, 0).menos, 'O placar não fica negativo');
+  assert.equal(janela.botoesDoTime(validar, 0).menos, 'mesa.placar.naoNegativo');
   s = m.reduce(s, { kind: 'bestOf', n: 3 });
   s = m.reduce(s, { kind: 'score', team: 0, delta: 1 });
   s = m.reduce(s, { kind: 'score', team: 0, delta: 1 });

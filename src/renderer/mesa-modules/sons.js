@@ -20,6 +20,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'sons';
   const COOLDOWN_MS = 3000;
   const MAX_RECENT = 32;
@@ -27,17 +29,18 @@
 
   // A ordem e a da grade de botoes.
   const SOUNDS = Object.freeze(['buzina', 'palmas', 'badumtss', 'rufar', 'sino', 'acertou', 'errou', 'suspense', 'boing', 'apito']);
+  // Nome na tela = CHAVE (a janela traduz com t()).
   const SOUND_NAMES = Object.freeze({
-    buzina: 'Buzina',
-    palmas: 'Palmas',
-    badumtss: 'Ba dum tss',
-    rufar: 'Rufar',
-    sino: 'Sino',
-    acertou: 'Acertou',
-    errou: 'Errou',
-    suspense: 'Suspense',
-    boing: 'Boing',
-    apito: 'Apito',
+    buzina: 'mesa.sons.som.buzina',
+    palmas: 'mesa.sons.som.palmas',
+    badumtss: 'mesa.sons.som.badumtss',
+    rufar: 'mesa.sons.som.rufar',
+    sino: 'mesa.sons.som.sino',
+    acertou: 'mesa.sons.som.acertou',
+    errou: 'mesa.sons.som.errou',
+    suspense: 'mesa.sons.som.suspense',
+    boing: 'mesa.sons.som.boing',
+    apito: 'mesa.sons.som.apito',
   });
 
   function isObj(v) {
@@ -59,15 +62,15 @@
   /** Forma da acao. `at`/`by` so existem depois do prepare; se vierem,
    * precisam estar certos (o servidor os troca pelos dele de qualquer jeito). */
   function parse(action) {
-    if (!isObj(action) || action.kind !== 'play') return 'Ação desconhecida';
-    if (typeof action.sound !== 'string' || !SOUNDS.includes(action.sound)) return 'Som desconhecido';
+    if (!isObj(action) || action.kind !== 'play') return codigo('mesa.jogo.acaoDesconhecida');
+    if (typeof action.sound !== 'string' || !SOUNDS.includes(action.sound)) return codigo('mesa.sons.somDesconhecido');
     const a = { kind: 'play', sound: action.sound };
     if (action.at !== undefined) {
-      if (!isTime(action.at)) return 'Hora inválida';
+      if (!isTime(action.at)) return codigo('mesa.sons.horaInvalida');
       a.at = action.at;
     }
     if (action.by !== undefined) {
-      if (!isPeerId(action.by)) return 'Pessoa inválida';
+      if (!isPeerId(action.by)) return codigo('mesa.sons.pessoaInvalida');
       a.by = action.by;
     }
     return a;
@@ -92,7 +95,7 @@
     const from = ctx && ctx.from != null ? String(ctx.from) : null;
     if (from !== null && ctx && isTime(ctx.now)) {
       const falta = cooldownLeft(state, from, ctx.now);
-      if (falta > 0) return `Espere ${Math.ceil(falta / 1000)} s para tocar outro som`;
+      if (falta > 0) return codigo('mesa.sons.espere', { s: Math.ceil(falta / 1000) });
     }
     return true;
   }
@@ -125,16 +128,17 @@
   }
 
   function soundName(sound) {
-    return Object.prototype.hasOwnProperty.call(SOUND_NAMES, sound) ? SOUND_NAMES[sound] : 'Som';
+    return Object.prototype.hasOwnProperty.call(SOUND_NAMES, sound) ? SOUND_NAMES[sound] : 'mesa.sons.som.generico';
   }
 
   function summary(state) {
-    return state.last ? `Último som: ${soundName(state.last.sound)}` : 'Nenhum som ainda';
+    if (!state.last) return { chave: 'mesa.resumo.somNenhum' };
+    return { chave: 'mesa.resumo.somUltimo', valores: { som: soundName(state.last.sound) } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Sons',
+    title: 'mesa.titulo.sons',
     group: 'noite',
     size: { w: 400, h: 300, minW: 260, minH: 220, aspect: null },
     // 32 pessoas em `recent` (id de 16 + hora de 13 algarismos) + o ultimo.

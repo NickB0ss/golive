@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 const J = require('./truco');
 
 test('Truco envia estado proprio e alheio para a barra', () => {
@@ -65,4 +66,53 @@ test('acoes principais incluem levantar e os tres niveis de canto', () => {
   assert.equal(J.rotuloCanto({ hand: { value: 1 } }), 'Pedir truco');
   assert.equal(J.rotuloCanto({ hand: { value: 3 } }), 'Pedir 6');
   assert.equal(J.rotuloCanto({ hand: { value: 9 } }), 'Pedir 12');
+});
+
+// ---------- Montagem (DOM falso) ----------
+require('./comum');
+require('./cartas');
+const { montar } = require('./dom-falso-leva3');
+
+const vazia = (extra = {}) => ({
+  phase: 'waiting', seats: [null, null, null, null], scores: [0, 0], hand: null,
+  me: { seat: -1, team: null, can: { sit: true } }, ...extra,
+});
+
+test('truco sem ninguem mostra o vazio com as 4 cadeiras em cruz e sem repetir o titulo', () => {
+  const t = montar(J, vazia());
+  assert.equal(t.achar('.mj-vazio').hidden, false);
+  assert.equal(t.todos('.mj-cadeira-livre').length, 4);
+  assert.equal(t.todos('.mj-tr-cruz').length, 1);
+  assert.notEqual(t.achar('.mj-vazio-titulo').textContent, 'Truco');
+  t.todos('.mj-cadeira-livre')[2].click();
+  assert.deepEqual(t.acoes, [{ kind: 'sit', seat: 2 }]);
+  t.destruir();
+});
+
+test('truco com a mao em jogo esconde o vazio e deixa o canto como acao secundaria', () => {
+  const view = vazia({
+    phase: 'play',
+    seats: ['1', '2', '3', '4'],
+    hand: { vira: '3s', manilha: '4', value: 1, rounds: [], cards: ['As', 'Kd', '7c'], table: [], turn: 0 },
+    me: { seat: 0, team: 0, can: { play: true, call: true } },
+  });
+  const t = montar(J, view);
+  assert.equal(t.achar('.mj-vazio').hidden, true);
+  assert.equal(t.todos('.mj-acoes').length, 1);
+  assert.equal(t.botao('Pedir truco').classList.contains('mj-fantasma'), true);
+  t.destruir();
+});
+
+test('truco: so a carta que acabou de cair na mesa gira', () => {
+  const base = {
+    phase: 'play',
+    seats: ['1', '2', '3', '4'],
+    hand: { vira: '3s', manilha: '4', value: 1, rounds: [], cards: [], turn: 1, table: [{ seat: 0, card: 'As' }] },
+    me: { seat: 0, team: 0, can: {} },
+  };
+  const t = montar(J, base);
+  assert.equal(t.todos('.is-vira').length, 1);
+  t.atualizar(base);
+  assert.equal(t.todos('.is-vira').length, 0, 'a mesma carta nao gira de novo');
+  t.destruir();
 });

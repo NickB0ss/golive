@@ -11,6 +11,7 @@
  */
 
 (function (root) {
+  const { t, idiomaAtivo } = root.GoLive.i18n;
   const TYPE = 'sorteio';
 
   function mod() {
@@ -32,24 +33,25 @@
   }
 
   function rotuloSortear(state) {
-    return state.teams ? 'Sortear de novo' : 'Sortear';
+    return state.teams ? t('mesa.sorteio.sortearDeNovo') : t('mesa.sorteio.sortear');
   }
 
   /** "Time 1: Ana e Bia. Time 2: Caio e Duda." -- o anuncio do sorteio. */
   function textoTimes(state) {
     if (!state.teams) return '';
     return state.teams
-      .map((t, i) => {
-        const nomes = t.map((e) => e.name);
-        const lista = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes.join('');
-        return `Time ${i + 1}: ${lista || 'ninguém'}.`;
+      .map((time, i) => {
+        const nomes = time.map((e) => e.name);
+        if (!nomes.length) return t('mesa.sorteio.timeNinguem', { n: i + 1 });
+        const lista = new Intl.ListFormat(idiomaAtivo(), { type: 'conjunction' }).format(nomes);
+        return t('mesa.sorteio.timeLista', { n: i + 1, lista });
       })
       .join(' ');
   }
 
   function opcoesTimes(m) {
     const out = [];
-    for (let n = m.MIN_TEAMS; n <= m.MAX_TEAMS; n++) out.push({ valor: n, texto: `${n} times` });
+    for (let n = m.MIN_TEAMS; n <= m.MAX_TEAMS; n++) out.push({ valor: n, texto: t('mesa.sorteio.nTimes', { n }) });
     return out;
   }
 
@@ -67,36 +69,45 @@
 
     // Barra de cima: quantos times e o botao que sorteia.
     const topo = el('div', { class: 'mj-barra' });
-    const selTimes = el('select', { class: 'mj-sel', attrs: { 'aria-label': 'Número de times' } });
+    const selTimes = el('select', { class: 'mj-sel', attrs: { 'aria-label': t('mesa.sorteio.numeroDeTimes') } });
     for (const o of opcoesTimes(m)) selTimes.append(el('option', { text: o.texto, attrs: { value: String(o.valor) } }));
-    const sortear = C.botao({ icone: 'embaralhar', text: 'Sortear', class: 'mj-pri' });
-    topo.append(selTimes, el('span', { class: 'mj-mola' }), sortear);
+    const sortear = C.botao({ icone: 'embaralhar', text: t('mesa.sorteio.sortear'), class: 'mj-pri' });
+    topo.append(selTimes);
 
     // Times que sairam.
-    const secTimes = el('section', { class: 'mj-sort-times', attrs: { 'aria-label': 'Times' } });
+    const secTimes = el('section', { class: 'mj-sort-times', attrs: { 'aria-label': t('mesa.sorteio.times') } });
     const cabTimes = el('p', { class: 'mj-rotulo' });
     const gradeTimes = el('div', { class: 'mj-sort-grade' });
-    const vazioTimes = el('p', { class: 'mj-dica', text: 'Ponha os nomes e sorteie.' });
+    const vazioTimes = el('p', { class: 'mj-dica', text: t('mesa.sorteio.vazioTimes') });
     const anuncio = el('p', { class: 'visually-hidden', attrs: { role: 'status', 'aria-live': 'polite' } });
     secTimes.append(cabTimes, gradeTimes, vazioTimes, anuncio);
 
     // Nomes.
-    const secNomes = el('section', { class: 'mj-sort-nomes', attrs: { 'aria-label': 'Nomes' } });
+    const secNomes = el('section', { class: 'mj-sort-nomes', attrs: { 'aria-label': t('mesa.sorteio.nomes') } });
     const cabNomes = el('p', { class: 'mj-rotulo' });
     const campo = el('input', {
       class: 'mj-campo',
-      attrs: { type: 'text', maxlength: String(m.MAX_NAME), placeholder: 'Adicionar nome', 'aria-label': 'Adicionar nome', spellcheck: 'false' },
+      attrs: {
+        type: 'text',
+        maxlength: String(m.MAX_NAME),
+        placeholder: t('mesa.sorteio.adicionarNome'),
+        'aria-label': t('mesa.sorteio.adicionarNome'),
+        spellcheck: 'false',
+      },
     });
-    const addBtn = C.botao({ icone: 'mais', class: 'mj-ic', label: 'Adicionar nome' });
+    const addBtn = C.botao({ icone: 'mais', class: 'mj-ic', label: t('mesa.sorteio.adicionarNome') });
     const form = el('form', { class: 'mj-form' }, campo, addBtn);
-    const sala = C.botao({ icone: 'pessoas', text: 'Pôr a sala toda', class: 'mj-fantasma' });
-    const limpar = C.botao({ icone: 'x', text: 'Limpar', class: 'mj-fantasma', label: 'Limpar os nomes' });
-    const acoesNomes = el('div', { class: 'mj-barra mj-sort-acoes' }, sala, el('span', { class: 'mj-mola' }), limpar);
-    const chips = el('ul', { class: 'mj-chips', attrs: { 'aria-label': 'Nomes no sorteio' } });
-    secNomes.append(cabNomes, form, chips, acoesNomes);
+    const sala = C.botao({ icone: 'pessoas', text: t('mesa.sorteio.poraSalaToda'), class: 'mj-fantasma' });
+    const limpar = C.botao({ icone: 'x', text: t('mesa.sorteio.limpar'), class: 'mj-fantasma',
+      label: t('mesa.sorteio.limparNomes'),
+    });
+    const acoesNomes = C.acoes({ principal: sortear, secundarias: [sala, limpar] });
+    acoesNomes.classList.add('mj-sort-acoes');
+    const chips = el('ul', { class: 'mj-chips', attrs: { 'aria-label': t('mesa.sorteio.nomesNoSorteio') } });
+    secNomes.append(cabNomes, form, chips);
 
     const corpo = el('div', { class: 'mj-sort-corpo mj-rola' }, secTimes, secNomes);
-    b.raiz.append(topo, corpo);
+    b.raiz.append(topo, corpo, acoesNomes);
 
     selTimes.addEventListener('change', () => {
       if (!b.acao(topo, { kind: 'teams', count: Number(selTimes.value) })) selTimes.value = String(state.teamCount);
@@ -158,8 +169,8 @@
         no.i = i;
         const e = state.entries[i];
         pintarNome(no, e);
-        no.x.setAttribute('aria-label', `Tirar ${e.name}`);
-        no.x.title = `Tirar ${e.name}`;
+        no.x.setAttribute('aria-label', t('mesa.sorteio.tirarNome', { nome: e.name }));
+        no.x.title = t('mesa.sorteio.tirarNome', { nome: e.name });
         C.porNaPosicao(chips, no.li, i);
       });
       if (focoDepois !== null && (document.activeElement === document.body || !document.activeElement)) {
@@ -168,24 +179,24 @@
       }
       focoDepois = null;
       const n = state.entries.length;
-      cabNomes.textContent = `Nomes (${n})`;
+      cabNomes.textContent = t('mesa.sorteio.cabNomes', { n });
     }
 
     function desenharTimes(animar) {
       gradeTimes.replaceChildren();
       const tem = !!state.teams;
       vazioTimes.hidden = tem;
-      cabTimes.textContent = tem ? `Times · sorteio ${state.round}` : 'Times';
+      cabTimes.textContent = tem ? t('mesa.sorteio.cabTimes', { n: state.round }) : t('mesa.sorteio.times');
       if (!tem) return;
-      state.teams.forEach((t, i) => {
+      state.teams.forEach((time, i) => {
         const lista = el('ul', { class: 'mj-sort-lista' });
-        for (const e of t) {
+        for (const e of time) {
           const cor = e.peerId !== null && e.peerId !== undefined ? C.corDe(api, e.peerId) : null;
           const li = el('li', { class: cor ? 'is-pessoa' : '' }, cor ? C.bolinha(cor) : el('span', { class: 'mj-dot is-vazio' }), el('span', { text: e.name }));
           if (cor) li.style.setProperty('--mj-cor', cor);
           lista.append(li);
         }
-        const card = el('div', { class: `mj-sort-time${animar ? ' is-entra' : ''}` }, el('h4', { text: `Time ${i + 1}` }), lista);
+        const card = el('div', { class: `mj-sort-time${animar ? ' is-entra' : ''}` }, el('h4', { text: t('mesa.sorteio.time', { n: i + 1 }) }), lista);
         card.style.setProperty('--mj-i', String(i));
         gradeTimes.append(card);
       });
@@ -208,9 +219,9 @@
       const rot = rotuloSortear(state);
       sortear.replaceChildren(C.icone('embaralhar'), el('span', { text: rot }));
       C.ligado(sortear, C.podeFazer(api, { kind: 'draw' }), rot);
-      C.ligado(sala, C.podeFazer(api, { kind: 'addPeers' }), 'Pôr todas as pessoas da sala');
-      C.ligado(limpar, state.entries.length ? true : 'A lista já está vazia', 'Limpar os nomes');
-      C.ligado(addBtn, C.podeFazer(api, { kind: 'add', name: 'x' }), 'Adicionar nome');
+      C.ligado(sala, C.podeFazer(api, { kind: 'addPeers' }), t('mesa.sorteio.poraTodas'));
+      C.ligado(limpar, state.entries.length ? true : t('mesa.sorteio.listaVazia'), t('mesa.sorteio.limparNomes'));
+      C.ligado(addBtn, C.podeFazer(api, { kind: 'add', name: 'x' }), t('mesa.sorteio.adicionarNome'));
       b.raiz.classList.toggle('tem-times', !!state.teams);
     }
 

@@ -1,6 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const i18n = require('./i18n');
+const pt = require('./i18n/pt-BR');
 const lib = require('./mesa-por');
 const registry = require('./mesa-modules/index');
 
@@ -93,6 +95,26 @@ test('recusa do act na Transmissao vira aviso com o motivo do modulo; na Mesa fi
   q.por.put('youtube', { kind: 'load', url: 'lixo' });
   q.por.handle({ type: 'mesa', op: 'add', by: '7', win: { id: 'w1', type: 'youtube' } });
   assert.equal(q.por.handle({ type: 'mesa-denied', op: 'act', id: 'w1', reason: 'invalid', detail: 'x' }), false);
+});
+
+test('na Transmissao, a recusa com codigo aparece traduzida no aviso', () => {
+  pt['mesa.teste.ocupado'] = 'Lugar ocupado';
+  try {
+    i18n.definirIdioma('pt-BR');
+    const p = palco();
+    p.por.put('youtube', { kind: 'load', url: 'lixo' });
+    p.por.handle({ type: 'mesa-ack', op: 'add', id: 'w1' });
+    p.por.handle({
+      type: 'mesa-denied',
+      op: 'act',
+      id: 'w1',
+      reason: 'invalid',
+      detail: 'mesa.teste.ocupado',
+    });
+    assert.equal(p.toasts.at(-1), 'Vídeo do YouTube: Lugar ocupado');
+  } finally {
+    delete pt['mesa.teste.ocupado'];
+  }
 });
 
 test('recusa do add de outra origem (menu da vista) nao e deste modulo', () => {

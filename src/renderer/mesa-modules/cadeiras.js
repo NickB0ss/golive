@@ -18,6 +18,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const NAME_MAX = 32;
 
   function isObj(v) {
@@ -62,14 +64,14 @@
   /** Valida `sit` / `stand`. Devolve true ou o motivo da recusa. */
   function validateSeat(state, action, ctx) {
     const from = fromOf(ctx);
-    if (!from) return 'Quem mandou?';
+    if (!from) return codigo('mesa.jogo.quemMandou');
     if (action.kind === 'sit') {
-      if (action.seat !== 0 && action.seat !== 1) return 'Cadeira inválida';
-      if (seatOf(state, from) >= 0) return 'Você já está sentado';
-      if (state.seats[action.seat] !== null) return 'Cadeira ocupada';
+      if (action.seat !== 0 && action.seat !== 1) return codigo('mesa.cadeiras.invalida');
+      if (seatOf(state, from) >= 0) return codigo('mesa.jogo.jaEstaSentado');
+      if (state.seats[action.seat] !== null) return codigo('mesa.cadeiras.ocupada');
       return true;
     }
-    if (seatOf(state, from) < 0) return 'Você não está sentado';
+    if (seatOf(state, from) < 0) return codigo('mesa.cadeiras.naoEstaSentado');
     return true;
   }
 
@@ -113,24 +115,24 @@
     if (ctxOf(ctx).isLeader === true) return true;
     const from = fromOf(ctx);
     if (from && seatOf(state, from) >= 0) return true;
-    return 'Só quem está sentado ou o líder recomeça';
+    return codigo('mesa.cadeiras.soSentadoOuLiderRecomeca');
   }
 
   /** Pode jogar agora? `turnSeat` e a cadeira da vez. */
   function canPlay(state, ctx, turnSeat) {
-    if (state.result) return 'A partida acabou';
+    if (state.result) return codigo('mesa.cadeiras.partidaAcabou');
     const from = fromOf(ctx);
     const seat = seatOf(state, from);
-    if (seat < 0) return 'Sente-se para jogar';
-    if (state.seats[1 - seat] === null) return 'Espere alguém sentar na outra cadeira';
-    if (seat !== turnSeat) return 'Não é a sua vez';
+    if (seat < 0) return codigo('mesa.jogo.senteSeParaJogar');
+    if (state.seats[1 - seat] === null) return codigo('mesa.cadeiras.esperaOutra');
+    if (seat !== turnSeat) return codigo('mesa.jogo.naoESuaVez');
     return true;
   }
 
   /** Desistir: quem esta sentado, com a partida em andamento. */
   function canResign(state, ctx) {
-    if (state.result) return 'A partida acabou';
-    if (seatOf(state, fromOf(ctx)) < 0) return 'Só quem está sentado desiste';
+    if (state.result) return codigo('mesa.cadeiras.partidaAcabou');
+    if (seatOf(state, fromOf(ctx)) < 0) return codigo('mesa.cadeiras.soSentadoDesiste');
     return true;
   }
 
@@ -146,15 +148,18 @@
     return saved || labels[seat];
   }
 
-  /** Resumo de partida em andamento: quem esta sentado e de quem e a vez. */
+  /** Resumo de partida em andamento: quem esta sentado e de quem e a vez.
+   * Devolve `{ chave, valores }`; `labels` sao codigos de traducao. */
   function describePlaying(state, turnSeat, labels, peers) {
     const a = state.seats[0] !== null;
     const b = state.seats[1] !== null;
-    if (!a && !b) return 'Cadeiras livres';
-    if (a !== b) return `${nameOf(state, a ? 0 : 1, labels, peers)} espera adversário`;
+    if (!a && !b) return { chave: 'mesa.resumo.cadeirasLivres' };
+    if (a !== b) {
+      return { chave: 'mesa.resumo.esperaAdversario', valores: { nome: nameOf(state, a ? 0 : 1, labels, peers) } };
+    }
     const n0 = nameOf(state, 0, labels, peers);
     const n1 = nameOf(state, 1, labels, peers);
-    return `${n0} × ${n1} — vez de ${turnSeat === 0 ? n0 : n1}`;
+    return { chave: 'mesa.resumo.vezDe', valores: { a: n0, b: n1, vez: turnSeat === 0 ? n0 : n1 } };
   }
 
   /** Roda `fn` e troca qualquer excecao por `fallback`: estado ou mensagem

@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -11,7 +12,7 @@ const registry = require('./index');
 
 test('descritor segue o contrato (secao 9: blackjack, jogos, secreto)', () => {
   assert.equal(bj.type, 'blackjack');
-  assert.equal(bj.title, 'Blackjack');
+  assert.equal(tx(bj.title), 'Blackjack');
   assert.equal(bj.group, 'jogos');
   assert.equal(bj.secret, true);
   assert.equal(bj.size.w, 680);
@@ -208,7 +209,7 @@ test('prazo de apostas: timeout so depois dos 20 s, e quem nao apostou fica fora
   let s = table(['bia', 'leo'], ['9s', 'Ts', '7d', '8c']);
   s = act(s, { kind: 'bet', amount: 100 }, 'bia');
   assert.equal(s.phase, 'bets');
-  assert.match(refuse(s, { kind: 'timeout' }, 'leo', clock + 19999), /tempo/);
+  assert.equal(refuse(s, { kind: 'timeout' }, 'leo', clock + 19999), 'mesa.jogo.aindaHaTempo');
   s = act(s, { kind: 'timeout' }, 'ana', clock + 20000);
   assert.equal(s.phase, 'play');
   assert.equal(s.hands.length, 1);
@@ -383,13 +384,13 @@ test('dobrar so com duas cartas e com fichas', () => {
   let s = table(['bia'], ['2s', '9c', '3h', '7d', '4c']);
   s = betAll(s, ['bia'], 100);
   s = act(s, { kind: 'hit' }, 'bia');
-  assert.match(refuse(s, { kind: 'double' }, 'bia'), /duas cartas/);
+  assert.equal(refuse(s, { kind: 'double' }, 'bia'), 'mesa.blackjack.dobrarDuasCartas');
   assert.ok(!bj.view(s, 'bia').me.actions.includes('double'));
 
   s = table(['bia'], ['2s', '9c', '3h', '7d', '4c']);
   s = act(s, { kind: 'bet', amount: 500 }, 'bia');
   s = withState(s, { chips: [400, null, null, null, null] });
-  assert.match(refuse(s, { kind: 'double' }, 'bia'), /Fichas/);
+  assert.equal(refuse(s, { kind: 'double' }, 'bia'), 'mesa.blackjack.fichasDobrar');
 });
 
 test('dividir ate 4 maos, dobrar depois de dividir', () => {
@@ -436,7 +437,7 @@ test('quatro maos e o teto, mesmo com par', () => {
   s = act(s, { kind: 'split' }, 'bia');
   assert.equal(s.hands.length, 4);
   assert.ok(bj.samePair(s.hands[0].cards));
-  assert.match(refuse(s, { kind: 'split' }, 'bia'), /4 mãos/);
+  assert.equal(refuse(s, { kind: 'split' }, 'bia'), 'mesa.blackjack.maximoMaos');
 });
 
 test('figuras diferentes de mesmo valor se dividem (J e K)', () => {
@@ -476,7 +477,7 @@ test('ases divididos nao se dividem de novo nem pedem', () => {
     turn: 0,
     hands: [Object.assign({}, s.hands[0], { done: false }), s.hands[1], s.hands[2]],
   });
-  assert.match(refuse(st, { kind: 'split' }, 'bia'), /Ases divididos/);
+  assert.equal(refuse(st, { kind: 'split' }, 'bia'), 'mesa.blackjack.asesDivididos');
   assert.ok(!bj.view(st, 'bia').me.actions.includes('split'));
 });
 
@@ -545,7 +546,7 @@ test('o prepare nunca aceita sapato nem hora vindos do cliente', () => {
 
 test('recompra: so sem fichas para a aposta minima e entre rodadas', () => {
   let s = table(['bia'], []);
-  assert.match(refuse(s, { kind: 'rebuy' }, 'bia'), /sem fichas/);
+  assert.equal(refuse(s, { kind: 'rebuy' }, 'bia'), 'mesa.blackjack.recompraSemFichas');
   s = withState(s, { chips: [0, null, null, null, null] });
   assert.ok(bj.view(s, 'bia').me.actions.includes('rebuy'));
   assert.ok(!bj.view(s, 'bia').me.actions.includes('bet'));
@@ -556,7 +557,7 @@ test('recompra: so sem fichas para a aposta minima e entre rodadas', () => {
   s = withState(s, { chips: [500, null, null, null, null], shoe: ['Ts', '9h', '6c', 'Tc'].concat(FILLER) });
   s = act(s, { kind: 'bet', amount: 500 }, 'bia');
   assert.equal(s.chips[0], 0);
-  assert.match(refuse(s, { kind: 'rebuy' }, 'bia'), /entre rodadas/);
+  assert.equal(refuse(s, { kind: 'rebuy' }, 'bia'), 'mesa.blackjack.recompraEntreRodadas');
   s = act(s, { kind: 'stand' }, 'bia');
   assert.equal(handOf(s, 0).result, 'lose');
   assert.equal(s.chips[0], 0);
@@ -569,7 +570,7 @@ test('levantar: nao no meio da rodada; nas apostas pode, e se o resto ja apostou
   s = act(s, { kind: 'bet', amount: 100 }, 'bia');
   s = act(s, { kind: 'leave' }, 'leo');
   assert.equal(s.phase, 'play');
-  assert.match(refuse(s, { kind: 'leave' }, 'bia'), /rodada/);
+  assert.equal(refuse(s, { kind: 'leave' }, 'bia'), 'mesa.blackjack.espereRodada');
 });
 
 test('quem sai no meio: as maos saem, a vez passa com prazo novo, a banca joga pelo timeout', () => {
@@ -828,14 +829,14 @@ test('acao ruim nunca lanca e nao muda o estado', () => {
   assert.notEqual(bj.validate(s, { kind: 'rebuy' }, {}), true);
   assert.notEqual(bj.validate(s, { kind: 'bet', amount: 10 }, { from: 'zeca' }), true);
   assert.equal(bj.view(null, 'bia').me.seat, -1);
-  assert.equal(bj.summary(null), 'Blackjack');
+  assert.equal(R(bj.summary(null)), 'Blackjack');
   assert.equal(bj.dropPeer(null, 'bia'), null);
 });
 
 test('summary em portugues', () => {
-  assert.equal(bj.summary(table([], [])), 'Blackjack — lugares livres');
+  assert.equal(R(bj.summary(table([], []))), 'Blackjack — lugares livres');
   let s = table(['bia', 'leo'], ['8s', '9h', '6c', '8d', '9d', 'Td']);
-  assert.equal(bj.summary(s), 'Blackjack — 2 na mesa, apostas abertas');
+  assert.equal(R(bj.summary(s)), 'Blackjack — 2 na mesa, apostas abertas');
   s = betAll(s, ['bia', 'leo']);
-  assert.equal(bj.summary(s, PEERS), 'Blackjack — vez de Bia');
+  assert.equal(R(bj.summary(s, PEERS)), 'Blackjack — vez de Bia');
 });

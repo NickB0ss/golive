@@ -8,6 +8,8 @@
  * saída de alguém durante uma mão equivale a correr para a dupla adversária.
  */
 (function registrarTruco(root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const moduloBaralho = (root.GoLive && root.GoLive.mesaBaralho)
     || (typeof module !== 'undefined' && typeof module.require === 'function'
       ? module.require('./baralho')
@@ -232,44 +234,52 @@
     const mao = estado.hand;
 
     if (entrada.type === 'sit') {
-      if (!Number.isInteger(entrada.seat) || entrada.seat < 0 || entrada.seat > 3) return 'Lugar inválido.';
-      if (lugar >= 0) return 'Você já está sentado.';
-      if (pessoaNoLugar(estado, contexto, entrada.seat)) return 'Lugar ocupado.';
+      if (!Number.isInteger(entrada.seat) || entrada.seat < 0 || entrada.seat > 3) {
+        return codigo('mesa.jogo.lugarInvalido');
+      }
+      if (lugar >= 0) return codigo('mesa.jogo.jaEstaSentado');
+      if (pessoaNoLugar(estado, contexto, entrada.seat)) return codigo('mesa.jogo.lugarOcupado');
       return true;
     }
-    if (entrada.type === 'stand') return lugar >= 0 ? true : 'Você não está sentado.';
-    if (entrada.type === 'reset') return lugar >= 0 || objeto(contexto).isLeader === true ? true : 'Só quem está na mesa reinicia.';
+    if (entrada.type === 'stand') return lugar >= 0 ? true : codigo('mesa.truco.naoEstaSentado');
+    if (entrada.type === 'reset') return lugar >= 0 || objeto(contexto).isLeader === true
+        ? true
+        : codigo('mesa.truco.soQuemEstaNaMesaReinicia');
     if (entrada.type === 'deal') {
-      if (lugar < 0 || !podeComecar(estado, contexto) || maoValida(estado)) return 'Não é possível dar agora.';
+      if (lugar < 0 || !podeComecar(estado, contexto) || maoValida(estado)) return codigo('mesa.truco.naoPodeDarAgora');
       return true;
     }
-    if (entrada.type === 'timeout') return mao && mao.deadline ? true : 'Não há decisão pendente.';
-    if (!mao) return 'Não há mão em andamento.';
+    if (entrada.type === 'timeout') return mao && mao.deadline ? true : codigo('mesa.truco.semDecisaoPendente');
+    if (!mao) return codigo('mesa.truco.semMao');
 
     if (entrada.type === 'eleven') {
-      if (estado.phase !== 'eleven' || duplaDaMao(mao, lugar) !== mao.eleven) return 'Não é sua decisão.';
-      return ['play', 'run'].includes(entrada.choice) ? true : 'Decisão inválida.';
+      if (estado.phase !== 'eleven' || duplaDaMao(mao, lugar) !== mao.eleven) {
+        return codigo('mesa.truco.naoESuaDecisao');
+      }
+      return ['play', 'run'].includes(entrada.choice) ? true : codigo('mesa.truco.decisaoInvalida');
     }
     if (entrada.type === 'play') {
-      if (mao.pending || estado.phase !== 'play' || mao.turn !== lugar) return 'Não é a sua vez';
-      if (!Number.isInteger(entrada.index) || !mao.cards[lugar][entrada.index]) return 'Carta inválida.';
-      if (entrada.covered && mao.rounds.length === 0) return 'Encoberta só da segunda rodada';
+      if (mao.pending || estado.phase !== 'play' || mao.turn !== lugar) return codigo('mesa.jogo.naoESuaVez');
+      if (!Number.isInteger(entrada.index) || !mao.cards[lugar][entrada.index]) {
+        return codigo('mesa.jogo.cartaInvalida');
+      }
+      if (entrada.covered && mao.rounds.length === 0) return codigo('mesa.truco.encobertaSegunda');
       return true;
     }
     if (entrada.type === 'call') {
-      if (lugar < 0) return 'Canto indisponível';
-      if (estado.phase !== 'play') return 'A mão não está jogando';
-      if (mao.pending || mao.noCall || mao.value >= 12) return 'Canto indisponível';
-      if (duplaDaMao(mao, lugar) === mao.lastCaller) return 'Canto indisponível';
+      if (lugar < 0) return codigo('mesa.truco.cantoIndisponivel');
+      if (estado.phase !== 'play') return codigo('mesa.truco.maoNaoJogando');
+      if (mao.pending || mao.noCall || mao.value >= 12) return codigo('mesa.truco.cantoIndisponivel');
+      if (duplaDaMao(mao, lugar) === mao.lastCaller) return codigo('mesa.truco.cantoIndisponivel');
       return true;
     }
     if (entrada.type === 'answer') {
-      if (!mao.pending || duplaDaMao(mao, lugar) !== mao.pending.toTeam) return 'Não é sua resposta.';
-      if (!['accept', 'run', 'raise'].includes(entrada.answer)) return 'Resposta inválida.';
-      if (entrada.answer === 'raise' && mao.pending.amount >= 12) return 'Não passa de doze.';
+      if (!mao.pending || duplaDaMao(mao, lugar) !== mao.pending.toTeam) return codigo('mesa.truco.naoESuaResposta');
+      if (!['accept', 'run', 'raise'].includes(entrada.answer)) return codigo('mesa.truco.respostaInvalida');
+      if (entrada.answer === 'raise' && mao.pending.amount >= 12) return codigo('mesa.truco.naoPassaDeDoze');
       return true;
     }
-    return 'Ação desconhecida.';
+    return codigo('mesa.jogo.acaoDesconhecida');
   }
 
   function encerrar(estado, dupla, pontos) {
@@ -497,7 +507,7 @@
 
   const modulo = {
     type: 'truco',
-    title: 'Truco',
+    title: 'mesa.titulo.truco',
     group: 'jogos',
     size: { w: 720, h: 460, minW: 520, minH: 330, aspect: null },
     maxStateBytes: 12288,
@@ -510,7 +520,7 @@
     migrate: migrar,
     dropPeer: (estado, id) => removerPessoa(estado, id),
     timeoutAt: (estado) => estado.hand && estado.hand.deadline,
-    summary: (estado) => `Truco ${estado.scores[0]} a ${estado.scores[1]}`,
+    summary: (estado) => ({ chave: 'mesa.resumo.truco', valores: { a: estado.scores[0], b: estado.scores[1] } }),
     RANKS: ORDEM,
     SUITS: NAIPES,
     TURN_MS: TEMPO_DA_VEZ,

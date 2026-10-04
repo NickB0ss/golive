@@ -13,12 +13,28 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'xadrez';
-  const LABELS = ['Brancas', 'Pretas'];
+  const rotulos = () => [t('mesa.xadrez.brancas'), t('mesa.xadrez.pretas')];
   const N = 8;
   const GLIFOS = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
-  const NOMES = { k: ['rei', 'm'], q: ['dama', 'f'], r: ['torre', 'f'], b: ['bispo', 'm'], n: ['cavalo', 'm'], p: ['peão', 'm'] };
-  const PROMOCOES = [['q', 'Dama'], ['r', 'Torre'], ['b', 'Bispo'], ['n', 'Cavalo']];
+  // Chave do nome de cada peca e o genero, que decide a cor ("rei branco", "dama branca").
+  const NOMES = {
+    k: ['mesa.xadrez.peca.rei', 'm'],
+    q: ['mesa.xadrez.peca.dama', 'f'],
+    r: ['mesa.xadrez.peca.torre', 'f'],
+    b: ['mesa.xadrez.peca.bispo', 'm'],
+    n: ['mesa.xadrez.peca.cavalo', 'm'],
+    p: ['mesa.xadrez.peca.peao', 'm'],
+  };
+  const PECA_COR = {
+    wm: 'mesa.xadrez.pecaBrancaM', wf: 'mesa.xadrez.pecaBrancaF',
+    bm: 'mesa.xadrez.pecaPretaM', bf: 'mesa.xadrez.pecaPretaF',
+  };
+  const PROMOCOES = [
+    ['q', 'mesa.xadrez.promocao.dama'], ['r', 'mesa.xadrez.promocao.torre'],
+    ['b', 'mesa.xadrez.promocao.bispo'], ['n', 'mesa.xadrez.promocao.cavalo'],
+  ];
 
   function chessjs() {
     return root.GoLive.chessjs;
@@ -28,10 +44,9 @@
 
   /** "peão branco", "dama preta". */
   function nomePeca(p) {
-    if (!p) return 'vazia';
-    const [nome, gen] = NOMES[p.type];
-    const cor = p.color === 'w' ? (gen === 'f' ? 'branca' : 'branco') : (gen === 'f' ? 'preta' : 'preto');
-    return `${nome} ${cor}`;
+    if (!p) return t('mesa.tabuleiro.casaVazia');
+    const [chave, genero] = NOMES[p.type];
+    return t(PECA_COR[p.color + genero], { peca: t(chave) });
   }
 
   /** O glifo cheio com o seletor de texto (nao vira emoji colorido). */
@@ -56,13 +71,13 @@
   }
 
   function empate(r) {
-    const t = {
-      afogamento: 'Afogamento, empate',
-      material: 'Empate por material insuficiente',
-      repeticao: 'Empate por repetição',
-      cinquenta: 'Empate pela regra dos 50 lances',
+    const chaves = {
+      afogamento: 'mesa.xadrez.empateAfogamento',
+      material: 'mesa.xadrez.empateMaterial',
+      repeticao: 'mesa.xadrez.empateRepeticao',
+      cinquenta: 'mesa.xadrez.empateCinquenta',
     };
-    return (r && t[r.reason]) || 'Empate';
+    return t((r && chaves[r.reason]) || 'mesa.tabuleiro.empate');
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -86,12 +101,13 @@
     let promo = null; // { from, to } esperando a escolha
 
     const mold = T.moldura(b, api, {
-      labels: LABELS,
+      labels: rotulos,
       empate,
       desistir: true,
+      peca() { return { texto: '♚' }; },
       amostra(a, i) { a.textContent = `${GLIFOS.k}︎`; a.classList.add(i === 0 ? 'is-branca' : 'is-preta'); },
     });
-    const g = T.grade8(mold.placa, { rotulo: 'Tabuleiro de xadrez', clique(l, c) { tocar(T.nomeCasa(l, c, N)); } });
+    const g = T.grade8(mold.placa, { rotulo: t('mesa.xadrez.tabuleiro'), clique(l, c) { tocar(T.nomeCasa(l, c, N)); } });
     const pecas = g.casas.map((bt) => {
       const p = el('span', { class: 'mj-peca', attrs: { 'aria-hidden': 'true' } });
       bt.append(p);
@@ -99,19 +115,19 @@
     });
 
     // Escolha da promocao: quatro botoes por cima do tabuleiro.
-    const promoCaixa = el('div', { class: 'mj-xadrez-promo', attrs: { role: 'group', 'aria-label': 'Promover o peão a' } });
-    const promoBotoes = PROMOCOES.map(([t, nome]) => {
-      const bt = C.botao({ text: nome, class: 'mj-seg' });
-      bt.prepend(el('span', { class: 'mj-xadrez-promo-g', text: `${GLIFOS[t]}︎`, attrs: { 'aria-hidden': 'true' } }));
+    const promoCaixa = el('div', { class: 'mj-xadrez-promo', attrs: { role: 'group', 'aria-label': t('mesa.xadrez.promoverA') } });
+    const promoBotoes = PROMOCOES.map(([tipo, chave]) => {
+      const bt = C.botao({ text: t(chave), class: 'mj-seg' });
+      bt.prepend(el('span', { class: 'mj-xadrez-promo-g', text: `${GLIFOS[tipo]}︎`, attrs: { 'aria-hidden': 'true' } }));
       bt.addEventListener('click', () => {
         const p = promo;
         fecharPromo();
-        if (p) jogar(p.from, p.to, t);
+        if (p) jogar(p.from, p.to, tipo);
       });
       promoCaixa.append(bt);
       return bt;
     });
-    const promoCancelar = C.botao({ icone: 'x', class: 'mj-ic mj-fantasma', label: 'Cancelar a promoção' });
+    const promoCancelar = C.botao({ icone: 'x', class: 'mj-ic mj-fantasma', label: t('mesa.xadrez.cancelarPromocao') });
     promoCancelar.addEventListener('click', () => { fecharPromo(); pintar(); });
     promoCaixa.append(promoCancelar);
     promoCaixa.hidden = true;
@@ -175,14 +191,17 @@
           alvosSel = new Map();
         } else {
           escolher(nome);
-          if (!alvosSel.size) b.aviso.mostrar('Essa peça não tem lance', mold.zona);
+          if (!alvosSel.size) b.aviso.mostrar(t('mesa.tabuleiro.pecaSemLance'), mold.zona);
         }
       } else if (sel) {
         sel = null;
         alvosSel = new Map();
       } else {
-        const motivo = C.podeFazer(api, { kind: 'move', from: nome, to: nome });
-        if (motivo !== true && !/inválid/.test(motivo)) b.aviso.mostrar(motivo, mold.zona);
+        const tentativa = { kind: 'move', from: nome, to: nome };
+        const motivo = C.podeFazer(api, tentativa);
+        const bruto = T.motivoBruto(api, tentativa);
+        const invalido = typeof bruto === 'string' && /Inv[aá]lid[ao]$/.test(bruto);
+        if (motivo !== true && !invalido) b.aviso.mostrar(motivo, mold.zona);
       }
       pintar();
     }
@@ -230,8 +249,9 @@
         bt.classList.toggle('is-ultimo', ultimo.has(nome));
         bt.classList.toggle('is-xeque', !!state.check && !!p && p.type === 'k' && p.color === vez);
         bt.classList.toggle('is-mexe', podeMexer(nome));
-        let rot = `${nome}: ${nomePeca(p)}`;
-        if (alvo) rot += alvo.captura ? ', destino com captura' : ', destino';
+        const casa = { casa: nome, peca: nomePeca(p) };
+        let rot = t('mesa.tabuleiro.casaPeca', casa);
+        if (alvo) rot = t(alvo.captura ? 'mesa.tabuleiro.casaDestinoCaptura' : 'mesa.tabuleiro.casaDestino', casa);
         bt.setAttribute('aria-label', rot);
         bt.setAttribute('aria-selected', String(sel === nome));
       });
@@ -316,7 +336,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, nomePeca, glifo, alvos, corDaCadeira, empate, atualizarBarra, LABELS };
+  const api = { type: TYPE, mount, nomePeca, glifo, alvos, corDaCadeira, empate, atualizarBarra, rotulos };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

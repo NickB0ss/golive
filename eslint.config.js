@@ -247,8 +247,8 @@ module.exports = [
   // como somente-leitura: qualquer outro nome de Node aqui e engano, e o
   // no-undef deve acusar.
   {
-    files: ['src/renderer/*.js', 'src/renderer/mesa-modules/*.js', 'src/renderer/mesa-janelas/*.js'],
-    ignores: ['src/renderer/*.test.js', 'src/renderer/mesa-modules/*.test.js', 'src/renderer/mesa-janelas/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
+    files: ['src/renderer/*.js', 'src/renderer/i18n/*.js', 'src/renderer/mesa-modules/*.js', 'src/renderer/mesa-modules/quiz-banco/*.js', 'src/renderer/mesa-janelas/*.js'],
+    ignores: ['src/renderer/*.test.js', 'src/renderer/i18n/*.test.js', 'src/renderer/mesa-modules/*.test.js', 'src/renderer/mesa-janelas/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
     languageOptions: {
       sourceType: 'script',
       globals: {
@@ -267,8 +267,8 @@ module.exports = [
   // servidor de sinalizacao. So o registro (index.js) usa `require`, e so
   // quando esta em Node.
   {
-    files: ['src/renderer/mesa-modules/*.js'],
-    ignores: ['src/renderer/mesa-modules/*.test.js'],
+    files: ['src/renderer/i18n/*.js', 'src/renderer/mesa-modules/*.js', 'src/renderer/mesa-modules/quiz-banco/*.js'],
+    ignores: ['src/renderer/i18n/*.test.js', 'src/renderer/mesa-modules/*.test.js'],
     languageOptions: {
       sourceType: 'script',
       globals: {

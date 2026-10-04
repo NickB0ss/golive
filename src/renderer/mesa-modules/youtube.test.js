@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const yt = require('./youtube');
 const registry = require('./index');
 
@@ -38,11 +39,11 @@ function servidor(state, action, now) {
 
 test('metadados seguem o contrato e o registro aceita', () => {
   assert.equal(yt.type, 'youtube');
-  assert.equal(yt.title, 'Vídeo do YouTube');
+  assert.equal(tx(yt.title), 'Vídeo do YouTube');
   assert.equal(yt.group, 'assistir');
   assert.equal(yt.size.aspect, 16 / 9);
   assert.equal(registry.checkModule(yt).ok, true);
-  assert.equal(registry.get('youtube').title, 'Vídeo do YouTube');
+  assert.equal(tx(registry.get('youtube').title), 'Vídeo do YouTube');
   assert.deepEqual(yt.init({ now: 5 }), { videoId: null, playing: false, pos: 0, at: null, rate: 1 });
 });
 
@@ -100,11 +101,11 @@ test('ended e idempotente e ignora o fim de outro video', () => {
 
 test('validate recusa o que nao faz sentido', () => {
   const vazio = yt.init({});
-  assert.equal(yt.validate(vazio, { kind: 'play' }), 'Nenhum vídeo');
-  assert.equal(yt.validate(vazio, { kind: 'load', url: 'https://example.com' }), 'Link do YouTube não reconhecido');
+  assert.equal(yt.validate(vazio, { kind: 'play' }), 'mesa.youtube.nenhumVideo');
+  assert.equal(yt.validate(vazio, { kind: 'load', url: 'https://example.com' }), 'mesa.midia.linkYoutubeNaoReconhecido');
   const tocando = servidor(vazio, { kind: 'load', videoId: ID }, 0).state;
-  assert.equal(yt.validate(tocando, { kind: 'play' }), 'Já está tocando');
-  assert.equal(yt.validate({ ...tocando, playing: false }, { kind: 'pause' }), 'Já está pausado');
+  assert.equal(yt.validate(tocando, { kind: 'play' }), 'mesa.midia.jaTocando');
+  assert.equal(yt.validate({ ...tocando, playing: false }, { kind: 'pause' }), 'mesa.midia.jaPausado');
   for (const ruim of [
     null, [], 'play', {}, { kind: 5 }, { kind: '__proto__' }, { kind: 'seek' }, { kind: 'seek', pos: -1 },
     { kind: 'seek', pos: 'x' }, { kind: 'seek', pos: Infinity }, { kind: 'pause', pos: NaN }, { kind: 'play', pos: 1e9 },
@@ -140,8 +141,8 @@ test('dois clientes aplicando o mesmo eco chegam ao mesmo estado', () => {
 });
 
 test('summary', () => {
-  assert.equal(yt.summary(yt.init({})), 'Nenhum vídeo');
+  assert.equal(R(yt.summary(yt.init({}))), 'Nenhum vídeo');
   const s = { videoId: ID, playing: true, pos: 60, at: 0, rate: 1 };
-  assert.equal(yt.summary(s, 5000), 'Tocando · 1:05');
-  assert.equal(yt.summary({ ...s, playing: false }, 5000), 'Pausado · 1:00');
+  assert.equal(R(yt.summary(s, 5000)), 'Tocando · 1:05');
+  assert.equal(R(yt.summary({ ...s, playing: false }, 5000)), 'Pausado · 1:00');
 });

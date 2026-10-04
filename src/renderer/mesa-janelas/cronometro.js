@@ -14,6 +14,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'cronometro';
   const MIN = 60 * 1000;
   const PRESETS = Object.freeze([1, 5, 10, 15]); // minutos
@@ -37,11 +38,11 @@
   /** O botao principal: rotulo e a(s) acao(oes) que ele manda. */
   function principal(m, state, agora) {
     const fim = m.isFinished(state, agora);
-    if (state.running && fim) return { rotulo: 'Recomeçar', icone: 'zerar', acoes: [{ kind: 'reset' }, { kind: 'start' }] };
-    if (state.running) return { rotulo: 'Pausar', icone: 'pausa', acoes: [{ kind: 'pause' }] };
-    if (fim) return { rotulo: 'Recomeçar', icone: 'play', acoes: [{ kind: 'start' }] };
-    if (state.elapsed > 0) return { rotulo: 'Continuar', icone: 'play', acoes: [{ kind: 'start' }] };
-    return { rotulo: 'Iniciar', icone: 'play', acoes: [{ kind: 'start' }] };
+    if (state.running && fim) return { rotulo: t('mesa.cronometro.recomecar'), icone: 'zerar', acoes: [{ kind: 'reset' }, { kind: 'start' }] };
+    if (state.running) return { rotulo: t('mesa.cronometro.pausar'), icone: 'pausa', acoes: [{ kind: 'pause' }] };
+    if (fim) return { rotulo: t('mesa.cronometro.recomecar'), icone: 'play', acoes: [{ kind: 'start' }] };
+    if (state.elapsed > 0) return { rotulo: t('mesa.cronometro.continuar'), icone: 'play', acoes: [{ kind: 'start' }] };
+    return { rotulo: t('mesa.cronometro.iniciar'), icone: 'play', acoes: [{ kind: 'start' }] };
   }
 
   /** 300000 -> "5 min"; 5400000 -> "1 h 30 min"; 45000 -> "45 s". */
@@ -59,10 +60,10 @@
 
   /** Frase para o leitor de tela quando o estado muda (nao a cada segundo). */
   function anuncio(m, state, agora) {
-    if (m.isFinished(state, agora)) return 'Tempo esgotado';
+    if (m.isFinished(state, agora)) return t('mesa.cronometro.tempoEsgotado');
     const quanto = rotuloDuracao(m.displayMs(state, agora));
-    if (state.running) return state.mode === 'down' ? `Correndo, faltam ${quanto}` : `Correndo, ${quanto}`;
-    return state.elapsed > 0 ? `Pausado em ${quanto}` : `Parado em ${quanto}`;
+    if (state.running) return t(state.mode === 'down' ? 'mesa.cronometro.correndoFaltam' : 'mesa.cronometro.correndo', { quanto });
+    return t(state.elapsed > 0 ? 'mesa.cronometro.pausadoEm' : 'mesa.cronometro.paradoEm', { quanto });
   }
 
   // ---------- DOM ----------
@@ -83,12 +84,14 @@
     const topo = el('div', { class: 'mj-barra mj-sec' });
     const nome = el('input', {
       class: 'mj-campo mj-cron-nome',
-      attrs: { type: 'text', maxlength: String(m.MAX_LABEL), placeholder: 'Nome (ex.: Pausa)', 'aria-label': 'Nome do cronômetro', spellcheck: 'false' },
+      attrs: { type: 'text', maxlength: String(m.MAX_LABEL), placeholder: t('mesa.cronometro.nomePlaceholder'),
+        'aria-label': t('mesa.cronometro.nomeAria'), spellcheck: 'false',
+      },
     });
     const campoNome = C.campoLocal(nome, { confirmar: (v) => b.acao(topo, { kind: 'label', text: v }) });
-    const modoDown = C.botao({ text: 'Regressivo', class: 'mj-seg', attrs: { 'aria-pressed': 'true' } });
-    const modoUp = C.botao({ text: 'Progressivo', class: 'mj-seg', attrs: { 'aria-pressed': 'false' } });
-    const modos = el('div', { class: 'mj-segs', attrs: { role: 'group', 'aria-label': 'Modo' } }, modoDown, modoUp);
+    const modoDown = C.botao({ text: t('mesa.cronometro.regressivo'), class: 'mj-seg', attrs: { 'aria-pressed': 'true' } });
+    const modoUp = C.botao({ text: t('mesa.cronometro.progressivo'), class: 'mj-seg', attrs: { 'aria-pressed': 'false' } });
+    const modos = el('div', { class: 'mj-segs', attrs: { role: 'group', 'aria-label': t('mesa.cronometro.modo') } }, modoDown, modoUp);
     topo.append(nome, modos);
 
     // Mostrador.
@@ -97,7 +100,7 @@
     const relogio = el('div', { class: 'mj-cron-relogio' }, tempo, barra);
 
     // Duracoes prontas (regressivo parado).
-    const pre = el('div', { class: 'mj-barra mj-cron-pre mj-sec', attrs: { role: 'group', 'aria-label': 'Duração' } });
+    const pre = el('div', { class: 'mj-barra mj-cron-pre mj-sec', attrs: { role: 'group', 'aria-label': t('mesa.cronometro.duracaoRotulo') } });
     const botoesPre = PRESETS.map((min) => {
       const bt = C.botao({ text: `${min} min`, class: 'mj-seg', attrs: { 'aria-pressed': 'false' } });
       b.clique(bt, pre, () => b.acao(pre, { kind: 'set', mode: 'down', duration: min * MIN }));
@@ -106,12 +109,14 @@
     });
 
     // Controles.
-    const ctrl = el('div', { class: 'mj-barra mj-cron-ctrl' });
-    const menos1 = C.botao({ text: '−1 min', class: 'mj-fantasma mj-sec', label: 'Tirar 1 minuto' });
-    const mais1 = C.botao({ text: '+1 min', class: 'mj-fantasma mj-sec', label: 'Somar 1 minuto' });
-    const play = C.botao({ icone: 'play', text: 'Iniciar', class: 'mj-pri mj-cron-play' });
-    const zerar = C.botao({ icone: 'zerar', text: 'Zerar', class: 'mj-cron-zerar', label: 'Zerar o cronômetro' });
-    ctrl.append(menos1, play, zerar, mais1);
+    const menos1 = C.botao({ text: '−1 min', class: 'mj-fantasma mj-sec', label: t('mesa.cronometro.tirarMinuto') });
+    const mais1 = C.botao({ text: '+1 min', class: 'mj-fantasma mj-sec', label: t('mesa.cronometro.somarMinuto') });
+    const play = C.botao({ icone: 'play', text: t('mesa.cronometro.iniciar'), class: 'mj-pri mj-cron-play' });
+    const zerar = C.botao({
+      icone: 'zerar', text: t('mesa.cronometro.zerar'), class: 'mj-cron-zerar', label: t('mesa.cronometro.zerarAria'),
+    });
+    const ctrl = C.acoes({ principal: play, secundarias: [menos1, zerar, mais1] });
+    ctrl.classList.add('mj-cron-ctrl');
 
     const status = el('p', { class: 'mj-cron-status visually-hidden', attrs: { role: 'status', 'aria-live': 'polite' } });
 
@@ -143,7 +148,7 @@
         ultimoFim = d.fim;
         b.raiz.classList.toggle('is-fim', d.fim);
         if (d.fim && state.running) {
-          status.textContent = 'Tempo esgotado';
+          status.textContent = t('mesa.cronometro.tempoEsgotado');
           // O botao principal vira "Recomecar" no fim, sem esperar acao.
           pintarPrincipal();
         }
@@ -176,14 +181,14 @@
         C.ligado(p.bt, C.podeFazer(api, { kind: 'set', mode: 'down', duration: p.ms }));
       }
       const zerado = state.elapsed === 0 && !state.running;
-      C.ligado(zerar, zerado ? 'Já está zerado' : true, 'Zerar o cronômetro');
-      C.ligado(menos1, C.podeFazer(api, { kind: 'adjust', delta: -MIN }), 'Tirar 1 minuto');
-      C.ligado(mais1, C.podeFazer(api, { kind: 'adjust', delta: MIN }), 'Somar 1 minuto');
+      C.ligado(zerar, zerado ? t('mesa.cronometro.jaZerado') : true, t('mesa.cronometro.zerarAria'));
+      C.ligado(menos1, C.podeFazer(api, { kind: 'adjust', delta: -MIN }), t('mesa.cronometro.tirarMinuto'));
+      C.ligado(mais1, C.podeFazer(api, { kind: 'adjust', delta: MIN }), t('mesa.cronometro.somarMinuto'));
       pintarPrincipal();
       ultimoFim = null;
       desenharTempo();
       status.textContent = anuncio(m, state, agora());
-      tempo.setAttribute('aria-label', state.label ? `${state.label}: ${ultimoTexto}` : ultimoTexto);
+      tempo.setAttribute('aria-label', state.label ? t('mesa.cronometro.nomeETempo', { nome: state.label, tempo: ultimoTexto }) : ultimoTexto);
       laco.acordar();
     }
 

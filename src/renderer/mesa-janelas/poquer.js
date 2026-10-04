@@ -18,12 +18,19 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'poquer';
   const N = 8;
   // Folga das janelas de quem NAO esta na vez antes de mandar o `timeout`
   // (a da pessoa da vez manda na hora): evita a enxurrada de recusas.
   const FOLGA_OUTROS_MS = 2500;
-  const RUAS = { preflop: 'Pré-flop', flop: 'Flop', turn: 'Turn', river: 'River', fim: 'Fim da mão' };
+  const RUAS = {
+    preflop: 'mesa.poquer.rua.preflop',
+    flop: 'mesa.poquer.rua.flop',
+    turn: 'mesa.poquer.rua.turn',
+    river: 'mesa.poquer.rua.river',
+    fim: 'mesa.poquer.rua.fim',
+  };
 
   // ---------- Puras ----------
 
@@ -50,20 +57,21 @@
   /** Texto curto do acontecimento para o anuncio e a linha de estado. */
   function textoEvento(ev, nome, blinds) {
     if (!ev) return '';
-    const n = nome || 'Alguém';
-    const tempo = ev.timeout ? 'Tempo esgotado: ' : '';
+    const n = nome || t('mesa.poquer.alguem');
     switch (ev.kind) {
-      case 'sit': return `${n} sentou`;
-      case 'stand': return `${n} levantou`;
-      case 'deal': return `Mão ${ev.hand}: cartas dadas`;
-      case 'fold': return `${tempo}${n} desistiu`;
-      case 'check': return `${tempo}${n} passou`;
-      case 'call': return `${n} pagou ${fichas(ev.amount)}`;
-      case 'bet': return `${n} apostou ${fichas(ev.to)}`;
-      case 'raise': return `${n} aumentou para ${fichas(ev.to)}`;
-      case 'allin': return `${n} foi all-in com ${fichas(ev.to)}`;
-      case 'rebuy': return `${n} fez recompra`;
-      case 'blinds': return blinds ? `Blinds agora ${fichas(blinds.sb)}/${fichas(blinds.bb)}` : 'Blinds trocados';
+      case 'sit': return t('mesa.poquer.evento.sentou', { nome: n });
+      case 'stand': return t('mesa.poquer.evento.levantou', { nome: n });
+      case 'deal': return t('mesa.poquer.evento.cartasDadas', { mao: ev.hand });
+      case 'fold': return t(ev.timeout ? 'mesa.poquer.evento.tempoDesistiu' : 'mesa.poquer.evento.desistiu', { nome: n });
+      case 'check': return t(ev.timeout ? 'mesa.poquer.evento.tempoPassou' : 'mesa.poquer.evento.passou', { nome: n });
+      case 'call': return t('mesa.poquer.evento.pagou', { nome: n, valor: fichas(ev.amount) });
+      case 'bet': return t('mesa.poquer.evento.apostou', { nome: n, valor: fichas(ev.to) });
+      case 'raise': return t('mesa.poquer.evento.aumentou', { nome: n, valor: fichas(ev.to) });
+      case 'allin': return t('mesa.poquer.evento.allIn', { nome: n, valor: fichas(ev.to) });
+      case 'rebuy': return t('mesa.poquer.evento.recompra', { nome: n });
+      case 'blinds': return blinds
+        ? t('mesa.poquer.evento.blindsAgora', { sb: fichas(blinds.sb), bb: fichas(blinds.bb) })
+        : t('mesa.poquer.evento.blindsTrocados');
       default: return '';
     }
   }
@@ -75,12 +83,16 @@
     if (!result || !Array.isArray(result.pots)) return [];
     return result.pots.map((p, i) => {
       const nomes = p.winners.map(nomeDe);
-      const quem = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes[0];
-      const qual = result.pots.length > 1 && p.name ? (i === 0 ? ' (pote principal)' : ` (pote paralelo ${i})`) : '';
-      if (result.byFold) return `${quem} levou ${fichas(p.amount)}`;
-      if (!p.name) return `Voltaram ${fichas(p.amount)} para ${quem}`;
-      const verbo = nomes.length > 1 ? 'dividiram' : 'ganhou';
-      return `${quem} ${verbo} ${fichas(p.amount)} com ${p.name}${qual}`;
+      const quem = new Intl.ListFormat(root.GoLive.i18n.idiomaAtivo(), { type: 'conjunction' }).format(nomes);
+      const maos = root.GoLive.mesaPoquerMaos;
+      const jogo = p.jogo && maos ? maos.nomeDoJogo(p.jogo.cat, p.jogo.score, t) : null;
+      const qual = result.pots.length > 1 && jogo
+        ? t(i === 0 ? 'mesa.poquer.potePrincipal' : 'mesa.poquer.poteParalelo', { n: i })
+        : '';
+      if (result.byFold) return t('mesa.poquer.resultado.levou', { nome: quem, valor: fichas(p.amount) });
+      if (!jogo) return t('mesa.poquer.resultado.voltaram', { nome: quem, valor: fichas(p.amount) });
+      const chave = nomes.length > 1 ? 'mesa.poquer.resultado.dividiram' : 'mesa.poquer.resultado.ganhou';
+      return t(chave, { nome: quem, valor: fichas(p.amount), jogo, qual });
     });
   }
 
@@ -102,6 +114,19 @@
     };
   }
 
+  /** A linha de estado do alto ("Blinds 10/20 · mão 3 · Flop"): o nome do jogo ja esta
+   * na barra da janela, entao nao se repete aqui. */
+  function linhaDeEstado(v) {
+    const h = v.hand;
+    const emMao = h && !h.result;
+    return t('mesa.poquer.linhaEstado', {
+      sb: fichas(v.blinds.sb),
+      bb: fichas(v.blinds.bb),
+      mao: v.handNo ? t('mesa.poquer.linhaMao', { n: v.handNo }) : '',
+      rua: emMao ? t('mesa.poquer.linhaRua', { rua: t(RUAS[h.street]) }) : '',
+    });
+  }
+
   /** Segundos que faltam (arredondados para cima, nunca negativo). */
   function segundos(deadline, agora) {
     return Math.max(0, Math.ceil((deadline - agora) / 1000));
@@ -109,17 +134,17 @@
 
   /** O rotulo do botao de pagar/passar. */
   function rotuloPagar(me) {
-    if (!me) return 'Passar';
-    if (me.canCheck) return 'Passar';
-    return `Pagar ${fichas(me.toCall)}`;
+    if (!me || me.canCheck) return t('mesa.poquer.passar');
+    return t('mesa.poquer.pagar', { valor: fichas(me.toCall) });
   }
 
   /** O rotulo do botao de apostar/aumentar para `to`. */
   function rotuloAumentar(me, to) {
-    if (!me) return 'Apostar';
+    if (!me) return t('mesa.poquer.apostar');
     const tudo = to >= me.maxRaise;
-    if (me.actions.includes('bet')) return tudo ? `All-in ${fichas(to)}` : `Apostar ${fichas(to)}`;
-    return tudo ? `All-in ${fichas(to)}` : `Aumentar para ${fichas(to)}`;
+    if (tudo) return t('mesa.poquer.allIn', { valor: fichas(to) });
+    if (me.actions.includes('bet')) return t('mesa.poquer.apostar', { valor: fichas(to) });
+    return t('mesa.poquer.aumentarPara', { valor: fichas(to) });
   }
 
   // ---------- DOM ----------
@@ -161,16 +186,16 @@
 
     // --- Topo ---
     const titulo = el('p', { class: 'mj-pq-titulo' });
-    const selBlinds = el('select', { class: 'mj-sel mj-pq-blinds', attrs: { 'aria-label': 'Blinds da próxima mão' } });
-    const btDar = C.botao({ text: 'Dar as cartas', class: 'mj-pri' });
-    const btRecompra = C.botao({ text: 'Recompra' });
-    const btLevantar = C.botao({ text: 'Levantar', class: 'mj-fantasma' });
+    const selBlinds = el('select', { class: 'mj-sel mj-pq-blinds', attrs: { 'aria-label': t('mesa.poquer.blindsProxima') } });
+    const btDar = C.botao({ text: t('mesa.poquer.darAsCartas'), class: 'mj-pri' });
+    const btRecompra = C.botao({ text: t('mesa.jogo.recompra') });
+    const btLevantar = C.botao({ text: t('mesa.jogo.levantar'), class: 'mj-fantasma' });
     const topo = el('div', { class: 'mj-barra mj-pq-topo' }, titulo, el('span', { class: 'mj-mola' }), selBlinds, btRecompra, btDar, btLevantar);
 
     // --- Mesa ---
     const feltro = el('div', { class: 'mj-pq-feltro', attrs: { 'aria-hidden': 'true' } });
     const potes = el('p', { class: 'mj-pq-pote' });
-    const board = el('div', { class: 'mj-pq-board', attrs: { role: 'group', 'aria-label': 'Cartas da mesa' } });
+    const board = el('div', { class: 'mj-pq-board', attrs: { role: 'group', 'aria-label': t('mesa.poquer.cartasDaMesa') } });
     const slots = [];
     for (let i = 0; i < 5; i += 1) {
       const s = el('span', { class: 'mj-pq-slot' });
@@ -181,26 +206,30 @@
     const centro = el('div', { class: 'mj-pq-centro' }, potes, board, resultado);
     const lugares = [];
     const apostas = [];
-    const mesa = el('div', { class: 'mj-pq-mesa', attrs: { role: 'group', 'aria-label': 'Mesa de pôquer' } }, feltro, centro);
+    const mesa = el('div', { class: 'mj-pq-mesa', attrs: { role: 'group', 'aria-label': t('mesa.poquer.mesaDePoquer') } }, feltro, centro);
     for (let seat = 0; seat < N; seat += 1) {
       const nome = el('span', { class: 'mj-pq-nome' });
-      const dot = el('span', { class: 'mj-dot' });
-      const botaoD = el('span', { class: 'mj-pq-d', text: 'D', attrs: { title: 'Botão do dealer', 'aria-hidden': 'true' } });
+      const botaoD = el('span', { class: 'mj-pq-d', text: 'D', attrs: { title: t('mesa.poquer.botaoDealer'), 'aria-hidden': 'true' } });
       const tag = el('span', { class: 'mj-pq-tag' });
       const pilha = el('span', { class: 'mj-pq-pilha' });
       const estado = el('span', { class: 'mj-pq-estado' });
       const cartas = el('span', { class: 'mj-pq-cartas' });
-      const sentar = C.botao({ text: 'Sentar', class: 'mj-cadeira-sentar' });
       const relogio = el('span', { class: 'mj-pq-relogio', attrs: { 'aria-hidden': 'true' } }, el('span'));
+      // O lugar e a cadeira comum (avatar na cor da pessoa, "Sentar" no livre).
+      // Levantar fica so no botao do alto: uma acao num lugar so.
+      const cad = C.cadeiras({
+        rotulo: t('mesa.cartas.lugar', { n: seat + 1 }),
+        aoSentar() { b.acao(caixa, { kind: 'sit', seat }); },
+        aoRecusar(motivo) { if (caixa.classList.contains('is-livre')) b.aviso.mostrar(motivo, caixa); },
+      });
       const caixa = el('div', { class: 'mj-pq-lugar' },
-        el('div', { class: 'mj-pq-linha' }, dot, nome, botaoD, tag),
+        el('div', { class: 'mj-pq-linha' }, cad.node, nome, botaoD, tag),
         el('div', { class: 'mj-pq-linha' }, pilha, cartas),
         estado,
-        relogio, sentar);
-      b.clique(sentar, caixa, () => b.acao(caixa, { kind: 'sit', seat }));
+        relogio);
       const aposta = el('span', { class: 'mj-pq-aposta' });
       mesa.append(aposta, caixa);
-      lugares.push({ caixa, nome, dot, botaoD, tag, pilha, estado, cartas, sentar, relogio, chave: '' });
+      lugares.push({ caixa, nome, botaoD, tag, pilha, estado, cartas, cad, relogio, chave: '' });
       apostas.push(aposta);
     }
 
@@ -211,17 +240,17 @@
     const status = el('p', { class: 'mj-jogo-status mj-pq-status', attrs: { tabindex: '-1' } });
     const anuncio = el('p', { class: 'mj-pq-anuncio', attrs: { role: 'status', 'aria-live': 'polite' } });
 
-    const btDesistir = C.botao({ text: 'Desistir' });
-    const btPagar = C.botao({ text: 'Passar' });
-    const btAumentar = C.botao({ text: 'Aumentar', class: 'mj-pri' });
-    const slider = el('input', { class: 'mj-pq-slider', attrs: { type: 'range', 'aria-label': 'Valor da aposta', step: '1' } });
-    const campo = el('input', { class: 'mj-campo mj-pq-valor', attrs: { type: 'number', inputmode: 'numeric', 'aria-label': 'Aumentar para', step: '1' } });
-    const btMeio = C.botao({ text: '½ pote', class: 'mj-pq-atalho', label: 'Meio pote' });
-    const btPote = C.botao({ text: 'Pote', class: 'mj-pq-atalho', label: 'Aposta do tamanho do pote' });
-    const btTudo = C.botao({ text: 'All-in', class: 'mj-pq-atalho' });
+    const btDesistir = C.botao({ text: t('mesa.poquer.desistir') });
+    const btPagar = C.botao({ text: t('mesa.poquer.passar') });
+    const btAumentar = C.botao({ text: t('mesa.poquer.aumentar'), class: 'mj-pri' });
+    const slider = el('input', { class: 'mj-pq-slider', attrs: { type: 'range', 'aria-label': t('mesa.cartas.valorAposta'), step: '1' } });
+    const campo = el('input', { class: 'mj-campo mj-pq-valor', attrs: { type: 'number', inputmode: 'numeric', 'aria-label': t('mesa.poquer.aumentarParaSemValor'), step: '1' } });
+    const btMeio = C.botao({ text: t('mesa.poquer.meioPoteCurto'), class: 'mj-pq-atalho', label: t('mesa.poquer.meioPote') });
+    const btPote = C.botao({ text: t('mesa.poquer.pote'), class: 'mj-pq-atalho', label: t('mesa.poquer.apostaTamanhoPote') });
+    const btTudo = C.botao({ text: t('mesa.poquer.allInCurto'), class: 'mj-pq-atalho' });
     const linhaValor = el('div', { class: 'mj-pq-valores' }, slider, campo, btMeio, btPote, btTudo);
     const linhaBotoes = el('div', { class: 'mj-pq-botoes' }, btDesistir, btPagar, btAumentar);
-    const acoes = el('div', { class: 'mj-pq-acoes', attrs: { role: 'group', 'aria-label': 'Sua vez' } }, linhaValor, linhaBotoes);
+    const acoes = el('div', { class: 'mj-pq-acoes', attrs: { role: 'group', 'aria-label': t('mesa.jogo.suaVez') } }, linhaValor, linhaBotoes);
     const baixo = el('div', { class: 'mj-pq-baixo' }, eu, el('div', { class: 'mj-pq-direita' }, status, acoes));
 
     b.raiz.append(topo, mesa, baixo, anuncio);
@@ -274,7 +303,7 @@
       if (me().inHand && Date.now() - confirmaLevantar > 3000) {
         confirmaLevantar = Date.now();
         btLevantar.classList.add('is-confirmando');
-        btLevantar.querySelector('span').textContent = 'Sair da mão?';
+        btLevantar.querySelector('span').textContent = t('mesa.poquer.sairDaMaoPergunta');
         return;
       }
       confirmaLevantar = 0;
@@ -286,13 +315,13 @@
 
     // --- Nomes ---
     function nomeDaCadeira(seat) {
-      if (!view) return 'Alguém';
+      if (!view) return t('mesa.poquer.alguem');
       const id = view.seats[seat];
       if (id) {
         const n = C.nomeDe(api, id);
-        if (n !== 'Alguém') return n;
+        if (n !== C.nomeDe(api, null)) return n;
       }
-      return view.names[seat] || (id ? 'Alguém' : `Lugar ${seat + 1}`);
+      return view.names[seat] || (id ? t('mesa.poquer.alguem') : t('mesa.cartas.lugar', { n: seat + 1 }));
     }
 
     function anunciar(texto) {
@@ -313,11 +342,11 @@
     function pintarTopo(v) {
       const h = v.hand;
       const emMao = h && !h.result;
-      titulo.textContent = `Pôquer · ${fichas(v.blinds.sb)}/${fichas(v.blinds.bb)}${v.handNo ? ` · mão ${v.handNo}` : ''}${emMao ? ` · ${RUAS[h.street]}` : ''}`;
+      titulo.textContent = linhaDeEstado(v);
       const lider = safeBool(() => api.isLeader());
       selBlinds.hidden = !lider || !!emMao;
       if (!selBlinds.hidden && selBlinds.options.length !== v.levels.length) {
-        selBlinds.replaceChildren(...v.levels.map(([sb, bb], i) => el('option', { text: `Blinds ${fichas(sb)}/${fichas(bb)}`, attrs: { value: String(i) } })));
+        selBlinds.replaceChildren(...v.levels.map(([sb, bb], i) => el('option', { text: t('mesa.poquer.blindsNivel', { sb: fichas(sb), bb: fichas(bb) }), attrs: { value: String(i) } })));
       }
       if (!selBlinds.hidden && root.document.activeElement !== selBlinds) selBlinds.value = String(v.level);
       btDar.hidden = !pode('deal');
@@ -325,7 +354,7 @@
       btLevantar.hidden = !pode('stand');
       if (Date.now() - confirmaLevantar > 3000) {
         btLevantar.classList.remove('is-confirmando');
-        btLevantar.querySelector('span').textContent = 'Levantar';
+        btLevantar.querySelector('span').textContent = t('mesa.jogo.levantar');
       }
     }
 
@@ -357,11 +386,21 @@
         L.caixa.classList.toggle('is-fora', !livre && !!h && !h.result && st !== 'in' && st !== 'allin');
         L.caixa.classList.toggle('is-vez', !!h && !h.result && h.toAct === seat);
         L.caixa.classList.toggle('is-vencedor', vencedores.has(seat));
-        L.sentar.hidden = !livre || !pode('sit');
-        L.nome.textContent = livre ? (pode('sit') ? '' : 'Livre') : nomeDaCadeira(seat);
-        const cor = livre ? null : C.corDe(api, id);
-        if (cor) L.dot.style.setProperty('--mj-cor', cor); else L.dot.style.removeProperty('--mj-cor');
-        L.dot.hidden = livre;
+        const podeSentar = livre && pode('sit');
+        L.cad.sync([{
+          peer: livre ? null : id,
+          nome: livre ? '' : nomeDaCadeira(seat),
+          cor: livre ? null : C.corDe(api, id),
+          peca: null,
+          vez: !!h && !h.result && h.toAct === seat,
+          eu: !livre && seat === base,
+          motivoSentar: podeSentar ? true : t('mesa.cartas.indisponivelAgora'),
+          motivoLevantar: t('mesa.cartas.useBotaoLevantar'),
+        }]);
+        // Lugar livre que ninguem pode ocupar so mostra "Livre"; senao a cadeira diz tudo.
+        L.cad.node.hidden = livre && !podeSentar;
+        L.nome.hidden = !(livre && !podeSentar);
+        L.nome.textContent = L.nome.hidden ? '' : t('mesa.poquer.livre');
         L.botaoD.hidden = livre || v.button !== seat;
         const tag = h && !h.result ? (h.sbSeat === seat ? 'SB' : h.bbSeat === seat ? 'BB' : '') : '';
         L.tag.textContent = tag;
@@ -370,11 +409,13 @@
         L.pilha.hidden = livre;
         let est = '';
         if (!livre && h && !h.result && h.ids[seat] === id) {
-          if (st === 'folded') est = 'Desistiu';
-          else if (st === 'allin') est = 'All-in';
-        } else if (!livre && h && !h.result && h.ids[seat] !== id) est = 'Próxima';
-        if (!livre && v.stacks[seat] === 0 && !(h && !h.result && (st === 'allin'))) est = 'Sem fichas';
-        if (h && h.result && h.result.hands && h.result.hands[seat]) est = h.result.hands[seat].category;
+          if (st === 'folded') est = t('mesa.poquer.desistiu');
+          else if (st === 'allin') est = t('mesa.poquer.allInCurto');
+        } else if (!livre && h && !h.result && h.ids[seat] !== id) est = t('mesa.poquer.proxima');
+        if (!livre && v.stacks[seat] === 0 && !(h && !h.result && (st === 'allin'))) est = t('mesa.poquer.estadoSemFichas');
+        if (h && h.result && h.result.hands && h.result.hands[seat]) {
+          est = t(`mesa.poquer.cat.${h.result.hands[seat].cat}`);
+        }
         L.estado.textContent = est;
         L.estado.hidden = !est;
         // Cartas: as viradas dos outros; as reveladas no showdown; as minhas
@@ -383,16 +424,17 @@
         let lista = [];
         if (h && h.holes[seat]) lista = minhas && !h.result ? [] : h.holes[seat];
         else if (h && h.cards[seat] && !minhas) lista = [null, null];
-        cartasEm(L.cartas, lista, { tamanho: 'p' });
+        cartasEm(L.cartas, lista, { tamanho: 'p', vira: !!(h && h.result) });
         L.cartas.querySelectorAll('.mj-carta').forEach((node, i) => {
           node.classList.toggle('is-destaque', !!(lista[i] && destaque.has(lista[i])));
         });
         // Rotulo do lugar para o leitor de tela.
-        const partes = livre ? [`Lugar ${seat + 1}, livre`] : [nomeDaCadeira(seat), `${fichas(v.stacks[seat])} fichas`];
-        if (!livre && v.button === seat) partes.push('botão');
-        if (tag) partes.push(tag === 'SB' ? 'small blind' : 'big blind');
+        const partes = livre ? [t('mesa.poquer.lugarLivre', { n: seat + 1 })]
+          : [nomeDaCadeira(seat), t('mesa.cartas.fichas', { valor: fichas(v.stacks[seat]) })];
+        if (!livre && v.button === seat) partes.push(t('mesa.poquer.botao'));
+        if (tag) partes.push(tag === 'SB' ? t('mesa.poquer.smallBlind') : t('mesa.poquer.bigBlind'));
         if (est) partes.push(est.toLowerCase());
-        if (h && h.bets[seat]) partes.push(`apostou ${fichas(h.bets[seat])}`);
+        if (h && h.bets[seat]) partes.push(t('mesa.poquer.apostouValor', { valor: fichas(h.bets[seat]) }));
         if (lista.length && lista[0]) partes.push(K.rotuloMao(lista));
         L.caixa.setAttribute('aria-label', partes.join(', '));
         L.caixa.setAttribute('role', 'group');
@@ -422,26 +464,31 @@
         const chave = `${c || ''}|${c && destaque.has(c) ? 1 : 0}`;
         if (s.dataset.chave === chave) return;
         s.dataset.chave = chave;
-        s.replaceChildren(...(c ? [K.carta(c, { destaque: destaque.has(c) })] : []));
+        s.replaceChildren(...(c ? [K.carta(c, { destaque: destaque.has(c), vira: true })] : []));
         s.classList.toggle('is-vazio', !c);
       });
-      board.setAttribute('aria-label', lista.length ? `Cartas da mesa: ${K.rotuloMao(lista)}` : 'Mesa sem cartas');
+      board.setAttribute('aria-label', lista.length
+        ? t('mesa.poquer.cartasDaMesaComLista', { cartas: K.rotuloMao(lista) })
+        : t('mesa.poquer.mesaSemCartas'));
       if (!h) {
-        potes.textContent = v.seats.filter(Boolean).length >= 2 ? 'Pronto para dar as cartas' : 'Sentem-se: 2 a 8 lugares';
+        potes.textContent = v.seats.filter(Boolean).length >= 2
+          ? t('mesa.poquer.prontoDarCartas') : t('mesa.poquer.sentarVagas');
         resultado.replaceChildren();
         return;
       }
       if (h.result) {
-        potes.textContent = `Pote ${fichas(h.pot)}`;
+        potes.textContent = t('mesa.poquer.poteValor', { valor: fichas(h.pot) });
         resultado.replaceChildren(...textoResultado(h.result, nomeDaCadeira).map((t) => el('p', { text: t })));
         return;
       }
       resultado.replaceChildren();
       const ps = h.pots.filter((p) => p.amount > 0);
       if (ps.length > 1) {
-        potes.textContent = ps.map((p, i) => `${i === 0 ? 'Pote' : `Paralelo ${i}`} ${fichas(p.amount)}`).join(' · ');
+        potes.textContent = ps.map((p, i) => t(i === 0 ? 'mesa.poquer.poteValor' : 'mesa.poquer.poteParaleloValor', {
+          n: i, valor: fichas(p.amount),
+        })).join(' · ');
       } else {
-        potes.textContent = `Pote ${fichas(h.pot)}`;
+        potes.textContent = t('mesa.poquer.poteValor', { valor: fichas(h.pot) });
       }
     }
 
@@ -449,15 +496,16 @@
       const h = v.hand;
       const m = me();
       const minhasCartas = h && m.seat >= 0 && h.holes[m.seat] ? h.holes[m.seat] : [];
-      cartasEm(minhas, minhasCartas.length ? minhasCartas : [], { tamanho: 'g' });
+      cartasEm(minhas, minhasCartas.length ? minhasCartas : [], { tamanho: 'g', vira: true });
       eu.hidden = !minhasCartas.length;
       let jogo = '';
-      if (h && h.result && h.result.hands && h.result.hands[m.seat]) jogo = h.result.hands[m.seat].name;
+      const minhaMao = h && h.result && h.result.hands ? h.result.hands[m.seat] : null;
+      if (minhaMao && Maos) jogo = Maos.nomeDoJogo(minhaMao.cat, minhaMao.score, t);
       else if (Maos && minhasCartas.length === 2 && h.board.length >= 3) {
         const r = Maos.best(minhasCartas.concat(h.board));
-        if (r) jogo = r.name;
+        if (r) jogo = Maos.nomeDoJogo(r.cat, r.score, t);
       }
-      if (h && !h.result && m.seat >= 0 && h.status[m.seat] === 'folded') jogo = 'Você desistiu';
+      if (h && !h.result && m.seat >= 0 && h.status[m.seat] === 'folded') jogo = t('mesa.poquer.voceDesistiu');
       meuJogo.textContent = jogo;
 
       const minhaVez = !!m.myTurn;
@@ -495,12 +543,14 @@
       const v = view;
       const h = v.hand;
       const m = me();
-      let t = '';
+      let texto = '';
       const agora = safeNum(() => api.serverNow(), Date.now());
       if (h && !h.result && h.toAct >= 0) {
         const seg = h.deadline ? segundos(h.deadline, agora) : null;
-        const quem = m.myTurn ? 'Sua vez' : `Vez de ${nomeDaCadeira(h.toAct)}`;
-        t = seg === null ? quem : `${quem} · ${seg} s`;
+        texto = m.myTurn
+          ? (seg === null ? t('mesa.jogo.suaVez') : t('mesa.poquer.suaVezSegundos', { n: seg }))
+          : (seg === null ? t('mesa.jogo.vezDe', { nome: nomeDaCadeira(h.toAct) })
+            : t('mesa.poquer.vezDeSegundos', { nome: nomeDaCadeira(h.toAct), n: seg }));
         const L = lugares[h.toAct];
         const frac = h.deadline ? Math.max(0, Math.min(1, (h.deadline - agora) / 30000)) : 0;
         L.relogio.firstChild.style.transform = `scaleX(${frac})`;
@@ -508,17 +558,17 @@
         b.raiz.classList.toggle('is-pouco', m.myTurn && frac < 0.34);
         verTimeout(h, agora, m);
       } else if (h && h.result) {
-        t = pode('deal') ? 'Mão encerrada. Dê as cartas para a próxima' : 'Mão encerrada';
+        texto = pode('deal') ? t('mesa.poquer.maoEncerradaDar') : t('mesa.poquer.maoEncerrada');
       } else if (m.seat < 0) {
-        t = pode('sit') ? 'Escolha um lugar para sentar' : 'Mesa cheia; você assiste';
+        texto = pode('sit') ? t('mesa.poquer.escolhaLugar') : t('mesa.poquer.mesaCheiaAssiste');
       } else if (pode('deal')) {
-        t = 'Dê as cartas quando todos estiverem prontos';
+        texto = t('mesa.poquer.darQuandoProntos');
       } else if (pode('rebuy')) {
-        t = 'Sem fichas: faça a recompra para jogar';
+        texto = t('mesa.poquer.semFichasRecompra');
       } else {
-        t = 'Esperando mais alguém sentar';
+        texto = t('mesa.poquer.esperandoAlguem');
       }
-      if (status.textContent !== t) status.textContent = t;
+      if (status.textContent !== texto) status.textContent = texto;
     }
 
     function verTimeout(h, agora, m) {
@@ -546,7 +596,7 @@
       const resKey = h && h.result ? h.no : null;
       if (resKey !== null && resultadoVisto !== null && resKey !== resultadoVisto) partes.push(...textoResultado(h.result, nomeDaCadeira));
       const vk = vezChave(v);
-      if (me().myTurn && vk !== vezVista && evVisto !== null) partes.push('Sua vez');
+      if (me().myTurn && vk !== vezVista && evVisto !== null) partes.push(t('mesa.jogo.suaVez'));
       if (evVisto !== null || resultadoVisto !== null) anunciar(partes.filter(Boolean).join('. '));
       evVisto = ev ? ev.n : 0;
       maoVista = h ? h.no : null;
@@ -574,7 +624,9 @@
       update,
       destroy() { atualizarBarra(api, '', false); b.destruir(); },
       focus() {
-        const alvo = !acoes.hidden ? btPagar : [btDar, btRecompra].find((x) => !x.hidden) || lugares.find((L) => !L.sentar.hidden)?.sentar || status;
+        const livre = lugares.find((L) => !L.cad.node.hidden && L.cad.node.querySelector('.mj-cadeira-livre'));
+        const alvo = !acoes.hidden ? btPagar : [btDar, btRecompra].find((x) => !x.hidden)
+          || livre?.cad.node.querySelector('.mj-cadeira-livre') || status;
         alvo.focus();
       },
     };
@@ -648,8 +700,8 @@
   }
 
   const api = {
-    type: TYPE, mount, fichas, posicao, coordenada, textoEvento, textoResultado, atalhos, segundos, rotuloPagar,
-    rotuloAumentar, atualizarBarra,
+    type: TYPE, mount, fichas, posicao, coordenada, linhaDeEstado, textoEvento, textoResultado, atalhos, segundos,
+    rotuloPagar, rotuloAumentar, atualizarBarra,
   };
 
   registrar(api, ['comum.js', 'cartas.js']);

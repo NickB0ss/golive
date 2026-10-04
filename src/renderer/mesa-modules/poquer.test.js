@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const P = require('./poquer');
 const B = require('./baralho');
 const registry = require('./index');
@@ -100,7 +101,7 @@ const play = (s, action, opts) => act(s, action, turn(s), opts);
 test('registro: pôquer entra nos jogos, secreto, com view/migrate/timeoutAt', () => {
   const m = registry.get('poquer');
   assert.ok(m, JSON.stringify(registry.loadErrors));
-  assert.equal(m.title, 'Pôquer');
+  assert.equal(tx(m.title), 'Pôquer');
   assert.equal(m.group, 'jogos');
   assert.equal(m.secret, true);
   for (const f of ['init', 'prepare', 'validate', 'reduce', 'view', 'migrate', 'timeoutAt', 'dropPeer', 'summary']) {
@@ -127,7 +128,7 @@ test('sentar da 1 000 fichas; cadeira ocupada, dupla e fora da faixa sao recusad
 
 test('dar as cartas: so sentado, com 2+ com fichas, e nao no meio da mao', () => {
   let s = table({ 0: 'ana' });
-  assert.match(denied(s, { kind: 'deal' }, 'ana'), /2 pessoas/);
+  assert.equal(denied(s, { kind: 'deal' }, 'ana'), 'mesa.poquer.precisaDuasPessoas');
   s = act(s, { kind: 'sit', seat: 1 }, 'bia');
   denied(s, { kind: 'deal' }, 'caio');
   s = act(s, { kind: 'deal' }, 'ana');
@@ -220,7 +221,7 @@ test('lider troca os blinds entre as maos', () => {
 test('aposta minima = big blind; aumento minimo = o maior aumento da rodada', () => {
   let s = table({ 0: 'ana', 1: 'bia', 2: 'caio' });
   s = act(s, { kind: 'deal' }, 'ana'); // botao 0, sb 1, bb 2, fala 0
-  assert.match(denied(s, { kind: 'raise', to: 39 }, 'ana'), /mínimo é 40/);
+  assert.equal(denied(s, { kind: 'raise', to: 39 }, 'ana'), 'mesa.poquer.minimo?valor=40');
   denied(s, { kind: 'bet', to: 40 }, 'ana');
   denied(s, { kind: 'check' }, 'ana');
   assert.deepEqual(P.view(s, 'ana').me.minRaise, 40);
@@ -234,7 +235,7 @@ test('aposta minima = big blind; aumento minimo = o maior aumento da rodada', ()
   assert.equal(s.hand.street, 'flop');
   // Depois do flop: aposta minima = big blind.
   const who = turn(s);
-  assert.match(denied(s, { kind: 'bet', to: 19 }, who), /mínimo é 20/);
+  assert.equal(denied(s, { kind: 'bet', to: 19 }, who), 'mesa.poquer.minimo?valor=20');
   denied(s, { kind: 'raise', to: 40 }, who);
   denied(s, { kind: 'call' }, who);
   denied(s, { kind: 'bet', to: 1.5 }, who);
@@ -270,8 +271,8 @@ test('all-in menor que um aumento completo nao reabre a acao para quem ja agiu',
   v = P.view(s, 'bia').me;
   assert.deepEqual(v.actions.filter((a) => ['fold', 'check', 'call', 'bet', 'raise', 'allin'].includes(a)).sort(), ['call', 'fold']);
   assert.equal(v.toCall, 30);
-  assert.match(denied(s, { kind: 'raise', to: 300 }, 'bia'), /aumentar/);
-  assert.match(denied(s, { kind: 'allin' }, 'bia'), /aumentar/);
+  assert.equal(denied(s, { kind: 'raise', to: 300 }, 'bia'), 'mesa.poquer.naoDaAumentar');
+  assert.equal(denied(s, { kind: 'allin' }, 'bia'), 'mesa.poquer.naoDaAumentar');
   s = play(s, { kind: 'call' });
   assert.equal(s.hand.street, 'turn');
 });
@@ -299,14 +300,18 @@ test('all-in completo reabre; varios all-ins: potes paralelos (3 all-ins de tama
   const pots = h.result.pots;
   // principal 100x4 = 400 (bia), paralelo 1: 200x3 = 600 (caio), paralelo 2: 300x2 = 600 (duda).
   assert.deepEqual(pots.map((p) => [p.amount, p.winners]), [[400, [1]], [600, [2]], [600, [3]]]);
-  assert.equal(pots[0].name, 'Trinca de ases');
+  assert.deepEqual(pots[0].jogo, { cat: 3, score: [3, 12, 11, 10] });
   assert.deepEqual(s.stacks.slice(0, 4), [400, 400, 600, 600]);
   assert.equal(s.stacks.reduce((a, b) => a + b, 0), 2000);
   assert.deepEqual(h.result.shown.slice().sort(), [0, 1, 2, 3]);
   // Todos veem todas as maos do showdown.
   const vv = P.view(s, null);
   assert.deepEqual(vv.hand.holes[1], ['As', 'Ad']);
-  assert.equal(vv.hand.result.hands[1].category, 'Trinca');
+  assert.equal(vv.hand.result.hands[1].cat, 3);
+  const i18n = require('../i18n');
+  const maos = require('./poquer-maos');
+  i18n.definirIdioma('pt-BR');
+  assert.equal(maos.nomeDoJogo(3, vv.hand.result.hands[1].score, i18n.t), 'Trinca de ases');
 });
 
 test('aposta que ninguem pagou volta para quem apostou', () => {
@@ -333,7 +338,7 @@ test('empate divide o pote; a ficha impar vai para o primeiro a esquerda do bota
   assert.equal(r.pots.length, 1);
   assert.equal(r.pots[0].amount, 25);
   assert.deepEqual(r.pots[0].winners.slice().sort(), [0, 2]);
-  assert.equal(r.pots[0].name, 'Royal flush');
+  assert.deepEqual(r.pots[0].jogo, { cat: 8, score: [8, 12] });
   // caio (cadeira 2) e o primeiro a esquerda do botao entre os vencedores.
   assert.equal(s.stacks[2], 990 + 13);
   assert.equal(s.stacks[0], 990 + 12);
@@ -377,7 +382,7 @@ test('tempo: 30 s por decisao; estourou, passa se puder, senao desiste', () => {
   let s = table({ 0: 'ana', 1: 'bia', 2: 'caio' });
   s = act(s, { kind: 'deal' }, 'ana', { now: T0 });
   assert.equal(P.timeoutAt(s), T0 + 30000);
-  assert.match(denied(s, { kind: 'timeout' }, 'bia', { now: T0 + 29999 }), /tempo/);
+  assert.equal(denied(s, { kind: 'timeout' }, 'bia', { now: T0 + 29999}), 'mesa.jogo.aindaHaTempo');
   denied(s, { kind: 'timeout' }, 'bia', { now: undefined });
   // Qualquer um pode mandar; ana tinha 20 a pagar: desiste.
   s = act(s, { kind: 'timeout' }, 'caio', { now: T0 + 30000 });
@@ -565,7 +570,7 @@ test('estado congelado: reduce nao muta o anterior (Object.freeze profundo) e ca
   assert.equal(P.reduce(s, { kind: 'raise', to: 'x' }, { from: turn(s) }), s);
   assert.equal(typeof P.validate(null, { kind: 'deal' }, { from: 'ana' }), 'string');
   assert.equal(P.view(null, 'ana'), null);
-  assert.equal(P.summary(null), 'Pôquer');
+  assert.equal(R(P.summary(null)), 'Pôquer');
 });
 
 // ---------- View: informacao escondida ----------
@@ -684,9 +689,9 @@ test('ev: o ultimo acontecimento, para o anuncio', () => {
 
 test('summary', () => {
   let s = P.init({});
-  assert.equal(P.summary(s), 'Pôquer — cadeiras livres');
+  assert.equal(R(P.summary(s)), 'Pôquer — cadeiras livres');
   s = table({ 0: 'ana', 1: 'bia' });
-  assert.equal(P.summary(s), 'Pôquer 10/20 — 2 na mesa');
+  assert.equal(R(P.summary(s)), 'Pôquer 10/20 — 2 na mesa');
   s = act(s, { kind: 'deal' }, 'ana');
-  assert.equal(P.summary(s), 'Pôquer 10/20 — 2 na mesa, mão 1, vez de Ana');
+  assert.equal(R(P.summary(s)), 'Pôquer 10/20 — 2 na mesa, mão 1, vez de Ana');
 });

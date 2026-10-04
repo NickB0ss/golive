@@ -34,6 +34,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { extrairLiterais, fragmentosVisiveis } = require('../../tools/i18n/literais');
 
 const DIR = __dirname;
 
@@ -41,7 +42,8 @@ const DIR = __dirname;
 // sinonimos proibidos; os demais conceitos tem um so termo permitido. Ver
 // docs/glossario.md pro porque de "líder da sala" ter vencido "dono da sala"
 // na contagem.
-const PROHIBITED = [
+const PROIBIDOS = {
+  'pt-BR': [
   [/\bhost\b/i, 'use "líder da sala" (nunca "host")'],
   [/\banfitri[ãa]o\b/i, 'use "líder da sala" (nunca "anfitrião")'],
   [/\bdono\b/i, 'use "líder da sala" (nunca "dono" -- ver docs/glossario.md)'],
@@ -64,108 +66,49 @@ const PROHIBITED = [
   [/\bremover da mesa\b/i, 'use "Tirar da mesa" (nunca "remover")'],
   [/\bmaximizar\b/i, 'use "Tela cheia" (nunca "maximizar")'],
   [/\bviewport\b/i, 'use "Ver tudo" / "Ir até" (nunca "viewport")'],
-];
-
-// Contextos depois dos quais um '/' e INICIO DE REGEX, nao divisao -- o
-// mesmo dilema classico de qualquer tokenizador de JS de verdade. Sem isso,
-// `/[&<>"']/g` (o escapeHtml do proprio ui.js) tinha um '"' e um '\'' DENTRO
-// da classe de caracteres, e o tokenizador entrava em modo "string" no meio
-// do regex e so resincronizava varias linhas depois -- achado rodando
-// contra o proprio arquivo na segunda versao deste teste. Cobre todo regex
-// literal hoje existente em app.js/ui.js (conferido a mao: todos vem logo
-// depois de `(`, `!` ou `&&`).
-const REGEX_STARTS_AFTER = new Set([
-  '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', ';', '\n', '+', '-', '*', '%', '<', '>', '~', '^', '',
-]);
-
-/** Tokenizador minimo: devolve so os trechos literais de string/template de
- * um arquivo JS, pulando comentarios, regex literais, o codigo fora de
- * string e o conteudo de ${...} dentro de template. Rastreia aspas/backtick/
- * regex char a char (em vez de regex line-based) porque uma primeira versao
- * baseada em `$` por linha quebrava com final de linha CRLF -- o `$` sem
- * `/m` nunca casava antes do `\r` residual, entao nenhum comentario era
- * removido de verdade. */
-function extractStringLiterals(src) {
-  const out = [];
-  let i = 0;
-  const n = src.length;
-  let buf = '';
-  let lastSignificant = ''; // ultimo char nao-espaco fora de string/comentario
-  const flush = () => { if (buf) out.push(buf); buf = ''; };
-
-  while (i < n) {
-    const c = src[i];
-    const c2 = src[i + 1];
-
-    if (c === '/' && c2 === '/') {
-      while (i < n && src[i] !== '\n') i += 1;
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
-      i += 2;
-      continue;
-    }
-    if (c === '/' && REGEX_STARTS_AFTER.has(lastSignificant)) {
-      i += 1;
-      let inClass = false;
-      while (i < n) {
-        if (src[i] === '\\') { i += 2; continue; }
-        if (src[i] === '[') inClass = true;
-        else if (src[i] === ']') inClass = false;
-        else if (src[i] === '/' && !inClass) { i += 1; break; }
-        else if (src[i] === '\n') break; // regex nao atravessa linha -- seguranca
-        i += 1;
-      }
-      while (i < n && /[a-z]/i.test(src[i])) i += 1; // flags (g, i, ...)
-      lastSignificant = '/';
-      continue;
-    }
-    if (c === "'" || c === '"') {
-      const quote = c;
-      i += 1;
-      while (i < n && src[i] !== quote) {
-        if (src[i] === '\\') { i += 2; continue; }
-        buf += src[i];
-        i += 1;
-      }
-      i += 1; // fecha aspas
-      flush();
-      lastSignificant = quote;
-      continue;
-    }
-    if (c === '`') {
-      i += 1;
-      while (i < n && src[i] !== '`') {
-        if (src[i] === '\\') { i += 2; continue; }
-        if (src[i] === '$' && src[i + 1] === '{') {
-          flush();
-          i += 2;
-          let depth = 1;
-          // O conteudo de ${...} e codigo (variavel, chamada, ate outro
-          // template aninhado) -- pulado inteiro, so a profundidade de
-          // chaves importa pra achar o fim certo.
-          while (i < n && depth > 0) {
-            if (src[i] === '{') depth += 1;
-            else if (src[i] === '}') depth -= 1;
-            i += 1;
-          }
-          continue;
-        }
-        buf += src[i];
-        i += 1;
-      }
-      i += 1; // fecha backtick
-      flush();
-      lastSignificant = '`';
-      continue;
-    }
-    if (!/\s/.test(c)) lastSignificant = c;
-    i += 1;
-  }
-  return out;
-}
+  ],
+  en: [
+    [/\bhost\b/i, 'use "room leader" (never "host")'],
+    [/\bowners?\b/i, 'use "room leader" (never "owner")'],
+    [/\bbroadcast\b/i, 'use "stream" / "go live" (never "broadcast")'],
+    [/\bviewers?\b/i, 'use "people watching" (never "viewer")'],
+    [/\bspectators?\b/i, 'use "people watching" (never "spectator")'],
+    [/\bmembers?\b/i, 'use "person" / "people" (never "member")'],
+    [/\bparticipants?\b/i, 'use "person" / "people" (never "participant")'],
+    [/\bpeers?\b/i, 'use "person" / "people" (never "peer")'],
+    [/\bannotations?\b/i, 'use "scribble" (never "annotation")'],
+    [/\bdisconnect\b/i, 'use "Leave room" (never "disconnect")'],
+    [/\bwidgets?\b/i, 'use "window" (never "widget")'],
+    // 'card' nao entra: em ingles e a unica palavra para carta de baralho (poquer, truco).
+    [/\binsert\b/i, 'use "Add window" (never "insert")'],
+    // Como no pt-BR: so "modo" para as vistas. "Theater mode" e "window mode" sao outra coisa.
+    [/\b(table|stream) mode\b|\bmode:? (table|stream)\b/i, 'use "Table view" / "Stream view" (never "mode")'],
+    [/\blayout\b/i, 'use "view" (never "layout")'],
+    [/\bcanvas\b/i, 'use "Table" (never "canvas")'],
+    [/\bmaximi[sz]e\b/i, 'use "Full screen" (never "maximize")'],
+    [/\bviewport\b/i, 'use "See all" / "Go to" (never "viewport")'],
+    [/\bpreferences?\b/i, 'use "Settings" (never "Preferences")'],
+  ],
+  es: [
+    [/\banfitri[oó]n(?:es)?\b/i, 'usa "lider de la sala" (nunca "anfitrion")'],
+    [/\bdueñ[oa]s?\b/i, 'usa "lider de la sala" (nunca "dueño")'],
+    [/\bhost\b/i, 'usa "lider de la sala" (nunca "host")'],
+    [/\bemisi[oó]n\b/i, 'usa "transmision" (nunca "emision")'],
+    [/\bespectador(?:a|as|es)?\b/i, 'usa "quien esta viendo" (nunca "espectador")'],
+    [/\bmiembros?\b/i, 'usa "persona" / "personas" (nunca "miembro")'],
+    [/\bparticipantes?\b/i, 'usa "persona" / "personas" (nunca "participante")'],
+    [/\banotaci[oó]n(?:es)?\b/i, 'usa "garabato" (nunca "anotacion")'],
+    [/\bdesconectar\b/i, 'usa "Salir de la sala" (nunca "desconectar")'],
+    [/\bwidgets?\b/i, 'usa "ventana" (nunca "widget")'],
+    [/\btarjetas?\b/i, 'usa "ventana" (nunca "tarjeta")'],
+    [/\binsertar\b/i, 'usa "Añadir ventana" (nunca "insertar")'],
+    [/\bmodo:? (mesa|transmisi[oó]n)\b/i, 'usa "vista Mesa" / "vista Transmisión" (nunca "modo")'],
+    [/\blayout\b/i, 'usa "vista" (nunca "layout")'],
+    [/\blienzo\b/i, 'usa "Mesa" (nunca "lienzo")'],
+    [/\bmaximizar\b/i, 'usa "Pantalla completa" (nunca "maximizar")'],
+    [/\bpreferencias?\b/i, 'usa "Configuracion" (nunca "Preferencias")'],
+  ],
+};
 
 const HAS_SPACE_OR_ACCENT = /[ À-ÿ]/; // espaco, ou acento/cedilha latino-1
 
@@ -173,27 +116,11 @@ function isVisibleText(literal) {
   return HAS_SPACE_OR_ACCENT.test(literal);
 }
 
-// Muitos literais extraidos sao pedacos de HTML inteiros (innerHTML gerado
-// em ui.js), nao texto corrido -- e a marcacao tem nome de classe kebab-case
-// que pode conter um termo proibido como SUBSTRING de identificador
-// (`class="peer-avatar"` tem "peer" com fronteira de palavra valida pro
-// regex, mas nao e a palavra "peer" pra pessoa ler). Por isso, quando o
-// literal parece HTML (tem '<'), so os NOS DE TEXTO e os atributos que a
-// pessoa realmente le (title/aria-label/placeholder/alt) viram candidato --
-// igual index.html. Fora isso (mensagem de texto corrido, sem HTML), o
-// literal inteiro e o candidato.
-function visibleFragments(literal) {
-  if (!literal.includes('<')) return [literal];
-  const texts = [...literal.matchAll(/>([^<]+)</g)].map((m) => m[1]);
-  const attrs = [...literal.matchAll(/\b(?:title|aria-label|placeholder|alt)="([^"]*)"/g)].map((m) => m[1]);
-  return [...texts, ...attrs];
-}
-
-function checkTexts(texts, label, violations) {
+function checkTexts(texts, label, violations, idioma = 'pt-BR') {
   for (const raw of texts) {
-    for (const text of visibleFragments(raw)) {
+    for (const text of fragmentosVisiveis(raw)) {
       if (!isVisibleText(text)) continue;
-      for (const [re, hint] of PROHIBITED) {
+      for (const [re, hint] of PROIBIDOS[idioma]) {
         if (re.test(text)) violations.push(`${label}: "${text.trim().slice(0, 80)}" -- ${hint}`);
       }
     }
@@ -230,7 +157,7 @@ function stripConsoleCalls(src) {
 
 function checkJsFile(file, violations) {
   const src = stripConsoleCalls(fs.readFileSync(path.join(DIR, file), 'utf8'));
-  checkTexts(extractStringLiterals(src), file, violations);
+  checkTexts(extrairLiterais(src).map((literal) => literal.texto), file, violations);
 }
 
 // HTML: texto entre tags (">texto<") e os atributos que a pessoa le
@@ -264,8 +191,23 @@ test('os nomes dos tipos de janela da Mesa seguem o glossario', () => {
 });
 
 test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o certo', () => {
-  const reprova = ['Mudar o tipo da sala', 'modo Mesa', 'Fechar janela', 'Remover da mesa', 'Maximizar a janela', 'Novo widget'];
-  const passa = ['Adicionar janela', 'Tirar da mesa', 'Tela cheia', 'Ver tudo', 'Ir até Bia', 'vista Mesa', 'Escolha uma tela ou janela'];
+  const reprova = [
+    'Mudar o tipo da sala',
+    'modo Mesa',
+    'Fechar janela',
+    'Remover da mesa',
+    'Maximizar a janela',
+    'Novo widget',
+  ];
+  const passa = [
+    'Adicionar janela',
+    'Tirar da mesa',
+    'Tela cheia',
+    'Ver tudo',
+    'Ir até Bia',
+    'vista Mesa',
+    'Escolha uma tela ou janela',
+  ];
   for (const text of reprova) {
     const v = [];
     checkTexts([text], 'amostra', v);
@@ -278,6 +220,56 @@ test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o cert
   }
 });
 
+test('os termos proibidos em ingles reprovam o papel errado sem pegar palavras legitimas', () => {
+  const violations = [];
+  checkTexts(['The owner left the room', 'Hosting starts soon'], 'amostra', violations, 'en');
+  assert.equal(violations.length, 1, 'owner deve reprovar, mas hosting nao');
+});
+
+test('cada regex novo encontra o termo proibido sem pegar a palavra legitima parecida', () => {
+  const samples = {
+    en: [
+      'host', 'owner', 'broadcast', 'viewer', 'spectator', 'member', 'participant', 'peer', 'annotation',
+      'disconnect', 'widget', 'insert', 'Table mode', 'layout', 'canvas', 'maximize', 'viewport', 'Preferences',
+    ],
+    es: [
+      'anfitriones', 'dueña', 'host', 'emisión', 'espectadoras', 'miembro', 'participante', 'anotaciones',
+      'desconectar', 'widget', 'tarjeta', 'insertar', 'modo Mesa', 'layout', 'lienzo', 'maximizar', 'Preferencias',
+    ],
+  };
+  for (const [idioma, terms] of Object.entries(samples)) {
+    const regras = PROIBIDOS[idioma];
+    assert.equal(regras.length, terms.length, `amostras de ${idioma} devem cobrir todos os regex`);
+    for (const [index, term] of terms.entries()) {
+      assert.match(`texto ${term} texto`, regras[index][0], `${idioma} deve reprovar: ${term}`);
+    }
+  }
+  assert.doesNotMatch('hosting', PROIBIDOS.en[0][0], 'host nao pode pegar hosting');
+  assert.doesNotMatch('hosting', PROIBIDOS.es[2][0], 'host nao pode pegar hosting em espanhol');
+});
+
+// Botao de maximizar da barra de titulo: e a janela do APP no Windows, nao a
+// "Tela cheia" de uma janela da Mesa (o que o glossario proibe). Maximizar e
+// o nome do sistema para isso nas tres linguas.
+const CONTROLE_DO_SISTEMA = new Set(['pagina.maximizar']);
+
+test('dicionarios respeitam o glossario de cada lingua', () => {
+  const violations = [];
+  for (const [idioma, lista] of Object.entries(PROIBIDOS)) {
+    const dictionary = require(`./i18n/${idioma}`);
+    for (const [key, value] of Object.entries(dictionary)) {
+      const texts = typeof value === 'string' ? [value] : Object.values(value);
+      for (const text of texts) {
+        for (const [re, hint] of lista) {
+          if (CONTROLE_DO_SISTEMA.has(key) && /maximi/.test(re.source)) continue;
+          if (re.test(text)) violations.push(`${idioma} ${key}: "${text}" -- ${hint}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
+});
+
 // Controle de sanidade: se a heuristica de extracao quebrar (ex: o
 // tokenizador parar de achar string nenhuma), o teste acima passaria vazio
 // sem checar nada de verdade. Isto garante que ela acha texto visivel de
@@ -285,7 +277,7 @@ test('os termos da Mesa reprovam o que o glossario proibe e deixam passar o cert
 // de uma string de verdade) continua sendo tratado certo.
 test('a extracao de texto visivel realmente encontra strings (controle de sanidade)', () => {
   const appSrc = stripConsoleCalls(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
-  const appTexts = extractStringLiterals(appSrc);
+  const appTexts = extrairLiterais(appSrc).map((literal) => literal.texto);
   assert.ok(appTexts.some((t) => t.includes('sala')), 'app.js precisa ter strings visiveis com "sala"');
   // 'ws://' tem "//" dentro da propria string -- se o tokenizador tratasse
   // isso como comentario, o resto da linha desapareceria e este literal

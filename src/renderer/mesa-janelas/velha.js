@@ -7,6 +7,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'velha';
   const LABELS = ['X', 'O'];
 
@@ -15,12 +16,13 @@
   /** Rotulo de cada casa para o leitor de tela: "Linha 1, coluna 2: X". */
   function rotuloCasa(board, i) {
     const v = board[i];
-    const onde = `Linha ${Math.floor(i / 3) + 1}, coluna ${(i % 3) + 1}`;
-    return v === '.' ? `${onde}: vazia` : `${onde}: ${v}`;
+    const valores = { linha: Math.floor(i / 3) + 1, coluna: (i % 3) + 1 };
+    if (v === '.') return t('mesa.velha.casaVazia', valores);
+    return t('mesa.velha.casaMarca', { ...valores, marca: v });
   }
 
   function empate() {
-    return 'Deu velha';
+    return t('mesa.velha.empate');
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -40,9 +42,9 @@
     const mold = T.moldura(b, api, {
       labels: LABELS,
       empate,
-      amostra(a, i) { a.textContent = LABELS[i]; },
+      peca(i) { return { texto: LABELS[i] }; },
     });
-    const grade = el('div', { class: 'mj-velha-grade', attrs: { role: 'grid', 'aria-label': 'Jogo da velha' } });
+    const grade = el('div', { class: 'mj-velha-grade', attrs: { role: 'grid', 'aria-label': t('mesa.velha.grade') } });
     mold.placa.append(grade);
     const casas = Array.from({ length: 9 }, (_, i) => {
       const bt = el('button', { class: 'mj-velha-casa', attrs: { type: 'button', 'data-casa': String(i) } });
@@ -62,11 +64,17 @@
       casas.forEach((bt, i) => {
         const v = state.board[i];
         const txt = v === '.' ? '' : v;
-        if (bt.textContent !== txt) bt.textContent = txt;
+        if (bt.textContent !== txt) {
+          bt.textContent = txt;
+          bt.classList.toggle('is-nova', txt !== '');
+        }
+        const cor = v === '.' ? null : C.corDe(api, state.seats[LABELS.indexOf(v)]);
+        if (cor) bt.style.setProperty('--mj-cor', cor);
+        else bt.style.removeProperty('--mj-cor');
         bt.classList.toggle('is-o', v === 'O');
         bt.classList.toggle('is-linha', linha.has(i));
         bt.setAttribute('aria-label', rotuloCasa(state.board, i));
-        C.ligado(bt, v === '.' ? C.podeFazer(api, { kind: 'move', cell: i }) : 'Casa ocupada', '');
+        C.ligado(bt, v === '.' ? C.podeFazer(api, { kind: 'move', cell: i }) : t('mesa.velha.casaOcupada'), '');
       });
       tecl.marcar();
     }

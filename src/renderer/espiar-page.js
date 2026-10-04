@@ -22,8 +22,9 @@ function setTheme(vars) {
 window.GoLiveSpy = {
   setStream(id, stream, title) {
     tileId = id;
-    document.title = title ? `Espiar — ${title}` : 'Espiar';
-    tileName.textContent = title || 'Transmissão';
+    const { t } = window.GoLive.i18n;
+    document.title = title ? t('sistema.espiarTitulo', { titulo: title }) : t('pagina.espiar');
+    tileName.textContent = title || t('pagina.transmissao');
     video.srcObject = stream;
     video.play().catch(() => {});
   },

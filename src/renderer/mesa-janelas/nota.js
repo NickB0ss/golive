@@ -13,6 +13,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'nota';
   const PAUSA_MS = 900;
 
@@ -36,7 +37,8 @@
 
   /** "Salvo por Bia" (rodape), ou '' se ninguem salvou ainda. */
   function textoAutor(state, nomeDe) {
-    return state.by === null || state.by === undefined || state.rev === 0 ? '' : `Salvo por ${nomeDe(state.by)}`;
+    if (state.by === null || state.by === undefined || state.rev === 0) return '';
+    return t('mesa.nota.salvoPor', { nome: nomeDe(state.by) });
   }
 
   // ---------- DOM ----------
@@ -53,7 +55,7 @@
 
     const area = el('textarea', {
       class: 'mj-nota-texto',
-      attrs: { 'aria-label': 'Nota', placeholder: 'Escreva uma nota…', spellcheck: 'false' },
+      attrs: { 'aria-label': t('mesa.nota.nota'), placeholder: t('mesa.nota.escreva'), spellcheck: 'false' },
     });
     const conta = el('span', { class: 'mj-nota-conta', attrs: { 'aria-live': 'off' } });
     const autor = el('span', { class: 'mj-nota-autor' });
@@ -65,7 +67,7 @@
       const c = contador(area.value, MAX, C.milhar);
       conta.textContent = c.texto;
       conta.classList.toggle('is-passou', c.passou);
-      conta.setAttribute('aria-label', `${c.n} de ${MAX} caracteres`);
+      conta.setAttribute('aria-label', t('mesa.nota.caracteres', { n: c.n, max: MAX }));
     }
 
     function salvar() {
@@ -108,7 +110,7 @@
         if (area.value !== daSala) area.value = daSala;
         mexeu = false;
       } else if (daSala !== antes && daSala !== area.value && meta && meta.by !== api.me()) {
-        b.aviso.mostrar(`${C.nomeDe(api, meta.by)} salvou outra versão; a sua vale se você salvar`, b.raiz);
+        b.aviso.mostrar(t('mesa.nota.outraVersao', { nome: C.nomeDe(api, meta.by) }), b.raiz);
       } else if (daSala === area.value) {
         mexeu = false;
       }

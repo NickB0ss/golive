@@ -111,8 +111,8 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.24.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **1977 testes, 1977 passando, 0 falhando**. `npm run lint` → 0
+`0.25.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **2129 testes, 2129 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
@@ -293,6 +293,31 @@ mediu:
   da fila. Pela mesma conta valia pro relay único da sala de 4 (o cenário
   `sala-basica` acaba antes de ver). Corrigido junto do
   fanout 2 (a origem desconta a própria parte do `relayLoad`).
+
+## Idiomas — pt-BR, en e es (lançado na 0.25.0)
+
+Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpowers/plans/2026-10-03-idiomas.md`.
+
+- **Escolha:** o processo principal guarda a preferência em `userData/idioma.json` (`auto | pt-BR | en | es`) e
+  resolve `auto` pelo idioma do sistema (sem match, inglês). O preload entrega o idioma antes do primeiro
+  desenho; splash, janela principal, Espiar e overlay seguem o mesmo idioma. Troca em Configurações › Aparência:
+  fora da sala recarrega na hora; dentro, vale ao sair (todas as saídas, inclusive a da sessão órfã).
+- **Texto:** dicionários planos em `src/renderer/i18n/` (~1.840 chaves por língua, mesma chave e mesmos
+  marcadores nas três), `t()` com plural por `Intl.PluralRules`, datas por `Intl`. HTML estático por
+  `data-i18n`. Ficam em português de propósito: logs, o relatório copiado de Diagnóstico e as notas de versão.
+- **Sala com idiomas diferentes:** entre PCs só viajam códigos (`mesa.truco.naoESuaVez`,
+  `mesa.blackjack.apostaEntre?min=10&max=500`), nunca frases; cada pessoa traduz localmente. Texto padrão no
+  estado (Sim/Não da enquete, categorias do Stop, times do placar) também é código; o que a pessoa digitou vai
+  como escreveu. O nome padrão da sala sai no idioma de quem cria.
+- **Quiz novo:** 480 perguntas em 8 temas globais (games, anime, futebol, esportes, música, filmes, ciência,
+  mundo), cada uma nas três línguas, escritas e revisadas por fatos em passadas separadas. A partida nasce em
+  preparo e qualquer pessoa escolhe os temas. O banco antigo sobre o Brasil saiu.
+- **Desenha:** 161 palavras com id; o palpite vale em qualquer das três línguas.
+- **Emoji:** a busca acha em pt, en e es.
+- **Guardas:** `src/renderer/i18n/*.test.js` travam paridade, chave usada que não existe, plural vazio e texto
+  visível fora dos dicionários (catraca zerada); `glossario.test.js` reprova os termos proibidos por língua.
+- **Falta antes do release:** revisão de um falante nativo do espanhol (sobretudo as 480 perguntas) e o teste em
+  2+ PCs reais com idiomas diferentes.
 
 ## Próximos passos
 
@@ -532,6 +557,15 @@ Pendências:
 - **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
   anterior a estas fases, contra a regra de não usar `filter`.
 - **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
+## Lançado na 0.25.0 (2026-10-04)
+
+O app passa a falar **português, inglês e espanhol** (seção "Idiomas" acima): segue o idioma do sistema e troca em
+Configurações › Aparência; numa sala com idiomas diferentes, cada pessoa vê tudo no próprio idioma. O **Quiz** ganha
+um banco novo de 480 perguntas em 8 temas globais, com escolha de temas na partida, e o **Desenha** aceita o palpite
+em qualquer das três línguas. Também entra o **rework das janelas da Mesa** (PR #92): materiais (feltro, tabuleiro,
+papel, lousa, palco), cadeiras, vazio e ações comuns nas 30 janelas. Antes de ir para todos, falta a revisão de um
+falante nativo do espanhol e o teste em 2+ PCs reais com idiomas diferentes.
 
 ## Lançado na 0.24.0 (2026-10-03)
 

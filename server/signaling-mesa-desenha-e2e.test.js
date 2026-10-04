@@ -180,9 +180,14 @@ async function cena(p, opts = {}) {
 /** Nenhuma mensagem que chegou neste socket contem `texto` em lugar
  * nenhum -- nem cru no fio, nem dentro de um estado. */
 function naoVaza(cliente, texto, oque) {
+  // Palavra inteira (limites Unicode), nao substring: a palavra "mesa" nao pode
+  // casar com campos do protocolo como `mesaCount`, e "maçã" tem de casar mesmo
+  // com acento no fim (o \b do JS so conhece ASCII).
+  const escapado = String(texto).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const palavra = new RegExp(`(?<![\\p{L}\\p{N}])${escapado}(?![\\p{L}\\p{N}])`, 'iu');
   const linhas = cliente.entrada.map((m) => JSON.stringify(m));
   for (const linha of linhas) {
-    assert.equal(linha.toLowerCase().includes(String(texto).toLowerCase()), false, `${oque}: "${texto}" vazou: ${linha}`);
+    assert.equal(palavra.test(linha), false, `${oque}: "${texto}" vazou: ${linha}`);
   }
 }
 
@@ -204,7 +209,11 @@ test('a Ana escolhe: so ela ve a palavra; Bia e Caio (que ainda nao acertaram) n
   const vCaio = await caio.esperaMsg(doSeq, 'estado do Caio');
   assert.equal(vBia.state.word, null, 'a Bia ainda nao acertou: nao ve a palavra');
   assert.equal(vCaio.state.word, null, 'o Caio ainda nao acertou: nao ve a palavra');
-  assert.equal(vBia.state.wordLen, palavra.length, 'mas ve o tamanho, pra pista');
+  assert.deepEqual(vBia.state.wordLens, {
+    pt: desenha.palavraEm(palavra, 'pt-BR').length,
+    en: desenha.palavraEm(palavra, 'en').length,
+    es: desenha.palavraEm(palavra, 'es').length,
+  }, 'mas ve o tamanho local, pra pista');
   assert.equal(vBia.state.options, null, 'quem nao desenha nunca ve as opcoes');
 
   await bia.barreira();

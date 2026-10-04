@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const lista = require('./lista');
 
 function deepFreeze(v) {
@@ -57,12 +58,12 @@ const MALFORMADAS = [
 test('init: lista vazia', () => {
   const s = lista.init({ now: 1, random: () => 0 });
   assert.deepEqual(s, { title: '', items: [], nextId: 1 });
-  assert.equal(lista.summary(s), 'Lista: vazia');
+  assert.equal(R(lista.summary(s)), 'Lista: vazia');
 });
 
 test('metadados seguem o contrato', () => {
   assert.equal(lista.type, 'lista');
-  assert.equal(lista.title, 'Lista');
+  assert.equal(tx(lista.title), 'Lista');
   assert.equal(lista.group, 'ferramentas');
 });
 
@@ -75,7 +76,7 @@ test('adicionar da ids em sequencia; marcar leva o valor', () => {
     { kind: 'title', text: ' Quem traz o quê ' },
   ]);
   assert.deepEqual(s.items[1], { id: 2, text: 'Pizza', done: true });
-  assert.equal(lista.summary(s), 'Quem traz o quê: 1 de 3 feitos');
+  assert.equal(R(lista.summary(s)), 'Quem traz o quê: 1 de 3 feitos');
   s = aplica(s, [{ kind: 'check', id: 2, done: false }]);
   assert.equal(s.items[1].done, false);
 });
@@ -109,13 +110,13 @@ test('apagar os marcados', () => {
     { kind: 'check', id: 1, done: true }, { kind: 'check', id: 3, done: true }, { kind: 'clearDone' },
   ]);
   assert.deepEqual(s.items.map((it) => it.id), [2]);
-  assert.equal(lista.validate(s, { kind: 'clearDone' }), 'Nenhum item marcado');
+  assert.equal(lista.validate(s, { kind: 'clearDone' }), 'mesa.lista.nenhumMarcado');
 });
 
 test('item que outra pessoa apagou: recusa e reduce nao muda nada', () => {
   const s = deepFreeze(aplica(tres(), [{ kind: 'remove', id: 2 }]));
   for (const a of [{ kind: 'check', id: 2, done: true }, { kind: 'edit', id: 2, text: 'x' }, { kind: 'move', id: 2, to: 0 }]) {
-    assert.equal(lista.validate(s, a), 'Esse item não existe mais');
+    assert.equal(lista.validate(s, a), 'mesa.lista.itemNaoExiste');
     assert.equal(lista.reduce(s, a), s);
   }
 });
@@ -124,12 +125,12 @@ test('tetos de itens e de texto', () => {
   let s = lista.init({});
   for (let i = 0; i < lista.MAX_ITEMS; i++) s = lista.reduce(s, { kind: 'add', text: `Item ${i}` });
   assert.equal(s.items.length, lista.MAX_ITEMS);
-  assert.equal(lista.validate(s, { kind: 'add', text: 'X' }), `A lista está cheia (máx. ${lista.MAX_ITEMS})`);
+  assert.equal(lista.validate(s, { kind: 'add', text: 'X' }), `mesa.lista.cheia?max=${lista.MAX_ITEMS}`);
   assert.equal(lista.reduce(deepFreeze(s), { kind: 'add', text: 'X' }), s);
   assert.equal(lista.validate(lista.init({}), { kind: 'add', text: 'x'.repeat(lista.MAX_TEXT) }), true);
   assert.equal(
     lista.validate(lista.init({}), { kind: 'add', text: 'x'.repeat(lista.MAX_TEXT + 1) }),
-    `Item longo demais (máx. ${lista.MAX_TEXT})`,
+    `mesa.lista.itemLongo?max=${lista.MAX_TEXT}`,
   );
   // Titulo vazio pode: volta ao "Lista" do resumo.
   assert.equal(lista.validate(s, { kind: 'title', text: '' }), true);

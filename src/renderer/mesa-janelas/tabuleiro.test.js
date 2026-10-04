@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 const T = require('./tabuleiro');
 const velha = require('../mesa-modules/velha');
 require('./comum');
@@ -30,7 +31,7 @@ test('minhaCadeira e virado', () => {
 
 test('textoStatus: cadeiras, vez, vitoria e empate', () => {
   let s = velha.init();
-  assert.equal(T.textoStatus(s, '1', LAB, nameOf), 'Cadeiras livres: sente-se para jogar');
+  assert.equal(T.textoStatus(s, '1', LAB, nameOf), '');
   s = velha.reduce(s, { kind: 'sit', seat: 0 }, ctx('1'));
   assert.equal(T.textoStatus(s, '1', LAB, nameOf), 'Esperando alguém sentar na outra cadeira');
   assert.equal(T.textoStatus(s, '3', LAB, nameOf), 'Uma cadeira livre: sente-se para jogar');
@@ -83,4 +84,29 @@ test('lig4: casas livres por coluna', () => {
   assert.equal(jLig4.livresNaColuna(s.board, 2), 5);
   assert.equal(jLig4.rotuloColuna(s.board, 2), 'Coluna 3: 5 casas livres');
   assert.equal(jLig4.rotuloColuna(s.board, 0), 'Coluna 1: 6 casas livres');
+});
+
+test('textoStatus e os codigos de recusa seguem o idioma ativo', () => {
+  const { definirIdioma, traduzirCodigo } = require('../i18n');
+  try {
+    definirIdioma('en');
+    let s = sentados();
+    assert.equal(T.textoStatus(s, '1', LAB, nameOf), 'Your turn');
+    assert.equal(T.textoStatus(s, '2', LAB, nameOf), "Ana's turn");
+    assert.equal(T.textoStatus({ ...s, check: true }, '2', LAB, nameOf), "Ana's turn (check)");
+    const desistiu = { ...s, result: { winner: 1, reason: 'abandono' } };
+    assert.equal(T.textoStatus(desistiu, '2', LAB, nameOf), 'Ana resigned; you won');
+    assert.equal(traduzirCodigo(velha.validate(s, { kind: 'move', cell: 0 }, ctx('2'))), 'It is not your turn');
+    definirIdioma('es');
+    assert.equal(T.textoStatus(desistiu, '3', LAB, nameOf), 'Ana se rindió; ganó Bia');
+    assert.equal(traduzirCodigo('mesa.cadeiras.ocupada'), 'Silla ocupada');
+  } finally {
+    definirIdioma('pt-BR');
+  }
+});
+
+test('motivoBruto devolve o codigo sem traduzir e aguenta excecao', () => {
+  assert.equal(T.motivoBruto({ validate: () => 'mesa.jogo.naoESuaVez' }, {}), 'mesa.jogo.naoESuaVez');
+  assert.equal(T.motivoBruto({ validate: () => true }, {}), true);
+  assert.equal(T.motivoBruto({ validate: () => { throw new Error('x'); } }, {}), null);
 });

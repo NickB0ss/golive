@@ -79,8 +79,8 @@
         const dismiss = doc.createElement('button');
         dismiss.type = 'button';
         dismiss.className = 'warn-center-dismiss';
-        dismiss.setAttribute('aria-label', `Dispensar ${item.titulo}`);
-        dismiss.title = 'Dispensar aviso';
+        dismiss.setAttribute('aria-label', root.GoLive.i18n.t('sistema.dispensar', { titulo: item.titulo }));
+        dismiss.title = root.GoLive.i18n.t('sistema.dispensarAviso');
         dismiss.textContent = '×';
         dismiss.addEventListener('click', (event) => {
           event.stopPropagation();

@@ -20,11 +20,14 @@
 (function (root) {
   const C = (root.GoLive && root.GoLive.mesaCadeiras)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./cadeiras') : null);
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
 
   const COLS = 7;
   const ROWS = 6;
   const MARKS = ['V', 'A'];
-  const LABELS = ['Vermelhas', 'Amarelas'];
+  // Rotulos de cor do resumo: codigos, a vista traduz.
+  const LABELS = ['mesa.lig4.vermelhas', 'mesa.lig4.amarelas'];
   const DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]];
 
   function freshGame() {
@@ -62,22 +65,22 @@
 
   function checkMove(state, action) {
     const col = action.col;
-    if (!Number.isInteger(col) || col < 0 || col >= COLS) return 'Coluna inválida';
-    if (landingRow(state.board, col) < 0) return 'Coluna cheia';
+    if (!Number.isInteger(col) || col < 0 || col >= COLS) return codigo('mesa.lig4.colunaInvalida');
+    if (landingRow(state.board, col) < 0) return codigo('mesa.lig4.colunaCheia');
     return true;
   }
 
   function validate(state, action, ctx) {
     return C.safe(() => {
-      if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+      if (!C.isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
       if (C.isSeatAction(action)) return C.validateSeat(state, action, ctx);
       if (action.kind === 'reset') return C.canReset(state, ctx);
       if (action.kind === 'move') {
         const ok = C.canPlay(state, ctx, state.turn);
         return ok === true ? checkMove(state, action) : ok;
       }
-      return 'Ação desconhecida';
-    }, 'Ação inválida');
+      return codigo('mesa.jogo.acaoDesconhecida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   function play(state, col) {
@@ -112,11 +115,11 @@
     return C.safe(() => {
       const r = state.result;
       if (r) {
-        if (r.winner === null) return 'Empate, tabuleiro cheio';
-        return `${C.nameOf(state, r.winner, LABELS, peers)} venceu`;
+        if (r.winner === null) return { chave: 'mesa.lig4.empate' };
+        return { chave: 'mesa.tabuleiro.venceu', valores: { nome: C.nameOf(state, r.winner, LABELS, peers) } };
       }
       return C.describePlaying(state, state.turn, LABELS, peers);
-    }, 'Lig 4');
+    }, { chave: 'mesa.titulo.lig4' });
   }
 
   /** So no servidor: o nome de quem senta vai na acao `sit`. */
@@ -126,7 +129,7 @@
 
   const mod = {
     type: 'lig4',
-    title: 'Lig 4',
+    title: 'mesa.titulo.lig4',
     group: 'jogos',
     size: { w: 420, h: 360, minW: 210, minH: 180, aspect: COLS / ROWS },
     maxStateBytes: 1024,

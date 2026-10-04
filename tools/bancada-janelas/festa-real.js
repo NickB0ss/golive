@@ -147,7 +147,7 @@ async function main() {
     conferir((await page.evaluate(() => window.sonsTocados)) === 1, 'sons: o som da Bia tocou no PC da Ana');
     bia.envia({ type: 'mesa', op: 'act', id: ids.sons, action: { kind: 'play', sound: 'apito' } });
     const negado = await bia.espera((m) => m.type === 'mesa-denied' && m.id === ids.sons).catch(() => null);
-    conferir(negado && negado.reason === 'invalid' && /Espere/.test(negado.detail || ''), `sons: o servidor recusa o segundo som em 3 s (${JSON.stringify(negado)})`);
+    conferir(negado && negado.reason === 'invalid' && /^mesa\.sons\.espere/.test(negado.detail || ''), `sons: o servidor recusa o segundo som em 3 s (${JSON.stringify(negado)})`);
     await win('sons').getByRole('button', { name: 'Tocar Buzina para todos' }).click();
     const daAna = await bia.espera((m) => m.type === 'mesa' && m.op === 'act' && m.id === ids.sons && m.action.sound === 'buzina').catch(() => null);
     conferir(!!daAna, 'sons: o clique da Ana vira act');

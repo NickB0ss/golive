@@ -16,6 +16,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'cronometro';
   const MIN_DURATION = 1000;
   const MAX_MS = 24 * 60 * 60 * 1000; // 24 h: teto de duracao e de ajuste
@@ -95,7 +97,7 @@
 
   /** Forma da acao. `at` so e lido nas que o `prepare` carimba. */
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'start':
       case 'pause':
@@ -103,25 +105,25 @@
       case 'reset':
         return { kind: 'reset' };
       case 'set': {
-        if (!MODES.includes(action.mode)) return 'Modo inválido';
+        if (!MODES.includes(action.mode)) return codigo('mesa.cronometro.modoInvalido');
         if (action.duration === undefined && action.mode === 'up') return { kind: 'set', mode: 'up' };
-        if (!isInt(action.duration, MIN_DURATION, MAX_MS)) return 'Duração de 1 s a 24 h';
+        if (!isInt(action.duration, MIN_DURATION, MAX_MS)) return codigo('mesa.cronometro.duracao');
         return { kind: 'set', mode: action.mode, duration: action.duration };
       }
       case 'adjust': {
-        if (!isInt(action.delta, -MAX_MS, MAX_MS) || action.delta === 0) return 'Ajuste inválido';
+        if (!isInt(action.delta, -MAX_MS, MAX_MS) || action.delta === 0) return codigo('mesa.cronometro.ajusteInvalido');
         const a = { kind: 'adjust', delta: action.delta };
         if (isTime(action.at)) a.at = action.at;
         return a;
       }
       case 'label': {
         const text = cleanText(action.text, MAX_LABEL);
-        if (text === null) return 'Texto inválido';
-        if (text.length > MAX_LABEL) return `Texto longo demais (máx. ${MAX_LABEL})`;
+        if (text === null) return codigo('mesa.cronometro.textoInvalido');
+        if (text.length > MAX_LABEL) return codigo('mesa.cronometro.textoLongo', { max: MAX_LABEL });
         return { kind: 'label', text };
       }
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -140,9 +142,9 @@
   function validate(state, action) {
     const a = parse(action);
     if (typeof a === 'string') return a;
-    if (a.kind === 'start' && state.running) return 'Já está correndo';
-    if (a.kind === 'pause' && !state.running) return 'Já está parado';
-    if (a.kind === 'set' && state.running) return 'Pause antes de mudar';
+    if (a.kind === 'start' && state.running) return codigo('mesa.cronometro.jaCorrendo');
+    if (a.kind === 'pause' && !state.running) return codigo('mesa.cronometro.jaParado');
+    if (a.kind === 'set' && state.running) return codigo('mesa.cronometro.pauseAntes');
     return true;
   }
 
@@ -192,20 +194,23 @@
 
   /** "Pausa · 04:32 (pausado)". Sem `serverNow`, correndo diz so "correndo". */
   function summary(state, serverNow) {
-    const prefix = state.label ? `${state.label} · ` : '';
+    // O rotulo e dado da pessoa; o separador nao e texto traduzido.
+    const prefixo = state.label ? `${state.label} · ` : '';
     const down = state.mode === 'down';
     if (state.running && !isTime(serverNow)) {
-      return `${prefix}${down ? 'regressivo' : 'progressivo'} correndo`;
+      const chave = down ? 'mesa.resumo.cronoRegressivoCorrendo' : 'mesa.resumo.cronoProgressivoCorrendo';
+      return { chave, valores: { prefixo } };
     }
-    if (isFinished(state, serverNow)) return `${prefix}tempo esgotado`;
-    const shown = formatMs(displayMs(state, serverNow), down);
-    if (state.running) return `${prefix}${shown}`;
-    return `${prefix}${shown} (${state.elapsed > 0 ? 'pausado' : 'parado'})`;
+    if (isFinished(state, serverNow)) return { chave: 'mesa.resumo.cronoEsgotado', valores: { prefixo } };
+    const tempo = formatMs(displayMs(state, serverNow), down);
+    if (state.running) return { chave: 'mesa.resumo.cronoTempo', valores: { prefixo, tempo } };
+    const chave = state.elapsed > 0 ? 'mesa.resumo.cronoPausado' : 'mesa.resumo.cronoParado';
+    return { chave, valores: { prefixo, tempo } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Cronômetro',
+    title: 'mesa.titulo.cronometro',
     group: 'noite',
     size: { w: 360, h: 300, minW: 260, minH: 160, aspect: null },
     maxStateBytes: 512,

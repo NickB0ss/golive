@@ -3,6 +3,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const M = require('./poquer-maos');
 const baralho = require('./baralho');
+const i18n = require('../i18n');
+
+i18n.definirIdioma('pt-BR');
 
 const h = (s) => s.split(' ');
 const best = (s) => M.best(h(s));
@@ -23,7 +26,7 @@ test('categorias na ordem classica', () => {
   ];
   maos.forEach(([m, cat], i) => {
     const r = best(m);
-    assert.equal(r.category, cat, m);
+    assert.equal(r.cat, i, m);
     assert.equal(r.cat, i);
     if (i > 0) assert.equal(cmp(m, maos[i - 1][0]), 1, `${cat} ganha de ${maos[i - 1][1]}`);
   });
@@ -31,33 +34,35 @@ test('categorias na ordem classica', () => {
 
 test('melhor 5 de 7 escolhe as cartas certas', () => {
   const r = best('Ah Kh 2h 3c Qh Jh 9h');
-  assert.equal(r.category, 'Flush');
+  assert.equal(r.cat, M.CAT.FLUSH);
   assert.deepEqual(r.cards, h('Ah Kh Qh Jh 9h'));
   const f = best('Kd Kc 7s 7h 7d Kh 2c');
-  assert.equal(f.name, 'Full house de reis com setes');
+  assert.equal(M.nomeDoJogo(f.cat, f.score, i18n.t), 'Full house de reis com setes');
   assert.deepEqual(f.cards.map((c) => c[0]), ['K', 'K', 'K', '7', '7']);
 });
 
 test('sequencia A-2-3-4-5 vale e e a mais baixa', () => {
   const roda = best('Ah 2d 3c 4s 5h Kd Kc');
-  assert.equal(roda.category, 'Sequência');
-  assert.equal(roda.name, 'Sequência até o 5');
+  assert.equal(roda.cat, M.CAT.SEQUENCIA);
+  assert.equal(M.nomeDoJogo(roda.cat, roda.score, i18n.t), 'Sequência até o 5');
   assert.deepEqual(roda.cards.map((c) => c[0]), ['5', '4', '3', '2', 'A']);
   assert.equal(cmp('2h 3d 4c 5s 6h Kd 9c', 'Ah 2d 3c 4s 5h Kd 9c'), 1);
   // Q-K-A-2-3 nao e sequencia.
-  assert.equal(best('Qh Kd Ac 2s 3h 8d 9c').category, 'Carta alta');
+  assert.equal(best('Qh Kd Ac 2s 3h 8d 9c').cat, M.CAT.ALTA);
   // A-K-Q-J-T e a maior.
-  assert.equal(best('Ah Kd Qc Js Th 2d 3c').name, 'Sequência até o ás');
+  const alta = best('Ah Kd Qc Js Th 2d 3c');
+  assert.equal(M.nomeDoJogo(alta.cat, alta.score, i18n.t), 'Sequência até o ás');
 });
 
 test('straight flush, royal e o straight flush A-2-3-4-5', () => {
-  assert.equal(best('As Ks Qs Js Ts 2d 3c').name, 'Royal flush');
+  const royal = best('As Ks Qs Js Ts 2d 3c');
+  assert.equal(M.nomeDoJogo(royal.cat, royal.score, i18n.t), 'Royal flush');
   const baixo = best('As 2s 3s 4s 5s Kd Kc');
-  assert.equal(baixo.name, 'Straight flush');
+  assert.equal(M.nomeDoJogo(baixo.cat, baixo.score, i18n.t), 'Straight flush');
   assert.equal(cmp('As 2s 3s 4s 5s Kd Kc', 'Ad Ac Ah As Kd Kc 2h'), 1, 'straight flush ganha da quadra');
   assert.equal(cmp('6s 2s 3s 4s 5s Kd Kc', 'As 2s 3s 4s 5s Kd Kc'), 1);
   // Com sequencia maior sem naipe e straight flush menor, vale o straight flush.
-  assert.equal(best('5s 6s 7s 8s 9s Td Jc').category, 'Straight flush');
+  assert.equal(best('5s 6s 7s 8s 9s Td Jc').cat, M.CAT.STRAIGHT_FLUSH);
 });
 
 test('desempate por kickers', () => {
@@ -93,12 +98,21 @@ test('empates exatos (naipes nao desempatam; mesa joga)', () => {
 });
 
 test('nomes das maos', () => {
-  assert.equal(best('Kh Kd 9c 7s 4h 3d 2c').name, 'Par de reis');
-  assert.equal(best('Ah Ad 9c 9s 4h 3d 2c').name, 'Dois pares, ases e noves');
-  assert.equal(best('6h 6d 6c 9s 4h Kd 2c').name, 'Trinca de seis');
-  assert.equal(best('Th Td Tc Ts 4h 3d 2c').name, 'Quadra de dez');
-  assert.equal(best('Ah Kd 9c 7s 4h 3d 2c').name, 'Carta alta, ás');
-  assert.equal(best('Ah Th 9h 7h 4h 3d 2c').name, 'Flush');
+  const nome = (cartas) => {
+    const mao = best(cartas);
+    return M.nomeDoJogo(mao.cat, mao.score, i18n.t);
+  };
+  assert.equal(nome('Kh Kd 9c 7s 4h 3d 2c'), 'Par de reis');
+  assert.equal(nome('Ah Ad 9c 9s 4h 3d 2c'), 'Dois pares, ases e noves');
+  assert.equal(nome('6h 6d 6c 9s 4h Kd 2c'), 'Trinca de seis');
+  assert.equal(nome('Th Td Tc Ts 4h 3d 2c'), 'Quadra de dez');
+  assert.equal(nome('Ah Kd 9c 7s 4h 3d 2c'), 'Carta alta, ás');
+  assert.equal(nome('Ah Th 9h 7h 4h 3d 2c'), 'Flush');
+});
+
+test('nomeDoJogo delega a frase para a janela', () => {
+  const t = (chave, valores) => valores ? `${chave}:${JSON.stringify(valores)}` : chave;
+  assert.equal(M.nomeDoJogo(M.CAT.PAR, [M.CAT.PAR, 11], t), 'mesa.poquer.jogo.par:{"v":"mesa.poquer.valor.K.varios"}');
 });
 
 test('entrada ruim devolve null e nao lanca', () => {

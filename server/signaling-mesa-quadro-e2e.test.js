@@ -15,7 +15,19 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const { createSignalingServer } = require('./signaling-core');
-require('../src/renderer/mesa-modules/index');
+const mesaRegistry = require('../src/renderer/mesa-modules/index');
+
+mesaRegistry.register({
+  type: 'rabiscoteste',
+  title: 'Rabisco teste',
+  group: 'ferramentas',
+  size: { w: 320, h: 240, minW: 160, minH: 120, aspect: null },
+  maxStateBytes: 64,
+  annotate: true,
+  init: () => ({}),
+  validate: () => true,
+  reduce: (state) => state,
+});
 
 const DEADLINE_MS = 5000;
 
@@ -148,11 +160,15 @@ async function cena(p, opts = {}) {
   return { s, ana, bia, caio, id };
 }
 
-test('um traco vai so pra quem esta na vista Mesa, nunca pra quem mandou nem pra quem esta na Transmissao', async (t) => {
+test('um traco vai so pra quem esta na vista Mesa, nunca pra quem mandou nem pra quem esta na Transmissao',
+  async (t) => {
   const p = palco(t);
   const { ana, bia, caio, id } = await cena(p);
 
-  const chegaEmBia = bia.esperaNova((m) => m.type === 'annotate' && m.surface === `mesa:${id}`, 'traco da Ana');
+  const chegaEmBia = bia.esperaNova(
+    (m) => m.type === 'annotate' && m.surface === `mesa:${id}`,
+    'traco da Ana',
+  );
   const naoChegaEmAna = ana.naoChega((m) => m.type === 'annotate', 'eco pra quem mandou');
   const naoChegaEmCaio = caio.naoChega((m) => m.type === 'annotate', 'traco pra quem nao esta na Mesa');
   ana.envia({ type: 'annotate', surface: `mesa:${id}`, op: 'begin', id: 't1', x: 0.2, y: 0.3, width: 4, color: '#4adE80' });
@@ -184,6 +200,80 @@ test('quem entra na Mesa recebe o retrato de quem ja tem a janela aberta (annota
   assert.equal(s.getPeerCount(), 3);
 });
 
+test('modulo de rabisco sem canAnnotateSee continua entregando a todos na Mesa', async (t) => {
+  const p = palco(t);
+  const s = await p.servidor({ ownerToken: 'segredo' });
+  const ana = await p.cliente(s, 'ana');
+  const bia = await p.cliente(s, 'bia');
+  await ana.entra('Ana', { ownerToken: 'segredo' });
+  await bia.entra('Bia');
+  await ana.abreMesa();
+  await bia.abreMesa();
+  const janela = bia.esperaNova((m) => m.type === 'mesa' && m.op === 'add', 'add rabisco teste');
+  ana.envia({ type: 'mesa', op: 'add', win: { type: 'rabiscoteste', x: 100, y: 100, w: 320, h: 240 } });
+  const id = (await janela).win.id;
+  const traco = bia.esperaNova((m) => m.type === 'annotate' && m.surface === `mesa:${id}`, 'traco sem filtro');
+  ana.envia({ type: 'annotate', surface: `mesa:${id}`, op: 'begin', id: 'normal', x: 0.2, y: 0.3 });
+  assert.equal((await traco).from, ana.id);
+});
+
+test('quadro escondido: traco e retrato do dono nao chegam aos outros; ao mostrar chegam', async (t) => {
+  const p = palco(t);
+  const { ana, bia, id } = await cena(p);
+  const escondido = bia.esperaNova((m) => m.type === 'mesa' && m.op === 'act'
+    && m.id === id && m.action.hidden === true, 'quadro escondido');
+  ana.envia({ type: 'mesa', op: 'act', id, action: { kind: 'visibility', hidden: true } });
+  await escondido;
+
+  const semTraco = bia.naoChega((m) => m.type === 'annotate' && m.surface === `mesa:${id}`, 'traco escondido');
+  const semRetrato = bia.naoChega((m) => m.type === 'annotate-sync' && m.surface === `mesa:${id}`, 'retrato escondido');
+  ana.envia({ type: 'annotate', surface: `mesa:${id}`, op: 'begin', id: 'secreto', x: 0.2, y: 0.3 });
+  ana.envia({
+    type: 'annotate-sync', to: bia.id, surface: `mesa:${id}`,
+    items: [{ kind: 'stroke', id: 'secreto', from: ana.id, width: 4, points: [[0.1, 0.1]] }],
+  });
+  await Promise.all([semTraco, semRetrato]);
+
+  const visivel = bia.esperaNova((m) => m.type === 'mesa' && m.op === 'act'
+    && m.id === id && m.action.hidden === false, 'quadro visivel');
+  ana.envia({ type: 'mesa', op: 'act', id, action: { kind: 'visibility', hidden: false } });
+  await visivel;
+  const traco = bia.esperaNova((m) => m.type === 'annotate' && m.id === 'publico', 'traco publico');
+  const retrato = bia.esperaNova((m) => m.type === 'annotate-sync' && m.surface === `mesa:${id}`, 'retrato publico');
+  ana.envia({ type: 'annotate', surface: `mesa:${id}`, op: 'begin', id: 'publico', x: 0.2, y: 0.3 });
+  ana.envia({
+    type: 'annotate-sync', to: bia.id, surface: `mesa:${id}`,
+    items: [{ kind: 'stroke', id: 'publico', from: ana.id, width: 4, points: [[0.1, 0.1]] }],
+  });
+  assert.equal((await traco).from, ana.id);
+  assert.equal((await retrato).from, ana.id);
+});
+
+test('cursor dentro do quadro escondido nao chega a outros; fora e visivel chegam', async (t) => {
+  const p = palco(t);
+  const { ana, bia, id } = await cena(p);
+  const escondido = bia.esperaNova((m) => m.type === 'mesa' && m.op === 'act'
+    && m.id === id && m.action.hidden === true, 'quadro escondido');
+  ana.envia({ type: 'mesa', op: 'act', id, action: { kind: 'visibility', hidden: true } });
+  await escondido;
+
+  const semCursor = bia.naoChega((m) => m.type === 'cursor', 'cursor no quadro escondido');
+  ana.envia({ type: 'cursor', x: 200, y: 200 });
+  await semCursor;
+
+  const fora = bia.esperaNova((m) => m.type === 'cursor' && m.x === 800, 'cursor fora do quadro');
+  ana.envia({ type: 'cursor', x: 800, y: 200 });
+  assert.equal((await fora).from, ana.id);
+
+  const visivel = bia.esperaNova((m) => m.type === 'mesa' && m.op === 'act'
+    && m.id === id && m.action.hidden === false, 'quadro visivel');
+  ana.envia({ type: 'mesa', op: 'act', id, action: { kind: 'visibility', hidden: false } });
+  await visivel;
+  const dentro = bia.esperaNova((m) => m.type === 'cursor' && m.x === 200, 'cursor no quadro visivel');
+  ana.envia({ type: 'cursor', x: 200, y: 200 });
+  assert.equal((await dentro).from, ana.id);
+});
+
 test('annotate-sync so passa entre quem esta na vista Mesa', async (t) => {
   const p = palco(t);
   const { ana, caio, id } = await cena(p);
@@ -203,7 +293,10 @@ test('limpar tudo: so o dono da janela ou o lider da sala; o resto e ignorado em
   await naoChegaEmAna;
 
   // Ana (dona da janela e lider) limpa: a Bia recebe.
-  const chegaEmBia = bia.esperaNova((m) => m.type === 'annotate' && m.op === 'clear' && m.surface === `mesa:${id}`, 'clear da Ana');
+  const chegaEmBia = bia.esperaNova(
+    (m) => m.type === 'annotate' && m.op === 'clear' && m.surface === `mesa:${id}`,
+    'clear da Ana',
+  );
   ana.envia({ type: 'annotate', surface: `mesa:${id}`, op: 'clear', scope: 'all' });
   const msg = await chegaEmBia;
   assert.equal(msg.from, ana.id);
@@ -246,7 +339,12 @@ test('janela fechada: a superficie some do ar, nada mais e repassado nela', asyn
   await naoChegaTraco;
 
   const naoChegaSync = bia.naoChega((m) => m.type === 'annotate-sync', 'sync de janela fechada');
-  ana.envia({ type: 'annotate-sync', to: bia.id, surface: `mesa:${id}`, items: [{ kind: 'stroke', id: 'x', from: ana.id, width: 4, points: [[0, 0]] }] });
+  ana.envia({
+    type: 'annotate-sync',
+    to: bia.id,
+    surface: `mesa:${id}`,
+    items: [{ kind: 'stroke', id: 'x', from: ana.id, width: 4, points: [[0, 0]] }],
+  });
   await naoChegaSync;
 });
 

@@ -211,19 +211,19 @@ test('quem pediu por ultimo nao pede de novo e nao passa de 12', () => {
   let s = mao(sentados(2), [['4s'], ['5s']]);
   s = passo(s, { kind: 'call' }, 'ana');
   s = passo(s, { kind: 'answer', answer: 'accept' }, 'bia');
-  assert.equal(truco.validate(s, { kind: 'call' }, ctx('ana')), 'Canto indisponível');
+  assert.equal(truco.validate(s, { kind: 'call' }, ctx('ana')), 'mesa.truco.cantoIndisponivel');
   s = passo(s, { kind: 'call' }, 'bia');
   s = passo(s, { kind: 'answer', answer: 'raise' }, 'ana');
   s = passo(s, { kind: 'answer', answer: 'raise' }, 'bia');
   s = passo(s, { kind: 'answer', answer: 'accept' }, 'ana');
-  assert.equal(truco.validate(s, { kind: 'call' }, ctx('ana')), 'Canto indisponível');
+  assert.equal(truco.validate(s, { kind: 'call' }, ctx('ana')), 'mesa.truco.cantoIndisponivel');
 });
 
 test('encoberta so vale da segunda rodada e perde para qualquer carta', () => {
   let s = mao(sentados(2), [['4s', '4h', '4d'], ['As', '3s', '5d']]);
   assert.equal(
     truco.validate(s, { kind: 'play', index: 0, covered: true }, ctx('ana')),
-    'Encoberta só da segunda rodada'
+    'mesa.truco.encobertaSegunda'
   );
   s = passo(s, { kind: 'play', index: 0 }, 'ana');
   s = passo(s, { kind: 'play', index: 0 }, 'bia');
@@ -238,7 +238,7 @@ test('mao de onze jogar vale 3, correr da 1 e bloqueia truco', () => {
   s = truco.reduce(s, {
     kind: 'deal', cards: [['As'], ['4s']], vira: '4s', dealer: 1, at: 1000,
   }, ctx('ana'));
-  assert.equal(truco.validate(s, { kind: 'call' }, ctx('ana')), 'A mão não está jogando');
+  assert.equal(truco.validate(s, { kind: 'call' }, ctx('ana')), 'mesa.truco.maoNaoJogando');
   s = passo(s, { kind: 'eleven', choice: 'play' }, 'ana');
   assert.equal(s.hand.value, 3);
   s = Object.assign({}, sentados(2), { scores: [11, 2] });
@@ -264,7 +264,7 @@ test('duas pessoas sao adversarias e quatro formam duplas de frente', () => {
 
 test('timeout responde ao truco correndo e jogada fora da vez e recusada', () => {
   let s = mao(sentados(2), [['4s'], ['5s']]);
-  assert.equal(truco.validate(s, { kind: 'play', index: 0 }, ctx('bia')), 'Não é a sua vez');
+  assert.equal(truco.validate(s, { kind: 'play', index: 0 }, ctx('bia')), 'mesa.jogo.naoESuaVez');
   s = passo(s, { kind: 'call' }, 'ana');
   s = truco.reduce(s, { kind: 'timeout', at: 40000 }, ctx('bia', 40000));
   assert.deepEqual(s.scores, [1, 0]);
@@ -284,8 +284,8 @@ test('cada lugar ve so a propria mao e nunca o monte', () => {
 
 test('espectador nao pode falsificar reinicio de lider nem cantar truco', () => {
   const s = mao(sentados(2), [['4s'], ['5s']]);
-  assert.equal(truco.validate(s, { kind: 'reset', leader: true }, ctx('caio')), 'Só quem está na mesa reinicia.');
+  assert.equal(truco.validate(s, { kind: 'reset', leader: true }, ctx('caio')), 'mesa.truco.soQuemEstaNaMesaReinicia');
   assert.equal(truco.validate(s, { kind: 'reset' }, { from: 'caio', peers: PEERS, isLeader: true }), true);
-  assert.equal(truco.validate(s, { kind: 'call' }, ctx('caio')), 'Canto indisponível');
+  assert.equal(truco.validate(s, { kind: 'call' }, ctx('caio')), 'mesa.truco.cantoIndisponivel');
   assert.equal(truco.view(s, 'caio', { peers: PEERS }).me.can.call, false);
 });

@@ -1,14 +1,26 @@
 'use strict';
 
 (function (root) {
-  // Rotulos sao texto de UI, entao levam acento -- ao contrario dos
-  // comentarios deste arquivo.
-  const REASON_LABELS = {
-    encoder: 'sem aceleração de vídeo',
-    malha: 'muita gente recebendo de você',
-    auto: 'seu PC no limite',
-    sala: 'sala cheia',
-  };
+  const t = (...args) => root.GoLive.i18n.t(...args);
+
+  // Rotulo da degradacao. Com preset, a frase inteira e uma chave so (nada de
+  // juntar pedacos traduzidos).
+  function reasonLabel(reason, preset) {
+    if (preset) {
+      switch (reason) {
+        case 'encoder': return t('sistema.motivoEncoderPreset', { preset });
+        case 'malha': return t('sistema.motivoMalhaPreset', { preset });
+        case 'auto': return t('sistema.motivoAutoPreset', { preset });
+        default: return t('sistema.motivoSalaPreset', { preset });
+      }
+    }
+    switch (reason) {
+      case 'encoder': return t('sistema.motivoEncoder');
+      case 'malha': return t('sistema.motivoMalha');
+      case 'auto': return t('sistema.motivoAuto');
+      default: return t('sistema.motivoSala');
+    }
+  }
 
   // Precedencia: encoder em software e a causa mais grave (a imagem esta
   // sendo codificada pela CPU agora); malha degradada vem antes do tamanho
@@ -43,18 +55,17 @@
   function roomStatus(state) {
     const s = state || {};
     if (!s.inRoom) return { level: 'offline', label: '' };
-    if (s.reconnecting) return { level: 'reconnecting', label: 'reconectando…' };
-    if (s.weAreLive && s.paused) return { level: 'paused', label: 'transmissão pausada' };
+    if (s.reconnecting) return { level: 'reconnecting', label: t('sistema.reconectando') };
+    if (s.weAreLive && s.paused) return { level: 'paused', label: t('sistema.transmissaoPausada') };
     if (!s.anyoneLive) return { level: 'idle', label: '' };
 
     const reason = s.weAreLive ? degradeReason(s) : null;
     if (!reason) return { level: 'live', label: '' };
 
-    const preset = s.effectivePreset ? `${s.effectivePreset} · ` : '';
-    return { level: 'degraded', label: `${preset}${REASON_LABELS[reason]}` };
+    return { level: 'degraded', label: reasonLabel(reason, s.effectivePreset || '') };
   }
 
-  const api = { roomStatus, degradeReason, REASON_LABELS };
+  const api = { roomStatus, degradeReason };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.status = api;

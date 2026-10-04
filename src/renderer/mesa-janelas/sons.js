@@ -18,6 +18,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'sons';
   const MAX_ATRASO_MS = 2000;
   const MAX_DUR = 1.5;
@@ -272,8 +273,8 @@
   }
 
   /** "Ana tocou Buzina". */
-  function quemTocou(last, nomeDe, nomeDoSom) {
-    return last ? `${nomeDe(last.by)} tocou ${nomeDoSom(last.sound)}` : 'Ninguém tocou ainda';
+  function quemTocou(last, nomeDe) {
+    return last ? t(`mesa.sons.tocou.${last.sound}`, { nome: nomeDe(last.by) }) : t('mesa.sons.ninguemTocou');
   }
 
   // ---------- Audio do PC (um contexto para todas as janelas de sons) ----------
@@ -316,10 +317,12 @@
     let timerEspera = null;
     const prefs = carregarPrefs();
 
-    const grade = el('div', { class: 'mj-sons-grade', attrs: { role: 'group', 'aria-label': 'Sons para a sala' } });
+    const grade = el('div', { class: 'mj-sons-grade', attrs: { role: 'group', 'aria-label': t('mesa.sons.grade') } });
     const botoes = new Map();
     for (const som of m.SOUNDS) {
-      const btn = C.botao({ text: m.soundName(som), class: 'mj-sons-btn', label: `Tocar ${m.soundName(som)} para todos` });
+      const btn = C.botao({
+        text: t(m.soundName(som)), class: 'mj-sons-btn', label: t(`mesa.sons.tocarTodos.${som}`),
+      });
       btn.dataset.som = som;
       b.clique(btn, grade, () => b.acao(grade, { kind: 'play', sound: som }));
       botoes.set(som, btn);
@@ -328,10 +331,10 @@
     const barraEspera = el('div', { class: 'mj-sons-espera', attrs: { 'aria-hidden': 'true' } }, el('span'));
 
     const tocou = el('p', { class: 'mj-sons-tocou', attrs: { 'aria-live': 'polite' } });
-    const mudo = C.botao({ class: 'mj-fantasma mj-ic', label: 'Silenciar os sons neste PC' });
+    const mudo = C.botao({ class: 'mj-fantasma mj-ic', label: t('mesa.sons.silenciar') });
     const vol = el('input', {
       class: 'mj-sons-vol',
-      attrs: { type: 'range', min: '0', max: '100', step: '1', value: String(prefs.vol), 'aria-label': 'Volume dos sons (só seu)' },
+      attrs: { type: 'range', min: '0', max: '100', step: '1', value: String(prefs.vol), 'aria-label': t('mesa.sons.volume') },
     });
     const rodape = el('div', { class: 'mj-barra mj-sons-rodape' }, tocou, el('span', { class: 'mj-mola' }), mudo, vol);
 
@@ -346,7 +349,7 @@
       svg.innerHTML = prefs.muted ? SVG_MUDO : SVG_SOM;
       if (!svg.parentNode) mudo.append(svg);
       mudo.setAttribute('aria-pressed', prefs.muted ? 'true' : 'false');
-      const rot = prefs.muted ? 'Ligar os sons neste PC' : 'Silenciar os sons neste PC';
+      const rot = t(prefs.muted ? 'mesa.sons.ligar' : 'mesa.sons.silenciar');
       mudo.setAttribute('aria-label', rot);
       mudo.title = rot;
       b.raiz.classList.toggle('is-mudo', prefs.muted);
@@ -376,8 +379,8 @@
       if (timerEspera) clearTimeout(timerEspera);
       timerEspera = null;
       const falta = m.cooldownLeft(state, api.me(), api.serverNow());
-      const motivo = falta > 0 ? `Espere ${Math.ceil(falta / 1000)} s para tocar outro som` : true;
-      for (const [som, btn] of botoes) C.ligado(btn, motivo, `Tocar ${m.soundName(som)} para todos`);
+      const motivo = falta > 0 ? t('mesa.sons.espere', { s: Math.ceil(falta / 1000) }) : true;
+      for (const [som, btn] of botoes) C.ligado(btn, motivo, t(`mesa.sons.tocarTodos.${som}`));
       barraEspera.classList.toggle('is-on', falta > 0);
       if (falta <= 0) {
         esperaDe = null;
@@ -421,11 +424,11 @@
         const cor = C.corDe(api, last.by);
         tocou.classList.toggle('is-pessoa', !!cor);
         if (cor) tocou.style.setProperty('--mj-cor', cor);
-        tocou.append(C.bolinha(cor), el('span', { text: C.nomeDe(api, last.by) }), el('em', { text: ` tocou ${m.soundName(last.sound)}` }));
+        tocou.append(C.bolinha(cor), el('span', { text: C.nomeDe(api, last.by) }), el('em', { text: ` ${t(`mesa.sons.tocouSom.${last.sound}`)}` }));
       } else {
-        tocou.append(el('em', { text: 'Ninguém tocou ainda' }));
+        tocou.append(el('em', { text: t('mesa.sons.ninguemTocou') }));
       }
-      tocou.title = quemTocou(last, (id) => C.nomeDe(api, id), m.soundName);
+      tocou.title = quemTocou(last, (id) => C.nomeDe(api, id));
       desenharEspera();
     }
 

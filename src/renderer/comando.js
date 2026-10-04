@@ -18,40 +18,41 @@
    *   soMesa: sala "Mesa" -- so ha a Mesa (sem Modo teatro, sem assistir/ver junto: o comando leva a janela)
    *   semMesa: sala "so transmissoes" -- sem os comandos da Mesa */
   function acoesDisponiveis(estado = {}) {
+    const t = root.GoLive.i18n.t;
     const acoes = [];
     const add = (id, rotulo, extra = {}) => acoes.push({ id, rotulo, ...extra });
     if (estado.lugar === 'room') {
       for (const f of estado.fontes || []) {
         if (estado.soMesa) {
           // Na Mesa quem decide o que se assiste sao as janelas visiveis: o comando so leva ate a janela.
-          add('assistir', `Ir até ${f.nome}`, { alvo: f.tileId });
+          add('assistir', t('comando.irAte', { nome: f.nome }), { alvo: f.tileId });
           continue;
         }
-        if (!f.assistindo) add('assistir', `Assistir ${f.nome}`, { alvo: f.tileId });
-        else add('parar-assistir', `Parar de assistir ${f.nome}`, { alvo: f.tileId });
-        if (!f.assistindo && !String(f.tileId).startsWith('cam-')) add('ver-junto', `Ver ${f.nome} junto`, { alvo: f.tileId });
+        if (!f.assistindo) add('assistir', t('comando.assistir', { nome: f.nome }), { alvo: f.tileId });
+        else add('parar-assistir', t('comando.pararAssistir', { nome: f.nome }), { alvo: f.tileId });
+        if (!f.assistindo && !String(f.tileId).startsWith('cam-')) add('ver-junto', t('comando.verJunto', { nome: f.nome }), { alvo: f.tileId });
       }
-      if (!estado.transmitindo) add('transmitir', 'Transmitir tela');
+      if (!estado.transmitindo) add('transmitir', t('comando.transmitirTela'));
       else {
-        add('pausar', estado.pausado ? 'Retomar a transmissão' : 'Pausar a transmissão', { dica: 'Ctrl+Alt+P' });
-        add('trocar-fonte', 'Trocar fonte');
-        add('parar-transmitir', 'Parar de transmitir');
+        add('pausar', t(estado.pausado ? 'comando.retomarTransmissao' : 'comando.pausarTransmissao'), { dica: 'Ctrl+Alt+P' });
+        add('trocar-fonte', t('comando.trocarFonte'));
+        add('parar-transmitir', t('comando.pararTransmitir'));
       }
-      add('camera', estado.cameraLigada ? 'Desligar câmera' : 'Ligar câmera');
+      add('camera', t(estado.cameraLigada ? 'comando.desligarCamera' : 'comando.ligarCamera'));
       // Os tipos de sala sao exclusivos: nao ha comando que alterne entre Mesa e palco.
-      if (estado.soMesa) add('por-na-mesa', 'Pôr na Mesa…');
-      add('conversa', estado.conversaAberta ? 'Fechar a conversa' : 'Abrir a conversa', { dica: 'C' });
+      if (estado.soMesa) add('por-na-mesa', t('comando.porNaMesa'));
+      add('conversa', t(estado.conversaAberta ? 'comando.fecharConversa' : 'comando.abrirConversa'), { dica: 'C' });
       // O Modo teatro e o palco em tela cheia: na sala Mesa nao ha palco.
-      if (!estado.soMesa) add('teatro', 'Modo teatro', { dica: 'T' });
-      add('copiar-endereco', 'Copiar endereço da sala');
-      add('diagnostico', 'Diagnóstico');
-      add('configuracoes', 'Configurações');
-      add('sair', 'Sair da sala');
+      if (!estado.soMesa) add('teatro', t('comando.modoTeatro'), { dica: 'T' });
+      add('copiar-endereco', t('comando.copiarEnderecoSala'));
+      add('diagnostico', t('comando.diagnostico'));
+      add('configuracoes', t('comando.configuracoes'));
+      add('sair', t('comando.sairSala'));
     } else {
-      for (const s of estado.salas || []) add('entrar', `Entrar em ${s.nome}`, { alvo: s.indice });
-      add('criar-sala', 'Criar sala');
-      add('procurar', 'Procurar salas de novo');
-      add('configuracoes', 'Configurações');
+      for (const s of estado.salas || []) add('entrar', t('comando.entrarEm', { nome: s.nome }), { alvo: s.indice });
+      add('criar-sala', t('comando.criarSala'));
+      add('procurar', t('comando.procurarSalas'));
+      add('configuracoes', t('comando.configuracoes'));
     }
     return acoes;
   }

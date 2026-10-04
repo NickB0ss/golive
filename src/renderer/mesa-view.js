@@ -28,35 +28,48 @@
   const G = root.GoLive || {};
   const M = G.mesa;
   const V = G.mesaVista;
+  const { codigo, t, traduzirCodigo, traduzirResumo } = G.i18n;
 
+  // Chaves de traducao (as mesmas do catalogo); quem mostra passa por t().
   const GROUP_LABELS = {
-    assistir: 'Assistir e ouvir',
-    jogos: 'Jogos',
-    noite: 'Noite de jogo',
-    ferramentas: 'Ferramentas',
+    assistir: 'mesa.catalogo.grupo.assistir',
+    jogos: 'mesa.catalogo.grupo.jogos',
+    noite: 'mesa.catalogo.grupo.noite',
+    ferramentas: 'mesa.catalogo.grupo.ferramentas',
   };
   const GROUP_ORDER = ['assistir', 'jogos', 'noite', 'ferramentas'];
 
-  // Motivo de cada recusa do servidor, para o aviso curto. As que a vista
+  // Chave do motivo de cada recusa do servidor, para o aviso curto. As que a vista
   // resolve sozinha (overlap, out-of-world, held, not-found) nao estao aqui.
   const DENIED_TEXT = {
-    rate: 'Calma: muitas mudanças de uma vez.',
-    locked: 'Só o líder mexe na Mesa agora.',
-    'size-locked': 'O líder travou o tamanho das janelas.',
-    'leader-only': 'Só o líder da sala muda isso.',
-    full: 'A Mesa já tem 32 janelas.',
-    'no-space': 'Não há lugar livre na Mesa para esta janela.',
-    'too-small': 'A janela ficaria pequena demais.',
-    'too-big': 'A janela ficaria grande demais.',
-    'bad-rect': 'Não deu para pôr a janela ali.',
-    'unknown-type': 'Esta sala não conhece este tipo de janela.',
-    auto: 'Telas e câmeras entram na Mesa sozinhas.',
-    'no-act': 'Esta janela não tem ação.',
-    'state-too-big': 'A janela ficou cheia demais.',
-    invalid: 'Não deu para fazer isso agora.',
-    error: 'Não deu para fazer isso agora.',
-    'bad-request': 'Não deu para fazer isso agora.',
+    rate: 'mesa.por.rate',
+    locked: 'mesa.por.locked',
+    'size-locked': 'mesa.vista.recusa.tamanhoTravado',
+    'leader-only': 'mesa.vista.recusa.soLider',
+    full: 'mesa.por.full',
+    'no-space': 'mesa.por.noSpace',
+    'too-small': 'mesa.vista.recusa.pequena',
+    'too-big': 'mesa.vista.recusa.grande',
+    'bad-rect': 'mesa.vista.recusa.foraDoLugar',
+    'unknown-type': 'mesa.por.unknownType',
+    auto: 'mesa.vista.recusa.automatica',
+    'no-act': 'mesa.vista.recusa.semAcao',
+    'state-too-big': 'mesa.vista.recusa.cheia',
+    invalid: 'mesa.vista.recusa.agora',
+    error: 'mesa.vista.recusa.agora',
+    'bad-request': 'mesa.vista.recusa.agora',
   };
+
+  // Frases de aviso por tipo de janela: tela e camera dizem de quem sao; as demais, o titulo.
+  const FRASE_POS = {
+    tela: 'mesa.vista.poseuTela', camera: 'mesa.vista.poseuCamera',
+    janela: 'mesa.vista.poseuJanela', uma: 'mesa.vista.poseuUma',
+  };
+  const FRASE_TIROU = {
+    tela: 'mesa.vista.tirouTela', camera: 'mesa.vista.tirouCamera',
+    janela: 'mesa.vista.tirouJanela', uma: 'mesa.vista.tirouUma',
+  };
+  const FRASE_SAIU = { tela: 'mesa.vista.saiuTela', camera: 'mesa.vista.saiuCamera' };
 
   const ICON = {
     fs: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
@@ -293,24 +306,27 @@
       sec.className = 'mesa';
       sec.tabIndex = 0;
       sec.setAttribute('role', 'region');
-      sec.setAttribute('aria-label', 'Mesa da sala');
+      sec.setAttribute('aria-label', t('mesa.vista.regiao'));
       sec.setAttribute('aria-describedby', 'mesa-help');
       sec.innerHTML = `
-        <p id="mesa-help" class="sr-only">Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa as janelas que não são tela nem câmera.</p>
+        <p id="mesa-help" class="sr-only">${escapeHtml(t('mesa.vista.ajuda'))}</p>
         <div class="mesa-grid" aria-hidden="true"></div>
         <div class="mesa-world"><div class="mesa-edge" aria-hidden="true"></div></div>
         <div class="mesa-over" aria-hidden="true"></div>
-        <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>Abrindo a Mesa…</p>
-        <div class="mesa-people" role="group" aria-label="Quem está na Mesa"></div>
+        <p class="mesa-loading" role="status"><span class="spinner" aria-hidden="true"></span>${escapeHtml(t('mesa.vista.abrindo'))}</p>
+        <div class="mesa-people" role="group" aria-label="${escapeHtml(t('mesa.vista.quemNaMesa'))}"></div>
         <div class="mesa-nav">
-          <div id="mesa-map" class="mesa-map" hidden aria-label="Mapa da Mesa"></div>
-          <div class="mesa-zoom" role="group" aria-label="Aproximação">
-            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="out" aria-label="Afastar" title="Afastar (-)">${ICON.minus}</button>
+          <div id="mesa-map" class="mesa-map" hidden aria-label="${escapeHtml(t('mesa.vista.mapaDaMesa'))}"></div>
+          <div class="mesa-zoom" role="group" aria-label="${escapeHtml(t('mesa.vista.aproximacao'))}">
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="out" aria-label="${escapeHtml(t('mesa.vista.afastar'))}"
+              title="${escapeHtml(t('mesa.vista.afastarAtalho'))}">${ICON.minus}</button>
             <output class="mesa-zoom-val" aria-live="off">100%</output>
-            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="in" aria-label="Aproximar" title="Aproximar (+)">${ICON.plus}</button>
-            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="fit" title="Ver tudo (0)">Ver tudo</button>
-            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="map" title="Mapa"
-              aria-expanded="false" aria-controls="mesa-map">Mapa</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm btn--icon" data-zoom="in" aria-label="${escapeHtml(t('mesa.vista.aproximar'))}"
+              title="${escapeHtml(t('mesa.vista.aproximarAtalho'))}">${ICON.plus}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="fit"
+              title="${escapeHtml(t('mesa.vista.verTudoAtalho'))}">${escapeHtml(t('mesa.vista.verTudo'))}</button>
+            <button type="button" class="mesa-zoom-btn btn btn--quiet btn--sm" data-zoom="map" title="${escapeHtml(t('mesa.vista.mapa'))}"
+              aria-expanded="false" aria-controls="mesa-map">${escapeHtml(t('mesa.vista.mapa'))}</button>
           </div>
         </div>
         <p class="mesa-lock-note" hidden></p>
@@ -425,7 +441,7 @@
       S.mapEl.hidden = !S.mapOpen;
       S.mapEl.classList.toggle('is-open', S.mapOpen);
       S.mapButton.setAttribute('aria-expanded', String(S.mapOpen));
-      S.mapButton.setAttribute('aria-label', S.mapOpen ? 'Fechar mapa' : 'Abrir mapa');
+      S.mapButton.setAttribute('aria-label', t(S.mapOpen ? 'mesa.vista.fecharMapa' : 'mesa.vista.abrirMapa'));
       try {
         root.localStorage.setItem('golive.mesa.mapa', S.mapOpen ? 'aberto' : 'fechado');
       } catch (erro) {
@@ -459,7 +475,7 @@
       S.world.style.setProperty('--mesa-inv', String(Math.min(2.5, Math.max(1, 1 / v.z))));
       S.section.toggleAttribute('data-far', v.z < 0.6);
       for (const bar of S.world.querySelectorAll('.mesa-bar')) {
-        bar.title = v.z < 0.6 ? 'Clique duplo: tela cheia · botão direito: mais ações' : '';
+        bar.title = v.z < 0.6 ? t('mesa.vista.barraDica') : '';
       }
       const g = V.gridStyle(v);
       const st = S.gridBg.style;
@@ -675,7 +691,9 @@
             // Tela e camera entram sozinhas (a pessoa foi ao vivo): nao e
             // alguem "pondo" a janela.
             const auto = msg.win && isMedia(msg.win) && String(msg.win.state?.peerId) === String(msg.by);
-            announce(auto ? `${labelOf(msg.win)} entrou na Mesa` : `${deps.nameOf(msg.by)} pôs ${titleOf(msg.win)} na Mesa`, msg.by);
+            announce(auto
+              ? t('mesa.vista.entrouNaMesa', { janela: labelOf(msg.win) })
+              : fraseJanela(FRASE_POS, msg.win, msg.by), msg.by);
           }
           break;
         }
@@ -689,8 +707,8 @@
             const media = old.type === 'tela' || old.type === 'camera';
             // Quem parou de transmitir "perde a janela": nao e alguem
             // tirando da mesa, entao o aviso e outro.
-            if (media && String(old.state?.peerId) === String(msg.by)) announce(`${titleOf(old)} saiu da Mesa`, msg.by);
-            else announce(`${deps.nameOf(msg.by)} tirou ${titleOf(old)} da Mesa`, msg.by);
+            if (media && String(old.state?.peerId) === String(msg.by)) announce(fraseJanela(FRASE_SAIU, old, msg.by), msg.by);
+            else announce(fraseJanela(FRASE_TIROU, old, msg.by), msg.by);
           }
           break;
         }
@@ -725,7 +743,9 @@
           emitLocks();
           if (!mine) {
             const lo = S.state.mesa.leaderOnly;
-            announce(lo ? `${deps.nameOf(msg.by)} travou a Mesa: só o líder mexe` : 'A Mesa está liberada para todo mundo mexer', msg.by);
+            announce(lo
+              ? t('mesa.vista.travouMesa', { nome: deps.nameOf(msg.by) })
+              : t('mesa.vista.liberouMesa'), msg.by);
           }
           break;
         default:
@@ -774,7 +794,7 @@
           const rec = S.wins.get(id);
           if (rec) placeWin(rec);
         }
-        toast(by ? `${deps.nameOf(by)} está movendo esta janela` : 'Outra pessoa está movendo esta janela', by);
+        toast(by ? t('mesa.vista.movendoEstaJanela', { nome: deps.nameOf(by) }) : t('mesa.vista.alguemMovendo'), by);
         return;
       }
       if ((reason === 'overlap' || reason === 'out-of-world') && msg.fix && id && (msg.op === 'place')) {
@@ -795,7 +815,7 @@
         }
         if (id) S.local.delete(id);
         if (rec) placeWin(rec);
-        toast('Não coube ali: a janela voltou para onde estava.');
+        toast(t('mesa.vista.naoCoube'));
         return;
       }
       if ((reason === 'overlap' || reason === 'out-of-world') && msg.fix && msg.op === 'add') {
@@ -814,7 +834,7 @@
       }
       // Tela/camera nao fecham (nem ha botao): recusa 'media' fica sem aviso.
       if (reason === 'media') return;
-      toast(DENIED_TEXT[reason] || 'Não deu para fazer isso agora.');
+      toast(t(DENIED_TEXT[reason] || 'mesa.vista.recusa.agora'));
     }
 
     function onGrab(msg) {
@@ -906,8 +926,8 @@
     }
 
     function lockReason() {
-      if (!canEdit()) return 'Só o líder mexe na Mesa agora.';
-      if (!canResize()) return 'O líder travou o tamanho das janelas.';
+      if (!canEdit()) return t('mesa.por.locked');
+      if (!canResize()) return t('mesa.vista.recusa.tamanhoTravado');
       return null;
     }
 
@@ -953,21 +973,52 @@
       return win.type === 'tela' || win.type === 'camera';
     }
 
-    function titleOf(win) {
-      if (!win) return 'uma janela';
-      if (win.type === 'tela') return `a tela de ${deps.nameOf(win.state?.peerId)}`;
-      if (win.type === 'camera') return `a câmera de ${deps.nameOf(win.state?.peerId)}`;
-      return modOf(win.type)?.title || 'uma janela';
+    // Titulo do modulo (e uma chave de traducao); sem modulo, o titulo de reserva.
+    function tituloDe(type) {
+      const mod = modOf(type);
+      return mod ? traduzirCodigo(mod.title) : t('mesa.titulo.janela');
+    }
+
+    /** Aviso sobre `win` feito por `by` (ou so sobre a janela, nas frases de saida). */
+    function fraseJanela(frases, win, by) {
+      const nome = by == null ? '' : deps.nameOf(by);
+      if (win && (win.type === 'tela' || win.type === 'camera')) {
+        return t(frases[win.type], { nome, de: deps.nameOf(win.state?.peerId) });
+      }
+      if (!win || !modOf(win.type) || !frases.janela) return t(frases.uma, { nome });
+      return t(frases.janela, { nome, janela: tituloDe(win.type) });
     }
 
     function labelOf(win) {
-      if (win.type === 'tela') return `Tela de ${deps.nameOf(win.state?.peerId)}`;
-      if (win.type === 'camera') return `Câmera de ${deps.nameOf(win.state?.peerId)}`;
-      return modOf(win.type)?.title || 'Janela';
+      if (win.type === 'tela') return t('mesa.vista.telaDe', { nome: deps.nameOf(win.state?.peerId) });
+      if (win.type === 'camera') return t('mesa.vista.cameraDe', { nome: deps.nameOf(win.state?.peerId) });
+      return tituloDe(win.type);
     }
 
     function rectOf(win) {
       return S.local.get(win.id) || S.remote.get(win.id)?.rect || win;
+    }
+
+    // Modulos privados podem ocultar seu conteudo de outras pessoas. O
+    // cursor tambem e conteudo: nao sai enquanto esta sobre essa janela.
+    // Em tela cheia a janela nao ocupa o proprio retangulo do mundo, entao
+    // tambem vale o elemento debaixo do ponteiro (e qualquer privada em tela cheia).
+    function janelaPrivada(win) {
+      return !!win && modOf(win.type)?.isPrivate?.(win.state) === true;
+    }
+
+    function cursorSobreJanelaPrivada(point, alvo) {
+      const winEl = alvo?.closest?.('.mesa-win');
+      if (winEl && janelaPrivada(findWin(winEl.dataset.id))) return true;
+      return windows().some((win) => {
+        if (!janelaPrivada(win)) return false;
+        if (S.wins.get(win.id)?.el?.classList.contains('is-full')) return true;
+        const rect = rectOf(win);
+        return point.x >= rect.x
+          && point.y >= rect.y
+          && point.x <= rect.x + rect.w
+          && point.y <= rect.y + rect.h;
+      });
     }
 
     /** Casa o DOM com o estado: cria o que falta, tira o que saiu, poe cada
@@ -1015,15 +1066,18 @@
           <span class="mesa-type" aria-hidden="true">${escapeHtml(typeGlyph(win.type))}</span>
           <span class="mesa-bar-title"></span>
           <span class="mesa-bar-status"></span>
-          <span class="mesa-bar-turn tag tag--wire" hidden>Sua vez</span>
+          <span class="mesa-bar-turn tag tag--wire" hidden>${escapeHtml(t('mesa.jogo.suaVez'))}</span>
           <span class="mesa-moving" hidden></span>
           <span class="mesa-avatar node" data-size="16"></span>
-          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="menu" aria-label="Mais ações da janela"
-            title="Mais ações (Shift+F10)" aria-haspopup="menu">${ICON.more}</button>
-          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="full" aria-label="Tela cheia"
-            title="Tela cheia (F)">${ICON.fs}</button>
-          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="remove" aria-label="Tirar da Mesa"
-            title="Tirar da Mesa (Delete)">${ICON.x}</button>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="menu"
+            aria-label="${escapeHtml(t('mesa.vista.maisAcoes'))}"
+            title="${escapeHtml(t('mesa.vista.maisAcoesAtalho'))}" aria-haspopup="menu">${ICON.more}</button>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="full"
+            aria-label="${escapeHtml(t('mesa.vista.telaCheia'))}"
+            title="${escapeHtml(t('mesa.vista.telaCheiaAtalho'))}">${ICON.fs}</button>
+          <button type="button" class="mesa-bar-btn btn btn--quiet btn--sm btn--icon" data-act="remove"
+            aria-label="${escapeHtml(t('mesa.vista.tirarDaMesa'))}"
+            title="${escapeHtml(t('mesa.vista.tirarDaMesaAtalho'))}">${ICON.x}</button>
         </div>
         <div class="mesa-win-body"></div>
         <div class="mesa-resize" data-edge="l" aria-hidden="true"></div>
@@ -1086,7 +1140,7 @@
     function syncControls(rec, win) {
       const owner = win.owner != null ? String(win.owner) : null;
       const label = labelOf(win);
-      rec.el.setAttribute('aria-label', owner ? `${label}, posta por ${deps.nameOf(owner)}` : label);
+      rec.el.setAttribute('aria-label', owner ? t('mesa.vista.postaPor', { janela: label, nome: deps.nameOf(owner) }) : label);
       rec.el.querySelector('.mesa-bar-title').textContent = label;
       rec.el.querySelector('.mesa-bar').title = !canEdit() ? lockReason() || '' : '';
       const av = rec.el.querySelector('.mesa-avatar');
@@ -1095,7 +1149,7 @@
         av.dataset.key = avKey;
         av.innerHTML = owner ? avatarHtml(owner) : '';
         av.hidden = !owner;
-        av.title = owner ? `Pôs na Mesa: ${deps.nameOf(owner)}` : '';
+        av.title = owner ? t('mesa.vista.posNaMesa', { nome: deps.nameOf(owner) }) : '';
         if (owner) av.style.setProperty('--who', deps.colorFor(owner));
       }
       rec.el.querySelector('[data-act="remove"]').hidden = !canRemove(win);
@@ -1106,7 +1160,7 @@
         if (live && !pill) {
           pill = document.createElement('span');
           pill.className = 'mesa-live tag tag--live';
-          pill.textContent = 'AO VIVO';
+          pill.textContent = t('mesa.vista.aoVivo');
           liveSlot.append(pill);
         } else if (!live && pill) pill.remove();
         adoptTile(rec, win);
@@ -1268,11 +1322,12 @@
       const mod = modOf(win.type);
       let text = '';
       try {
-        text = typeof mod?.summary === 'function' ? String(mod.summary(win.state) ?? '') : '';
+        // O modulo devolve `{ chave, valores }`; texto puro (modulo ainda nao migrado) passa como esta.
+        text = typeof mod?.summary === 'function' ? traduzirResumo(mod.summary(win.state)) : '';
       } catch {
         text = '';
       }
-      rec.summaryEl.querySelector('.mesa-summary-title').textContent = mod?.title || 'Janela';
+      rec.summaryEl.querySelector('.mesa-summary-title').textContent = tituloDe(win.type);
       rec.summaryEl.querySelector('.mesa-summary-text').textContent = text;
     }
 
@@ -1287,14 +1342,14 @@
         validate(action) {
           const win = S && findWin(rec.id);
           const mod = win ? modOf(win.type) : null;
-          if (!mod || typeof mod.validate !== 'function') return 'janela sem ação';
+          if (!mod || typeof mod.validate !== 'function') return codigo('mesa.recusa.semAcao');
           // Janela secret: o cliente nao tem o estado inteiro; quem decide e
           // o servidor, e a interface usa o `me` que veio na view.
           if (mod.secret === true) return true;
           try {
             return mod.validate(win.state, action, { from: String(deps.me()), isLeader: deps.isLeader(), now: serverNow(), peers: deps.peers() });
           } catch {
-            return 'ação inválida';
+            return codigo('mesa.recusa.acaoInvalida');
           }
         },
         me: () => String(deps.me()),
@@ -1315,7 +1370,7 @@
           // por jogada viraria ruido com varias janelas de jogo.
           if (on && !antes) {
             S.liveEl.textContent = '';
-            S.liveEl.textContent = `Sua vez: ${labelOf(findWin(rec.id) || { type: rec.type })}`;
+            S.liveEl.textContent = t('mesa.vista.suaVez', { janela: labelOf(findWin(rec.id) || { type: rec.type }) });
           }
         },
         onDenied(fn) {
@@ -1333,6 +1388,16 @@
         sendAnnotate(op) {
           if (!S || !findWin(rec.id)) return false;
           return deps.send({ type: 'annotate', surface: `mesa:${rec.id}`, ...op });
+        },
+        sendAnnotateSyncAll(items) {
+          if (!S || !findWin(rec.id) || !Array.isArray(items)) return false;
+          const me = String(deps.me());
+          const destinos = (deps.viewers?.() || []).map(String).filter((id) => id !== me);
+          let enviado = false;
+          for (const to of destinos) {
+            if (deps.send({ type: 'annotate-sync', to, surface: `mesa:${rec.id}`, items })) enviado = true;
+          }
+          return enviado;
         },
       };
     }
@@ -1367,7 +1432,7 @@
       }
       if (rec.placeholder) {
         const pid = String(peerId ?? '');
-        const espera = win.type === 'tela' ? 'Esperando a tela chegar…' : 'Esperando a câmera chegar…';
+        const espera = t(win.type === 'tela' ? 'mesa.vista.esperandoTela' : 'mesa.vista.esperandoCamera');
         rec.placeholder.innerHTML = [
           `<span class="mesa-avatar mesa-wait-avatar node" data-size="56">${avatarHtml(pid)}</span>`,
           `<span class="mesa-wait-text">${escapeHtml(espera)}</span>`,
@@ -1400,12 +1465,12 @@
       const win = findWin(rec.id);
       if (!win || S.fullId) return;
       if (!canEdit()) {
-        toast('Só o líder mexe na Mesa agora.');
+        toast(t('mesa.por.locked'));
         return;
       }
       const held = holderOf(rec.id);
       if (held) {
-        toast(`${deps.nameOf(held)} está movendo esta janela`, held);
+        toast(t('mesa.vista.movendoEstaJanela', { nome: deps.nameOf(held) }), held);
         return;
       }
       e.preventDefault();
@@ -1421,12 +1486,12 @@
       const win = findWin(rec.id);
       if (!win || S.fullId) return;
       if (!canResize()) {
-        toast(lockReason() || 'Não dá para mudar o tamanho agora.');
+        toast(lockReason() || t('mesa.vista.naoMudaTamanho'));
         return;
       }
       const held = holderOf(rec.id);
       if (held) {
-        toast(`${deps.nameOf(held)} está movendo esta janela`, held);
+        toast(t('mesa.vista.movendoEstaJanela', { nome: deps.nameOf(held) }), held);
         return;
       }
       startDrag(e, rec, win, edge);
@@ -1532,7 +1597,7 @@
         S.local.delete(d.id);
         settle(d.rec);
         placeWin(d.rec);
-        if (!final && !cancelled) toast('Não há lugar livre ali.');
+        if (!final && !cancelled) toast(t('mesa.vista.semLugarAli'));
       }
       if (d.grabbed) deps.send({ type: 'mesa-release', id: d.id });
       scheduleMap();
@@ -1582,7 +1647,7 @@
       if (!by) rec.el.classList.remove('is-remote-drag');
       if (by) {
         rec.el.style.setProperty('--who', deps.colorFor(by));
-        chip.textContent = `${deps.nameOf(by)} está movendo`;
+        chip.textContent = t('mesa.vista.movendo', { nome: deps.nameOf(by) });
         chip.hidden = false;
       } else {
         rec.el.style.removeProperty('--who');
@@ -1652,16 +1717,16 @@
       e.preventDefault();
       e.stopPropagation();
       if (e.altKey ? !canResize() : !canEdit()) {
-        toast(lockReason() || 'Não dá para mexer nesta janela agora.');
+        toast(lockReason() || t('mesa.vista.naoMexer'));
         return;
       }
       const held = holderOf(rec.id);
       if (held) {
-        toast(`${deps.nameOf(held)} está movendo esta janela`, held);
+        toast(t('mesa.vista.movendoEstaJanela', { nome: deps.nameOf(held) }), held);
         return;
       }
       if (!V.fits(windows(), want, { ignoreId: rec.id })) {
-        toast(e.altKey ? 'Encostou em outra janela.' : 'Tem outra janela ali.');
+        toast(t(e.altKey ? 'mesa.vista.encostou' : 'mesa.vista.temOutra'));
         return;
       }
       S.local.set(rec.id, want);
@@ -1678,12 +1743,12 @@
       if (!win) return;
       if (isMedia(win)) return;
       if (!canRemove(win)) {
-        toast('Só o líder mexe na Mesa agora.');
+        toast(t('mesa.por.locked'));
         return;
       }
       const held = holderOf(id);
       if (held) {
-        toast(`${deps.nameOf(held)} está movendo esta janela`, held);
+        toast(t('mesa.vista.movendoEstaJanela', { nome: deps.nameOf(held) }), held);
         return;
       }
       deps.send({ type: 'mesa', op: 'remove', id });
@@ -1747,8 +1812,8 @@
     function setFullButton(rec, on) {
       const b = rec.el.querySelector('[data-act="full"]');
       b.innerHTML = on ? ICON.fsExit : ICON.fs;
-      b.setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
-      b.title = on ? 'Sair da tela cheia (F)' : 'Tela cheia (F)';
+      b.setAttribute('aria-label', t(on ? 'mesa.vista.sairTelaCheia' : 'mesa.vista.telaCheia'));
+      b.title = t(on ? 'mesa.vista.sairTelaCheiaAtalho' : 'mesa.vista.telaCheiaAtalho');
     }
 
     function onDoubleClick(e) {
@@ -1821,28 +1886,28 @@
         // botao direito do palco, que aqui e o menu da janela).
         const volume = isMedia(win) && deps.openTileMenu && String(win.state?.peerId) !== String(deps.me());
         m.innerHTML = [
-          row('Tela cheia', { act: 'full', kbd: 'F' }),
-          row('Centralizar na vista', { act: 'center' }),
-          volume ? row('Volume e silenciar…', { act: 'volume' }) : '',
+          row(t('mesa.vista.telaCheia'), { act: 'full', kbd: 'F' }),
+          row(t('mesa.vista.centralizar'), { act: 'center' }),
+          volume ? row(t('mesa.vista.volumeSilenciar'), { act: 'volume' }) : '',
           // Tela e camera nao fecham: sem "Tirar da Mesa" (nem o separador).
           isMedia(win) ? '' : '<hr class="mesa-menu-sep">',
-          isMedia(win) ? '' : row('Tirar da Mesa', {
+          isMedia(win) ? '' : row(t('mesa.vista.tirarDaMesa'), {
             act: 'remove',
             kbd: 'Del',
             danger: true,
             disabled: !removable,
-            reason: removable ? '' : 'Só o líder mexe na Mesa agora.',
+            reason: removable ? '' : t('mesa.por.locked'),
           }),
         ].join('');
       } else {
         const locked = !canEdit();
         m.innerHTML = [
-          row('Adicionar janela', { sub: true, disabled: locked, reason: locked ? 'Só o líder mexe na Mesa agora.' : '' }),
+          row(t('mesa.vista.adicionarJanela'), { sub: true, disabled: locked, reason: locked ? t('mesa.por.locked') : '' }),
           '<hr class="mesa-menu-sep">',
-          row('Ver tudo', { act: 'fit', kbd: '0' }),
+          row(t('mesa.vista.verTudo'), { act: 'fit', kbd: '0' }),
         ].join('');
       }
-      m.setAttribute('aria-label', winId ? 'Janela' : 'Mesa');
+      m.setAttribute('aria-label', t(winId ? 'mesa.titulo.janela' : 'mesa.vista.menuMesa'));
       placeMenu(m, x, y);
       wireMenu(m, null);
       const first = m.querySelector('.mesa-menu-row');
@@ -1887,7 +1952,7 @@
         const b = e.target.closest('.mesa-menu-row');
         if (!b) return;
         if (b.getAttribute('aria-disabled') === 'true') {
-          toast(b.title || 'Indisponível agora.');
+          toast(b.title || t('mesa.vista.indisponivelAgora'));
           return;
         }
         if (b.dataset.sub) {
@@ -1976,13 +2041,13 @@
       for (const g of GROUP_ORDER) {
         const list = mods.filter((m) => m.group === g);
         if (!list.length) continue;
-        out.push(`<p class="mesa-menu-head" role="presentation">${escapeHtml(GROUP_LABELS[g])}</p>`);
+        out.push(`<p class="mesa-menu-head" role="presentation">${escapeHtml(t(GROUP_LABELS[g]))}</p>`);
         for (const mod of list) {
-          const reason = locked ? 'Só o líder mexe na Mesa agora.' : full ? 'A Mesa já tem 32 janelas.' : '';
-          out.push(row(mod.title, { disabled: Boolean(reason), reason }).replace('<button ', `<button data-add="${escapeHtml(mod.type)}" `));
+          const reason = locked ? t('mesa.por.locked') : full ? t('mesa.por.full') : '';
+          out.push(row(traduzirCodigo(mod.title), { disabled: Boolean(reason), reason }).replace('<button ', `<button data-add="${escapeHtml(mod.type)}" `));
         }
       }
-      if (!out.length) out.push('<p class="mesa-menu-head" role="presentation">Nenhuma janela disponível</p>');
+      if (!out.length) out.push('<p class="mesa-menu-head" role="presentation">' + escapeHtml(t('mesa.vista.nenhumaJanela')) + '</p>');
       return out.join('');
     }
 
@@ -1994,7 +2059,7 @@
         mods: registry()?.addable() || [],
         catalogo: G.mesaCatalogo,
       };
-      panel.setAttribute('aria-label', 'Adicionar janela');
+      panel.setAttribute('aria-label', t('mesa.vista.adicionarJanela'));
       panel.setAttribute('role', 'dialog');
       panel.style.setProperty('--mesa-add-max-h', `${Math.max(160, menuFloor() - 16)}px`);
       if (!state.catalogo) {
@@ -2012,15 +2077,16 @@
     }
 
     function addPanelHtml(state) {
-      const tabs = [['tudo', 'Tudo'], ...GROUP_ORDER.map((g) => [g, GROUP_LABELS[g]])];
+      const tabs = [['tudo', t('mesa.vista.tudo')], ...GROUP_ORDER.map((g) => [g, t(GROUP_LABELS[g])])];
       const tabHtml = tabs.map(([group, label]) => `<button type="button" class="seg__opt" role="tab"
         data-add-group="${group}" aria-selected="${group === state.grupo}">${label}</button>`).join('');
       return `<section class="mesa-add-panel">
-        <header class="mesa-add-head"><h2>Adicionar janela</h2></header>
-        <input class="input" data-add-search type="search" autocomplete="off" placeholder="Buscar janelas"
-          aria-label="Buscar janelas">
+        <header class="mesa-add-head"><h2>${escapeHtml(t('mesa.vista.adicionarJanela'))}</h2></header>
+        <input class="input" data-add-search type="search" autocomplete="off"
+          placeholder="${escapeHtml(t('mesa.vista.buscarJanelas'))}" aria-label="${escapeHtml(t('mesa.vista.buscarJanelas'))}">
         <p id="mesa-add-aviso" class="mesa-add-aviso" role="alert" hidden></p>
-        <div class="seg mesa-add-tabs" role="tablist" aria-label="Grupo de janela">${tabHtml}</div>
+        <div class="seg mesa-add-tabs" role="tablist"
+          aria-label="${escapeHtml(t('mesa.vista.grupoDeJanela'))}">${tabHtml}</div>
         <div class="mesa-add-scroll" data-add-results></div>
       </section>`;
     }
@@ -2054,7 +2120,7 @@
         const card = e.target.closest('[data-add-card]');
         if (!card) return;
         if (card.getAttribute('aria-disabled') === 'true') {
-          toast(panel.querySelector('#mesa-add-aviso')?.textContent || 'Indisponivel agora.');
+          toast(panel.querySelector('#mesa-add-aviso')?.textContent || t('mesa.vista.indisponivelAgora'));
           return;
         }
         rememberRecent(card.dataset.addCard);
@@ -2102,14 +2168,14 @@
       const result = panel.querySelector('[data-add-results]');
       const catalogo = state.catalogo;
       const filtered = catalogo?.filtrar ? catalogo.filtrar(state.mods, state.termo, state.grupo) : state.mods;
-      const reason = !canEdit() ? 'Só o líder mexe na Mesa agora.'
-        : windows().length >= M.MAX_WINDOWS ? 'A Mesa já tem 32 janelas.' : '';
+      const reason = !canEdit() ? t('mesa.por.locked')
+        : windows().length >= M.MAX_WINDOWS ? t('mesa.por.full') : '';
       const aviso = panel.querySelector('#mesa-add-aviso');
       aviso.hidden = !reason;
       aviso.textContent = reason;
       if (!filtered.length) {
-        result.innerHTML = `<p class="mesa-add-empty">Nada com “${escapeHtml(state.termo)}”.
-          <button class="btn btn--quiet btn--sm" type="button" data-add-clear>Ver tudo</button></p>`;
+        result.innerHTML = `<p class="mesa-add-empty">${t('mesa.vista.nadaCom', { termo: escapeHtml(state.termo) })}
+          <button class="btn btn--quiet btn--sm" type="button" data-add-clear>${escapeHtml(t('mesa.vista.verTudo'))}</button></p>`;
         return;
       }
       const card = (mod) => {
@@ -2117,18 +2183,18 @@
         return `<button class="mesa-add-card" type="button" data-add-card="${escapeHtml(mod.type)}"
           ${reason ? `aria-disabled="true" aria-describedby="mesa-add-aviso"` : ''}>
           <svg aria-hidden="true"><use href="#${escapeHtml(meta.icone || 'i-app-window')}"></use></svg>
-          <span><b>${escapeHtml(mod.title)}</b><small>${escapeHtml(meta.desc || mod.title)}</small></span>
+          <span><b>${escapeHtml(traduzirCodigo(mod.title))}</b><small>${escapeHtml(meta.descricao ? t(meta.descricao) : traduzirCodigo(mod.title))}</small></span>
         </button>`;
       };
       const sections = [];
       if (!state.termo && state.grupo === 'tudo') {
         const recentes = state.recentes.map((type) => state.mods.find((mod) => mod.type === type)).filter(Boolean);
-        if (recentes.length) sections.push(`<h3>Recentes</h3><div class="mesa-add-grid">${recentes.map(card).join('')}</div>`);
+        if (recentes.length) sections.push(`<h3>${escapeHtml(t('mesa.vista.recentes'))}</h3><div class="mesa-add-grid">${recentes.map(card).join('')}</div>`);
       }
       if (state.grupo === 'tudo') {
         for (const group of GROUP_ORDER) {
           const list = filtered.filter((mod) => mod.group === group);
-          if (list.length) sections.push(`<h3>${GROUP_LABELS[group]}</h3><div class="mesa-add-grid">${list.map(card).join('')}</div>`);
+          if (list.length) sections.push(`<h3>${escapeHtml(t(GROUP_LABELS[group]))}</h3><div class="mesa-add-grid">${list.map(card).join('')}</div>`);
         }
       } else {
         sections.push(`<div class="mesa-add-grid">${filtered.map(card).join('')}</div>`);
@@ -2171,7 +2237,7 @@
       const mod = modOf(type);
       if (!mod) return;
       if (!canEdit()) {
-        toast('Só o líder mexe na Mesa agora.');
+        toast(t('mesa.por.locked'));
         return;
       }
       const { w, h } = mod.size;
@@ -2181,7 +2247,7 @@
       const want = at ? { x: at.x, y: at.y, w, h } : { x: c.x - w / 2, y: c.y - h / 2, w, h };
       const rect = M.nearestFree(windows(), want, { gap: M.GAP });
       if (!rect) {
-        toast('Não há lugar livre na Mesa para esta janela.');
+        toast(t('mesa.por.noSpace'));
         return;
       }
       S.focusAfterAdd = true;
@@ -2198,6 +2264,7 @@
       const p = worldPoint(e);
       const pt = M.normCursor(p);
       if (!pt) return;
+      if (cursorSobreJanelaPrivada(pt, e.target)) return;
       S.pendingCursor = pt;
       const t = now();
       if (M.shouldEmit(S.lastCursorAt, t)) {
@@ -2331,7 +2398,7 @@
       const restantes = ids.slice(5);
       peopleEl.innerHTML = visiveis.map((id) => {
         const nome = deps.nameOf(id);
-        const acao = `Ir até ${nome}`;
+        const acao = t('mesa.vista.irAte', { nome });
         return `<button type="button" class="mesa-person node" data-size="16" data-id="${escapeHtml(id)}"
           aria-label="${escapeHtml(acao)}" title="${escapeHtml(acao)}">${avatarHtml(id)}</button>`;
       }).join('');
@@ -2352,7 +2419,7 @@
     function goTo(id) {
       const p = S.pointers.active(Date.now(), 60000).find((c) => c.from === String(id));
       if (!p) {
-        toast(`${deps.nameOf(id)} ainda não mexeu o ponteiro na Mesa.`, id);
+        toast(t('mesa.vista.semPonteiro', { nome: deps.nameOf(id) }), id);
         return;
       }
       flyTo(V.centerOn(p.x, p.y, S.view.z, S.vw, S.vh, { safe: S.safe }));
@@ -2423,7 +2490,7 @@
       if (!S?.state) return false; // o retrato ainda nao chegou: nao da para dizer que a janela nao existe
       const win = mediaWin(kind, peerId);
       if (!win) {
-        toast(`${kind === 'camera' ? 'A câmera' : 'A tela'} de ${deps.nameOf(peerId)} não está na Mesa.`);
+        toast(t(kind === 'camera' ? 'mesa.vista.foraCamera' : 'mesa.vista.foraTela', { nome: deps.nameOf(peerId) }));
         return false;
       }
       S.viewTouched = true; // a pessoa escolheu para onde olhar: telas novas nao a tiram dali

@@ -32,13 +32,15 @@
 (function (root) {
   const C = (root.GoLive && root.GoLive.mesaCadeiras)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./cadeiras') : null);
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
 
   const N = 10;
   const CELLS = N * N;
   const FLEET = Object.freeze([5, 4, 3, 3, 2]);
-  const SHIP_NAMES = Object.freeze(['Porta-aviões', 'Encouraçado', 'Cruzador', 'Submarino', 'Destróier']);
   const TOTAL = FLEET.reduce((a, b) => a + b, 0);
-  const LABELS = ['Frota 1', 'Frota 2'];
+  // Rotulos de cor do resumo: codigos, a vista traduz.
+  const LABELS = ['mesa.batalha.frota1', 'mesa.batalha.frota2'];
   // Tempo de cada tiro. Estourou, o tiro sai sozinho numa casa sorteada.
   const TURN_MS = 60 * 1000;
 
@@ -167,57 +169,57 @@
 
   function validate(state, action, ctx) {
     return C.safe(() => {
-      if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+      if (!C.isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
       const from = C.fromOf(ctx);
-      if (!from) return 'Quem mandou?';
+      if (!from) return codigo('mesa.jogo.quemMandou');
       const eu = mySeat(state, ctx);
       switch (action.kind) {
         case 'sit':
-          if (action.seat !== 0 && action.seat !== 1) return 'Cadeira inválida';
-          if (eu >= 0) return 'Você já está sentado';
-          if (occupant(state, action.seat, ctx) !== null) return 'Cadeira ocupada';
+          if (action.seat !== 0 && action.seat !== 1) return codigo('mesa.cadeiras.invalida');
+          if (eu >= 0) return codigo('mesa.jogo.jaEstaSentado');
+          if (occupant(state, action.seat, ctx) !== null) return codigo('mesa.cadeiras.ocupada');
           return true;
         case 'stand':
-          return eu >= 0 ? true : 'Você não está sentado';
+          return eu >= 0 ? true : codigo('mesa.cadeiras.naoEstaSentado');
         case 'shuffle':
-          if (eu < 0) return 'Sente-se para jogar';
-          if (state.phase !== 'setup') return 'A partida já começou';
-          if (state.ready[eu]) return 'Você já disse que está pronto';
+          if (eu < 0) return codigo('mesa.jogo.senteSeParaJogar');
+          if (state.phase !== 'setup') return codigo('mesa.cadeiras.partidaComecou');
+          if (state.ready[eu]) return codigo('mesa.batalha.jaDisseProntoVoce');
           return true;
         case 'ready':
-          if (eu < 0) return 'Sente-se para jogar';
-          if (state.phase !== 'setup') return 'A partida já começou';
-          if (state.ready[eu]) return 'Você já está pronto';
-          if (!state.fleets[eu]) return 'Sorteie a sua frota';
+          if (eu < 0) return codigo('mesa.jogo.senteSeParaJogar');
+          if (state.phase !== 'setup') return codigo('mesa.cadeiras.partidaComecou');
+          if (state.ready[eu]) return codigo('mesa.batalha.jaEstaPronto');
+          if (!state.fleets[eu]) return codigo('mesa.batalha.sorteieFrota');
           return true;
         case 'fire': {
-          if (state.result) return 'A partida acabou';
-          if (eu < 0) return 'Sente-se para jogar';
-          if (state.phase !== 'play') return 'Esperando os dois ficarem prontos';
-          if (occupant(state, 1 - eu, ctx) === null) return 'Espere alguém sentar na outra cadeira';
-          if (state.turn !== eu) return 'Não é a sua vez';
+          if (state.result) return codigo('mesa.cadeiras.partidaAcabou');
+          if (eu < 0) return codigo('mesa.jogo.senteSeParaJogar');
+          if (state.phase !== 'play') return codigo('mesa.batalha.esperandoProntos');
+          if (occupant(state, 1 - eu, ctx) === null) return codigo('mesa.cadeiras.esperaOutra');
+          if (state.turn !== eu) return codigo('mesa.jogo.naoESuaVez');
           const cell = action.cell;
-          if (!Number.isInteger(cell) || cell < 0 || cell >= CELLS) return 'Casa inválida';
-          if (state.shots[1 - eu].includes(cell)) return 'Você já atirou aí';
+          if (!Number.isInteger(cell) || cell < 0 || cell >= CELLS) return codigo('mesa.batalha.casaInvalida');
+          if (state.shots[1 - eu].includes(cell)) return codigo('mesa.batalha.jaAtirou');
           return true;
         }
         case 'timeout':
           // O prazo e conferido pelo servidor, com a hora dele (contrato,
           // secao 8); aqui so se ha uma vez correndo.
-          if (state.result || state.phase !== 'play') return 'Nada correndo';
-          if (occupant(state, 0, ctx) === null || occupant(state, 1, ctx) === null) return 'Nada correndo';
+          if (state.result || state.phase !== 'play') return codigo('mesa.batalha.nadaCorrendo');
+          if (occupant(state, 0, ctx) === null || occupant(state, 1, ctx) === null) return codigo('mesa.batalha.nadaCorrendo');
           return true;
         case 'resign':
-          if (state.result) return 'A partida acabou';
-          if (eu < 0) return 'Só quem está sentado desiste';
-          if (state.phase !== 'play') return 'A partida ainda não começou';
+          if (state.result) return codigo('mesa.cadeiras.partidaAcabou');
+          if (eu < 0) return codigo('mesa.cadeiras.soSentadoDesiste');
+          if (state.phase !== 'play') return codigo('mesa.batalha.aindaNaoComecou');
           return true;
         case 'reset':
           return C.canReset(state, ctx);
         default:
-          return 'Ação desconhecida';
+          return codigo('mesa.jogo.acaoDesconhecida');
       }
-    }, 'Ação inválida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   /** So no servidor: sorte (frota, casa do tiro de tempo esgotado), hora e
@@ -440,18 +442,19 @@
   function summary(state, peers) {
     return C.safe(() => {
       const r = state.result;
-      if (r) return `${C.nameOf(state, r.winner, LABELS, peers)} venceu`;
+      if (r) return { chave: 'mesa.tabuleiro.venceu', valores: { nome: C.nameOf(state, r.winner, LABELS, peers) } };
       if (state.phase === 'setup') {
         const sentados = state.seats.filter((x) => x !== null).length;
-        return sentados === 2 ? 'Posicionando as frotas' : C.describePlaying(state, state.turn, LABELS, peers);
+        if (sentados === 2) return { chave: 'mesa.batalha.posicionando' };
+        return C.describePlaying(state, state.turn, LABELS, peers);
       }
       return C.describePlaying(state, state.turn, LABELS, peers);
-    }, 'Batalha naval');
+    }, { chave: 'mesa.titulo.batalha' });
   }
 
   const mod = {
     type: 'batalha',
-    title: 'Batalha naval',
+    title: 'mesa.titulo.batalha',
     group: 'jogos',
     size: { w: 720, h: 460, minW: 420, minH: 300, aspect: null },
     maxStateBytes: 4096,
@@ -468,7 +471,6 @@
     // Para os testes e a janela.
     N,
     FLEET,
-    SHIP_NAMES,
     TOTAL,
     TURN_MS,
     randomFleet,

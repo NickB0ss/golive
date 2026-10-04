@@ -4,6 +4,7 @@
 (function (root) {
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
+  const { t, formatarData, formatarHora, idiomaAtivo, maiuscula } = root.GoLive.i18n;
   const version = root.GoLive.version;
   const theme = root.GoLive.theme;
   const emoji = root.GoLive.emoji;
@@ -191,15 +192,15 @@
   // linha de resumo so aparece a nota da opcao escolhida, ao lado do numero
   // exato dela.
   const QUALITY_PRESET_NOTE = {
-    '720p30': 'o mais leve',
-    '1080p60': 'padrão',
+    '720p30': 'ui.qualidade.maisLeve',
+    '1080p60': 'ui.qualidade.padrao',
   };
 
   /** O servidor nomeia a sala padrao como 'sala de <host>'; na tela a
    * primeira letra vem maiuscula, como qualquer titulo. */
   function nomeDeSala(nome) {
     const s = String(nome || '');
-    return s.charAt(0).toLocaleUpperCase('pt-BR') + s.slice(1);
+    return maiuscula(s);
   }
 
   function escapeHtml(str) {
@@ -729,15 +730,15 @@
         });
         tile.appendChild(gate);
       }
-      const nome = opts.name || 'Alguém';
+      const nome = opts.name || t('ui.pessoa.alguem');
       const ehCamera = opts.kind === 'camera';
       // O mesmo estado do no no barramento: tela pausada nao diz "ao vivo".
       const pausada = !ehCamera && tilePaused.get(tileId)?.paused === true;
       const titulo = ehCamera ? escapeHtml(nome)
-        : `${escapeHtml(nome)} ${pausada ? 'pausou a tela' : 'está ao vivo'}`;
+        : t(pausada ? 'sala.pausouTela' : 'ui.tile.estaAoVivo', { nome: escapeHtml(nome) });
       const sub = ehCamera
-        ? 'A câmera só chega quando você pede.'
-        : 'A tela só chega quando você pede, e quem transmite economiza enquanto ninguém assiste.';
+        ? t('ui.tile.cameraSoChega')
+        : t('ui.tile.telaSoChega');
       const pessoaId = String(tileId).replace(/^cam-/, '');
       gate.innerHTML = `
         <span class="node" data-size="56" data-state="${pausada ? 'paused' : 'live'}" style="--who:${avatarColorFor(pessoaId)}">${avatarInnerHtml(pessoaId, nome, opts.avatar || null)}</span>
@@ -851,7 +852,7 @@
         <span class="tile__state-sub"></span>`;
       media.appendChild(veil);
     }
-    veil.querySelector('.tile__state-title').textContent = opts?.title || 'Transmissão pausada';
+    veil.querySelector('.tile__state-title').textContent = opts?.title || t('ui.tile.transmissaoPausada');
     veil.querySelector('.tile__state-sub').textContent = opts?.subtitle || '';
     tile.classList.add('is-paused');
   }
@@ -949,7 +950,7 @@
           <video class="tile__video" autoplay playsinline></video>
           <canvas class="tile__canvas"></canvas>
           <div class="tile__pops"></div>
-          <div class="draw-bar" role="toolbar" aria-label="Rabisco" hidden></div>
+          <div class="draw-bar" role="toolbar" aria-label="${t('ui.rabisco.barra')}" hidden></div>
           <div class="pip-strip"></div>
         </div>
         ${TILE_HUD_HTML}
@@ -1092,18 +1093,22 @@
     }
     const aoVivo = [...tileRegistry.entries()]
       .filter(([id, t]) => !id.startsWith('cam-') && id !== 'me' && t.kind !== 'camera')
-      .map(([id, t]) => ({ id, nome: t.displayName || t.label || 'Alguém' }));
+      .map(([id, t]) => ({ id, nome: t.displayName || t.label || t('ui.pessoa.alguem') }));
     const chave = aoVivo.map((p) => p.id).join(',');
     if (vazio && vazio.dataset.chave === chave) return;
     vazio?.remove();
     const nomes = aoVivo.map((p) => p.nome);
     const titulo = !aoVivo.length
-      ? 'Ninguém está transmitindo.'
-      : `${nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)} estão` : `${nomes[0]} está`} ao vivo.`;
+      ? t('ui.palco.nadaTransmitindo')
+      : t('ui.palco.pessoasAoVivo', {
+        // "Ana, Bia e Caio" com o "e" da lingua ativa.
+        pessoas: new Intl.ListFormat(idiomaAtivo(), { type: 'conjunction' }).format(nomes),
+        n: nomes.length,
+      });
     const acoes = aoVivo.length
       ? aoVivo.slice(0, 3).map((p) => `<button type="button" class="btn btn--secondary" data-assistir="${escapeHtml(p.id)}">
-          Assistir ${escapeHtml(p.nome)}</button>`).join('')
-      : '<button type="button" class="btn btn--secondary" data-transmitir>Transmitir tela</button>';
+          ${t('ui.tile.assistirPessoa', { nome: escapeHtml(p.nome) })}</button>`).join('')
+      : `<button type="button" class="btn btn--secondary" data-transmitir>${t('ui.tile.transmitirTela')}</button>`;
     gridEl.insertAdjacentHTML('beforeend', `
       <div class="stage-empty blank" data-chave="${escapeHtml(chave)}">
         <svg class="blank__art graph-art" viewBox="0 0 32 32" aria-hidden="true">
@@ -1114,8 +1119,8 @@
           </g>
         </svg>
         <p class="blank__title">${escapeHtml(titulo)}</p>
-        <p class="blank__text">${aoVivo.length ? 'Escolha quem assistir aqui ou nas fontes, embaixo.'
-    : 'Quando alguém transmitir, a tela aparece aqui embaixo.'}</p>
+        <p class="blank__text">${aoVivo.length ? t('ui.palco.escolhaQuem')
+    : t('ui.palco.quandoTransmitir')}</p>
         <div class="stage-empty__acoes">${acoes}</div>
       </div>`);
   }
@@ -1235,7 +1240,8 @@
   // Emojis de reacao: conteudo da lista fechada de reactions.js, nao icone
   // de UI -- por isso NAO entram em ANNOT_TOOLS (que e so SVG de ferramenta).
   const REACTION_EMOJI_LABEL = {
-    '👍': 'like', '😂': 'risada', '😮': 'surpresa', '🔥': 'fogo', '👏': 'palmas', '❤️': 'coração',
+    '👍': 'ui.reacao.like', '😂': 'ui.reacao.risada', '😮': 'ui.reacao.surpresa',
+    '🔥': 'ui.reacao.fogo', '👏': 'ui.reacao.palmas', '❤️': 'ui.reacao.coracao',
   };
 
   function annotSetSelf(id) {
@@ -1459,15 +1465,17 @@
     if (bolha) spawnReactionPop(tileId, bolha);
   }
 
-  function syncHudPermission(tileId, acao, permitido, sufixo) {
+  function syncHudPermission(tileId, acao, permitido) {
     const tile = document.getElementById(`tile-${tileId}`);
     const button = tile?.querySelector(`[data-acao="${acao}"]`);
     if (!button) return;
     // No proprio tile a permissao e sua: "Voce nao liberou" no seu HUD seria cobrar de voce mesmo. Sem
     // permissao, o botao some; nos tiles dos outros ele fica desabilitado e diz quem nao liberou (05 §3.3).
     const proprio = tileId === 'me' || tileId === 'cam-me';
-    const nome = tile.querySelector('.tile__name')?.textContent || 'Esta fonte';
-    const label = permitido ? (acao === 'rabiscar' ? 'Rabiscar' : 'Reagir') : `${nome} não liberou ${sufixo}.`;
+    const nome = tile.querySelector('.tile__name')?.textContent || t('ui.tile.estaFonte');
+    const label = permitido
+      ? t(acao === 'rabiscar' ? 'ui.tile.rabiscar' : 'ui.tile.reagir')
+      : t(acao === 'rabiscar' ? 'ui.tile.naoLiberouRabiscos' : 'ui.tile.naoLiberouReacoes', { nome });
     button.hidden = proprio && !permitido;
     button.disabled = !permitido;
     button.title = label;
@@ -1477,13 +1485,13 @@
   // Liberado = a superficie esta em annotSurfaces (setAnnotSurface apaga a entrada quando `allowed` cai). Nao e
   // `canDraw`: no proprio tile ele e false (o dono nao desenha) e o botao abre a barra de "apagar tudo".
   function syncAnnotButton(tileId) {
-    syncHudPermission(tileId, 'rabiscar', annotSurfaces.has(tileId), 'rabiscos');
+    syncHudPermission(tileId, 'rabiscar', annotSurfaces.has(tileId));
   }
 
   function syncReactionButton(tileId) {
     const tile = document.getElementById(`tile-${tileId}`);
     const isCamera = tile?.dataset.kind === 'camera';
-    syncHudPermission(tileId, 'reagir', isCamera || reactionSurfaces.get(tileId) === true, 'reações');
+    syncHudPermission(tileId, 'reagir', isCamera || reactionSurfaces.get(tileId) === true);
   }
 
   function setReactionSurface(tileId, { allowed = false } = {}) {
@@ -1520,8 +1528,10 @@
   function reactionBarButtonsHtml() {
     if (!reactions) return '';
     return reactions.REACTIONS.map((e) => {
-      const nome = REACTION_EMOJI_LABEL[e] || e;
-      return `<button type="button" class="react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
+      const chave = REACTION_EMOJI_LABEL[e];
+      const nome = chave ? t(chave) : e;
+      const label = t('ui.reacao.reagirCom', { nome });
+      return `<button type="button" class="react-btn" data-emoji="${e}" title="${label}" aria-label="${label}">${e}</button>`;
     }).join('');
   }
 
@@ -1595,26 +1605,26 @@
   // fica estreito (container query em shell.css); "opcional" sai depois. As
   // que somem continuam no menu ⋯ ou no duplo clique.
   const TILE_HUD_ACOES = [
-    ['rabiscar', 'Rabiscar', 'pen-line', 'data-hud-extra'],
-    ['reagir', 'Reagir', 'smile-plus', 'data-hud-extra'],
-    ['espiar', 'Espiar numa janela por cima', 'picture-in-picture-2', 'data-hud-extra'],
-    ['volume', 'Volume', 'volume-2', ''],
-    ['destacar', 'Destacar no palco', 'scan', 'data-hud-strip'],
-    ['tela-cheia', 'Tela cheia', 'maximize', 'data-hud-optional'],
-    ['menu', 'Mais opções', 'ellipsis', ''],
-    ['parar', 'Parar de assistir', 'x', 'hidden'],
+    ['rabiscar', 'ui.tile.rabiscar', 'pen-line', 'data-hud-extra'],
+    ['reagir', 'ui.tile.reagir', 'smile-plus', 'data-hud-extra'],
+    ['espiar', 'ui.tile.espiarJanela', 'picture-in-picture-2', 'data-hud-extra'],
+    ['volume', 'ui.tile.volume', 'volume-2', ''],
+    ['destacar', 'ui.tile.destacarPalco', 'scan', 'data-hud-strip'],
+    ['tela-cheia', 'ui.tile.telaCheia', 'maximize', 'data-hud-optional'],
+    ['menu', 'ui.tile.maisOpcoes', 'ellipsis', ''],
+    ['parar', 'ui.tile.pararAssistir', 'x', 'hidden'],
   ];
   const TILE_HUD_HTML = `
     <div class="tile__hud">
       <div class="tile__who">
         <span class="node" data-size="24"></span>
         <span class="tile__label"><span class="tile__name"></span><span class="tile__what"></span></span>
-        <span class="tile__live tag tag--live">AO VIVO</span>
+        <span class="tile__live tag tag--live">${t('ui.tile.aoVivo')}</span>
         <span class="tile__watchers"></span>
       </div>
       <div class="tile__actions">${TILE_HUD_ACOES.map(([acao, nome, icone, extra]) => `
-        <button class="btn btn--icon btn--sm" type="button" data-acao="${acao}" title="${nome}"
-                aria-label="${nome}" ${extra}><svg class="i i--sm"><use href="#i-${icone}" /></svg></button>`)
+        <button class="btn btn--icon btn--sm" type="button" data-acao="${acao}" title="${t(nome)}"
+                aria-label="${t(nome)}" ${extra}><svg class="i i--sm"><use href="#i-${icone}" /></svg></button>`)
     .join('')}
       </div>
     </div>`;
@@ -1633,8 +1643,8 @@
     if (kind === 'camera') {
       node.insertAdjacentHTML('beforeend', '<span class="node__mark"><svg class="i"><use href="#i-video" /></svg></span>');
     }
-    nameEl.textContent = name || 'Alguém';
-    whatEl.textContent = kind === 'camera' ? 'câmera' : '';
+    nameEl.textContent = name || t('ui.pessoa.alguem');
+    whatEl.textContent = kind === 'camera' ? t('ui.tile.camera') : '';
   }
 
   /** Mantem o nome da funcao antiga: renderWatchGate e o PiP chamam depois
@@ -1827,7 +1837,7 @@
 
     if (!info.canDraw) {
       bar.innerHTML = info.canClearAll
-        ? `<button type="button" class="btn btn--danger btn--sm annot-tool" data-act="clear-all" title="Apagar tudo que a sala rabiscou na sua tela" aria-label="Apagar tudo que a sala rabiscou na sua tela">${ANNOT_TOOLS.clear}<span>Apagar tudo</span></button>`
+        ? `<button type="button" class="btn btn--danger btn--sm annot-tool" data-act="clear-all" title="${t('ui.rabisco.apagarTudoDica')}" aria-label="${t('ui.rabisco.apagarTudoDica')}">${ANNOT_TOOLS.clear}<span>${t('ui.rabisco.apagarTudo')}</span></button>`
         : '';
       return;
     }
@@ -1840,18 +1850,18 @@
     bar.innerHTML = `
       <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool annot-toggle${desenhando ? ' active' : ''}" data-act="toggle"
               aria-pressed="${desenhando}"
-              title="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}"
-              aria-label="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}">${ANNOT_TOOLS.penOff}${ANNOT_TOOLS.penOn}</button>
+              title="${t(desenhando ? 'ui.rabisco.desativar' : 'ui.rabisco.ativar')}"
+              aria-label="${t(desenhando ? 'ui.rabisco.desativar' : 'ui.rabisco.ativar')}">${ANNOT_TOOLS.penOff}${ANNOT_TOOLS.penOn}</button>
       <span class="draw-bar__sep" aria-hidden="true"></span>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta" aria-label="Caneta"${travado}>${ANNOT_TOOLS.pen}</button>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever" aria-label="Escrever"${travado}>${ANNOT_TOOLS.text}</button>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="Laser" aria-label="Laser"${travado}>${ANNOT_TOOLS.laser}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="${t('ui.rabisco.caneta')}" aria-label="${t('ui.rabisco.caneta')}"${travado}>${ANNOT_TOOLS.pen}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="${t('ui.rabisco.escrever')}" aria-label="${t('ui.rabisco.escrever')}"${travado}>${ANNOT_TOOLS.text}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="${t('ui.rabisco.laser')}" aria-label="${t('ui.rabisco.laser')}"${travado}>${ANNOT_TOOLS.laser}</button>
       <span class="draw-bar__sep" aria-hidden="true"></span>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="undo" title="${t('ui.rabisco.desfazer')}" aria-label="${t('ui.rabisco.desfazer')}"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="clear-mine" title="${t('ui.rabisco.apagarMeus')}" aria-label="${t('ui.rabisco.apagarMeus')}"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
       <span class="draw-bar__sep" aria-hidden="true"></span>
       <input type="color" class="annot-ink" data-act="ink" value="${brushColor()}"
-             title="Cor do seu pincel" aria-label="Cor do seu pincel"${travado}>`;
+             title="${t('ui.rabisco.corPincel')}" aria-label="${t('ui.rabisco.corPincel')}"${travado}>`;
 
     // O par de icones do toggle segue a mesma regra do resto do app: classe
     // `.hidden`, nunca o atributo -- `hidden` nao esconde um <svg>.
@@ -2017,7 +2027,7 @@
     input.type = 'text';
     input.className = 'annot-text-input';
     input.maxLength = annotate.MAX_TEXT;
-    input.placeholder = 'escreva e dê Enter';
+    input.placeholder = t('ui.rabisco.placeholder');
     // Na janela da Mesa o tile esta dentro do mundo com zoom (transform no
     // conteiner): o retangulo da tela e o de layout vezes a escala, e o
     // campo e posicionado em px de layout. No palco a escala e 1. (Os pontos
@@ -2151,8 +2161,8 @@
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'pip-thumb-remove';
-    removeBtn.title = 'Remover miniatura';
-    removeBtn.textContent = '×';
+    removeBtn.title = t('ui.pip.removerMiniatura');
+    removeBtn.textContent = t('pagina.simboloFechar');
     removeBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       pipEscolhido = true;
@@ -2165,7 +2175,7 @@
 
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'pip-thumb-resize';
-    resizeHandle.title = 'Redimensionar';
+    resizeHandle.title = t('ui.pip.redimensionar');
     wrap.appendChild(resizeHandle);
 
     // Arrasto vs clique: clicar na miniatura troca o foco do fullscreen
@@ -2248,7 +2258,7 @@
     menu.style.top = `${rect.top}px`;
 
     if (!candidates.length) {
-      menu.innerHTML = '<div class="pip-picker-empty">Todo mundo já está junto.</div>';
+      menu.innerHTML = `<div class="pip-picker-empty">${t('ui.pip.todosJuntos')}</div>`;
     } else {
       for (const [id, entry] of candidates) {
         const item = document.createElement('button');
@@ -2290,8 +2300,8 @@
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'pip-add-btn';
-    addBtn.innerHTML = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>Ver junto';
-    addBtn.setAttribute('aria-label', 'Ver outra fonte junto, em miniatura');
+    addBtn.innerHTML = `<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>${t('ui.tile.verJunto')}`;
+    addBtn.setAttribute('aria-label', t('ui.pip.verOutraFonte'));
     addBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       openPipPicker(addBtn, id);
@@ -2324,7 +2334,7 @@
     const point = anchor ? null : { x, y };
     const state = getOrCreateAudioState(id);
     const entry = tileRegistry.get(id);
-    const nome = entry?.displayName || entry?.label || 'esta tela';
+    const nome = entry?.displayName || entry?.label || t('ui.tile.estaTela');
     const kind = entry?.kind || (String(id).startsWith('cam-') ? 'camera' : 'screen');
 
     // Parar (ou voltar) de assistir. Camera e opt-out: sem estado
@@ -2340,23 +2350,23 @@
       watchItem = '';
     } else if (isCam) {
       watchItem = watched
-        ? '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta câmera</button>'
-        : '<button type="button" class="tile-menu-watch" data-watch="only">Assistir câmera</button>';
+        ? `<button type="button" class="tile-menu-watch" data-watch="remove">${t('ui.tile.pararAssistirCamera')}</button>`
+        : `<button type="button" class="tile-menu-watch" data-watch="only">${t('ui.tile.assistirCamera')}</button>`;
     } else if (watched && ws && !mesa) {
       // Na Mesa quem decide se a tela chega e a janela estar a vista
       // (mesa-view `wants`): "parar de assistir" ali nao faria nada.
-      watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
+      watchItem = `<button type="button" class="tile-menu-watch" data-watch="remove">${t('ui.tile.pararAssistirTela')}</button>`;
     }
     const items = tileMenu.menuItems({ id, kind, watched, mesa, parte });
     const qualidadeBloqueada = items.includes('qualidade')
       && root.GoLive.tetoRecebido.bloqueado(`${id}:screen`);
     const spyItem = items.includes('espiar')
-      ? '<button type="button" role="menuitem" class="menu__item tile-menu-spy">Espiar em janela</button>'
+      ? `<button type="button" role="menuitem" class="menu__item tile-menu-spy">${t('ui.tile.espiarJanela')}</button>`
       : '';
     const qualityItem = items.includes('qualidade')
       ? `<button type="button" role="menuitem" class="menu__item tile-menu-quality"
           aria-haspopup="menu" aria-expanded="false">
-          Qualidade que você recebe <span class="menu__hint">›</span>
+          ${t('ui.tile.qualidadeRecebida')} <span class="menu__hint">›</span>
         </button>`
       : '';
     const pararItem = watchItem
@@ -2364,30 +2374,30 @@
       : '';
     const abrirGrupoVer = spyItem
       ? '<div class="menu__sep" role="separator"></div>'
-        + '<div class="menu__group" role="group" aria-label="Ver">'
+        + `<div class="menu__group" role="group" aria-label="${t('ui.tile.ver')}">`
       : '';
     const abrirGrupoQualidade = qualityItem
       ? '<div class="menu__sep" role="separator"></div>'
-        + '<div class="menu__group" role="group" aria-label="Qualidade">'
+        + `<div class="menu__group" role="group" aria-label="${t('ui.qualidade.titulo')}">`
       : '';
     const abrirGrupoAssistir = pararItem
       ? '<div class="menu__sep" role="separator"></div>'
-        + '<div class="menu__group" role="group" aria-label="Assistir">'
+        + `<div class="menu__group" role="group" aria-label="${t('ui.tile.assistir')}">`
       : '';
 
     const audioGroup = items.includes('volume')
-      ? `<div class="menu__group" role="group" aria-label="Som">
+      ? `<div class="menu__group" role="group" aria-label="${t('ui.som')}">
           <label class="menu__volume">
-            <span class="menu__volume-head"><span>Volume</span>
+            <span class="menu__volume-head"><span>${t('ui.tile.volume')}</span>
               <b class="tile-menu-volume-label tx-data">${Math.round(state.volume * 100)}%</b>
             </span>
-            <input type="range" class="range" min="0" max="200" step="1" aria-label="Volume"
+            <input type="range" class="range" min="0" max="200" step="1" aria-label="${t('ui.tile.volume')}"
               value="${Math.round(state.volume * 100)}" style="--pct:${Math.round(state.volume * 50)}%" />
           </label>
           <label class="menu__item menu__item--check">
             <input type="checkbox" role="menuitemcheckbox" class="sr-only tile-menu-mute"
               aria-checked="${isMuted(id)}" ${isMuted(id) ? 'checked' : ''} />
-            Silenciar <span class="menu__hint">M</span>
+            ${t('ui.tile.silenciar')} <span class="menu__hint">M</span>
           </label>
         </div>`
       : '';
@@ -2452,13 +2462,13 @@
       submenu.innerHTML = `
         <div class="menu__label">
           <button type="button" role="menuitem" class="menu__item tile-menu-back">
-            <span aria-hidden="true">‹</span> Qualidade que você recebe
+            <span aria-hidden="true">‹</span> ${t('ui.tile.qualidadeRecebida')}
           </button>
         </div>
-        <div class="menu__group" role="group" aria-label="Qualidade que você recebe">
+        <div class="menu__group" role="group" aria-label="${t('ui.tile.qualidadeRecebida')}">
           ${opcoesHtml}
         </div>
-        ${bloqueado ? '<p class="menu__note">Você repassa esta tela para outras pessoas</p>' : ''}`;
+        ${bloqueado ? `<p class="menu__note">${t('ui.tile.repassaTela')}</p>` : ''}`;
       menu.querySelector('.tile-menu-quality').setAttribute('aria-expanded', 'true');
       popoverControl.openSubmenu({
         content: submenu,
@@ -2545,13 +2555,13 @@
     const people = lobbyRoom.peopleForRoom(room);
     const avatars = people.avatars.map(() => '<span class="node" data-size="16" data-state="present" aria-hidden="true"></span>');
     const extra = people.extra ? `<span class="cluster__more">+${people.extra}</span>` : '';
-    const label = room.peers === 1 ? '1 pessoa na sala' : `${room.peers || 0} pessoas na sala`;
+    const label = t('ui.sala.pessoas', { n: room.peers || 0 });
 
     return `<span class="cluster" aria-label="${label}"><span class="cluster__nodes">${avatars.join('')}</span>${extra}</span>`;
   }
 
   function emptyRoomsHint() {
-    return networkEmptyHint || 'Crie uma sala ou peça o endereço a quem criou e entre por ele.';
+    return networkEmptyHint || t('ui.sala.semSalasDica');
   }
 
   function renderEmptyRooms(listEl) {
@@ -2565,7 +2575,7 @@
           <circle cx="24" cy="16" r="3.75" stroke-dasharray="1.5 1.5" />
         </g>
       </svg>
-      <p class="blank__title">${networkEmptyHint ? 'Nenhuma rede encontrada' : 'Nenhuma sala na sua rede ainda'}</p>
+      <p class="blank__title">${networkEmptyHint ? t('ui.sala.semRede') : t('ui.sala.semSalas')}</p>
       <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>`;
     // Sem botoes aqui: "Criar sala" e "Procurar de novo" ja estao logo acima, no topo e no cabecalho da lista.
     listEl.appendChild(empty);
@@ -2581,22 +2591,22 @@
     // Curta na linha (a frase completa fica na dica): quem precisa agir.
     if (incompatible) {
       const quem = version.compare(appVersionAtual, room.version) === 1
-        ? 'quem criou precisa atualizar'
-        : 'atualize o seu GoLive';
-      return escapeHtml(`Versão ${room.version} — ${quem}`);
+        ? t('ui.sala.criadorAtualizar')
+        : t('ui.sala.atualizeGoLive');
+      return escapeHtml(t('ui.sala.versaoIncompativel', { versao: room.version, quem }));
     }
     const parts = [];
     if (room.protected) parts.push('<svg class="i i--sm"><use href="#i-lock" /></svg>PIN');
     // Sala sem Mesa: o beacon avisa antes do clique (sem icone novo).
-    if (room.mesa === false) parts.push('<span>Só transmissões</span>');
+    if (room.mesa === false) parts.push(`<span>${t('ui.sala.soTransmissoes')}</span>`);
     return parts.join('');
   }
 
   /** Coluna da acao: "Entrar", "Conectando…" na sala escolhida, nada quando nao da para entrar. */
   function roomGoHtml({ isActive, onCooldown, incompatible }) {
-    if (isActive) return '<span class="room-row__go"><span class="spinner" aria-hidden="true"></span>Conectando…</span>';
+    if (isActive) return `<span class="room-row__go"><span class="spinner" aria-hidden="true"></span>${t('ui.sala.conectando')}</span>`;
     if (onCooldown || incompatible) return '<span></span>';
-    return '<span class="room-row__go">Entrar <svg class="i i--sm"><use href="#i-chevron-right" /></svg></span>';
+    return `<span class="room-row__go">${t('pagina.entrar')} <svg class="i i--sm"><use href="#i-chevron-right" /></svg></span>`;
   }
 
   function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown, appVersion }) {
@@ -2615,7 +2625,7 @@
       // pessoa conectar e voltar com um erro. Beacon sem versao (release
       // antiga anunciando) nao e marcado -- a recusa vem do servidor.
       const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
-      const name = nomeDeSala(room.name || room.hostName || 'sala');
+      const name = nomeDeSala(room.name || room.hostName || t('ui.sala.nomePadrao'));
       const li = document.createElement('button');
       li.type = 'button';
       li.className = 'room-row';
@@ -2631,7 +2641,7 @@
       // sem o campo, a coluna fica vazia em vez de afirmar um "—" falso.
       li.innerHTML = `
         ${renderRoomAvatars(room)}
-        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)} · ${room.peers === 1 ? '1 pessoa' : `${room.peers || 0} pessoas`}</span></span>
+        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)} · ${t('ui.sala.pessoas', { n: room.peers || 0 })}</span></span>
         <span class="room-row__meta${incompatible ? ' tx-warn' : ''}" title="${escapeHtml(versionNote)}">${roomMetaHtml(room, incompatible, appVersion)}</span>
         ${roomGoHtml({ isActive, onCooldown, incompatible })}`;
 
@@ -2639,7 +2649,7 @@
       if (isActive || onCooldown || incompatible || outraEntrando) {
         li.disabled = true;
       } else {
-        li.setAttribute('aria-label', `Entrar em ${name}`);
+        li.setAttribute('aria-label', t('ui.sala.entrarEm', { nome: name }));
         li.addEventListener('click', () => onSelect(room));
       }
 
@@ -2660,7 +2670,8 @@
 
   // ---------- Lobby: endereco desta maquina na rede ----------
 
-  const NET_LABELS = { radmin: 'Radmin VPN', tailscale: 'Tailscale', lan: 'Rede local' };
+  // Marcas ficam como sao em toda lingua; so a rede local e a generica se traduzem.
+  const NET_MARCAS = { radmin: 'Radmin VPN', tailscale: 'Tailscale' };
 
   /** `info` e o { address, kind } do IPC network:address, ou null. Tres
    * estados: rede virtual (verde), so LAN (amarelo), nada (cinza). */
@@ -2676,9 +2687,9 @@
     // Tres barras: verde com rede virtual, atencao so com LAN, apagadas sem
     // rede. Vermelho nunca: ele e so "ao vivo".
     if (!info) {
-      networkEmptyHint = 'Ligue o Radmin ou o Tailscale e procure de novo.';
+      networkEmptyHint = t('ui.rede.ligueVpn');
       dot.dataset.level = 'none';
-      kindEl.textContent = 'Sem rede';
+      kindEl.textContent = t('ui.rede.semRede');
       addrEl.textContent = '';
       if (copy) copy.hidden = true;
       if (homeNet) homeNet.textContent = '';
@@ -2686,13 +2697,14 @@
       return;
     }
     dot.dataset.level = info.kind === 'lan' ? 'warn' : 'ok';
-    kindEl.textContent = `${NET_LABELS[info.kind] || 'Rede'} ·`;
+    const rede = NET_MARCAS[info.kind] || t(info.kind === 'lan' ? 'ui.rede.local' : 'ui.rede.rede');
+    kindEl.textContent = `${rede} ·`;
     addrEl.textContent = info.address;
     addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
     if (copy) copy.hidden = false;
     if (homeNet) {
       homeNet.textContent = info.kind === 'lan'
-        ? '— amigos de fora precisam do Radmin VPN ou do Tailscale.'
+        ? t('ui.rede.amigosFora')
         : '';
     }
     updateEmptyRoomsHint();
@@ -2713,7 +2725,7 @@
   const roomPinInputEl = $('in-room-pin');
   const roomPinRandomEl = $('btn-room-pin-random');
   const ROOM_PIN_LENGTH = 6;
-  const ROOM_PIN_ERROR = 'O PIN precisa ter 6 dígitos.';
+  const ROOM_PIN_ERROR = t('ui.sala.pinInvalido');
 
   /** Marca a opcao escolhida do tipo de sala. Radiogroup: so a marcada entra
    * na ordem de Tab (tabindex 0); a outra e alcancada pelas setas. */
@@ -2795,7 +2807,7 @@
     btnCreateCancelEl.disabled = busy;
     btnCreateConfirmEl.classList.toggle('busy', busy);
     btnCreateConfirmEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
-    btnCreateConfirmEl.querySelector('.btn-label').textContent = busy ? 'Criando sala…' : 'Criar';
+    btnCreateConfirmEl.querySelector('.btn-label').textContent = busy ? t('ui.sala.criando') : t('pagina.criar');
     $('chk-protect-room').disabled = busy;
     $('chk-advertise-room').disabled = busy;
     $('in-room-name').disabled = busy;
@@ -2887,7 +2899,7 @@
     btnJoinCancelEl.disabled = busy;
     btnConnectEl.classList.toggle('busy', busy);
     btnConnectEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
-    btnConnectEl.querySelector('.btn-label').textContent = busy ? 'Entrando…' : 'Entrar';
+    btnConnectEl.querySelector('.btn-label').textContent = busy ? t('ui.sala.entrando') : t('pagina.entrar');
     $('in-server').disabled = busy;
     $('in-pin').disabled = busy;
   }
@@ -2895,7 +2907,9 @@
   function openJoinRoom({ onConnect, address, showPinField = false, roomName = '' }) {
     $('setup-error').textContent = '';
     // Veio da lista: o titulo diz em qual sala se esta entrando.
-    $('dialog-join-room-title').textContent = roomName ? `Entrar em ${nomeDeSala(roomName)}` : 'Entrar na sala';
+    $('dialog-join-room-title').textContent = roomName
+      ? t('ui.sala.entrarEm', { nome: nomeDeSala(roomName) })
+      : t('pagina.entrarSala');
     $('in-server').value = address || '';
     $('in-pin').value = '';
     $('join-pin-field').classList.toggle('hidden', !showPinField);
@@ -2932,7 +2946,7 @@
     const pinVisible = !$('join-pin-field').classList.contains('hidden');
     const pinDigits = $('in-pin').value.replace(/\D/g, '');
     if (pinVisible && pinDigits.length !== 6) {
-      $('setup-error').textContent = 'Informe um PIN de 6 dígitos.';
+      $('setup-error').textContent = t('ui.sala.informePin');
       return;
     }
     const handler = onJoinConnect;
@@ -3030,13 +3044,13 @@
     memberMenuEl.classList.remove('hidden', 'in-modal');
     memberMenuEl.removeAttribute('role');
     memberMenuEl.innerHTML = `
-      ${canAdd ? '<button class="menu__item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
-      ${live ? `<button class="menu__item menu__item--warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</button>` : ''}
-      ${targetIsOwner ? '' : `<button class="menu__item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</button>`}
+      ${canAdd ? `<button class="menu__item" type="button" role="menuitem" data-watch="add">${t('ui.tile.verJunto')}</button>` : ''}
+      ${live ? `<button class="menu__item menu__item--warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} ${t('ui.moderacao.pararTransmissao')}</button>` : ''}
+      ${targetIsOwner ? '' : `<button class="menu__item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} ${t('ui.dialogo.passar')}</button>`}
       ${live || !targetIsOwner ? '<div class="menu__sep"></div>' : ''}
-      <button class="menu__item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</button>
-      <button class="menu__item menu__item--danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</button>
-      <div class="menu__note">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
+      <button class="menu__item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} ${t('ui.moderacao.expulsarSala')}</button>
+      <button class="menu__item menu__item--danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} ${t('ui.dialogo.banir')}</button>
+      <div class="menu__note">${t('ui.moderacao.aviso')}</div>
     `;
     if (!canModerate) {
       const moderacao = memberMenuEl.querySelectorAll(
@@ -3107,16 +3121,16 @@
     const linhaEstado = [estado, extras].filter(Boolean).join(' · ');
     const menuHtml = showMenu
       ? `<button class="btn btn--quiet btn--icon btn--sm member-menu-btn" type="button"
-           aria-label="Opções de ${escapeHtml(name)}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>`
+           aria-label="${t('ui.presenca.opcoes', { nome: escapeHtml(name) })}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>`
       : '';
     const estadoHtml = linhaEstado
       ? `<span class="person__state${strugglingTag ? ' tx-warn' : ''}">${escapeHtml(linhaEstado)}</span>`
       : '';
     li.innerHTML = `
       <span class="node" data-size="24" data-state="${noEstado}" style="--who:${avatarColorFor(String(id))}"
-            title="${isOwner ? 'Líder da sala' : ''}">${avatarInnerHtml(String(id), name, avatar)}${coroa}</span>
+            title="${isOwner ? t('ui.presenca.lider') : ''}">${avatarInnerHtml(String(id), name, avatar)}${coroa}</span>
       <span class="person__text">
-        <span class="person__name" title="${escapeHtml(name)}">${escapeHtml(name)}${isSelf ? ' <span class="tx-3">(você)</span>' : ''}</span>
+        <span class="person__name" title="${escapeHtml(name)}">${escapeHtml(name)}${isSelf ? ` <span class="tx-3">(${t('pagina.voce').toLowerCase()})</span>` : ''}</span>
         ${estadoHtml}
       </span>
       <span class="person__actions">${menuHtml}</span>
@@ -3125,7 +3139,7 @@
       const assistir = document.createElement('button');
       assistir.type = 'button';
       assistir.className = 'btn btn--quiet btn--sm';
-      assistir.textContent = 'Assistir';
+      assistir.textContent = t('ui.tile.assistir');
       assistir.addEventListener('click', (event) => {
         event.stopPropagation();
         onWatch?.(id, event.shiftKey && canAdd ? 'add' : 'only');
@@ -3161,7 +3175,7 @@
     });
     if (showMenu) {
       const menuBtn = li.querySelector('.member-menu-btn');
-      menuBtn.title = 'Opções';
+      menuBtn.title = t('ui.tile.maisOpcoes');
       menuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openMemberMenu(e.currentTarget, id, name, {
@@ -3205,7 +3219,7 @@
     const { ownerId, myId, onModerate, healthTags, mesaPeople } = opcoes;
     peerListEl.innerHTML = '';
     if (!self && !peers.size) {
-      peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
+      peerListEl.innerHTML = `<li class="muted">${t('ui.presenca.semSala')}</li>`;
       return;
     }
     const iAmOwner = ownerId != null && myId != null && ownerId === myId;
@@ -3216,13 +3230,13 @@
     $('presence-count').textContent = String(presenceCount);
     renderBus(pessoas);
     renderMeNode(self);
-    $('btn-room-presence')?.setAttribute('aria-label', `Pessoas: ${presenceCount}`);
+    $('btn-room-presence')?.setAttribute('aria-label', t('ui.presenca.pessoas', { n: presenceCount }));
     // A mesma leitura dos nos: camera ligada ou tela pausada tambem estao no ar.
     const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas.map((pessoa) => ({
       ...pessoa, noAr: ['live', 'paused'].includes(estadoNo(pessoa)),
     })));
     // O cabecalho ja diz "Pessoas": so quem esta ao vivo ganha rotulo; o resto vem depois de uma linha.
-    for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], [null, secoes.naSala]]) {
+    for (const [titulo, lista] of [[t('ui.tile.aoVivo'), secoes.aoVivo], [null, secoes.naSala]]) {
       if (!lista.length) continue;
       if (titulo) {
         const secao = document.createElement('li');
@@ -3283,8 +3297,8 @@
     const watched = tileWatch.get(tileId)?.watched !== false && tileRegistry.has(tileId);
     const paused = Boolean(tilePaused.get(tileId)?.paused);
     const poor = ['atencao', 'ruim'].includes(tileHealth.get(tileId));
-    const nome = pessoa.name || 'Alguém';
-    const sub = paused ? 'Tela pausada' : (kind === 'camera' ? 'Câmera' : (tileRegistry.has(tileId) ? 'Tela' : 'Conectando…'));
+    const nome = pessoa.name || t('ui.pessoa.alguem');
+    const sub = paused ? t('ui.fonte.telaPausada') : (kind === 'camera' ? t('pagina.camera') : (tileRegistry.has(tileId) ? t('pagina.telas') : t('ui.sala.conectando')));
     const quem = (tileWatchers.get(tileId) || []).slice(0, 4)
       .map((w) => `<span class="node" data-size="16" data-state="watching" title="${escapeHtml(w.name || '')}"></span>`)
       .join('');
@@ -3292,10 +3306,10 @@
     const noPalco = root.GoLive.roomUi.controlesDoPalco(root.GoLive.salaVista?.temMesa?.() === true);
     const podeJunto = noPalco && kind === 'screen' && !watched && tileWatch.get(tileId)?.opts?.canAdd;
     const podeLargar = noPalco && watched && (kind === 'camera' || tileWatch.get(tileId)?.opts?.canDrop);
-    const estado = [paused ? 'pausada' : 'ao vivo', watched ? 'você está assistindo' : ''].filter(Boolean).join(', ');
+    const estado = [paused ? t('ui.fonte.pausada') : t('pagina.aoVivo'), watched ? t('ui.fonte.voceAssistindo') : ''].filter(Boolean).join(', ');
     return `
       <div class="src" role="option" tabindex="-1" data-tile="${escapeHtml(tileId)}" data-kind="${kind}"
-           aria-selected="${watched}" aria-label="${escapeHtml(`${nome}, ${sub}: ${estado}`)}"
+           aria-selected="${watched}" aria-label="${escapeHtml(t('ui.fonte.estado', { nome, fonte: sub, estado }))}"
            ${watched ? 'data-watching' : ''} ${paused ? 'data-paused' : ''} ${poor ? 'data-poor' : ''}>
         <span class="node" data-size="32" data-state="${paused ? 'paused' : 'live'}"
               style="--who:${avatarColorFor(String(pessoa.id))}">${avatarInnerHtml(String(pessoa.id), nome, pessoa.avatar)}${
@@ -3303,9 +3317,11 @@
         <span class="src__text"><span class="src__name">${escapeHtml(nome)}</span><span class="src__sub">${sub}</span></span>
         <span class="cluster__nodes" aria-hidden="true">${quem}</span>
         ${podeJunto ? `<button class="btn btn--quiet btn--icon btn--sm src__add" type="button" tabindex="-1"
-          data-intent="add" aria-label="Ver ${escapeHtml(nome)} junto" title="Ver junto"><svg class="i i--sm"><use href="#i-plus" /></svg></button>` : ''}
+          data-intent="add" aria-label="${t('ui.fonte.verJunto', { nome: escapeHtml(nome) })}"
+          title="${t('ui.fonte.verJuntoTitulo')}"><svg class="i i--sm"><use href="#i-plus" /></svg></button>` : ''}
         ${podeLargar ? `<button class="btn btn--quiet btn--icon btn--sm src__drop" type="button" tabindex="-1"
-          data-intent="remove" aria-label="Parar de assistir ${escapeHtml(nome)}" title="Parar de assistir"><svg class="i i--sm"><use href="#i-x" /></svg></button>` : ''}
+          data-intent="remove" aria-label="${t('ui.fonte.pararAssistir', { nome: escapeHtml(nome) })}"
+          title="${t('ui.fonte.pararAssistirTitulo')}"><svg class="i i--sm"><use href="#i-x" /></svg></button>` : ''}
       </div>`;
   }
 
@@ -3408,8 +3424,9 @@
       const vendo = (tileWatchers.get('me') || []).length;
       // Quem transmite precisa saber se alguem esta do outro lado, inclusive
       // quando ninguem esta.
-      sub.textContent = pausado ? 'Tela pausada'
-        : [nomeFonteAoVivo || 'Ao vivo', vendo ? `${vendo} assistindo` : 'ninguém assistindo'].join(' · ');
+      sub.textContent = pausado ? t('ui.fonte.telaPausada')
+        : [nomeFonteAoVivo || t('ui.tile.aoVivo'), vendo ? t('ui.fonte.assistindo', { n: vendo })
+          : t('ui.fonte.niguemAssistindo')].join(' · ');
       sub.title = vendo ? (tileWatchers.get('me') || []).map((w) => w.name).filter(Boolean).join(', ') : '';
       sub.classList.toggle('tx-live', pausado);
     }
@@ -3426,9 +3443,9 @@
     // Ao vivo e nao assistido: o botao Assistir ja diz o estado, e na coluna
     // de 232 px o texto a mais espremia o nome ate uma letra.
     if (pessoa.live && !assistido && !pessoa.isSelf) return '';
-    if (pessoa.live && assistido && !pessoa.isSelf) return 'você assiste';
-    if (tileRegistry.has(`cam-${pessoa.id}`)) return 'câmera';
-    if (mesaPeople?.has(String(pessoa.id))) return 'na Mesa';
+    if (pessoa.live && assistido && !pessoa.isSelf) return t('ui.fonte.voceAssiste');
+    if (tileRegistry.has(`cam-${pessoa.id}`)) return t('ui.tile.camera');
+    if (mesaPeople?.has(String(pessoa.id))) return t('ui.fonte.naMesa');
     return '';
   }
 
@@ -3453,7 +3470,7 @@
       li.innerHTML = `
         <span class="node" data-size="24" style="--who:${avatarColorFor(String(entry.key))}">${avatarInnerHtml(String(entry.key), entry.name, null)}</span>
         <span class="person__text"><span class="person__name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span></span>
-        <span class="person__actions"><button class="btn btn--secondary btn--sm banned-readmit" type="button">Readmitir</button></span>
+        <span class="person__actions"><button class="btn btn--secondary btn--sm banned-readmit" type="button">${t('ui.moderacao.readmitir')}</button></span>
       `;
       li.querySelector('.banned-readmit').addEventListener('click', () => onUnban?.(entry.key));
       bannedListEl.appendChild(li);
@@ -3471,12 +3488,12 @@
   let onChatPut = null; // "Pôr na Mesa" de um link do YouTube ou de uma imagem
 
   const SYSTEM_LABELS = {
-    join: (actor) => `${actor} entrou`,
-    leave: (actor) => `${actor} saiu`,
-    'stop-share': (actor, target) => `${actor} parou a transmissão de ${target}`,
-    kick: (actor, target) => `${actor} expulsou ${target}`,
-    ban: (actor, target) => `${actor} baniu ${target}`,
-    unban: (actor, target) => `${actor} readmitiu ${target}`,
+    join: (actor) => t('ui.chat.entrou', { nome: actor }),
+    leave: (actor) => t('ui.chat.saiu', { nome: actor }),
+    'stop-share': (actor, target) => t('ui.chat.parou', { nome: actor, alvo: target }),
+    kick: (actor, target) => t('ui.chat.expulsou', { nome: actor, alvo: target }),
+    ban: (actor, target) => t('ui.chat.baniu', { nome: actor, alvo: target }),
+    unban: (actor, target) => t('ui.chat.readmitiu', { nome: actor, alvo: target }),
   };
   const SYSTEM_TONE = { 'stop-share': 'warn', kick: 'danger', ban: 'danger' };
   // Icone da linha de evento: entrar, sair e moderacao.
@@ -3485,7 +3502,7 @@
   };
 
   function formatTime(ts) {
-    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return formatarHora(ts);
   }
 
   let lastChatDayKey = null;
@@ -3501,9 +3518,9 @@
     const d = new Date(ts);
     const hoje = new Date();
     const ontem = new Date(hoje.getTime() - 86400000);
-    if (dayKey(ts) === dayKey(hoje.getTime())) return 'Hoje';
-    if (dayKey(ts) === dayKey(ontem.getTime())) return 'Ontem';
-    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+    if (dayKey(ts) === dayKey(hoje.getTime())) return t('ui.chat.hoje');
+    if (dayKey(ts) === dayKey(ontem.getTime())) return t('ui.chat.ontem');
+    return formatarData(d.getTime());
   }
 
   function appendDaySeparatorIfNeeded(ts) {
@@ -3519,14 +3536,14 @@
 
   // Entradas e saidas seguidas viram uma linha so ("Bia, Leo e Caio entraram"):
   // quando a sala enche, onze linhas de "entrou" empurravam a conversa pra fora.
-  const SYSTEM_PLURAL = { join: 'entraram', leave: 'saíram' };
+  const SYSTEM_PLURAL = { join: 'ui.chat.entraram', leave: 'ui.chat.sairam' };
   const JUNTAR_JANELA_MS = 5 * 60 * 1000;
   let grupoSistema = null; // { event, actors, el, ts }
 
   function juntarNomes(nomes) {
     if (nomes.length <= 1) return nomes[0] || '';
-    if (nomes.length > 4) return `${nomes.slice(0, 3).join(', ')} e mais ${nomes.length - 3}`;
-    return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
+    if (nomes.length > 4) return t('ui.chat.eMais', { nomes: nomes.slice(0, 3).join(', '), n: nomes.length - 3 });
+    return t('ui.chat.e', { nomes: nomes.slice(0, -1).join(', '), nome: nomes[nomes.length - 1] });
   }
 
   function appendSystemLine(entry) {
@@ -3534,7 +3551,7 @@
     if (SYSTEM_PLURAL[entry.event] && g && g.event === entry.event && g.el === chatMessagesEl.lastElementChild
         && Math.abs((entry.ts || 0) - g.ts) < JUNTAR_JANELA_MS) {
       if (!g.actors.includes(entry.actor)) g.actors.push(entry.actor);
-      const texto = g.actors.length > 1 ? `${juntarNomes(g.actors)} ${SYSTEM_PLURAL[entry.event]}`
+      const texto = g.actors.length > 1 ? t(SYSTEM_PLURAL[entry.event], { nomes: juntarNomes(g.actors) })
         : SYSTEM_LABELS[entry.event](entry.actor);
       g.el.querySelector('span').textContent = texto;
       g.el.title = g.actors.join(', ');
@@ -3564,7 +3581,7 @@
     if (!chatmedia.isImageDataUrl(entry.image)) return '';
     const box = chatmedia.thumbBox(entry.w, entry.h);
     const dims = box ? ` style="width:${box.w}px;height:${box.h}px"` : '';
-    return `<button class="msg__img" type="button" title="Ver em tela cheia"${dims}><img src="${escapeHtml(entry.image)}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
+    return `<button class="msg__img" type="button" title="${t('ui.chat.verTelaCheia')}"${dims}><img src="${escapeHtml(entry.image)}" alt="${t('ui.chat.imagemPor', { nome: escapeHtml(entry.name) })}" /></button>`;
   }
 
   const PUT_ICON = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>';
@@ -3578,9 +3595,9 @@
     const L = root.GoLive.mesaMidiaLinks;
     const lib = root.GoLive.chatImagensLib;
     const links = lib && L ? lib.youtubeLinks(entry.text, L.parseYouTube) : [];
-    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na Mesa"${links.length > 1 ? ` aria-label="Pôr na Mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na Mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
+    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="${t('ui.chat.porVideoMesa')}"${links.length > 1 ? ` aria-label="${t('ui.chat.porVideoMesaN', { n: i + 1 })}"` : ''}>${PUT_ICON}<span>${t('ui.chat.porMesa')}${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
     if (chatmedia.isImageDataUrl(entry.image) && lib?.isMsgId(entry.id)) {
-      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="Pôr esta imagem na Mesa">${PUT_ICON}<span>Pôr na Mesa</span></button>`);
+      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="${t('ui.chat.porImagemMesa')}">${PUT_ICON}<span>${t('ui.chat.porMesa')}</span></button>`);
     }
     return out.length ? `<span class="msg__put">${out.join('')}</span>` : '';
   }
@@ -3716,7 +3733,7 @@
     if (!chatPeekEl || $('app')?.dataset.conv !== 'peek') return;
     const item = novaBolhaEspiar();
     const cor = avatarColorFor(String(entry.from));
-    const texto = entry.text || (entry.image ? 'mandou uma imagem' : '');
+    const texto = entry.text || (entry.image ? t('ui.chat.mandouImagem') : '');
     item.innerHTML = `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>`
       + `<span class="peek__text"><b class="peek__who" style="--who:${cor}">${escapeHtml(entry.name)}</b>${escapeHtml(texto)}</span>`;
     chatPeekEl.appendChild(item);
@@ -3732,7 +3749,7 @@
     chatPeekEl.replaceChildren();
     if (!recentesConversa.length) {
       const aviso = novaBolhaEspiar('peek__msg--aviso');
-      aviso.innerHTML = '<span class="peek__text">Espiando: mensagens novas aparecem aqui.</span>';
+      aviso.innerHTML = `<span class="peek__text">${t('ui.chat.espiandoVazio')}</span>`;
       chatPeekEl.appendChild(aviso);
       return;
     }
@@ -3904,8 +3921,8 @@
   function initEmojiPanel(deps) {
     emojiDeps = { getEmojiRecents: () => [], onEmojiUsed: () => {}, ...deps };
     emojiTabsEl.innerHTML = [
-      { id: 'recentes', icon: '🕐', label: 'Recentes' },
-      ...emoji.GROUPS.map((g) => ({ id: g.id, icon: g.icon, label: g.label })),
+      { id: 'recentes', icon: '🕐', label: t('emoji.grupo.recentes') },
+      ...emoji.GROUPS.map((g) => ({ id: g.id, icon: g.icon, label: t(g.label) })),
     ]
       .map((t) => `<button type="button" class="emoji__tab" data-group="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}">${t.icon}</button>`)
       .join('');
@@ -3937,10 +3954,10 @@
     let vazio = '';
     if (query) {
       chars = emoji.search(query);
-      vazio = 'nenhum emoji com esse nome';
+      vazio = t('ui.emoji.nenhum');
     } else if (emojiGroup === 'recentes') {
       chars = emoji.loadRecents(emojiDeps.getEmojiRecents());
-      vazio = 'os que você usar aparecem aqui';
+      vazio = t('ui.emoji.vazio');
     } else {
       chars = (emoji.GROUPS.find((g) => g.id === emojiGroup)?.items || []).map(([c]) => c);
     }
@@ -4176,7 +4193,7 @@
 
   async function startSettingsCameraPreview(deviceId) {
     stopSettingsCameraPreview();
-    notaDaPrevia('Abrindo a câmera…');
+    notaDaPrevia(t('ui.config.abrindoCamera'));
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: deviceId ? { deviceId: { exact: deviceId } } : true,
@@ -4195,8 +4212,8 @@
     } catch (err) {
       // Permissao negada, camera ocupada por outro app ou nenhuma camera: a
       // previa diz o que houve em vez de ficar um retangulo preto mudo.
-      notaDaPrevia(err?.name === 'NotFoundError' ? 'Nenhuma câmera encontrada.'
-        : 'A câmera não abriu. Veja se outro app está usando ou escolha outro dispositivo.');
+      notaDaPrevia(err?.name === 'NotFoundError' ? t('ui.config.nenhumaCamera')
+        : t('ui.config.cameraNaoAbriu'));
     }
   }
 
@@ -4244,7 +4261,7 @@
     // Virgula: a linha inteira e em portugues, e "2.5 Mbps" no meio dela
     // era o unico numero do app com ponto decimal.
     const texto = screenMbps.toFixed(1).replace(/\.0$/, '').replace('.', ',');
-    return `≈${texto} Mbps por pessoa assistindo enquanto você estiver transmitindo`;
+    return t('ui.compartilhar.bandaPorPessoa', { mbps: texto });
   }
 
   /** Linha de resumo do seletor de qualidade: o custo exato da combinacao
@@ -4312,7 +4329,7 @@
     return `
       <button type="button" class="theme-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
         ${amostraTema(preset.surfaces, preset.act)}
-        <span class="theme-card__label">${escapeHtml(preset.label)}</span>
+        <span class="theme-card__label">${escapeHtml(t(preset.labelKey))}</span>
       </button>`;
   }
 
@@ -4329,7 +4346,7 @@
     const host = $('my-themes');
     if (!host) return;
     if (!myThemes.length) {
-      host.innerHTML = '<p class="field__help">Nenhum tema salvo ainda.</p>';
+      host.innerHTML = `<p class="field__help">${t('ui.tema.nenhumSalvo')}</p>`;
       return;
     }
     host.innerHTML = myThemes.map((t) => {
@@ -4343,7 +4360,7 @@
             <span class="theme-card__label">${escapeHtml(t.name)}</span>
           </button>
           <button class="btn btn--quiet btn--icon btn--sm my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
-                  title="Opções de ${escapeHtml(t.name)}" aria-label="Opções de ${escapeHtml(t.name)}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>
+                  title="${t('ui.tema.opcoes', { nome: escapeHtml(t.name) })}" aria-label="${t('ui.tema.opcoes', { nome: escapeHtml(t.name) })}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>
         </div>`;
     }).join('');
   }
@@ -4391,9 +4408,9 @@
     const t = myThemes.find((x) => x.id === id);
     if (!t) return;
     const itens = [
-      { rotulo: 'Renomear', acao: () => {
+      { rotulo: t('ui.tema.renomear'), acao: () => {
         openText({
-          title: 'Renomear tema',
+          title: t('ui.tema.renomearTitulo'),
           value: t.name,
           onAccept: (nome) => {
             t.name = themeName(nome);
@@ -4402,12 +4419,12 @@
           },
         });
       } },
-      { rotulo: 'Copiar código', acao: () => copiarCodigoDoTema(t, anchorEl) },
-      { rotulo: 'Apagar', tom: 'danger', acao: () => {
+      { rotulo: t('ui.tema.copiarCodigo'), acao: () => copiarCodigoDoTema(t, anchorEl) },
+      { rotulo: t('ui.tema.apagar'), tom: 'danger', acao: () => {
         openConfirm({
-          title: 'Apagar tema',
-          text: `"${t.name}" some da lista. Quem já tem o código continua podendo usar.`,
-          confirmLabel: 'Apagar',
+          title: t('ui.tema.apagarTitulo'),
+          text: t('ui.tema.apagarAviso', { nome: t.name }),
+          confirmLabel: t('ui.tema.apagar'),
           onConfirm: () => {
             myThemes = myThemes.filter((x) => x.id !== id);
             onThemesChange?.(myThemes);
@@ -4427,7 +4444,7 @@
     void navigator.clipboard.writeText(codigo).then(() => {
       anchorEl.classList.add('copied-flash');
       const status = $('theme-code-status');
-      if (status) status.textContent = 'Código copiado.';
+      if (status) status.textContent = t('ui.tema.codigoCopiado');
       setTimeout(() => anchorEl.classList.remove('copied-flash'), 1200);
     }).catch(() => {});
   }
@@ -4481,7 +4498,7 @@
       const fixBtn = document.createElement('button');
       fixBtn.type = 'button';
       fixBtn.className = 'btn btn--secondary btn--sm theme-warning-fix';
-      fixBtn.textContent = `usar ${result.nearestAct}`;
+      fixBtn.textContent = t('ui.tema.usarCor', { cor: result.nearestAct });
       fixBtn.addEventListener('click', () => {
         $('theme-act').value = result.nearestAct;
         applyCustomThemeFromControls(deps, opcoes);
@@ -4518,64 +4535,78 @@
       <div class="settings__block">
         <div class="settings__profile">
           <button id="settings-profile-avatar" class="settings__avatar" type="button"
-            title="Trocar a foto" aria-label="Trocar a foto de perfil">
+            title="${t('ui.config.trocarFoto')}" aria-label="${t('ui.config.trocarFotoPerfil')}">
             <span class="node" data-size="56">
               <img id="settings-profile-avatar-img" class="hidden" alt="" />
               <span id="settings-profile-avatar-fallback"></span>
             </span>
-            <span class="tx-meta">Trocar foto</span>
+            <span class="tx-meta">${t('ui.config.trocarFoto')}</span>
           </button>
           <input id="settings-profile-avatar-input" type="file" accept="image/*" class="hidden" />
           <div class="field">
-            <label class="field__label" for="settings-profile-name">Seu nome</label>
-            <input id="settings-profile-name" class="input" type="text" placeholder="Como te chamam no grupo"
+            <label class="field__label" for="settings-profile-name">${t('ui.config.seuNome')}</label>
+            <input id="settings-profile-name" class="input" type="text" placeholder="${t('ui.config.nomeGrupo')}"
               spellcheck="false" maxlength="32" />
-            <p class="field__help">Aparece para quem está na sala a partir da próxima entrada.</p>
+            <p class="field__help">${t('ui.config.nomeAjuda')}</p>
           </div>
         </div>
       </div>`;
 
     settingsPanes.appearance.innerHTML = `
       <div class="settings__block">
-        <h3 class="settings__h">Tema</h3>
+        <h3 class="settings__h">${t('config.idioma.titulo')}</h3>
+        <div class="field">
+          <label class="field__label" for="settings-language">${t('config.idioma.rotulo')}</label>
+          <select id="settings-language" class="input">
+            <option value="auto">${t('config.idioma.auto')}</option>
+            <option value="pt-BR">Português</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+          <p id="settings-language-note" class="field__help" role="status"></p>
+        </div>
+      </div>
+
+      <div class="settings__block">
+        <h3 class="settings__h">${t('ui.config.tema')}</h3>
         <div id="theme-presets" class="theme-grid"></div>
       </div>
 
       <div class="settings__block">
-        <h3 class="settings__h">Personalizar</h3>
+        <h3 class="settings__h">${t('ui.config.personalizar')}</h3>
         <div class="field">
-          <label class="field__label" for="theme-act">Cor de ação</label>
-          <p class="field__help">Botão principal e seleção. Tem de passar no contraste com o fundo.</p>
+          <label class="field__label" for="theme-act">${t('ui.config.corAcao')}</label>
+          <p class="field__help">${t('ui.config.corAcaoAjuda')}</p>
           <input id="theme-act" class="settings__color" type="color" value="#EDEDF2" aria-describedby="theme-warning" />
         </div>
         <div class="field">
-          <label class="field__label" for="theme-temp">Temperatura das superfícies</label>
+          <label class="field__label" for="theme-temp">${t('ui.config.temperatura')}</label>
           <input id="theme-temp" class="range" type="range" min="0" max="100" value="50" />
         </div>
         <div class="field">
-          <label class="field__label" for="theme-level">Claridade das superfícies</label>
+          <label class="field__label" for="theme-level">${t('ui.config.claridade')}</label>
           <input id="theme-level" class="range" type="range" min="0" max="100" value="20" />
         </div>
         <p id="theme-warning" class="field__error" role="alert"></p>
         <div class="settings__actions">
-          <button id="btn-theme-reset" type="button" class="btn btn--quiet btn--sm">Voltar ao padrão</button>
+          <button id="btn-theme-reset" type="button" class="btn btn--quiet btn--sm">${t('ui.config.voltarPadrao')}</button>
         </div>
       </div>
 
       <div class="settings__block">
-        <h3 class="settings__h">Meus temas</h3>
-        <p class="field__help">Guarde a combinação que você montou e mande o código para quem quiser usar igual.</p>
+        <h3 class="settings__h">${t('ui.config.meusTemas')}</h3>
+        <p class="field__help">${t('ui.config.temasAjuda')}</p>
         <div id="my-themes" class="theme-grid"></div>
         <div class="settings__actions">
-          <button id="btn-theme-save" type="button" class="btn btn--secondary btn--sm">Salvar tema atual</button>
-          <p id="theme-save-hint" class="field__help hidden">Mexa na temperatura ou na claridade para montar um tema seu.</p>
+          <button id="btn-theme-save" type="button" class="btn btn--secondary btn--sm">${t('ui.config.salvarTema')}</button>
+          <p id="theme-save-hint" class="field__help hidden">${t('ui.config.salvarTemaAjuda')}</p>
         </div>
         <div class="field">
-          <label class="field__label" for="theme-code-input">Usar um código</label>
+          <label class="field__label" for="theme-code-input">${t('ui.config.usarCodigo')}</label>
           <div class="combo">
             <input id="theme-code-input" class="input input--mono" type="text" placeholder="GL-XXXX-XXXX-XXXX"
               spellcheck="false" autocomplete="off" />
-            <button id="btn-theme-code-use" type="button" class="btn btn--secondary" disabled>Salvar como…</button>
+            <button id="btn-theme-code-use" type="button" class="btn btn--secondary" disabled>${t('ui.config.salvarComo')}</button>
           </div>
           <p id="theme-code-status" class="field__help" role="status"></p>
         </div>
@@ -4583,51 +4614,50 @@
 
     settingsPanes.voice.innerHTML = `
       <div class="settings__block">
-        <h3 class="settings__h">Câmera</h3>
+        <h3 class="settings__h">${t('ui.config.camera')}</h3>
         <div class="field">
-          <label class="field__label" for="settings-camera-device">Dispositivo</label>
+          <label class="field__label" for="settings-camera-device">${t('ui.config.dispositivo')}</label>
           <select id="settings-camera-device" class="input"></select>
         </div>
         <div class="settings__preview">
           <video id="settings-camera-preview" autoplay playsinline muted></video>
-          <p id="settings-camera-note" class="settings__preview-note">Abrindo a câmera…</p>
+          <p id="settings-camera-note" class="settings__preview-note">${t('ui.config.abrindoCamera')}</p>
         </div>
       </div>
       <div class="settings__block">
-        <h3 class="settings__h">Sons e avisos</h3>
+        <h3 class="settings__h">${t('ui.config.sonsAvisos')}</h3>
         <label class="opt">
-          <span class="opt__text"><span class="opt__title">Sons do app</span>
-            <span class="opt__desc">Entrada, saída, conversa, transmissão começando e moderação.</span></span>
+          <span class="opt__text"><span class="opt__title">${t('ui.config.sonsApp')}</span>
+            <span class="opt__desc">${t('ui.config.sonsAppAjuda')}</span></span>
           <input id="settings-sounds" class="switch" type="checkbox" />
         </label>
         <label class="opt">
-          <span class="opt__text"><span class="opt__title">Avisar quando alguém ficar ao vivo</span>
-            <span class="opt__desc">Notificação do Windows quando a janela do GoLive não está em foco.</span></span>
+          <span class="opt__text"><span class="opt__title">${t('ui.config.avisarAoVivo')}</span>
+            <span class="opt__desc">${t('ui.config.avisarAoVivoAjuda')}</span></span>
           <input id="settings-live-notify" class="switch" type="checkbox" />
         </label>
       </div>
       <div class="settings__block sound-check" aria-labelledby="sound-check-title">
         <div class="settings__row">
-          <h3 id="sound-check-title" class="settings__h">Testar os sons</h3>
-          <button id="btn-test-sounds" type="button" class="btn btn--secondary btn--sm">Tocar todos</button>
+          <h3 id="sound-check-title" class="settings__h">${t('ui.config.testarSons')}</h3>
+          <button id="btn-test-sounds" type="button" class="btn btn--secondary btn--sm">${t('ui.config.tocarTodos')}</button>
         </div>
-        <p id="sound-test-current" class="field__help" aria-live="polite">Toca cada aviso, inclusive o da conversa com a
-          janela em foco.</p>
+        <p id="sound-test-current" class="field__help" aria-live="polite">${t('ui.config.testarSonsAjuda')}</p>
         <details class="sound-log">
-          <summary>Últimas tentativas</summary>
+          <summary>${t('ui.config.ultimasTentativas')}</summary>
           <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
         </details>
       </div>`;
 
     settingsPanes.stats.innerHTML = `
       <div class="settings__block">
-        <p class="field__help">Números de cada fonte, enviando e recebendo. Atualiza sozinho enquanto está aberto.</p>
+        <p class="field__help">${t('ui.diag.numerosAjuda')}</p>
         <div id="settings-stats-body" class="stats"></div>
       </div>
       <div class="settings__block settings__row">
-        <p class="field__help">Para mandar a quem for investigar um problema.</p>
+        <p class="field__help">${t('ui.diag.enviarAjuda')}</p>
         <button id="btn-open-logs" type="button" class="btn btn--secondary btn--sm">
-          <svg class="i i--sm"><use href="#i-folder-open" /></svg>Abrir pasta de logs</button>
+          <svg class="i i--sm"><use href="#i-folder-open" /></svg>${t('ui.diag.abrirLogs')}</button>
       </div>`;
     setStatsHtml(lastStatsHtml, { force: true });
 
@@ -4654,21 +4684,41 @@
     $('settings-sounds').addEventListener('change', () => {
       deps.onSoundsChange($('settings-sounds').checked);
     });
+    const idiomaSel = $('settings-language');
+    idiomaSel.value = window.golive?.idioma?.preferencia || 'auto';
+    idiomaSel.addEventListener('change', () => deps.onIdiomaChange(idiomaSel.value));
     $('settings-live-notify').addEventListener('change', () => {
       deps.onLiveNotifyChange($('settings-live-notify').checked);
     });
 
+    // Nomes, estados e motivos do historico de sons chegam como codigos tecnicos (sound.js e
+    // soundevents.js, que nao mudam): a traducao acontece so aqui, na exibicao. O que nao esta no
+    // mapa (mensagem de erro do AudioContext, "contexto=...") aparece como veio.
+    const SOM_CHAVES = {
+      entrou: 'ui.config.som.entrou', saiu: 'ui.config.som.saiu', chat: 'ui.config.som.chat',
+      'ao vivo': 'ui.config.som.aoVivo', parou: 'ui.config.som.parou',
+      interrompido: 'ui.config.som.interrompido', removido: 'ui.config.som.removido',
+    };
+    const SOM_ESTADOS = {
+      tocou: 'ui.config.status.tocou', pulado: 'ui.config.status.pulado', 'NAO tocou': 'ui.config.naoTocou',
+    };
+    const SOM_MOTIVOS = {
+      'sons desligados': 'ui.config.motivo.desligados', 'janela em foco': 'ui.config.motivo.emFoco',
+      'intervalo mínimo de chat': 'ui.config.motivo.intervaloChat', pronto: 'ui.config.motivo.pronto',
+      running: 'ui.config.motivo.pronto', 'som desconhecido': 'ui.config.motivo.desconhecido',
+    };
+    const traduzSom = (mapa, valor) => (Object.hasOwn(mapa, valor) ? t(mapa[valor]) : valor);
     const renderRecentSounds = () => {
       const list = $('sound-recent');
       const entries = deps.getRecentSounds ? deps.getRecentSounds() : [];
       if (!entries.length) {
-        list.innerHTML = '<li class="sound-recent-empty">Nenhuma tentativa nesta sessão.</li>';
+        list.innerHTML = `<li class="sound-recent-empty">${t('ui.config.semTentativas')}</li>`;
         return;
       }
       list.innerHTML = entries.slice().reverse().map((entry) => {
-        const status = entry.status === 'NAO tocou' ? 'não tocou' : entry.status;
-        const hour = new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        return `<li><time>${hour}</time><span>${entry.name}</span><b class="sound-${entry.status === 'tocou' ? 'played' : 'skipped'}">${status}</b><em>${entry.reason}</em></li>`;
+        const status = traduzSom(SOM_ESTADOS, entry.status);
+        const hour = formatarHora(entry.at, { segundos: true });
+        return `<li><time>${hour}</time><span>${traduzSom(SOM_CHAVES, entry.name)}</span><b class="sound-${entry.status === 'tocou' ? 'played' : 'skipped'}">${status}</b><em>${traduzSom(SOM_MOTIVOS, entry.reason)}</em></li>`;
       }).join('');
     };
     renderRecentSounds();
@@ -4677,10 +4727,10 @@
       button.disabled = true;
       try {
         await deps.onTestSounds((name) => {
-          $('sound-test-current').textContent = `Tocando: ${name}.`;
+          $('sound-test-current').textContent = t('ui.config.tocando', { nome: traduzSom(SOM_CHAVES, name) });
           renderRecentSounds();
         });
-        $('sound-test-current').textContent = 'Teste concluído.';
+        $('sound-test-current').textContent = t('ui.config.testeConcluido');
       } finally {
         button.disabled = false;
         renderRecentSounds();
@@ -4747,21 +4797,21 @@
       // Codigo invalido nao muda NADA na tela: a pessoa colou errado, nao
       // pediu tema novo.
       if (!temaColado) {
-        status.textContent = 'Esse código não parece certo.';
+        status.textContent = t('ui.tema.codigoInvalido');
         return;
       }
-      status.textContent = 'Código válido. Dê um nome para salvar.';
+      status.textContent = t('ui.tema.codigoValido');
       aplicarPreviaImportada(temaColado);
     });
     $('btn-theme-code-use').addEventListener('click', () => {
       if (!temaColado) return;
       if (myThemes.length >= 12) {
-        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar este.');
+        deps.onToast(t('ui.tema.limite', { tipo: t('ui.tema.este') }));
         return;
       }
       openText({
-        title: 'Nome do tema',
-        value: 'Tema importado',
+        title: t('ui.tema.nomeTitulo'),
+        value: t('ui.tema.importado'),
         onAccept: (nome) => {
           const novo = { id: `t${Date.now()}`, name: themeName(nome), base: temaColado.base, act: temaColado.act };
           myThemes = [...myThemes, novo];
@@ -4776,13 +4826,13 @@
     });
     $('btn-theme-save').addEventListener('click', () => {
       if (myThemes.length >= 12) {
-        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar outro.');
+        deps.onToast(t('ui.tema.limite', { tipo: t('ui.tema.outro') }));
         return;
       }
       const cfg = themeCfgFromControls({ comSuperficies: true });
       openText({
-        title: 'Nome do tema',
-        value: 'Meu tema',
+        title: t('ui.tema.nomeTitulo'),
+        value: t('ui.tema.meu'),
         onAccept: (nome) => {
           const novo = { id: `t${Date.now()}`, name: themeName(nome), base: cfg.base, act: cfg.act };
           myThemes = [...myThemes, novo];
@@ -4828,7 +4878,7 @@
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cameraSelect = $('settings-camera-device');
       for (const d of devices.filter((d) => d.kind === 'videoinput')) {
-        cameraSelect.add(new Option(d.label || 'Câmera', d.deviceId));
+        cameraSelect.add(new Option(d.label || t('ui.config.camera'), d.deviceId));
       }
       if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
       cameraSelect.addEventListener('change', () => {
@@ -4935,8 +4985,8 @@
     // fora dela, e que nao ha o que medir.
     const naSala = document.getElementById('app')?.dataset.place === 'room';
     empty.textContent = naSala
-      ? 'Sem números ainda: aparecem quando você envia ou recebe alguma fonte.'
-      : 'Os números de envio e recepção aparecem aqui quando você está numa sala.';
+      ? t('ui.diag.semNumerosSala')
+      : t('ui.diag.semNumerosFora');
     body.replaceChildren(empty);
   }
 
@@ -4980,8 +5030,8 @@
   // Cada trilha e um radiogroup PROPRIO: os eixos sao independentes, e seta
   // so anda dentro do proprio eixo (Tab e quem troca de eixo).
   const QUALITY_AXES = [
-    { axis: 'resolution', label: 'Resolução', values: configApi.QUALITY_RESOLUTIONS, text: (v) => v },
-    { axis: 'fps', label: 'Fluidez', values: configApi.QUALITY_FPS, text: (v) => `${v} fps` },
+    { axis: 'resolution', label: 'ui.compartilhar.resolucao', values: configApi.QUALITY_RESOLUTIONS, text: (v) => v },
+    { axis: 'fps', label: 'ui.compartilhar.fluidez', values: configApi.QUALITY_FPS, text: (v) => `${v} fps` },
   ];
 
   pickerQualityEl.innerHTML = QUALITY_AXES.map(({ axis, label, values, text }) => {
@@ -4990,7 +5040,7 @@
       `<button class="seg__opt quality-seg-opt" type="button" role="radio" aria-checked="false" tabindex="-1" data-value="${escapeHtml(valor)}">${escapeHtml(text(valor))}</button>`
     )).join('');
     return `<div class="picker__axis">
-      <span class="sr-only" id="${labelId}">${escapeHtml(label)}</span>
+      <span class="sr-only" id="${labelId}">${escapeHtml(t(label))}</span>
       <div class="seg quality-seg" role="radiogroup" aria-labelledby="${labelId}" data-axis="${axis}" style="--seg-count: ${values.length}">${opcoes}</div>
     </div>`;
   }).join('');
@@ -5097,8 +5147,8 @@
   // Ordem previsivel em vez da ordem em que o Chromium devolveu: telas por
   // nome com comparacao numerica ("Tela 10" depois de "Tela 2", nao antes),
   // janelas em alfabetica insensivel a caixa.
-  const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
   function sortSources(list) {
+    const collator = new Intl.Collator(idiomaAtivo(), { numeric: true, sensitivity: 'base' });
     return [...list].sort((a, b) => collator.compare(a.name || '', b.name || ''));
   }
 
@@ -5112,8 +5162,9 @@
   /** Rotulo do botao principal: a acao com o nome da fonte (05 §5). */
   function rotuloTransmitir(fonte) {
     const nome = fonte?.name ? (fonte.name.length > 28 ? `${fonte.name.slice(0, 27)}…` : fonte.name) : '';
-    if (pickerMode === 'swap') return nome ? `Trocar para ${nome}` : 'Trocar';
-    return nome ? `Transmitir ${nome}` : 'Transmitir';
+    if (pickerMode === 'swap') return nome ? t('ui.compartilhar.trocarPara', { nome })
+      : t('ui.compartilhar.trocar');
+    return nome ? t('ui.compartilhar.transmitirNome', { nome }) : t('ui.compartilhar.transmitir');
   }
 
   function escolherFonteDoSeletor(fonte, card) {
@@ -5140,12 +5191,14 @@
         pickerGridEl.innerHTML = Array.from({ length: pickerTab === 'screen' ? 2 : 6 },
           () => '<div class="src-card src-card--skel" aria-hidden="true"><span class="src-card__thumb skel"></span>'
             + '<span class="skel src-card__skel-line"></span></div>').join('')
-          + `<p class="sr-only" role="status">${pickerTab === 'screen' ? 'Procurando telas…' : 'Procurando janelas…'}</p>`;
+          + `<p class="sr-only" role="status">${t('ui.compartilhar.procurando', {
+            tipo: pickerTab === 'screen' ? t('ui.compartilhar.telas') : t('ui.compartilhar.janelas'),
+          })}</p>`;
         return;
       }
-      pickerGridEl.innerHTML = `<p class="picker__empty">${
-        pickerTab === 'screen' ? 'Nenhuma tela encontrada.' : 'Nenhuma janela aberta para mostrar.'
-      } <button type="button" class="btn btn--secondary btn--sm" data-picker-refresh>Procurar de novo</button></p>`;
+      pickerGridEl.innerHTML = `<p class="picker__empty">${t('ui.compartilhar.semFonte', {
+        tipo: pickerTab === 'screen' ? t('ui.compartilhar.tela') : t('ui.compartilhar.janelaAberta'),
+      })} <button type="button" class="btn btn--secondary btn--sm" data-picker-refresh>${t('ui.compartilhar.procurarDeNovo')}</button></p>`;
       return;
     }
     for (const source of filtered) {
@@ -5323,7 +5376,8 @@
     syncQualityAxes(quality.preset, false);
     pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
     const swapping = mode === 'swap';
-    $('picker-title').textContent = swapping ? 'Trocar fonte' : 'Transmitir';
+    $('picker-title').textContent = swapping ? t('ui.compartilhar.trocarFonte')
+      : t('ui.compartilhar.transmitir');
     btnGoLiveEl.textContent = rotuloTransmitir(null);
     pickerQualityTitleEl.classList.toggle('hidden', swapping);
     pickerQualityEl.classList.toggle('hidden', swapping);
@@ -5343,7 +5397,7 @@
     shareDiscordEl.disabled = !nativeAudioAvailable;
     shareDiscordRowEl.title = nativeAudioAvailable
       ? ''
-      : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
+      : t('ui.compartilhar.indisponivelAudio');
 
     btnGoLiveEl.onclick = async () => {
       nomeFonteAoVivo = pickerSources.find((s) => s.id === selectedSourceId)?.name || nomeFonteAoVivo;
@@ -5380,7 +5434,7 @@
   const dlgConfirmEl = $('dialog-confirm');
   let onConfirmAccept = null;
 
-  function openConfirm({ title, text, confirmLabel = 'Confirmar', tone = 'destructive', onConfirm }) {
+  function openConfirm({ title, text, confirmLabel = t('ui.dialogo.confirmar'), tone = 'destructive', onConfirm }) {
     $('dialog-confirm-title').textContent = title;
     $('dialog-confirm-text').textContent = text;
     const okBtn = $('btn-confirm-ok');
@@ -5412,7 +5466,7 @@
   const dlgTextEl = $('dialog-text');
   let onTextAccept = null;
 
-  function openText({ title, value = '', confirmLabel = 'Salvar', onAccept }) {
+  function openText({ title, value = '', confirmLabel = t('ui.dialogo.salvar'), onAccept }) {
     $('dialog-text-title').textContent = title;
     $('dialog-text-input').value = value;
     $('btn-text-ok').textContent = confirmLabel;
@@ -5446,9 +5500,9 @@
 
   function openBan({ name, onConfirm }) {
     openConfirm({
-      title: `Banir ${name} da sala?`,
-      text: `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de pessoas.`,
-      confirmLabel: 'Banir',
+      title: t('ui.dialogo.banirTitulo', { nome: name }),
+      text: t('ui.dialogo.banirTexto', { nome: name }),
+      confirmLabel: t('ui.dialogo.banir'),
       tone: 'destructive',
       onConfirm,
     });
@@ -5459,9 +5513,9 @@
    * passa, o que e exatamente o que o texto diz. */
   function openTransferOwner({ name, onConfirm }) {
     openConfirm({
-      title: `Passar a liderança para ${name}?`,
-      text: `${name} passa a poder parar transmissões, expulsar e banir. Você deixa de poder — só ${name} pode devolver.`,
-      confirmLabel: 'Passar a liderança',
+      title: t('ui.dialogo.passarTitulo', { nome: name }),
+      text: t('ui.dialogo.passarTexto', { nome: name }),
+      confirmLabel: t('ui.dialogo.passar'),
       tone: 'primary',
       onConfirm,
     });
@@ -5499,16 +5553,17 @@
   };
   const TOGGLE_LABELS = {
     // `curto`: o texto visivel quando o nome inteiro nao cabe no bloco ao vivo.
-    share: { off: 'Transmitir tela', on: 'Parar de transmitir', curto: { on: 'Parar' } },
-    camera: { off: 'Câmera', loading: 'Abrindo…', on: 'Desligar câmera' },
-    pause: { off: 'Pausar', on: 'Retomar' },
+    share: { off: 'ui.toggle.transmitirTela', on: 'ui.toggle.pararTransmitir', curto: { on: 'ui.toggle.parar' } },
+    camera: { off: 'ui.toggle.camera', loading: 'ui.toggle.abrindo', on: 'ui.toggle.desligarCamera' },
+    pause: { off: 'ui.toggle.pausar', on: 'ui.toggle.retomar' },
   };
 
   function setToggleState(id, state) {
     const btn = $(TOGGLE_BUTTON_IDS[id]);
     if (!btn) return;
-    const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
-    btn.querySelector('.btn-label').textContent = TOGGLE_LABELS[id].curto?.[state] || label;
+    const label = t(TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off);
+    btn.querySelector('.btn-label').textContent = t(TOGGLE_LABELS[id].curto?.[state]
+      || TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off);
     // O .btn-label do dock fica com display:none (sai da arvore de
     // acessibilidade): o nome do botao mora no aria-label e acompanha o estado.
     btn.setAttribute('aria-label', label);
@@ -5557,12 +5612,12 @@
     const app = $('app');
     const fontes = [...document.querySelectorAll('#bus-live .src')].map((src) => ({
       tileId: src.dataset.tile,
-      nome: src.querySelector('.src__name')?.textContent || 'Alguém',
+      nome: src.querySelector('.src__name')?.textContent || t('ui.pessoa.alguem'),
       assistindo: src.hasAttribute('data-watching'),
     }));
     const salas = [...document.querySelectorAll('#room-list-live .room-row:not(:disabled)')].map((row, indice) => ({
       indice,
-      nome: row.querySelector('.room-row__name')?.textContent || 'sala',
+      nome: row.querySelector('.room-row__name')?.textContent || t('ui.sala.nomePadrao'),
     }));
     return {
       lugar: app?.dataset.place === 'room' ? 'room' : 'lobby',
@@ -5612,7 +5667,7 @@
       ? visiveis.map((acao, i) => `<li id="cmd-${i}" class="menu__item${i === cmdAtiva ? ' is-active' : ''}" role="option"
           aria-selected="${i === cmdAtiva}" data-i="${i}">${escapeHtml(acao.rotulo)}${acao.dica
   ? `<span class="menu__hint">${escapeHtml(acao.dica)}</span>` : ''}</li>`).join('')
-      : '<li class="menu__note" role="presentation">Nada com esse nome.</li>';
+      : `<li class="menu__note" role="presentation">${t('ui.comando.nada')}</li>`;
     cmdInputEl.setAttribute('aria-activedescendant', visiveis.length ? `cmd-${cmdAtiva}` : '');
     cmdListEl._visiveis = visiveis;
     cmdListEl.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });

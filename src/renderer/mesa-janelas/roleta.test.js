@@ -57,9 +57,14 @@ test('resultado: o do giro, o ultimo depois de mexer nas opcoes, ou nada', () =>
   assert.equal(janela.resultado(s), 'Da última vez: Sushi');
 });
 
+test('roleta sem opcoes mostra o estado vazio fora do miolo', () => {
+  assert.equal(janela.mostraVazio({ options: [] }), true);
+  assert.equal(janela.mostraVazio({ options: ['Ana'] }), false);
+});
+
 test('precisaAnimar: giro novo anima; quem chega depois do fim ve parado', () => {
   const spin = { index: 0, turns: 3, offset: 0.5, at: 1000 };
-  assert.equal(janela.precisaAnimar(spin, 1500, janela.GIRO_MS), true);
+  assert.equal(janela.precisaAnimar(spin, 1000 + janela.GIRO_MS / 2, janela.GIRO_MS), true);
   assert.equal(janela.precisaAnimar(spin, 1000 + janela.GIRO_MS + 1, janela.GIRO_MS), false);
   assert.equal(janela.precisaAnimar({ ...spin, at: null }, 99999, janela.GIRO_MS), true);
   assert.equal(janela.precisaAnimar(null, 0, 1), false);
