@@ -71,6 +71,12 @@ sala.
 npm install
 ```
 
+## Idiomas
+
+O app fala **português, inglês e espanhol**. Por padrão segue o idioma do sistema (e cai no inglês se o sistema
+não estiver em nenhum dos três); dá para trocar em **Configurações › Aparência › Idioma**. Numa sala, cada pessoa
+vê tudo no próprio idioma — inclusive as jogadas, as perguntas do Quiz e as palavras do Desenha.
+
 ## Como usar
 
 **1. Alguém da turma clica em "Criar sala"**, na barra lateral da tela

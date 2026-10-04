@@ -27,3 +27,8 @@ Regras:
    real é feito por quem integra (a sandbox não abre o Electron). Bancadas Playwright:
    `PLAYWRIGHT_DIR=C:/Users/nicol/Desktop/portfolio-nubinho/node_modules/playwright`.
 8. Código: linhas ≤ 120 colunas, comentários em português no estilo do arquivo, sem commit (quem integra commita).
+9. **Texto visível só por `t()`.** O app fala pt-BR, en e es (`src/renderer/i18n/`). Toda frase nasce em
+   `pt-BR.js` e ganha en e es no mesmo diff, com os termos de `docs/glossario.md`. Módulo da Mesa
+   (`mesa-modules/`) nunca chama `t()`: devolve `codigo(...)`, e quem exibe traduz com `traduzirCodigo`. Nada de
+   frase montada com pedaços traduzidos: variação vira plural `{ one, other }` ou uma chave por caso. Os testes
+   (`src/renderer/i18n/*.test.js`) reprovam texto solto, chave inexistente e línguas fora de paridade.
