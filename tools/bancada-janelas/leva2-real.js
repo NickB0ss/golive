@@ -529,14 +529,14 @@ async function cenaStop(browser) {
 
     // Cada um preenche as respostas (nao precisa acertar a categoria: so
     // testa o visual do preenchimento e do sigilo ate a correcao).
-    for (const [w, pessoa] of [[wAna, 'ana'], [wBia, 'bia'], [wCaio, 'caio']]) {
+    for (const [w, pessoa, cliente] of [[wAna, 'ana', ana], [wBia, 'bia', bia], [wCaio, 'caio', caio]]) {
       const campos = w.locator('.mj-stop-answers input');
       const n = await campos.count();
       for (let i = 0; i < n; i++) await campos.nth(i).fill(`${letra}-${pessoa}-${i}`);
-      // As respostas so vao pra sala ao apertar "Guardar respostas" (nao
-      // ha envio a cada tecla nem ao sair do campo, diferente da Nota).
-      await w.getByRole('button', { name: 'Guardar respostas' }).click();
-      await espera(80);
+      // O Stop salva enquanto a pessoa escreve. Espera a confirmacao da
+      // propria vista antes de testar o sigilo e apertar STOP.
+      await esperaMsg(cliente.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id
+        && m.state.phase === 'writing' && m.state.myAnswers?.every((r, i) => r === `${letra}-${pessoa}-${i}`));
     }
     await espera(150);
 
@@ -550,8 +550,15 @@ async function cenaStop(browser) {
     await espera(250);
 
     // Correcao: anula uma resposta por votacao (maioria de 3 = 2 votos).
-    await wAna.locator('.mj-stop-row').first().getByRole('button', { name: /^Anular/ }).click();
-    await wBia.locator('.mj-stop-row').first().getByRole('button', { name: /^Anular/ }).click();
+    // O rotulo e "Anular {n}" (contador de votos): acha pelo texto do dicionario,
+    // sem o numero, e confere no estado que os dois votos de anular chegaram.
+    const anular = new RegExp(`^${require('../../src/renderer/i18n/pt-BR')['mesa.stop.anular'].split('{')[0].trim()}`);
+    await wAna.locator('.mj-stop-row').first().getByRole('button', { name: anular }).click();
+    await wBia.locator('.mj-stop-row').first().getByRole('button', { name: anular }).click();
+    // Na view, votes[] = { player, category, yes: <quantos votaram anular>, no, mine, annulled }.
+    const votos = await esperaMsg(ana.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id
+      && (m.state.votes || []).some((v) => v.yes >= 2));
+    conferir(votos.state.votes.some((v) => v.yes >= 2), `${rotulo}: os dois votos de anular chegaram`);
     await espera(200);
     await wAna.getByRole('button', { name: 'Somar e próxima rodada' }).click();
     await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === id && m.state.phase === 'setup');
@@ -940,7 +947,8 @@ async function cenaMista(browser) {
     const opcoesIds = (await ultimoEstado(ana.page, idDs)).options;
     let indice = opcoesIds.findIndex((id) => desenha.normalizar(desenha.palavraEm(id, 'es'))
       !== desenha.normalizar(desenha.palavraEm(id, 'pt-BR')));
-    conferir(indice >= 0, `${rotulo}: ha opcao com forma es diferente da pt (${opcoesIds})`);
+    // O sorteio e do servidor: as vezes as 3 opcoes sao iguais em pt e es (pato, bailarina). Ai vale a primeira;
+    // "palpite em qualquer lingua" ja tem teste proprio em mesa-modules/desenha.test.js.
     if (indice < 0) indice = 0;
     const opcoesAna = await wDs.Ana.locator('.mj-ds-opcoes .mj-ds-opcao').evaluateAll((els) => els.map((e) => e.textContent.trim()));
     conferir(opcoesAna[indice] === desenha.palavraEm(opcoesIds[indice], 'pt-BR'),
