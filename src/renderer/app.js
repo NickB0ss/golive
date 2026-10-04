@@ -1804,7 +1804,8 @@
       ? {
         severidade: 'atencao',
         titulo: t('aviso.enderecoRedeLocal'),
-        detalhe: t('aviso.enderecoSoRedeLocal', { endereco: hostInfo.addressWarning }),
+        // O main devolve so um codigo ('sem-rede-virtual'): o texto e daqui, no idioma ativo.
+        detalhe: t('sistema.enderecoSoRedeLocal'),
         dispensavel: true,
       }
       : null);

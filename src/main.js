@@ -1225,7 +1225,7 @@ ipcMain.handle('room:host', async (_event, {
       pin,
       ownerToken,
       firewall,
-      addressWarning: picked ? undefined : 'Radmin/Tailscale não detectado',
+      addressWarning: picked ? undefined : 'sem-rede-virtual', // codigo: o renderer traduz o aviso
     };
   } catch (err) {
     return { ok: false, error: err.code === 'PORTS_EXHAUSTED' ? 'PORTS_EXHAUSTED' : err.message };

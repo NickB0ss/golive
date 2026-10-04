@@ -134,6 +134,7 @@ const EXCECOES = new Set([
   'GoLive LAN', // marca
   'GoLive', // marca
   'Esc', // nome da tecla de atalho
+  'tic tac toe', // palavra de busca do menu Adicionar janela, nao texto de tela
   'Português', // nome da lingua na propria lingua (spec 2.2)
   'English', // nome da lingua na propria lingua (spec 2.2)
   'Español', // nome da lingua na propria lingua (spec 2.2)
@@ -171,7 +172,39 @@ const EXCECOES = new Set([
   'type não bate com a chave', 'type não bate com o nome do arquivo',
   'mj-dados-palco is-', 'ms cubic-bezier(0.12, 0.8, 0.18, 1)', // trecho de classe/valor CSS, nao e texto
   'nao registrou', 'nao carregou', // mensagem interna de Error ao injetar script, nunca chega a tela
+  // Log e erro interno do processo principal (src/main): nunca chega a tela (spec 1.4)
+  'addon de audio nativo indisponivel -- "incluir o som do Discord" e a exclusao do audio do proprio GoLive'
+    + ' vao ficar fora do ar:', // log
+  'processo filho encerrou: type=', 'GPU ativa: vendorId=', // log
+  'origem local:', 'origem local: falha servindo', // log
+  'conferencia do destino nao bateu', 'copia passou de', 'falhou (tenta de novo na proxima abertura):', // log
+  'captura: o Electron recusou a fonte escolhida:', // log
+  'metodo nao permitido', 'url invalida', 'nao encontrado', 'erro interno', // corpo HTTP do servidor local de origem
+  'roomId invalido', 'address invalido', 'port invalida', // Error de argumento, nunca chega a tela
+  // Titulos de secao da pagina chrome://gpu: sao o que a busca procura, nao texto do app
+  'Problems Detected', 'Graphics Feature Status', 'Video Acceleration Information',
+  // Fallback defensivo do nome da sala: o renderer sempre manda o nome ja no idioma de quem cria (Tarefa 9)
+  'anônimo', 'sala de',
+  // Fallback em pt-BR da splash quando o preload falha: sem preload nao ha dicionario nem idioma (Tarefa 9)
+  'Procurando atualizações…', 'Baixando atualização — {pct}%',
+  // Diagnostico e Error interno do renderer (log, relatorio copiado, historico tecnico de sons): pt-BR por spec 2.4
+  'contexto nao retomou em 1s', 'ao vivo', 'som desconhecido', 'falha no AudioContext', // nomes e motivos do log de sons
+  'sons desligados', 'janela em foco', 'intervalo mínimo de chat', // motivos do log de sons (testes travam o texto)
+  '[mesh] negociacao de', 'sinalizacao interrompida durante a retomada', // log e Error de negociacao
+  "a conexao esta em '", "', nao esperava resposta", 'sem conexao', // log de diagnostico do mesh
+  'recusou na hora (o PC responde, ninguem escuta na porta)', 'sem resposta (rota caida ou PC desligado)', // log
+  'inalcancavel (sem rota ate o PC)', 'erro na checagem', // log da checagem de rota ao lider
+  'Qualidade desconhecida:', 'A função de bloqueio é obrigatória.', 'A função de aviso é obrigatória.', // Error de uso
+  '(repasse de #', 'videoId invalido', // linha de diagnostico de encode e Error de argumento
+  'warn-center-icon warn-center-icon-', 'warn-center-item warn-center-item-', // classes CSS montadas por template
 ]);
+
+// Codigo que o main injeta em paginas (executeJavaScript) ou manda ao PowerShell: nunca e texto de tela.
+const CODIGO_EMBUTIDO = [
+  /^\(\(\) => \{[\s\S]*\}\)\(\)$/, // IIFE injetada na pagina chrome://gpu
+  /^;\s*localStorage\.clear\(\)[\s\S]*\}\)\(\)$/, // fim do script de gravacao de localStorage
+  /^Start-Process\b/, /^' -ErrorAction SilentlyContinue$/, // linhas de script do PowerShell
+];
 
 function ehListaDeClasses(texto) {
   const tokens = texto.trim().split(/\s+/);
@@ -189,7 +222,7 @@ function ehTextoVisivel(fragmento) {
   const texto = String(fragmento).trim();
   if (!texto || !/[A-Za-zÀ-ÿ]/.test(texto)) return false;
   if (EXCECOES.has(texto) || FORMA_CHAVE.test(texto) || ehListaDeClasses(texto)) return false;
-  if (ehTrechoDeCss(texto)) return false;
+  if (ehTrechoDeCss(texto) || CODIGO_EMBUTIDO.some((re) => re.test(texto))) return false;
   return ACENTO.test(texto) || DUAS_PALAVRAS.test(texto);
 }
 

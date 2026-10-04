@@ -1,43 +1,4 @@
 {
-  "src/main.js": [
-    "(() => {\r\n  try {\r\n    const NL = String.fromCharCode(10);\r\n    const BLOCO = /^(DIV|H1|H2|H3|LI|TR|P|SECTION|UL)$/;\r\n    const ler = (no) => {\r\n      let out = '';\r\n      for (const f of no.childNodes) {\r\n        if (f.nodeType === 3) { out += f.nodeValue; continue; }\r\n        if (f.nodeType !== 1) continue;\r\n        const tag = f.tagName;\r\n        if (tag === 'STYLE' || tag === 'SCRIPT' || tag === 'LINK') continue;\r\n        if (f.shadowRoot) out += ler(f.shadowRoot);\r\n        out += ler(f);\r\n        if (BLOCO.test(tag)) out += NL;\r\n        else if (tag === 'TD' || tag === 'TH') out += ' | ';\r\n      }\r\n      return out;\r\n    };\r\n    const linhas = ler(document.body).split(NL).map((l) => l.trim()).filter(Boolean);\r\n    return { ok: true, texto: linhas.join(NL) };\r\n  } catch (e) {\r\n    return { ok: false, erro: String((e && e.stack) || e) };\r\n  }\r\n})()",
-    "GPU ativa: vendorId=",
-    "Graphics Feature Status",
-    "Problems Detected",
-    "Radmin/Tailscale não detectado",
-    "Video Acceleration Information",
-    "addon de audio nativo indisponivel -- \"incluir o som do Discord\" e a exclusao do audio do proprio GoLive vao ficar fora do ar:",
-    "anônimo",
-    "processo filho encerrou: type=",
-    "sala de"
-  ],
-  "src/main/discovery.js": [
-    "address invalido",
-    "anônimo",
-    "anônimo",
-    "port invalida",
-    "roomId invalido"
-  ],
-  "src/main/displaymedia.js": [
-    "captura: o Electron recusou a fonte escolhida:"
-  ],
-  "src/main/firewall.js": [
-    "' -ErrorAction SilentlyContinue",
-    "Start-Process \"$env:SystemRootSystem32netsh.exe\" -ArgumentList $netshArgs -Verb RunAs -WindowStyle Hidden -Wait"
-  ],
-  "src/main/origem.js": [
-    ";\r\n    localStorage.clear();\r\n    for (const [k, v] of e) localStorage.setItem(k, v);\r\n    return JSON.stringify(Object.entries(localStorage).sort());\r\n  })()",
-    "conferencia do destino nao bateu",
-    "copia passou de",
-    "erro interno",
-    "falhou (tenta de novo na proxima abertura):",
-    "metodo nao permitido",
-    "nao encontrado",
-    "nao encontrado",
-    "origem local:",
-    "origem local: falha servindo",
-    "url invalida"
-  ],
   "src/renderer/emoji.js": [
     "Símbolos",
     "abacaxi fruta",
@@ -420,24 +381,6 @@
     "whisky dose",
     "xadrez peao",
     "xingando palavrao raiva"
-  ],
-  "src/renderer/encodediag.js": [
-    "(repasse de #"
-  ],
-  "src/renderer/espiar-page.js": [
-    "Transmissão"
-  ],
-  "src/renderer/health.js": [
-    "travando — a máquina de quem está transmitindo está apertada",
-    "travando — a rede de quem está transmitindo não aguenta",
-    "travando — a rede entre vocês",
-    "travando — o encoder de quem está transmitindo está no limite"
-  ],
-  "src/renderer/leaderloss.js": [
-    "erro na checagem",
-    "inalcancavel (sem rota ate o PC)",
-    "recusou na hora (o PC responde, ninguem escuta na porta)",
-    "sem resposta (rota caida ou PC desligado)"
   ],
   "src/renderer/mesa-catalogo.js": [
     "Adedonha: uma palavra por categoria",
@@ -1154,71 +1097,11 @@
     "radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)",
     "radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)"
   ],
-  "src/renderer/mesh.js": [
-    "', nao esperava resposta",
-    "[mesh] negociacao de",
-    "a conexao esta em '",
-    "sem conexao",
-    "sinalizacao interrompida durante a retomada"
-  ],
-  "src/renderer/reactions-permission.js": [
-    "Compartilhando uma janela: as reações aparecem no app, não na tela.",
-    "Compartilhando uma janela: os rabiscos aparecem no app, não na tela.",
-    "Compartilhando uma janela: rabiscos e reações aparecem no app, não na tela.",
-    "Não achei o monitor para as reações; elas ficam só no app.",
-    "Não achei o monitor para os rabiscos; eles ficam só no app.",
-    "Não achei o monitor para rabiscos e reações; eles ficam só no app."
-  ],
-  "src/renderer/sound.js": [
-    "ao vivo",
-    "ao vivo",
-    "contexto nao retomou em 1s",
-    "falha no AudioContext",
-    "som desconhecido"
-  ],
-  "src/renderer/soundevents.js": [
-    "ao vivo",
-    "intervalo mínimo de chat",
-    "janela em foco",
-    "sons desligados"
-  ],
-  "src/renderer/status.js": [
-    "muita gente recebendo de você",
-    "sala cheia",
-    "sem aceleração de vídeo",
-    "seu PC no limite",
-    "transmissão pausada"
-  ],
-  "src/renderer/tetorecebido.js": [
-    "A função de aviso é obrigatória.",
-    "A função de bloqueio é obrigatória.",
-    "Qualidade desconhecida:"
-  ],
   "src/renderer/ui.js": [
     "A câmera só chega quando você pede.",
     "A tela só chega quando você pede, e quem transmite economiza enquanto ninguém assiste.",
     "Alguém",
     "Todo mundo já está junto.",
     "class=\"menu__item tile-menu-watch\" role=\"menuitem\""
-  ],
-  "src/renderer/warningcenter.js": [
-    "Dispensar aviso",
-    "warn-center-icon warn-center-icon-",
-    "warn-center-item warn-center-item-"
-  ],
-  "src/renderer/ytplayer.js": [
-    "Link de vídeo inválido.",
-    "O YouTube não conseguiu tocar este vídeo.",
-    "O YouTube recusou o player deste app (erro de configuração). Atualize o GoLive; se continuar, avise.",
-    "O dono deste vídeo não deixa tocar fora do YouTube.",
-    "O player do YouTube não conseguiu tocar este vídeo neste PC.",
-    "Player do YouTube",
-    "Sem internet: o YouTube não carregou neste PC.",
-    "Vídeo não encontrado: foi removido ou é privado.",
-    "videoId invalido"
-  ],
-  "src/splash/splash.js": [
-    "Baixando atualização — {pct}%",
-    "Procurando atualizações…"
   ]
 }

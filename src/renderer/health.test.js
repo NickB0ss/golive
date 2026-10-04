@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('./i18n'); // registra GoLive.i18n (pt-BR por padrao) para t()
 const health = require('./health');
 
 const OK = null; // receiveHealth "sem problema"
