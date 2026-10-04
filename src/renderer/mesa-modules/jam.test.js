@@ -87,7 +87,7 @@ test('validate da os motivos', () => {
   const s0 = jam.init({});
   const s1 = jam.reduce(s0, { kind: 'set', url: CURTO }, { from: '1' });
   assert.equal(jam.validate(s0, { kind: 'set', url: CURTO }, { from: '1' }), true);
-  assert.match(jam.validate(s0, { kind: 'set', url: 'https://example.com/' }, { from: '1' }), /link do Jam/);
+  assert.match(jam.validate(s0, { kind: 'set', url: 'https://example.com/' }, { from: '1' }), /^mesa.jam.linkInvalido$/);
   assert.equal(typeof jam.validate(s1, { kind: 'set', url: `${CURTO}?si=2` }, { from: '2' }), 'string');
   assert.equal(typeof jam.validate(s0, { kind: 'join' }, { from: '2' }), 'string');
   assert.equal(typeof jam.validate(s0, { kind: 'clear' }, { from: '2' }), 'string');

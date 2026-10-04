@@ -125,10 +125,10 @@ test('pausar depois do fim guarda a duracao; iniciar de novo recomeca', () => {
 
 test('iniciar correndo e pausar parado sao recusados', () => {
   const s = cron.init({});
-  assert.equal(cron.validate(s, { kind: 'pause' }), 'Já está parado');
+  assert.equal(cron.validate(s, { kind: 'pause' }), 'mesa.cronometro.jaParado');
   const c = roda(s, [[{ kind: 'start' }, 0]]).state;
-  assert.equal(cron.validate(c, { kind: 'start' }), 'Já está correndo');
-  assert.equal(cron.validate(c, { kind: 'set', mode: 'up' }), 'Pause antes de mudar');
+  assert.equal(cron.validate(c, { kind: 'start' }), 'mesa.cronometro.jaCorrendo');
+  assert.equal(cron.validate(c, { kind: 'set', mode: 'up' }), 'mesa.cronometro.pauseAntes');
   assert.equal(cron.reduce(deepFreeze(c), { kind: 'start', at: 5 }), c);
   assert.equal(cron.reduce(deepFreeze(c), { kind: 'set', mode: 'up' }), c);
 });

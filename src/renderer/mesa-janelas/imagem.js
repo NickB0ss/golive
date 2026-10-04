@@ -13,6 +13,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'imagem';
 
   // ---------- Puras ----------
@@ -20,12 +21,12 @@
   /** O vazio que ocupa o lugar da imagem (titulo e uma frase), ou null quando ha imagem. */
   function faltaDaImagem(state, img) {
     if (!state || !state.msgId) {
-      return { titulo: 'Nenhuma imagem', texto: 'Use “Pôr na Mesa” numa imagem do chat ou na Galeria.' };
+      return { titulo: t('mesa.imagem.nenhuma'), texto: t('mesa.imagem.vazioTexto') };
     }
     if (!img) {
       return {
-        titulo: 'Imagem fora do chat',
-        texto: 'Esta imagem saiu do histórico do chat, que guarda só as 8 mais recentes.',
+        titulo: t('mesa.imagem.foraDoChat'),
+        texto: t('mesa.imagem.foraDoChatTexto'),
       };
     }
     return null;
@@ -37,7 +38,12 @@
 
   /** "Enviada por Bia" (ou vazio sem nome). */
   function legenda(img) {
-    return img && img.name ? `Enviada por ${img.name}` : '';
+    return img && img.name ? t('mesa.imagem.enviadaPor', { nome: img.name }) : '';
+  }
+
+  /** Texto alternativo da foto (leitor de tela). */
+  function altDaImagem(img) {
+    return img.name ? t('mesa.imagem.altDe', { nome: img.name }) : t('mesa.imagem.altDeAlguem');
   }
 
   // ---------- DOM ----------
@@ -84,7 +90,7 @@
       } else if (foto.getAttribute('src') !== img.image) {
         foto.src = img.image;
       }
-      foto.alt = img ? `Imagem do chat enviada por ${img.name || 'alguém'}` : '';
+      foto.alt = img ? altDaImagem(img) : '';
       rodape.textContent = legenda(img);
       rodape.hidden = !rodape.textContent;
     }

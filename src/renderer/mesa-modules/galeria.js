@@ -10,6 +10,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'galeria';
 
   const galeria = {
@@ -24,7 +26,7 @@
     },
 
     validate() {
-      return 'a galeria não tem ações';
+      return codigo('mesa.galeria.semAcoes');
     },
 
     reduce(state) {

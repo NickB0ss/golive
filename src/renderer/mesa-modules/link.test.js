@@ -65,8 +65,8 @@ test('validate da os motivos; reduce ignora o que nao passa', () => {
   const s0 = link.init({});
   const s1 = link.reduce(s0, { kind: 'set', url: 'https://example.com/' }, { from: '1' });
   assert.equal(link.validate(s0, { kind: 'set', url: 'https://example.com/' }), true);
-  assert.match(link.validate(s0, { kind: 'set', url: 'http://example.com/' }), /https/);
-  assert.match(link.validate(s0, { kind: 'set', url: 'https://example.com/', title: 'x'.repeat(81) }), /Título/);
+  assert.match(link.validate(s0, { kind: 'set', url: 'http://example.com/' }), /^mesa.link.enderecoInvalido$/);
+  assert.match(link.validate(s0, { kind: 'set', url: 'https://example.com/', title: 'x'.repeat(81) }), /^mesa.link.tituloLongo/);
   assert.equal(link.validate(s0, { kind: 'set', url: 'https://example.com/', title: 'x'.repeat(80) }), true);
   assert.equal(link.validate(s0, { kind: 'set', url: 'https://example.com/', title: '😀'.repeat(80) }), true);
   assert.equal(typeof link.validate(s0, { kind: 'set', url: 'https://example.com/', title: 5 }), 'string');

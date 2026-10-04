@@ -18,6 +18,7 @@
  */
 
 (function (root) {
+  const { t, traduzirCodigo } = root.GoLive.i18n;
   const TICK_MS = 250;
   const NOTE_MS = 4000;
   const VOL_KEY = 'golive-mesa-volume';
@@ -84,32 +85,32 @@
     const volume = loadVolume();
 
     // ---------- DOM (montado uma vez) ----------
-    const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'Cole um link do YouTube', 'aria-label': 'Link do YouTube', maxlength: 2048 });
-    const submit = h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Pôr' });
-    const cancel = h('button', { class: 'mjm-btn', type: 'button', text: 'Cancelar' });
+    const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: t('mesa.youtube.cole'), 'aria-label': t('mesa.midia.linkYoutube'), maxlength: 2048 });
+    const submit = h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: t('mesa.midia.por') });
+    const cancel = h('button', { class: 'mjm-btn', type: 'button', text: t('mesa.midia.cancelar') });
     const form = h('form', { class: 'mjm-form' }, input, submit, cancel);
     const empty = h('div', { class: 'mjm-empty' }, C.vazio({
       icone: 'play',
-      titulo: 'Um vídeo para todos',
-      texto: 'Cole um link do YouTube e a sala assiste junto.',
+      titulo: t('mesa.youtube.vazioTitulo'),
+      texto: t('mesa.youtube.vazioTexto'),
       acao: form,
     }));
 
     const host = h('div', { class: 'mjm-player' });
     const coverImg = h('img', { class: 'mjm-cover-img', alt: '', draggable: 'false' });
-    const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: 'Tocar este' });
-    const coverText = h('p', { class: 'mjm-hint', text: 'Outro vídeo está tocando neste PC.' });
+    const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: t('mesa.midia.tocarEste') });
+    const coverText = h('p', { class: 'mjm-hint', text: t('mesa.midia.outroVideo') });
     const cover = h('div', { class: 'mjm-cover' }, coverImg, h('div', { class: 'mjm-cover-cta' }, coverText, takeBtn));
     const msgText = h('p', { class: 'mjm-msg-text' });
-    const retryBtn = h('button', { class: 'mjm-btn', type: 'button', text: 'Tentar de novo' });
+    const retryBtn = h('button', { class: 'mjm-btn', type: 'button', text: t('mesa.midia.tentarDeNovo') });
     const msg = h('div', { class: 'mjm-msg', role: 'status' }, msgText, retryBtn);
 
-    const playBtn = h('button', { class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': 'Tocar para todos' });
-    const range = h('input', { class: 'mjm-range', type: 'range', min: 0, max: 0, step: 1, value: 0, 'aria-label': 'Posição do vídeo (para todos)' });
+    const playBtn = h('button', { class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': t('mesa.youtube.tocarTodos') });
+    const range = h('input', { class: 'mjm-range', type: 'range', min: 0, max: 0, step: 1, value: 0, 'aria-label': t('mesa.youtube.posicao') });
     const time = h('span', { class: 'mjm-time', text: '0:00' });
     const muteBtn = h('button', { class: 'mjm-btn mjm-icon', type: 'button' });
-    const vol = h('input', { class: 'mjm-range mjm-vol', type: 'range', min: 0, max: 100, step: 1, value: volume.vol, 'aria-label': 'Volume (só seu)' });
-    const swapBtn = h('button', { class: 'mjm-btn', type: 'button', text: 'Trocar', title: 'Trocar o vídeo' });
+    const vol = h('input', { class: 'mjm-range mjm-vol', type: 'range', min: 0, max: 100, step: 1, value: volume.vol, 'aria-label': t('mesa.youtube.volume') });
+    const swapBtn = h('button', { class: 'mjm-btn', type: 'button', text: t('mesa.youtube.trocar'), title: t('mesa.youtube.trocarTitulo') });
     const bar = h('div', { class: 'mjm-bar' }, playBtn, range, time, muteBtn, vol, swapBtn);
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
     const stage = h('div', { class: 'mjm-stage' }, host, cover, msg, bar);
@@ -162,7 +163,7 @@
         container: host,
         videoId: state.videoId,
         start: target(),
-        title: 'Vídeo do YouTube',
+        title: t('mesa.youtube.playerTitulo'),
         onReady: () => {
           applyVolume();
           if (sync) sync.tick();
@@ -215,9 +216,9 @@
       msg.hidden = !failed;
       retryBtn.hidden = !(errorCode === 'timeout' || errorCode === 'offline' || errorCode === 153 || errorCode === 152);
       paintIcon(playBtn, state.playing ? 'pausa' : 'play');
-      playBtn.setAttribute('aria-label', state.playing ? 'Pausar para todos' : 'Tocar para todos');
+      playBtn.setAttribute('aria-label', t(state.playing ? 'mesa.youtube.pausarTodos' : 'mesa.youtube.tocarTodos'));
       paintIcon(muteBtn, volume.muted || volume.vol === 0 ? 'mudo' : 'som');
-      muteBtn.setAttribute('aria-label', volume.muted ? 'Ligar o som (só seu)' : 'Tirar o som (só seu)');
+      muteBtn.setAttribute('aria-label', t(volume.muted ? 'mesa.youtube.ligarSom' : 'mesa.youtube.tirarSom'));
       muteBtn.setAttribute('aria-pressed', String(!!volume.muted));
       paintTime();
     }
@@ -247,7 +248,7 @@
     function send(action) {
       const ok = api.validate(action);
       if (ok !== true) {
-        showNote(ok);
+        showNote(traduzirCodigo(ok));
         return false;
       }
       api.act(action);
@@ -324,7 +325,8 @@
     };
     root.addEventListener('online', onOnline);
     const offDenied = typeof api.onDenied === 'function'
-      ? api.onDenied((d) => showNote(d && (d.detail || d.reason) ? `Não deu: ${d.detail || d.reason}` : 'Não deu'))
+      ? api.onDenied((d) => showNote(d && (d.detail || d.reason)
+        ? t('mesa.midia.naoDeuMotivo', { motivo: C.motivoRecusa(d.reason, d.detail) }) : t('mesa.midia.naoDeu')))
       : null;
 
     const timer = root.setInterval(() => {
@@ -399,7 +401,7 @@
     let last = null; // [state, meta] que chegou antes de montar
     const wait = document.createElement('p');
     wait.className = 'mjm-loading';
-    wait.textContent = 'Carregando…';
+    wait.textContent = t('mesa.midia.carregando');
     el.appendChild(wait);
     Promise.all(DEPS.map(([src, global]) => carregar(src, global))).then(() => {
       if (dead) return;
@@ -407,7 +409,7 @@
       inner = mountReal(el, api);
       if (last) inner.update(last[0], last[1]);
     }).catch(() => {
-      if (!dead) wait.textContent = 'Não deu para carregar o player desta janela.';
+      if (!dead) wait.textContent = t('mesa.midia.naoCarregouPlayer');
     });
     return {
       update(state, meta) {

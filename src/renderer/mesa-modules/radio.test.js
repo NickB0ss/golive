@@ -99,8 +99,8 @@ test('failed pula e marca a que nao deixa tocar fora do YouTube', () => {
 
 test('skip e remove: quem pos ou o lider', () => {
   let s = roda(radio.init({}), [[{ kind: 'add', url: A }, { from: '2' }], [{ kind: 'add', url: B }, { from: '2' }], [{ kind: 'add', url: C }, { from: '3' }]]);
-  assert.equal(servidor(s, { kind: 'skip' }, { from: '3' }).denied, 'Só quem pôs ou o líder pula; vote para pular');
-  assert.equal(servidor(s, { kind: 'remove', id: 'r2' }, { from: '3' }).denied, 'Só quem pôs ou o líder tira');
+  assert.equal(servidor(s, { kind: 'skip' }, { from: '3' }).denied, 'mesa.radio.soQuemPosPula');
+  assert.equal(servidor(s, { kind: 'remove', id: 'r2' }, { from: '3' }).denied, 'mesa.radio.soQuemPosTira');
   s = servidor(s, { kind: 'remove', id: 'r3' }, { from: '3' }).state;
   assert.deepEqual(s.queue.map((it) => it.id), ['r2']);
   s = servidor(s, { kind: 'skip' }, { from: '2', now: 7000 }).state;
@@ -110,7 +110,7 @@ test('skip e remove: quem pos ou o lider', () => {
   // lider tira a atual: avanca (fila vazia -> nada)
   s = servidor(s, { kind: 'remove', id: 'r2' }, { from: '9', isLeader: true }).state;
   assert.equal(s.current, null);
-  assert.equal(servidor(s, { kind: 'remove', id: 'r2' }).denied, 'Essa música já saiu');
+  assert.equal(servidor(s, { kind: 'remove', id: 'r2' }).denied, 'mesa.radio.musicaJaSaiu');
 });
 
 test('vote-skip: maioria das pessoas da sala, contada no servidor', () => {
@@ -121,7 +121,7 @@ test('vote-skip: maioria das pessoas da sala, contada no servidor', () => {
   s = r.state;
   assert.deepEqual(s.votes, ['2']);
   assert.equal(s.current.videoId, A);
-  assert.equal(servidor(s, { kind: 'vote-skip' }, { from: '2' }).denied, 'Você já votou');
+  assert.equal(servidor(s, { kind: 'vote-skip' }, { from: '2' }).denied, 'mesa.radio.jaVotou');
   s = servidor(s, { kind: 'vote-skip' }, { from: '3', now: 9000 }).state;
   assert.equal(s.current.videoId, B, '2 de 3 pula');
   assert.deepEqual(s.votes, [], 'votos zeram na troca');
@@ -144,7 +144,7 @@ test('move reordena a fila', () => {
   assert.deepEqual(s.queue.map((it) => it.id), ['r4', 'r2', 'r3']);
   s = servidor(s, { kind: 'move', id: 'r4', to: 49 }).state;
   assert.deepEqual(s.queue.map((it) => it.id), ['r2', 'r3', 'r4']);
-  assert.equal(servidor(s, { kind: 'move', id: 'r1', to: 0 }).denied, 'Essa música não está na fila');
+  assert.equal(servidor(s, { kind: 'move', id: 'r1', to: 0 }).denied, 'mesa.radio.naoEstaNaFila');
 });
 
 test('play e pause com o relogio do servidor', () => {
@@ -152,10 +152,10 @@ test('play e pause com o relogio do servidor', () => {
   s = servidor(s, { kind: 'pause' }, { now: 30000 }).state;
   assert.equal(s.playing, false);
   assert.equal(s.pos, 30);
-  assert.equal(servidor(s, { kind: 'pause' }).denied, 'Já está pausado');
+  assert.equal(servidor(s, { kind: 'pause' }).denied, 'mesa.midia.jaPausado');
   s = servidor(s, { kind: 'play' }, { now: 40000 }).state;
   assert.equal(radio.positionAt(s, 41000), 31);
-  assert.equal(servidor(radio.init({}), { kind: 'play' }).denied, 'Nada para tocar');
+  assert.equal(servidor(radio.init({}), { kind: 'play' }).denied, 'mesa.radio.nadaParaTocar');
 });
 
 test('title so preenche vazio', () => {
@@ -173,7 +173,7 @@ test('fila cheia em 50, e o estado cheio cabe no teto do registro', () => {
     s = roda(s, [[{ kind: 'title', id: `r${i + 1}`, title: 'T'.repeat(radio.MAX_TITLE) }]]);
   }
   assert.equal(s.queue.length, radio.MAX_QUEUE);
-  assert.equal(servidor(s, { kind: 'add', url: B }).denied, 'Fila cheia (máx. 50)');
+  assert.equal(servidor(s, { kind: 'add', url: B }).denied, 'mesa.radio.filaCheia?max=50');
   assert.ok(jsonBytes(s) <= registry.get('radio').maxStateBytes, `estado cheio: ${jsonBytes(s)} bytes`);
 });
 

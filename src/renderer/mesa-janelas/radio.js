@@ -16,6 +16,7 @@
  */
 
 (function (root) {
+  const { t, traduzirCodigo } = root.GoLive.i18n;
   const TICK_MS = 250;
   const NOTE_MS = 4000;
   const VOL_KEY = 'golive-mesa-volume-radio';
@@ -74,7 +75,7 @@
 
   /** O rotulo em cima da faixa em destaque. */
   function rotuloDaFaixa(playing) {
-    return playing ? 'Tocando agora' : 'Pausado';
+    return playing ? t('mesa.radio.tocandoAgora') : t('mesa.radio.pausado');
   }
 
   // O comum.js ainda nao tem a nota musical.
@@ -107,26 +108,26 @@
     const who = h('p', { class: 'mjm-radio-who' });
     const time = h('span', { class: 'mjm-time', text: '0:00' });
     const playBtn = h('button', { class: 'mjm-btn mjm-icon', type: 'button' });
-    const skipBtn = h('button', { class: 'mjm-btn', type: 'button', text: 'Pular' });
+    const skipBtn = h('button', { class: 'mjm-btn', type: 'button', text: t('mesa.radio.pular') });
     const voteBtn = h('button', { class: 'mjm-btn', type: 'button' });
-    const vol = h('input', { class: 'mjm-range mjm-vol', type: 'range', min: 0, max: 100, step: 1, value: volume.vol, 'aria-label': 'Volume do rádio (só seu)' });
-    const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: 'Ouvir este' });
-    const standby = h('p', { class: 'mjm-hint' }, document.createTextNode('Outro rádio está tocando neste PC. '), takeBtn);
+    const vol = h('input', { class: 'mjm-range mjm-vol', type: 'range', min: 0, max: 100, step: 1, value: volume.vol, 'aria-label': t('mesa.radio.volume') });
+    const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: t('mesa.radio.ouvirEste') });
+    const standby = h('p', { class: 'mjm-hint' }, document.createTextNode(`${t('mesa.radio.outroRadio')} `), takeBtn);
     const msg = h('p', { class: 'mjm-msg-text', role: 'status' });
     const nowBox = h('div', { class: 'mjm-radio-now' },
       cover,
       h('div', { class: 'mjm-radio-info' }, estado, title, who),
       h('div', { class: 'mjm-bar mjm-bar-static' }, playBtn, time, skipBtn, voteBtn, vol));
     const failed = h('p', { class: 'mjm-note mjm-radio-failed' });
-    const list = h('ol', { class: 'mjm-radio-queue', 'aria-label': 'Fila do rádio' });
+    const list = h('ol', { class: 'mjm-radio-queue', 'aria-label': t('mesa.radio.fila') });
     const queueHead = h('p', { class: 'mjm-radio-head' });
-    const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'Link do YouTube', 'aria-label': 'Link do YouTube para a fila', maxlength: 2048 });
-    const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Pôr na fila' }));
+    const input = h('input', { class: 'mjm-input', type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: t('mesa.midia.linkYoutube'), 'aria-label': t('mesa.radio.linkAria'), maxlength: 2048 });
+    const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: t('mesa.radio.porNaFila') }));
     // Sem musica o formulario e a acao do vazio; com musica ele desce para o pe da janela.
     const idle = C.vazio({
       icone: 'musica',
-      titulo: 'Nada tocando',
-      texto: 'Cole um link do YouTube (ou YouTube Music) e a fila toca para todos.',
+      titulo: t('mesa.midia.nadaTocando'),
+      texto: t('mesa.radio.vazioTexto'),
       acao: form,
     });
     const idleGlifo = idle.querySelector('.mj-vazio-glifo .mj-i');
@@ -163,7 +164,7 @@
     function send(action, quiet) {
       const ok = api.validate(action);
       if (ok !== true) {
-        if (!quiet) showNote(ok);
+        if (!quiet) showNote(traduzirCodigo(ok));
         return false;
       }
       api.act(action);
@@ -201,7 +202,7 @@
         container: audio,
         videoId: state.current.videoId,
         start: target(),
-        title: 'Rádio da sala',
+        title: t('mesa.radio.playerTitulo'),
         onReady: () => {
           player.setVolume(volume.vol);
           if (sync) sync.tick();
@@ -248,9 +249,9 @@
         const icone = (rotulo, desligado, nome) => h('button', {
           class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': rotulo, disabled: desligado,
         }, C.icone(nome));
-        const up = icone('Subir na fila', i === 0, 'sobe');
-        const down = icone('Descer na fila', i === state.queue.length - 1, 'desce');
-        const rm = icone('Tirar da fila', !canRemove, 'x');
+        const up = icone(t('mesa.radio.subir'), i === 0, 'sobe');
+        const down = icone(t('mesa.radio.descer'), i === state.queue.length - 1, 'desce');
+        const rm = icone(t('mesa.radio.tirar'), !canRemove, 'x');
         up.addEventListener('click', () => send({ kind: 'move', id: it.id, to: i - 1 }));
         down.addEventListener('click', () => send({ kind: 'move', id: it.id, to: i + 1 }));
         rm.addEventListener('click', () => send({ kind: 'remove', id: it.id }));
@@ -290,23 +291,24 @@
         estado.textContent = rotuloDaFaixa(state.playing);
         title.textContent = cur.title || cur.videoId;
         const name = cur.name || (api.nameOf && api.nameOf(cur.by)) || '';
-        who.textContent = name ? `posta por ${name}` : '';
+        who.textContent = name ? t('mesa.radio.postaPor', { nome: name }) : '';
         playBtn.replaceChildren(C.icone(state.playing ? 'pausa' : 'play'));
-        playBtn.setAttribute('aria-label', state.playing ? 'Pausar o rádio para todos' : 'Tocar o rádio para todos');
+        playBtn.setAttribute('aria-label', state.playing ? t('mesa.radio.pausarTodos') : t('mesa.radio.tocarTodos'));
         const canSkip = api.validate({ kind: 'skip' }) === true;
         skipBtn.hidden = !canSkip;
         voteBtn.hidden = canSkip;
         const need = M.votesNeeded(typeof api.peers === 'function' ? api.peers().length : 1);
         const voted = state.votes.includes(String(api.me()));
-        voteBtn.textContent = voted ? `Você votou (${state.votes.length}/${need})` : `Votar para pular (${state.votes.length}/${need})`;
+        voteBtn.textContent = t(voted ? 'mesa.radio.votou' : 'mesa.radio.votar', { votos: state.votes.length, precisa: need });
         voteBtn.disabled = voted;
       }
       const last = state.failed[state.failed.length - 1];
       failed.hidden = !last;
-      if (last) failed.textContent = `${last.title || last.videoId} não deixa tocar fora do YouTube; pulei.`;
+      if (last) failed.textContent = t('mesa.radio.naoDeixaTocar', { titulo: last.title || last.videoId });
       queueHead.hidden = !cur;
       list.hidden = !cur;
-      queueHead.textContent = state.queue.length ? `Próximas (${state.queue.length}/${M.MAX_QUEUE})` : 'Fila vazia';
+      queueHead.textContent = state.queue.length
+        ? t('mesa.radio.proximas', { n: state.queue.length, max: M.MAX_QUEUE }) : t('mesa.radio.filaVazia');
       paintQueue();
       paintTime();
     }
@@ -344,7 +346,8 @@
     };
     root.addEventListener('online', onOnline);
     const offDenied = typeof api.onDenied === 'function'
-      ? api.onDenied((d) => showNote(d && (d.detail || d.reason) ? `Não deu: ${d.detail || d.reason}` : 'Não deu'))
+      ? api.onDenied((d) => showNote(d && (d.detail || d.reason)
+        ? t('mesa.midia.naoDeuMotivo', { motivo: C.motivoRecusa(d.reason, d.detail) }) : t('mesa.midia.naoDeu')))
       : null;
 
     const timer = root.setInterval(() => {
@@ -415,7 +418,7 @@
     let last = null; // [state, meta] que chegou antes de montar
     const wait = document.createElement('p');
     wait.className = 'mjm-loading';
-    wait.textContent = 'Carregando…';
+    wait.textContent = t('mesa.midia.carregando');
     el.appendChild(wait);
     Promise.all(DEPS.map(([src, global]) => carregar(src, global))).then(() => {
       if (dead) return;
@@ -423,7 +426,7 @@
       inner = mountReal(el, api);
       if (last) inner.update(last[0], last[1]);
     }).catch(() => {
-      if (!dead) wait.textContent = 'Não deu para carregar o player desta janela.';
+      if (!dead) wait.textContent = t('mesa.midia.naoCarregouPlayer');
     });
     return {
       update(state, meta) {

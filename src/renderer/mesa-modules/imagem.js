@@ -14,6 +14,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'imagem';
   const ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
 
@@ -29,8 +31,8 @@
     },
 
     validate(state, action) {
-      if (!action || typeof action !== 'object' || action.kind !== 'set') return 'ação desconhecida';
-      if (typeof action.msgId !== 'string' || !ID_RE.test(action.msgId)) return 'imagem inválida';
+      if (!action || typeof action !== 'object' || action.kind !== 'set') return codigo('mesa.imagem.acaoDesconhecida');
+      if (typeof action.msgId !== 'string' || !ID_RE.test(action.msgId)) return codigo('mesa.imagem.imagemInvalida');
       return true;
     },
 

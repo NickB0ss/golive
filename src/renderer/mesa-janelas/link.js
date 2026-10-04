@@ -16,6 +16,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'link';
 
   function mod() {
@@ -26,15 +27,15 @@
 
   // Os mesmos motivos da janela Spotify Jam (mesa-janelas/jam.js).
   const MOTIVOS_ABRIR = {
-    recusado: 'O app não abre este link',
-    rapido: 'Espere um instante e clique de novo',
-    falhou: 'O navegador não abriu; tente de novo',
-    origem: 'Não deu para abrir daqui',
-    'sem-ponte': 'Abrir no navegador só funciona no app',
+    recusado: 'mesa.midia.abrirRecusado',
+    rapido: 'mesa.midia.abrirRapido',
+    falhou: 'mesa.midia.abrirFalhou',
+    origem: 'mesa.midia.abrirOrigem',
+    'sem-ponte': 'mesa.midia.abrirSemPonte',
   };
 
   function motivoAbrir(reason) {
-    return MOTIVOS_ABRIR[reason] || 'Não deu para abrir; tente de novo';
+    return t(MOTIVOS_ABRIR[reason] || 'mesa.midia.abrirPadrao');
   }
 
   /** Abre pela ponte do app. `true` ou o motivo (frase). Nunca lanca. */
@@ -66,7 +67,7 @@
 
   /** A pergunta antes de abrir. */
   function pergunta(host) {
-    return `Abrir ${host} no seu navegador?`;
+    return t('mesa.link.pergunta', { dominio: host });
   }
 
   // ---------- DOM ----------
@@ -89,21 +90,22 @@
       class: 'mj-campo',
       attrs: {
         type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false',
-        placeholder: 'https://…', 'aria-label': 'Endereço (https://)', maxlength: String(m.MAX_URL),
+        placeholder: 'https://…', 'aria-label': t('mesa.link.enderecoAria'), maxlength: String(m.MAX_URL),
       },
     });
     const campoTitulo = el('input', {
       class: 'mj-campo',
-      attrs: { type: 'text', autocomplete: 'off', placeholder: 'Título (opcional)', 'aria-label': 'Título do link (opcional)', maxlength: String(m.MAX_TITLE) },
+      attrs: { type: 'text', autocomplete: 'off', placeholder: t('mesa.link.tituloOpcional'),
+        'aria-label': t('mesa.link.tituloAria'), maxlength: String(m.MAX_TITLE) },
     });
-    const por = C.botao({ text: 'Pôr', class: 'mj-pri' });
+    const por = C.botao({ text: t('mesa.midia.por'), class: 'mj-pri' });
     por.type = 'submit';
-    const cancelar = C.botao({ text: 'Cancelar', class: 'mj-fantasma' });
+    const cancelar = C.botao({ text: t('mesa.midia.cancelar'), class: 'mj-fantasma' });
     const form = el('form', { class: 'mj-link-form' }, campoUrl, el('div', { class: 'mj-form' }, campoTitulo, por, cancelar));
     const vazio = C.vazio({
       icone: 'link',
-      titulo: 'Um link para a sala',
-      texto: 'Cada pessoa abre no próprio navegador.',
+      titulo: t('mesa.link.vazioTitulo'),
+      texto: t('mesa.link.vazioTexto'),
       acao: form,
     });
     const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
@@ -115,14 +117,14 @@
     const dominio = el('span', { class: 'mj-link-dominio' });
     const autor = el('span', { class: 'mj-link-autor' });
     const resto = el('p', { class: 'mj-link-resto' });
-    const abrir = C.botao({ text: 'Abrir no navegador', class: 'mj-link-abrir' });
-    const trocar = C.botao({ icone: 'lapis', text: 'Trocar', label: 'Trocar o link' });
-    const tirar = C.botao({ icone: 'x', text: 'Tirar', label: 'Tirar o link da janela' });
+    const abrir = C.botao({ text: t('mesa.link.abrir'), class: 'mj-link-abrir' });
+    const trocar = C.botao({ icone: 'lapis', text: t('mesa.link.trocar'), label: t('mesa.link.trocarAria') });
+    const tirar = C.botao({ icone: 'x', text: t('mesa.link.tirar'), label: t('mesa.link.tirarAria') });
     const acoes = C.acoes({ principal: abrir, secundarias: [trocar, tirar] });
 
     const textoPergunta = el('p', { class: 'mj-link-pergunta', attrs: { role: 'alert' } });
-    const sim = C.botao({ text: 'Abrir', class: 'mj-pri' });
-    const nao = C.botao({ text: 'Cancelar', class: 'mj-fantasma' });
+    const sim = C.botao({ text: t('mesa.midia.abrir'), class: 'mj-pri' });
+    const nao = C.botao({ text: t('mesa.midia.cancelar'), class: 'mj-fantasma' });
     const confirma = el('div', { class: 'mj-link-confirma' }, textoPergunta, el('div', { class: 'mj-barra' }, sim, nao));
 
     const cheio = el('div', { class: 'mj-link-cheio' },
@@ -158,7 +160,9 @@
       if (!state.url) return;
       pendente = state.url;
       // O dominio em destaque: e ele que a pessoa confirma.
-      textoPergunta.replaceChildren('Abrir ', el('strong', { text: state.host }), ' no seu navegador?');
+      // A frase e uma chave so; o dominio entra no lugar do marcador, em negrito.
+      const [antes, depois] = t('mesa.link.pergunta', { dominio: '\u0001' }).split('\u0001');
+      textoPergunta.replaceChildren(antes, el('strong', { text: state.host }), depois);
       textoPergunta.setAttribute('aria-label', pergunta(state.host));
       acoes.hidden = true;
       confirma.hidden = false;
@@ -178,7 +182,7 @@
       fecharPergunta(true);
       if (!url || abrindo) return;
       if (!state || state.url !== url) {
-        b.aviso.mostrar('O link mudou; confira antes de abrir', b.raiz);
+        b.aviso.mostrar(t('mesa.link.mudou'), b.raiz);
         return;
       }
       abrindo = true;
@@ -209,11 +213,12 @@
       titulo.classList.toggle('is-dominio', !v.temTitulo);
       dominio.textContent = v.dominio;
       dominio.hidden = !v.temTitulo;
-      autor.textContent = state.by ? `${v.temTitulo ? '· ' : ''}colado por ${C.nomeDe(api, state.by)}` : '';
+      autor.textContent = state.by
+        ? t(v.temTitulo ? 'mesa.link.coladoPorSep' : 'mesa.link.coladoPor', { nome: C.nomeDe(api, state.by) }) : '';
       resto.textContent = v.resto;
       resto.title = v.resto;
       resto.hidden = !v.resto;
-      abrir.title = `Abre ${v.dominio} no seu navegador`;
+      abrir.title = t('mesa.link.abreNoNavegador', { dominio: v.dominio });
     }
 
     function update(novo) {

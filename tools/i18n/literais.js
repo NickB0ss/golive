@@ -165,6 +165,12 @@ const EXCECOES = new Set([
   'respostas STUN', // relatorio para o desenvolvedor (spec 2.4)
   'load failed', // mensagem interna de Error, nunca chega a tela
   '×', // simbolo de multiplicacao entre largura e altura
+  // Motivos do registro de janelas da Mesa (loadErrors): diagnostico para o desenvolvedor, nunca vao para a tela
+  'não é objeto', 'type inválido', 'title inválido', 'group inválido', 'size inválido', 'size.aspect inválido',
+  'maxStateBytes inválido', 'sem init', 'não é função', 'sem validate/reduce', 'secret inválido', 'secret sem view',
+  'type não bate com a chave', 'type não bate com o nome do arquivo',
+  'mj-dados-palco is-', 'ms cubic-bezier(0.12, 0.8, 0.18, 1)', // trecho de classe/valor CSS, nao e texto
+  'nao registrou', 'nao carregou', // mensagem interna de Error ao injetar script, nunca chega a tela
 ]);
 
 function ehListaDeClasses(texto) {

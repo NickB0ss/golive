@@ -14,6 +14,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'dados';
   const SIDES = Object.freeze([4, 6, 8, 10, 12, 20]);
   const MIN_DICE = 1;
@@ -47,22 +49,22 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     const by = isPeerId(action.by) ? action.by : undefined;
     switch (action.kind) {
       case 'config':
-        if (!isInt(action.count, MIN_DICE, MAX_DICE)) return `De ${MIN_DICE} a ${MAX_DICE} dados`;
-        if (!SIDES.includes(action.sides)) return 'Dado inválido';
+        if (!isInt(action.count, MIN_DICE, MAX_DICE)) return codigo('mesa.dados.quantidade', { min: MIN_DICE, max: MAX_DICE });
+        if (!SIDES.includes(action.sides)) return codigo('mesa.dados.dadoInvalido');
         return { kind: 'config', count: action.count, sides: action.sides };
       case 'roll': {
         const a = { kind: 'roll' };
         // `sides` e `values` so existem depois do prepare.
         if (action.values !== undefined || action.sides !== undefined) {
-          if (!SIDES.includes(action.sides)) return 'Dado inválido';
+          if (!SIDES.includes(action.sides)) return codigo('mesa.dados.dadoInvalido');
           if (!Array.isArray(action.values) || action.values.length < MIN_DICE || action.values.length > MAX_DICE) {
-            return 'Rolagem inválida';
+            return codigo('mesa.dados.rolagemInvalida');
           }
-          if (!action.values.every((v) => isInt(v, 1, action.sides))) return 'Rolagem inválida';
+          if (!action.values.every((v) => isInt(v, 1, action.sides))) return codigo('mesa.dados.rolagemInvalida');
           a.sides = action.sides;
           a.values = action.values.slice();
         }
@@ -72,7 +74,7 @@
       case 'coin': {
         const a = { kind: 'coin' };
         if (action.value !== undefined) {
-          if (!COIN.includes(action.value)) return 'Moeda inválida';
+          if (!COIN.includes(action.value)) return codigo('mesa.dados.moedaInvalida');
           a.value = action.value;
         }
         if (by !== undefined) a.by = by;
@@ -81,7 +83,7 @@
       case 'clear':
         return { kind: 'clear' };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 

@@ -42,10 +42,10 @@ test('um som por pessoa a cada 3 s, pela hora do servidor', () => {
   const s1 = gelar(r.state);
   // A mesma pessoa, 1 s depois: recusa com quanto falta.
   r = servidor(s1, { kind: 'play', sound: 'apito' }, '1', 11_000);
-  assert.equal(r.recusa, 'Espere 2 s para tocar outro som');
+  assert.equal(r.recusa, 'mesa.sons.espere?s=2');
   assert.equal(r.state, s1);
   r = servidor(s1, { kind: 'play', sound: 'apito' }, '1', 12_999);
-  assert.equal(r.recusa, 'Espere 1 s para tocar outro som');
+  assert.equal(r.recusa, 'mesa.sons.espere?s=1');
   // Outra pessoa pode na hora.
   r = servidor(s1, { kind: 'play', sound: 'palmas' }, '2', 10_001);
   assert.equal(r.recusa, undefined);
@@ -112,6 +112,6 @@ test('esta no registro, no grupo noite', () => {
   assert.ok(reg.MODULE_NAMES.includes('sons'));
   assert.equal(reg.get('sons').group, 'noite');
   assert.equal(reg.get('sons').title, 'Sons');
-  assert.equal(sons.soundName('badumtss'), 'Ba dum tss');
-  assert.equal(sons.soundName('constructor'), 'Som');
+  assert.equal(sons.soundName('badumtss'), 'mesa.sons.som.badumtss');
+  assert.equal(sons.soundName('constructor'), 'mesa.sons.som.generico');
 });

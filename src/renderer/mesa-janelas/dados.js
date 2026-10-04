@@ -9,6 +9,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'dados';
   const ANIM_MS = 450;
 
@@ -27,23 +28,31 @@
     return !!antes && depois.rolls > antes.rolls && !!ultima(depois);
   }
 
+  /** "2d6: 3 + 5 = 8" (neutro) / "Moeda: cara" (traduzido). */
+  function descrever(m, entry) {
+    if (entry.kind === 'coin') return t(entry.value === 'cara' ? 'mesa.dados.moedaCara' : 'mesa.dados.moedaCoroa');
+    return m.describe(entry);
+  }
+
   /** "Bia rolou 2d6: 3 + 5 = 8" / "Bia jogou a moeda: cara". */
   function anuncio(m, entry, nomeDe) {
-    const quem = nomeDe(entry.by);
-    if (entry.kind === 'coin') return `${quem} jogou a moeda: ${entry.value}`;
-    return `${quem} rolou ${m.describe(entry)}`;
+    const nome = nomeDe(entry.by);
+    if (entry.kind === 'coin') {
+      return t(entry.value === 'cara' ? 'mesa.dados.jogouMoedaCara' : 'mesa.dados.jogouMoedaCoroa', { nome });
+    }
+    return t('mesa.dados.rolou', { nome, resultado: m.describe(entry) });
   }
 
   /** O que vai no meio da janela: as faces (ou a moeda) e o total. */
   function faces(m, entry) {
     if (!entry) return { tipo: 'nada', valores: [], total: null };
-    if (entry.kind === 'coin') return { tipo: 'moeda', valores: [entry.value === 'cara' ? 'Cara' : 'Coroa'], total: null };
+    if (entry.kind === 'coin') return { tipo: 'moeda', valores: [t(entry.value === 'cara' ? 'mesa.dados.cara' : 'mesa.dados.coroa')], total: null };
     return { tipo: 'dados', valores: entry.values.map(String), total: entry.values.length > 1 ? m.total(entry) : null, lados: entry.sides };
   }
 
   /** Historico do mais novo para o mais velho, sem a jogada do meio. */
   function historico(m, state) {
-    return state.history.slice(0, -1).reverse().map((e) => ({ n: e.n, by: e.by, texto: m.describe(e) }));
+    return state.history.slice(0, -1).reverse().map((e) => ({ n: e.n, by: e.by, texto: descrever(m, e) }));
   }
 
   /** O historico mudou (jogada nova ou limpo)? Por conteudo, nao por
@@ -65,9 +74,9 @@
     let timer = null;
 
     const topo = el('div', { class: 'mj-barra mj-sec' });
-    const selQtd = el('select', { class: 'mj-sel', attrs: { 'aria-label': 'Quantos dados' } });
-    for (let n = m.MIN_DICE; n <= m.MAX_DICE; n++) selQtd.append(el('option', { text: `${n} ${n === 1 ? 'dado' : 'dados'}`, attrs: { value: String(n) } }));
-    const selLados = el('select', { class: 'mj-sel', attrs: { 'aria-label': 'Lados do dado' } });
+    const selQtd = el('select', { class: 'mj-sel', attrs: { 'aria-label': t('mesa.dados.quantos') } });
+    for (let n = m.MIN_DICE; n <= m.MAX_DICE; n++) selQtd.append(el('option', { text: t('mesa.dados.qtdDados', { n }), attrs: { value: String(n) } }));
+    const selLados = el('select', { class: 'mj-sel', attrs: { 'aria-label': t('mesa.dados.lados') } });
     for (const s of m.SIDES) selLados.append(el('option', { text: `d${s}`, attrs: { value: String(s) } }));
     topo.append(selQtd, selLados);
 
@@ -76,15 +85,15 @@
     const quem = el('span', { class: 'mj-dados-quem' });
     const meio = el('div', { class: 'mj-dados-meio' }, palco, res, quem);
 
-    const hist = el('ol', { class: 'mj-dados-hist mj-rola', attrs: { 'aria-label': 'Jogadas anteriores' } });
-    const limpar = C.botao({ text: 'Limpar', class: 'mj-fantasma', label: 'Limpar o histórico' });
-    const colHist = el('section', { class: 'mj-dados-col', attrs: { 'aria-label': 'Histórico' } },
-      el('div', { class: 'mj-barra' }, el('p', { class: 'mj-rotulo', text: 'Antes' }), el('span', { class: 'mj-mola' }), limpar), hist);
+    const hist = el('ol', { class: 'mj-dados-hist mj-rola', attrs: { 'aria-label': t('mesa.dados.anteriores') } });
+    const limpar = C.botao({ text: t('mesa.dados.limpar'), class: 'mj-fantasma', label: t('mesa.dados.limparHistorico') });
+    const colHist = el('section', { class: 'mj-dados-col', attrs: { 'aria-label': t('mesa.dados.historico') } },
+      el('div', { class: 'mj-barra' }, el('p', { class: 'mj-rotulo', text: t('mesa.dados.antes') }), el('span', { class: 'mj-mola' }), limpar), hist);
 
     const corpo = el('div', { class: 'mj-dados-corpo' }, meio, colHist);
 
-    const rolar = C.botao({ icone: 'dado', text: 'Rolar', class: 'mj-pri' });
-    const moeda = C.botao({ icone: 'moeda', text: 'Moeda', label: 'Jogar a moeda' });
+    const rolar = C.botao({ icone: 'dado', text: t('mesa.dados.rolar'), class: 'mj-pri' });
+    const moeda = C.botao({ icone: 'moeda', text: t('mesa.dados.moeda'), label: t('mesa.dados.jogarMoeda') });
     const ctrl = C.acoes({ principal: rolar, secundarias: [moeda] });
     ctrl.classList.add('mj-dados-ctrl');
 
@@ -121,7 +130,7 @@
         palco.append(el('span', { class: 'mj-dado is-vazio', text: '?' }));
       }
       if (timer) clearTimeout(timer);
-      const texto = e ? m.describe(e) : 'Ninguém rolou ainda';
+      const texto = e ? descrever(m, e) : t('mesa.dados.ninguemRolou');
       const dono = e ? C.nomeDe(api, e.by) : '';
       const pintar = () => {
         timer = null;
@@ -145,7 +154,7 @@
     function desenharHist() {
       const h = historico(m, state);
       hist.replaceChildren(...h.map((x) => el('li', null, C.bolinha(C.corDe(api, x.by), C.nomeDe(api, x.by)), el('span', { text: x.texto }))));
-      if (!h.length) hist.append(el('li', { class: 'mj-dica', text: 'Nada ainda.' }));
+      if (!h.length) hist.append(el('li', { class: 'mj-dica', text: t('mesa.dados.nadaAinda') }));
     }
 
     function update(novo) {
@@ -158,8 +167,9 @@
         desenharPalco(nova && !C.reduzMovimento());
         desenharHist();
       }
-      C.ligado(limpar, state.history.length ? true : 'O histórico já está vazio', 'Limpar o histórico');
-      const rot = `Rolar ${state.count}d${state.sides}`;
+      C.ligado(limpar, state.history.length ? true : t('mesa.dados.historicoVazio'),
+        t('mesa.dados.limparHistorico'));
+      const rot = t('mesa.dados.rolarN', { qtd: state.count, lados: state.sides });
       rolar.setAttribute('aria-label', rot);
       C.ligado(rolar, C.podeFazer(api, { kind: 'roll' }), rot);
     }

@@ -18,6 +18,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'roleta';
   const MIN_SPIN_OPTIONS = 2;
   const MAX_OPTIONS = 16;
@@ -50,9 +52,9 @@
   /** Texto de opcao -> texto limpo ou motivo. */
   function optionText(raw) {
     const t = cleanText(raw, MAX_TEXT);
-    if (t === null) return { err: 'Opção inválida' };
-    if (!t) return { err: 'Opção vazia' };
-    if (t.length > MAX_TEXT) return { err: `Opção longa demais (máx. ${MAX_TEXT})` };
+    if (t === null) return { err: codigo('mesa.roleta.opcaoInvalida') };
+    if (!t) return { err: codigo('mesa.roleta.opcaoVazia') };
+    if (t.length > MAX_TEXT) return { err: codigo('mesa.roleta.opcaoLonga', { max: MAX_TEXT }) };
     return { text: t };
   }
 
@@ -74,23 +76,23 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'add': {
         const o = optionText(action.text);
         return o.err || { kind: 'add', text: o.text };
       }
       case 'edit': {
-        if (!isInt(action.index, 0, MAX_OPTIONS - 1)) return 'Opção inválida';
+        if (!isInt(action.index, 0, MAX_OPTIONS - 1)) return codigo('mesa.roleta.opcaoInvalida');
         const o = optionText(action.text);
         return o.err || { kind: 'edit', index: action.index, text: o.text };
       }
       case 'remove':
-        if (!isInt(action.index, 0, MAX_OPTIONS - 1)) return 'Opção inválida';
+        if (!isInt(action.index, 0, MAX_OPTIONS - 1)) return codigo('mesa.roleta.opcaoInvalida');
         return { kind: 'remove', index: action.index };
       case 'setOptions': {
         if (!Array.isArray(action.options) || action.options.length > MAX_OPTIONS) {
-          return `Até ${MAX_OPTIONS} opções`;
+          return codigo('mesa.roleta.ateOpcoes', { max: MAX_OPTIONS });
         }
         const options = [];
         for (const raw of action.options) {
@@ -104,9 +106,9 @@
         const a = { kind: 'spin' };
         // O resultado so existe depois do prepare; antes, e so o pedido.
         if (action.index !== undefined) {
-          if (!isInt(action.index, 0, MAX_OPTIONS - 1)) return 'Giro inválido';
-          if (!isInt(action.turns, MIN_TURNS, MAX_TURNS)) return 'Giro inválido';
-          if (typeof action.offset !== 'number' || !(action.offset >= 0 && action.offset <= 1)) return 'Giro inválido';
+          if (!isInt(action.index, 0, MAX_OPTIONS - 1)) return codigo('mesa.roleta.giroInvalido');
+          if (!isInt(action.turns, MIN_TURNS, MAX_TURNS)) return codigo('mesa.roleta.giroInvalido');
+          if (typeof action.offset !== 'number' || !(action.offset >= 0 && action.offset <= 1)) return codigo('mesa.roleta.giroInvalido');
           a.index = action.index;
           a.turns = action.turns;
           a.offset = action.offset;
@@ -116,7 +118,7 @@
         return a;
       }
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -143,13 +145,13 @@
     if (typeof a === 'string') return a;
     switch (a.kind) {
       case 'add':
-        return state.options.length >= MAX_OPTIONS ? `A roleta está cheia (máx. ${MAX_OPTIONS})` : true;
+        return state.options.length >= MAX_OPTIONS ? codigo('mesa.roleta.cheia', { max: MAX_OPTIONS }) : true;
       case 'edit':
       case 'remove':
-        return a.index < state.options.length ? true : 'Opção inválida';
+        return a.index < state.options.length ? true : codigo('mesa.roleta.opcaoInvalida');
       case 'spin':
-        if (state.options.length < MIN_SPIN_OPTIONS) return `Ponha pelo menos ${MIN_SPIN_OPTIONS} opções`;
-        if (a.index !== undefined && a.index >= state.options.length) return 'Giro inválido';
+        if (state.options.length < MIN_SPIN_OPTIONS) return codigo('mesa.roleta.poraMinimo', { n: MIN_SPIN_OPTIONS });
+        if (a.index !== undefined && a.index >= state.options.length) return codigo('mesa.roleta.giroInvalido');
         return true;
       default:
         return true;

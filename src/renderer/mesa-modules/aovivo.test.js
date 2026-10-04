@@ -18,12 +18,12 @@ test('set aceita link ou nome e guarda em minusculas', () => {
   assert.equal(aovivo.validate(s, { kind: 'set', url: 'https://www.twitch.tv/Gaules' }), true);
   s = aovivo.reduce(s, { kind: 'set', url: 'https://www.twitch.tv/Gaules' }, { from: '1' });
   assert.deepEqual(s, { channel: 'gaules' });
-  assert.equal(aovivo.validate(s, { kind: 'set', channel: 'GAULES' }), 'Já é esse canal');
+  assert.equal(aovivo.validate(s, { kind: 'set', channel: 'GAULES' }), 'mesa.aovivo.jaEEsseCanal');
   s = aovivo.reduce(s, { kind: 'set', channel: 'alanzoka' }, { from: '1' });
   assert.deepEqual(s, { channel: 'alanzoka' });
   s = aovivo.reduce(s, { kind: 'clear' }, { from: '1' });
   assert.deepEqual(s, { channel: null });
-  assert.equal(aovivo.validate(s, { kind: 'clear' }), 'Nenhum canal');
+  assert.equal(aovivo.validate(s, { kind: 'clear' }), 'mesa.aovivo.nenhumCanal');
 });
 
 test('recusa canal invalido e acao malformada', () => {

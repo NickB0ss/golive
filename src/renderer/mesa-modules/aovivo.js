@@ -18,6 +18,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const L = (root.GoLive && root.GoLive.mesaMidiaLinks)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./midialinks') : null);
 
@@ -32,18 +34,18 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     if (action.kind === 'clear') return { kind: 'clear' };
-    if (action.kind !== 'set') return 'Ação desconhecida';
+    if (action.kind !== 'set') return codigo('mesa.jogo.acaoDesconhecida');
     const channel = L.parseTwitch(typeof action.channel === 'string' ? action.channel : action.url);
-    return channel ? { kind: 'set', channel } : 'Canal da Twitch não reconhecido';
+    return channel ? { kind: 'set', channel } : codigo('mesa.aovivo.canalNaoReconhecido');
   }
 
   function validate(state, action) {
     const a = parse(action);
     if (typeof a === 'string') return a;
-    if (a.kind === 'set' && a.channel === state.channel) return 'Já é esse canal';
-    if (a.kind === 'clear' && !state.channel) return 'Nenhum canal';
+    if (a.kind === 'set' && a.channel === state.channel) return codigo('mesa.aovivo.jaEEsseCanal');
+    if (a.kind === 'clear' && !state.channel) return codigo('mesa.aovivo.nenhumCanal');
     return true;
   }
 

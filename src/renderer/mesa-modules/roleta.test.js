@@ -117,7 +117,7 @@ test('sorte fora de [0, 1) nao da fatia nem voltas fora do alcance', () => {
 
 test('precisa de 2 opcoes para girar; sem resultado preparado nada muda', () => {
   const um = roda(roleta.init({}), [{ kind: 'add', text: 'Só' }]).state;
-  assert.equal(roleta.validate(um, { kind: 'spin' }), 'Ponha pelo menos 2 opções');
+  assert.equal(roleta.validate(um, { kind: 'spin' }), 'mesa.roleta.poraMinimo?n=2');
   assert.equal(roleta.reduce(deepFreeze(um), { kind: 'spin', index: 0, turns: 3, offset: 0.5 }), um);
   const s = deepFreeze(roda(roleta.init({}), [OPCOES]).state);
   assert.equal(roleta.reduce(s, { kind: 'spin' }, ctxCliente), s);
@@ -140,9 +140,9 @@ test('teto de opcoes', () => {
   const cheia = roda(roleta.init({}), [
     { kind: 'setOptions', options: Array.from({ length: roleta.MAX_OPTIONS }, (_, i) => `O${i}`) },
   ]).state;
-  assert.equal(roleta.validate(cheia, { kind: 'add', text: 'X' }), `A roleta está cheia (máx. ${roleta.MAX_OPTIONS})`);
+  assert.equal(roleta.validate(cheia, { kind: 'add', text: 'X' }), `mesa.roleta.cheia?max=${roleta.MAX_OPTIONS}`);
   assert.equal(roleta.reduce(deepFreeze(cheia), { kind: 'add', text: 'X' }), cheia);
-  assert.equal(roleta.validate(cheia, { kind: 'add', text: 'x'.repeat(roleta.MAX_TEXT) }), `A roleta está cheia (máx. ${roleta.MAX_OPTIONS})`);
+  assert.equal(roleta.validate(cheia, { kind: 'add', text: 'x'.repeat(roleta.MAX_TEXT) }), `mesa.roleta.cheia?max=${roleta.MAX_OPTIONS}`);
   assert.equal(roleta.validate(roleta.init({}), { kind: 'add', text: 'x'.repeat(roleta.MAX_TEXT) }), true);
 });
 

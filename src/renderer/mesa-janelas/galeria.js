@@ -11,6 +11,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'galeria';
 
   // ---------- Puras ----------
@@ -21,8 +22,8 @@
   }
 
   function contagem(n) {
-    if (!n) return 'Nenhuma imagem';
-    return n === 1 ? '1 imagem' : `${n} imagens`;
+    if (!n) return t('mesa.imagem.nenhuma');
+    return t('mesa.galeria.imagens', { n });
   }
 
   // ---------- DOM ----------
@@ -44,19 +45,19 @@
     const raiz = h('div', 'mj mj-galeria');
     raiz.dataset.superficie = C.SUPERFICIES[TYPE];
     const cabeca = h('div', 'mj-barra');
-    const titulo = h('p', 'mj-rotulo', 'Imagens do chat');
+    const titulo = h('p', 'mj-rotulo', t('mesa.galeria.titulo'));
     const conta = h('span', 'mj-gal-conta');
     cabeca.append(titulo, h('span', 'mj-mola'), conta);
     const grade = h('ul', 'mj-gal-grade mj-rola');
-    grade.setAttribute('aria-label', 'Imagens do chat');
+    grade.setAttribute('aria-label', t('mesa.galeria.titulo'));
     const vazio = C.vazio({
       icone: 'imagem',
-      titulo: 'Nenhuma imagem no chat',
-      texto: 'Mande uma imagem no chat e ela aparece aqui, pronta para pôr na Mesa.',
+      titulo: t('mesa.galeria.vazioTitulo'),
+      texto: t('mesa.galeria.vazioTexto'),
     });
     const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
     if (!vazioGlifo.innerHTML) vazioGlifo.innerHTML = TRACO_IMAGEM;
-    const dica = h('p', 'mj-dica mj-gal-dica', 'O chat guarda as 8 imagens mais recentes.');
+    const dica = h('p', 'mj-dica mj-gal-dica', t('mesa.galeria.dica'));
     raiz.append(cabeca, grade, vazio, dica);
     el.append(raiz);
 
@@ -69,11 +70,11 @@
       foto.decoding = 'async';
       foto.loading = 'lazy';
       foto.src = img.image;
-      foto.alt = `Imagem enviada por ${img.name || 'alguém'}`;
+      foto.alt = img.name ? t('mesa.galeria.altDe', { nome: img.name }) : t('mesa.galeria.altDeAlguem');
       const btn = h('button', 'mj-btn mj-gal-por');
       btn.type = 'button';
-      btn.textContent = 'Pôr na Mesa';
-      btn.title = `Pôr na Mesa a imagem de ${img.name || 'alguém'}`;
+      btn.textContent = t('mesa.galeria.por');
+      btn.title = img.name ? t('mesa.galeria.porDe', { nome: img.name }) : t('mesa.galeria.porDeAlguem');
       btn.addEventListener('click', () => {
         root.GoLive.mesaPor?.put('imagem', { kind: 'set', msgId: img.id });
       });

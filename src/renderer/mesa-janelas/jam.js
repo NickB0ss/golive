@@ -14,6 +14,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'jam';
 
   function mod() {
@@ -24,15 +25,15 @@
 
   /** Motivo de recusa da ponte (`abrirLinkDaMesa`) -> frase curta. */
   const MOTIVOS_ABRIR = {
-    recusado: 'O app não abre este link',
-    rapido: 'Espere um instante e clique de novo',
-    falhou: 'O navegador não abriu; tente de novo',
-    origem: 'Não deu para abrir daqui',
-    'sem-ponte': 'Abrir no navegador só funciona no app',
+    recusado: 'mesa.midia.abrirRecusado',
+    rapido: 'mesa.midia.abrirRapido',
+    falhou: 'mesa.midia.abrirFalhou',
+    origem: 'mesa.midia.abrirOrigem',
+    'sem-ponte': 'mesa.midia.abrirSemPonte',
   };
 
   function motivoAbrir(reason) {
-    return MOTIVOS_ABRIR[reason] || 'Não deu para abrir; tente de novo';
+    return t(MOTIVOS_ABRIR[reason] || 'mesa.midia.abrirPadrao');
   }
 
   /** Abre pela ponte do app. `true` ou o motivo (frase). Nunca lanca. */
@@ -67,8 +68,8 @@
 
   /** Texto de cima da lista: "Ninguém marcou ainda" / "3 pessoas no Jam". */
   function contagem(n) {
-    if (n === 0) return 'Ninguém marcou ainda';
-    return n === 1 ? '1 pessoa no Jam' : `${n} pessoas no Jam`;
+    if (n === 0) return t('mesa.jam.ninguemMarcou');
+    return t('mesa.jam.pessoasNoJam', { n });
   }
 
   // ---------- DOM ----------
@@ -92,17 +93,17 @@
       class: 'mj-campo',
       attrs: {
         type: 'text', inputmode: 'url', autocomplete: 'off', spellcheck: 'false',
-        placeholder: 'https://spotify.link/…', 'aria-label': 'Link do Jam', maxlength: String(m.MAX_INPUT),
+        placeholder: 'https://spotify.link/…', 'aria-label': t('mesa.jam.campoAria'), maxlength: String(m.MAX_INPUT),
       },
     });
-    const por = C.botao({ text: 'Pôr', class: 'mj-pri' });
+    const por = C.botao({ text: t('mesa.midia.por'), class: 'mj-pri' });
     por.type = 'submit';
-    const cancelar = C.botao({ text: 'Cancelar', class: 'mj-fantasma' });
+    const cancelar = C.botao({ text: t('mesa.midia.cancelar'), class: 'mj-fantasma' });
     const form = el('form', { class: 'mj-form' }, input, por, cancelar);
     const vazio = C.vazio({
       icone: 'musica',
-      titulo: 'Ouvir junto',
-      texto: 'Quem tem Premium inicia um Jam no Spotify (Conectar → Iniciar um Jam) e cola aqui o link de convite.',
+      titulo: t('mesa.jam.ouvirJunto'),
+      texto: t('mesa.jam.vazioTexto'),
       acao: form,
     });
     const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
@@ -112,19 +113,21 @@
     const tracoMusica = C.icone('musica');
     if (!tracoMusica.innerHTML) tracoMusica.innerHTML = TRACO_MUSICA;
     const glifo = el('span', { class: 'mj-jam-glifo', attrs: { 'aria-hidden': 'true' } }, tracoMusica);
-    const titulo = el('p', { class: 'mj-jam-titulo', text: 'Jam aberto' });
+    const titulo = el('p', { class: 'mj-jam-titulo', text: t('mesa.jam.aberto') });
     const host = el('span', { class: 'mj-jam-host' });
     const autor = el('span', { class: 'mj-jam-autor' });
     const cabeca = el('div', { class: 'mj-jam-cabeca' },
       glifo, el('div', { class: 'mj-jam-quem' }, titulo, el('div', { class: 'mj-jam-meta' }, host, autor)));
-    const entrar = C.botao({ text: 'Entrar no Jam', class: 'mj-jam-entrar', title: 'Abre o link no Spotify deste PC' });
-    const marcar = C.botao({ icone: 'check', text: 'Entrei' });
+    const entrar = C.botao({
+      text: t('mesa.jam.entrar'), class: 'mj-jam-entrar', title: t('mesa.jam.entrarTitulo'),
+    });
+    const marcar = C.botao({ icone: 'check', text: t('mesa.jam.entrei') });
     const conta = el('p', { class: 'mj-rotulo' });
     const mola = el('span', { class: 'mj-mola' });
     const pessoasCabeca = el('div', { class: 'mj-barra mj-jam-pessoas' }, conta, mola, marcar);
-    const lista = el('ul', { class: 'mj-jam-lista mj-rola', attrs: { 'aria-label': 'Quem entrou no Jam' } });
-    const trocar = C.botao({ icone: 'lapis', text: 'Trocar', label: 'Trocar o link do Jam' });
-    const tirar = C.botao({ icone: 'x', text: 'Tirar', label: 'Tirar o Jam da janela' });
+    const lista = el('ul', { class: 'mj-jam-lista mj-rola', attrs: { 'aria-label': t('mesa.jam.listaAria') } });
+    const trocar = C.botao({ icone: 'lapis', text: t('mesa.jam.trocar'), label: t('mesa.jam.trocarAria') });
+    const tirar = C.botao({ icone: 'x', text: t('mesa.jam.tirar'), label: t('mesa.jam.tirarAria') });
     const acoes = C.acoes({ principal: entrar, secundarias: [trocar, tirar] });
     const cheio = el('div', { class: 'mj-jam-cheio' }, cabeca, pessoasCabeca, lista, acoes);
 
@@ -150,7 +153,7 @@
       void abrirNoNavegador(root.golive, 'jam', state.link).then((r) => {
         abrindo = false;
         if (r !== true) b.aviso.mostrar(r, b.raiz);
-        else if (!estouNoJam(state, api.me())) b.aviso.mostrar('Entrou? Marque “Entrei” para a sala ver', b.raiz);
+        else if (!estouNoJam(state, api.me())) b.aviso.mostrar(t('mesa.jam.marqueEntrei'), b.raiz);
       });
     });
     b.clique(marcar, b.raiz, () => {
@@ -174,7 +177,7 @@
         if (cor) li.style.setProperty('--mj-cor', cor);
         return li;
       }));
-      if (!ps.length) lista.append(el('li', { class: 'mj-dica', text: 'Quem entrar clica em “Entrei”.' }));
+      if (!ps.length) lista.append(el('li', { class: 'mj-dica', text: t('mesa.jam.dicaLista') }));
       conta.textContent = contagem(ps.length);
     }
 
@@ -186,12 +189,13 @@
       cancelar.hidden = !temJam;
       if (!temJam) return;
       host.textContent = hostDoLink(state.link);
-      autor.textContent = state.by ? `· colado por ${C.nomeDe(api, state.by)}` : '';
+      autor.textContent = state.by ? t('mesa.jam.coladoPor', { nome: C.nomeDe(api, state.by) }) : '';
       const dentro = estouNoJam(state, api.me());
-      marcar.querySelector('span').textContent = dentro ? 'Saí' : 'Entrei';
+      marcar.querySelector('span').textContent = t(dentro ? 'mesa.jam.sai' : 'mesa.jam.entrei');
       marcar.classList.toggle('is-on', dentro);
       marcar.setAttribute('aria-pressed', dentro ? 'true' : 'false');
-      C.ligado(marcar, C.podeFazer(api, { kind: dentro ? 'leave' : 'join' }), dentro ? 'Sair da lista' : 'Marcar que entrou no Jam');
+      C.ligado(marcar, C.podeFazer(api, { kind: dentro ? 'leave' : 'join' }),
+        t(dentro ? 'mesa.jam.sairDaLista' : 'mesa.jam.marcarEntrou'));
       desenharLista();
     }
 

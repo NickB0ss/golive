@@ -20,6 +20,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'jam';
   const MAX_INPUT = 300;
   const MAX_JOINED = 24;
@@ -71,11 +73,11 @@
 
   /** Forma da acao, sem olhar o estado: a acao normalizada ou o motivo. */
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'set': {
         const link = parseJamUrl(action.url);
-        if (!link) return 'Cole o link do Jam (spotify.link/… ou open.spotify.com/socialsession/…)';
+        if (!link) return codigo('mesa.jam.linkInvalido');
         return { kind: 'set', url: link };
       }
       case 'clear':
@@ -83,7 +85,7 @@
       case 'leave':
         return { kind: action.kind };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -93,20 +95,20 @@
     const from = ctx && isPeerId(ctx.from) ? ctx.from : null;
     switch (a.kind) {
       case 'set':
-        if (a.url === state.link) return 'Este Jam já está na janela';
+        if (a.url === state.link) return codigo('mesa.jam.jaNaJanela');
         return true;
       case 'clear':
-        return state.link ? true : 'Não há Jam para tirar';
+        return state.link ? true : codigo('mesa.jam.naoHaParaTirar');
       case 'join':
-        if (!state.link) return 'Ainda não tem Jam';
-        if (from !== null && state.joined.includes(from)) return 'Você já está na lista';
-        if (state.joined.length >= MAX_JOINED) return 'A lista está cheia';
+        if (!state.link) return codigo('mesa.jam.aindaNaoTem');
+        if (from !== null && state.joined.includes(from)) return codigo('mesa.jam.jaNaLista');
+        if (state.joined.length >= MAX_JOINED) return codigo('mesa.jam.listaCheia');
         return true;
       case 'leave':
-        if (from !== null && !state.joined.includes(from)) return 'Você não está na lista';
+        if (from !== null && !state.joined.includes(from)) return codigo('mesa.jam.naoEstaNaLista');
         return true;
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 

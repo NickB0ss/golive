@@ -11,6 +11,7 @@
  */
 
 (function (root) {
+  const { t, traduzirCodigo } = root.GoLive.i18n;
   const NOTE_MS = 4000;
   const SANDBOX = 'allow-scripts allow-same-origin allow-popups';
 
@@ -38,21 +39,21 @@
     let showForm = false;
     let noteTimer = null;
 
-    const input = h('input', { class: 'mjm-input', type: 'text', placeholder: 'Canal ou link da Twitch', 'aria-label': 'Canal da Twitch', maxlength: 2048 });
-    const cancel = h('button', { class: 'mjm-btn', type: 'button', text: 'Cancelar' });
-    const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: 'Abrir' }), cancel);
+    const input = h('input', { class: 'mjm-input', type: 'text', placeholder: t('mesa.aovivo.placeholder'), 'aria-label': t('mesa.aovivo.aria'), maxlength: 2048 });
+    const cancel = h('button', { class: 'mjm-btn', type: 'button', text: t('mesa.midia.cancelar') });
+    const form = h('form', { class: 'mjm-form' }, input, h('button', { class: 'mjm-btn mjm-btn-act', type: 'submit', text: t('mesa.midia.abrir') }), cancel);
     const empty = h('div', { class: 'mjm-empty' }, C.vazio({
       icone: 'play',
-      titulo: 'Uma live para todos',
-      texto: 'Cole o canal ou o link da Twitch e a sala assiste junto.',
+      titulo: t('mesa.aovivo.vazioTitulo'),
+      texto: t('mesa.aovivo.vazioTexto'),
       acao: form,
     }));
     const host = h('div', { class: 'mjm-player' });
-    const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: 'Tocar este' });
+    const takeBtn = h('button', { class: 'mjm-btn mjm-btn-act', type: 'button', text: t('mesa.midia.tocarEste') });
     const coverName = h('p', { class: 'mjm-cover-name' });
-    const cover = h('div', { class: 'mjm-cover' }, h('div', { class: 'mjm-cover-cta' }, coverName, h('p', { class: 'mjm-hint', text: 'Outro vídeo está tocando neste PC.' }), takeBtn));
-    const msg = h('div', { class: 'mjm-msg', role: 'status' }, h('p', { class: 'mjm-msg-text', text: 'Sem internet: a Twitch não carregou neste PC.' }));
-    const swapBtn = h('button', { class: 'mjm-btn', type: 'button', text: 'Trocar canal' });
+    const cover = h('div', { class: 'mjm-cover' }, h('div', { class: 'mjm-cover-cta' }, coverName, h('p', { class: 'mjm-hint', text: t('mesa.midia.outroVideo') }), takeBtn));
+    const msg = h('div', { class: 'mjm-msg', role: 'status' }, h('p', { class: 'mjm-msg-text', text: t('mesa.aovivo.semInternet') }));
+    const swapBtn = h('button', { class: 'mjm-btn', type: 'button', text: t('mesa.aovivo.trocar') });
     const bar = h('div', { class: 'mjm-bar mjm-bar-top' }, swapBtn);
     const stage = h('div', { class: 'mjm-stage' }, host, cover, msg, bar);
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
@@ -106,7 +107,7 @@
     function send(action) {
       const ok = api.validate(action);
       if (ok !== true) {
-        showNote(ok);
+        showNote(traduzirCodigo(ok));
         return false;
       }
       api.act(action);
@@ -136,7 +137,8 @@
     root.addEventListener('online', onNet);
     root.addEventListener('offline', onNet);
     const offDenied = typeof api.onDenied === 'function'
-      ? api.onDenied((d) => showNote(d && (d.detail || d.reason) ? `Não deu: ${d.detail || d.reason}` : 'Não deu'))
+      ? api.onDenied((d) => showNote(d && (d.detail || d.reason)
+        ? t('mesa.midia.naoDeuMotivo', { motivo: C.motivoRecusa(d.reason, d.detail) }) : t('mesa.midia.naoDeu')))
       : null;
     render();
 
@@ -193,7 +195,7 @@
     let last = null; // [state, meta] que chegou antes de montar
     const wait = document.createElement('p');
     wait.className = 'mjm-loading';
-    wait.textContent = 'Carregando…';
+    wait.textContent = t('mesa.midia.carregando');
     el.appendChild(wait);
     Promise.all(DEPS.map(([src, global]) => carregar(src, global))).then(() => {
       if (dead) return;
@@ -201,7 +203,7 @@
       inner = mountReal(el, api);
       if (last) inner.update(last[0], last[1]);
     }).catch(() => {
-      if (!dead) wait.textContent = 'Não deu para carregar o player desta janela.';
+      if (!dead) wait.textContent = t('mesa.midia.naoCarregouPlayer');
     });
     return {
       update(state, meta) {

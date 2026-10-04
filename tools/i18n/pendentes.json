@@ -471,21 +471,6 @@
     "Várias imagens, uma de cada vez",
     "tic tac toe"
   ],
-  "src/renderer/mesa-janelas/aovivo.js": [
-    "Canal da Twitch",
-    "Canal ou link da Twitch",
-    "Cole o canal ou o link da Twitch e a sala assiste junto.",
-    "Não deu",
-    "Não deu para carregar o player desta janela.",
-    "Não deu:",
-    "Outro vídeo está tocando neste PC.",
-    "Sem internet: a Twitch não carregou neste PC.",
-    "Tocar este",
-    "Trocar canal",
-    "Uma live para todos",
-    "nao carregou",
-    "nao registrou"
-  ],
   "src/renderer/mesa-janelas/comum.js": [
     "Alguém",
     "Alguém",
@@ -499,31 +484,6 @@
     "Peça",
     "Você",
     "mj mj-"
-  ],
-  "src/renderer/mesa-janelas/cronometro.js": [
-    "Duração",
-    "Já está zerado",
-    "Nome do cronômetro",
-    "Parado em",
-    "Pausado em",
-    "Recomeçar",
-    "Recomeçar",
-    "Tempo esgotado",
-    "Tempo esgotado",
-    "Zerar o cronômetro",
-    "Zerar o cronômetro"
-  ],
-  "src/renderer/mesa-janelas/dados.js": [
-    "Histórico",
-    "Jogadas anteriores",
-    "Lados do dado",
-    "Limpar o histórico",
-    "Limpar o histórico",
-    "Nada ainda.",
-    "Ninguém rolou ainda",
-    "O histórico já está vazio",
-    "Quantos dados",
-    "mj-dados-palco is-"
   ],
   "src/renderer/mesa-janelas/desenha.js": [
     "A palavra era \"",
@@ -550,73 +510,6 @@
     "na rodada",
     "seu palpite..."
   ],
-  "src/renderer/mesa-janelas/galeria.js": [
-    "Imagem enviada por",
-    "Imagens do chat",
-    "Imagens do chat",
-    "Mande uma imagem no chat e ela aparece aqui, pronta para pôr na Mesa.",
-    "Nenhuma imagem",
-    "Nenhuma imagem no chat",
-    "O chat guarda as 8 imagens mais recentes.",
-    "Pôr na Mesa",
-    "Pôr na Mesa a imagem de"
-  ],
-  "src/renderer/mesa-janelas/imagem.js": [
-    "Enviada por",
-    "Esta imagem saiu do histórico do chat, que guarda só as 8 mais recentes.",
-    "Imagem do chat enviada por",
-    "Imagem fora do chat",
-    "Nenhuma imagem",
-    "Use “Pôr na Mesa” numa imagem do chat ou na Galeria."
-  ],
-  "src/renderer/mesa-janelas/jam.js": [
-    "1 pessoa no Jam",
-    "Abre o link no Spotify deste PC",
-    "Abrir no navegador só funciona no app",
-    "Entrar no Jam",
-    "Entrou? Marque “Entrei” para a sala ver",
-    "Espere um instante e clique de novo",
-    "Jam aberto",
-    "Link do Jam",
-    "Marcar que entrou no Jam",
-    "Ninguém marcou ainda",
-    "Não deu para abrir daqui",
-    "Não deu para abrir; tente de novo",
-    "O app não abre este link",
-    "O navegador não abriu; tente de novo",
-    "Ouvir junto",
-    "Pôr",
-    "Quem entrar clica em “Entrei”.",
-    "Quem entrou no Jam",
-    "Quem tem Premium inicia um Jam no Spotify (Conectar → Iniciar um Jam) e cola aqui o link de convite.",
-    "Sair da lista",
-    "Saí",
-    "Tirar o Jam da janela",
-    "Trocar o link do Jam",
-    "pessoas no Jam",
-    "· colado por"
-  ],
-  "src/renderer/mesa-janelas/link.js": [
-    "Abrir no navegador",
-    "Abrir no navegador só funciona no app",
-    "Cada pessoa abre no próprio navegador.",
-    "Endereço (https://)",
-    "Espere um instante e clique de novo",
-    "Não deu para abrir daqui",
-    "Não deu para abrir; tente de novo",
-    "O app não abre este link",
-    "O link mudou; confira antes de abrir",
-    "O navegador não abriu; tente de novo",
-    "Pôr",
-    "Tirar o link da janela",
-    "Título (opcional)",
-    "Título do link (opcional)",
-    "Um link para a sala",
-    "colado por",
-    "no seu navegador",
-    "no seu navegador?",
-    "no seu navegador?"
-  ],
   "src/renderer/mesa-janelas/quadro.js": [
     "Alguém",
     "Cor do traço",
@@ -639,94 +532,7 @@
     "Resposta registrada",
     "Resposta registrada. Aguarde a revelacao."
   ],
-  "src/renderer/mesa-janelas/radio.js": [
-    "Cole um link do YouTube (ou YouTube Music) e a fila toca para todos.",
-    "Descer na fila",
-    "Fila do rádio",
-    "Fila vazia",
-    "Link do YouTube",
-    "Link do YouTube para a fila",
-    "Nada tocando",
-    "Não deu",
-    "Não deu para carregar o player desta janela.",
-    "Não deu:",
-    "Outro rádio está tocando neste PC.",
-    "Ouvir este",
-    "Pausar o rádio para todos",
-    "Próximas (",
-    "Pôr na fila",
-    "Rádio da sala",
-    "Subir na fila",
-    "Tirar da fila",
-    "Tocando agora",
-    "Tocar o rádio para todos",
-    "Você votou (",
-    "Volume do rádio (só seu)",
-    "Votar para pular (",
-    "nao carregou",
-    "nao registrou",
-    "não deixa tocar fora do YouTube; pulei.",
-    "posta por"
-  ],
-  "src/renderer/mesa-janelas/roleta.js": [
-    "A roleta está girando",
-    "Adicionar opção",
-    "Adicionar opção",
-    "Adicione opções para começar a girar.",
-    "Da última vez:",
-    "Nova opção",
-    "Nova opção",
-    "Opção",
-    "Opções",
-    "Opções da roleta",
-    "Ponha pelo menos",
-    "Sem opções",
-    "Sem opções",
-    "ms cubic-bezier(0.12, 0.8, 0.18, 1)",
-    "opções para girar."
-  ],
-  "src/renderer/mesa-janelas/sons.js": [
-    "Ligar os sons neste PC",
-    "Ninguém tocou ainda",
-    "Ninguém tocou ainda",
-    "Silenciar os sons neste PC",
-    "Silenciar os sons neste PC",
-    "Sons para a sala",
-    "Volume dos sons (só seu)",
-    "para todos",
-    "para todos",
-    "s para tocar outro som"
-  ],
-  "src/renderer/mesa-janelas/youtube.js": [
-    "Cole um link do YouTube",
-    "Cole um link do YouTube e a sala assiste junto.",
-    "Ligar o som (só seu)",
-    "Link do YouTube",
-    "Não deu",
-    "Não deu para carregar o player desta janela.",
-    "Não deu:",
-    "Outro vídeo está tocando neste PC.",
-    "Pausar para todos",
-    "Posição do vídeo (para todos)",
-    "Pôr",
-    "Tentar de novo",
-    "Tirar o som (só seu)",
-    "Tocar este",
-    "Tocar para todos",
-    "Tocar para todos",
-    "Trocar o vídeo",
-    "Um vídeo para todos",
-    "Volume (só seu)",
-    "Vídeo do YouTube",
-    "nao carregou",
-    "nao registrou"
-  ],
   "src/renderer/mesa-modules/aovivo.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Canal da Twitch não reconhecido",
-    "Já é esse canal",
-    "Nenhum canal",
     "Nenhum canal"
   ],
   "src/renderer/mesa-modules/batalha.js": [
@@ -751,28 +557,11 @@
     "— vez de"
   ],
   "src/renderer/mesa-modules/cronometro.js": [
-    "Ajuste inválido",
-    "Ação desconhecida",
-    "Ação inválida",
     "Cronômetro",
-    "Duração de 1 s a 24 h",
-    "Já está correndo",
-    "Já está parado",
-    "Modo inválido",
-    "Pause antes de mudar",
-    "Texto inválido",
-    "Texto longo demais (máx.",
     "tempo esgotado"
   ],
   "src/renderer/mesa-modules/dados.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Dado inválido",
-    "Dado inválido",
-    "Moeda inválida",
-    "Nenhuma rolagem ainda",
-    "Rolagem inválida",
-    "Rolagem inválida"
+    "Nenhuma rolagem ainda"
   ],
   "src/renderer/mesa-modules/damas.js": [
     "lances só de damas"
@@ -850,59 +639,26 @@
     "Enquete sem pergunta"
   ],
   "src/renderer/mesa-modules/galeria.js": [
-    "Imagens do chat",
-    "a galeria não tem ações"
+    "Imagens do chat"
   ],
   "src/renderer/mesa-modules/imagem.js": [
     "Imagem do chat",
-    "Nenhuma imagem",
-    "ação desconhecida",
-    "imagem inválida"
+    "Nenhuma imagem"
   ],
   "src/renderer/mesa-modules/index.js": [
-    "Câmera",
-    "group inválido",
-    "maxStateBytes inválido",
-    "não é função",
-    "não é objeto",
-    "secret inválido",
-    "secret sem view",
-    "sem init",
-    "sem validate/reduce",
-    "size inválido",
-    "size.aspect inválido",
-    "title inválido",
-    "type inválido",
-    "type não bate com a chave",
-    "type não bate com o nome do arquivo"
+    "Câmera"
   ],
   "src/renderer/mesa-modules/jam.js": [
-    "A lista está cheia",
-    "Ainda não tem Jam",
-    "Ação desconhecida",
-    "Ação desconhecida",
-    "Ação inválida",
-    "Cole o link do Jam (spotify.link/… ou open.spotify.com/socialsession/…)",
-    "Este Jam já está na janela",
     "Jam aberto",
     "Jam aberto ·",
     "Nenhum Jam ainda",
-    "Não há Jam para tirar",
-    "Spotify Jam",
-    "Você já está na lista",
-    "Você não está na lista"
+    "Spotify Jam"
   ],
   "src/renderer/mesa-modules/lig4.js": [
     "Empate, tabuleiro cheio"
   ],
   "src/renderer/mesa-modules/link.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Cole um endereço https:// de um site (sem usuário, senha ou porta)",
-    "Este link já está na janela",
-    "Nenhum link ainda",
-    "Não há link para tirar",
-    "Título longo demais (máx."
+    "Nenhum link ainda"
   ],
   "src/renderer/mesa-modules/oito.js": [
     "Oito maluco",
@@ -1257,63 +1013,17 @@
     "Voce ja respondeu"
   ],
   "src/renderer/mesa-modules/radio.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Essa música já saiu",
-    "Essa música já saiu",
-    "Essa música não está na fila",
-    "Fila cheia (máx.",
     "Fila vazia",
-    "Já está pausado",
-    "Já está tocando",
-    "Link do YouTube não reconhecido",
-    "Música inválida",
-    "Música inválida",
-    "Música inválida",
-    "Música inválida",
-    "Nada para tocar",
-    "Nada tocando",
-    "Nada tocando",
-    "Nada tocando",
-    "Posição inválida",
-    "Posição inválida",
     "Rádio da sala",
-    "Só quem pôs ou o líder pula; vote para pular",
-    "Só quem pôs ou o líder tira",
-    "Título inválido",
-    "Você já votou",
-    "Vídeo inválido",
     "na fila",
     "na fila"
   ],
   "src/renderer/mesa-modules/roleta.js": [
-    ", ainda não girou",
-    "A roleta está cheia (máx.",
-    "Até",
-    "Ação desconhecida",
-    "Ação inválida",
-    "Giro inválido",
-    "Giro inválido",
-    "Giro inválido",
-    "Giro inválido",
-    "Opção inválida",
-    "Opção inválida",
-    "Opção inválida",
-    "Opção inválida",
-    "Opção longa demais (máx.",
-    "Opção vazia",
-    "Ponha pelo menos",
-    "opções",
-    "opções"
+    ", ainda não girou"
   ],
   "src/renderer/mesa-modules/sons.js": [
-    "Ação desconhecida",
     "Ba dum tss",
-    "Hora inválida",
     "Nenhum som ainda",
-    "Pessoa inválida",
-    "Som desconhecido",
-    "s para tocar outro som",
     "Último som:"
   ],
   "src/renderer/mesa-modules/sorteio.js": [
@@ -1334,18 +1044,8 @@
     "Empate por repetição"
   ],
   "src/renderer/mesa-modules/youtube.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Já está pausado",
-    "Já está tocando",
-    "Link do YouTube não reconhecido",
     "Nenhum vídeo",
-    "Nenhum vídeo",
-    "Posição inválida",
-    "Posição inválida",
-    "Posição inválida",
-    "Vídeo do YouTube",
-    "Vídeo inválido"
+    "Vídeo do YouTube"
   ],
   "src/renderer/mesa-view.js": [
     ", posta por",

@@ -100,11 +100,11 @@ test('ended e idempotente e ignora o fim de outro video', () => {
 
 test('validate recusa o que nao faz sentido', () => {
   const vazio = yt.init({});
-  assert.equal(yt.validate(vazio, { kind: 'play' }), 'Nenhum vídeo');
-  assert.equal(yt.validate(vazio, { kind: 'load', url: 'https://example.com' }), 'Link do YouTube não reconhecido');
+  assert.equal(yt.validate(vazio, { kind: 'play' }), 'mesa.youtube.nenhumVideo');
+  assert.equal(yt.validate(vazio, { kind: 'load', url: 'https://example.com' }), 'mesa.midia.linkYoutubeNaoReconhecido');
   const tocando = servidor(vazio, { kind: 'load', videoId: ID }, 0).state;
-  assert.equal(yt.validate(tocando, { kind: 'play' }), 'Já está tocando');
-  assert.equal(yt.validate({ ...tocando, playing: false }, { kind: 'pause' }), 'Já está pausado');
+  assert.equal(yt.validate(tocando, { kind: 'play' }), 'mesa.midia.jaTocando');
+  assert.equal(yt.validate({ ...tocando, playing: false }, { kind: 'pause' }), 'mesa.midia.jaPausado');
   for (const ruim of [
     null, [], 'play', {}, { kind: 5 }, { kind: '__proto__' }, { kind: 'seek' }, { kind: 'seek', pos: -1 },
     { kind: 'seek', pos: 'x' }, { kind: 'seek', pos: Infinity }, { kind: 'pause', pos: NaN }, { kind: 'play', pos: 1e9 },
