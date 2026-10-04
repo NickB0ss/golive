@@ -170,6 +170,7 @@ function montarCheio(tipo) {
       agir(pessoa.id, { kind: 'answer', answers: Array.from({ length: 6 }, (_, i) => `A${pessoa.id}${i}`) });
     });
   } else if (tipo === 'quiz') {
+    agir('1', { kind: 'start' });
     pessoas.slice(0, 4).forEach((pessoa, i) => agir(pessoa.id, { kind: 'answer', option: i }));
   } else if (tipo === 'poquer') {
     pessoas.forEach((pessoa, i) => agir(pessoa.id, { kind: 'sit', seat: i }));

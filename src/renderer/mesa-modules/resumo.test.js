@@ -6,8 +6,8 @@ const registro = require('./index');
 const truco = require('./truco');
 const sons = require('./sons');
 
-// Quiz e Desenha ainda devolvem texto no summary (vao em tarefa propria).
-const COM_TEXTO = new Set(['quiz', 'desenha']);
+// Desenha ainda devolve texto no summary (vai em tarefa propria).
+const COM_TEXTO = new Set(['desenha']);
 
 test('todo titulo de modulo e a chave mesa.titulo.<tipo> e existe nos dicionarios', () => {
   for (const mod of registro.list()) {

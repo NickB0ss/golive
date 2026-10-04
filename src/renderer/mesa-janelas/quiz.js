@@ -5,9 +5,11 @@
 
 (function (root) {
   function textoBarra(s) {
-    if (s.finished) return 'Partida encerrada';
-    if (s.me?.answered) return 'Resposta registrada';
-    return `Pergunta ${s.round + 1} de ${s.total}`;
+    const { t } = root.GoLive.i18n;
+    if (s.setup) return t('quiz.temasTitulo');
+    if (s.finished) return t('quiz.barraEncerrada');
+    if (s.me?.answered) return t('quiz.barraRegistrada');
+    return t('quiz.rodada', { n: s.round + 1, total: s.total });
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -22,6 +24,8 @@
     // mais abaixo, so chama isto depois que `comum.js` (que nao tem tag
     // propria) certamente carregou.
     const C = root.GoLive.mesaJanelasComum;
+    const { t, idiomaAtivo } = root.GoLive.i18n;
+    const banco = root.GoLive.mesaQuizPerguntas;
     const b = C.base(elRoot, api, 'quiz');
     const T = C.el;
     const topo = T('div', { class: 'mj-quiz-topo' });
@@ -29,13 +33,42 @@
     const prazo = T('span', { class: 'mj-quiz-prazo', attrs: { 'aria-live': 'polite' } });
     const rodada = T('span', { class: 'mj-quiz-rodada' });
     topo.append(rodada, T('span', { class: 'mj-mola' }), prazo);
+    const temaDaPergunta = T('span', { class: 'mj-quiz-tema-pergunta' });
     const pergunta = T('p', { class: 'mj-quiz-pergunta' });
     const alternativas = T('div', { class: 'mj-quiz-alternativas', attrs: { role: 'group' } });
-    const placar = T('div', { class: 'mj-quiz-placar', attrs: { 'aria-label': 'Placar' } });
+    const placar = T('div', { class: 'mj-quiz-placar', attrs: { 'aria-label': t('quiz.placar') } });
     const status = T('p', { class: 'mj-quiz-status', attrs: { role: 'status', 'aria-live': 'polite' } });
-    const reiniciar = C.botao({ text: 'Reiniciar', class: 'mj-pri' });
-    b.raiz.append(topo, pergunta, alternativas, placar, status, reiniciar);
+    const reiniciar = C.botao({ text: t('quiz.reiniciar'), class: 'mj-pri' });
+    // Preparo: uma caixa de marcar por tema e o botao de comecar. Os rotulos vem
+    // do dicionario (quiz.tema.<id>); o estado so guarda ids de tema.
+    const preparo = T('div', { class: 'mj-quiz-preparo' });
+    const dica = T('p', { class: 'mj-dica', text: t('quiz.temasTitulo') });
+    const listaTemas = T('div', {
+      class: 'mj-quiz-temas', attrs: { role: 'group', 'aria-label': t('quiz.temasGrupo') },
+    });
+    const caixas = new Map();
+    for (const id of banco.TEMAS) {
+      const caixa = T('input', { attrs: { type: 'checkbox', value: id } });
+      const rotulo = T('label', { class: 'mj-quiz-tema' });
+      rotulo.append(caixa, T('span', { text: t(`quiz.tema.${id}`) }));
+      caixas.set(id, caixa);
+      listaTemas.append(rotulo);
+    }
+    const comecar = C.botao({ text: t('quiz.comecar'), class: 'mj-pri' });
+    preparo.append(dica, listaTemas, comecar);
+    b.raiz.append(topo, preparo, temaDaPergunta, pergunta, alternativas, placar, status, reiniciar);
     b.clique(reiniciar, b.raiz, () => b.acao(b.raiz, { kind: 'reset' }));
+    b.clique(comecar, preparo, () => b.acao(preparo, { kind: 'start' }));
+    listaTemas.addEventListener('change', () => {
+      const marcados = banco.TEMAS.filter((id) => caixas.get(id).checked);
+      if (!marcados.length) {
+        // Nao da para comecar sem tema: desfaz a ultima desmarcacao e diz o motivo.
+        for (const id of state?.temas || []) caixas.get(id).checked = true;
+        status.textContent = t('quiz.precisaDeTema');
+        return;
+      }
+      b.acao(preparo, { kind: 'temas', temas: marcados });
+    });
 
     let state = null;
     let enviado = false;
@@ -59,20 +92,20 @@
     }
 
     function nome(id) {
-      try { return api.nameOf(id); } catch { return id || 'Alguem'; }
+      try { return api.nameOf(id); } catch { return id || '?'; }
     }
     function desenharPlacar(s) {
       placar.replaceChildren();
       for (const jogador of s.players || []) {
         const linha = T('div', { class: `mj-quiz-jogador${jogador.by === api.me() ? ' is-eu' : ''}` });
-        const resposta = jogador.answered ? 'respondeu' : 'pensando';
+        const resposta = jogador.answered ? t('quiz.respondeu') : t('quiz.pensando');
         const inicial = String(nome(jogador.by) || '').trim().charAt(0).toUpperCase() || '?';
         const avatar = T('span', { class: 'mj-cadeira-avatar', text: inicial });
         const cor = C.corDe(api, jogador.by);
         if (cor) avatar.style.setProperty('--mj-cor', cor);
         linha.append(avatar, T('span', { class: 'mj-quiz-nome', text: nome(jogador.by) }),
           T('span', { class: 'mj-quiz-respondeu', text: resposta }),
-          T('strong', { class: 'mj-quiz-pontos', text: `${jogador.score} pts` }));
+          T('strong', { class: 'mj-quiz-pontos', text: t('quiz.pontos', { n: jogador.score }) }));
         placar.append(linha);
       }
     }
@@ -82,39 +115,69 @@
         return;
       }
       const falta = Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000));
-      prazo.textContent = `${falta} s`;
+      prazo.textContent = t('quiz.segundos', { n: falta });
       prazo.classList.toggle('is-fim', falta <= 5);
       if (falta === 0 && !pedido && !state.me?.answered) {
         pedido = true;
         api.act({ kind: 'timeout' });
       }
     }
+    function mostrarPreparo(s) {
+      for (const [id, caixa] of caixas) caixa.checked = s.temas.includes(id);
+      topo.hidden = true;
+      preparo.hidden = false;
+      temaDaPergunta.hidden = true;
+      pergunta.hidden = true;
+      alternativas.hidden = true;
+      placar.hidden = true;
+      reiniciar.hidden = true;
+      status.textContent = '';
+      C.ligado(comecar, s.temas.length ? true : t('quiz.precisaDeTema'));
+    }
     function atualizar(s) {
-      if (!s || !s.question) return;
+      if (!s) return;
       state = s;
-      atualizarBarra(api, textoBarra(s), Boolean(!s.finished && s.me?.canAnswer));
+      atualizarBarra(api, textoBarra(s), Boolean(!s.setup && !s.finished && s.me?.canAnswer));
+      if (s.setup) { mostrarPreparo(s); return; }
+      if (!s.question) return;
+      topo.hidden = false;
+      preparo.hidden = true;
+      temaDaPergunta.hidden = false;
+      pergunta.hidden = false;
+      alternativas.hidden = false;
+      placar.hidden = false;
       enviado = s.me?.answered === true;
       pedido = ultimoPrazo === s.deadline ? pedido : false;
       ultimoPrazo = s.deadline;
-      rodada.textContent = s.finished ? 'Fim da partida' : `Pergunta ${s.round + 1} de ${s.total}`;
-      pergunta.textContent = s.question.pergunta;
+      rodada.textContent = s.finished ? t('quiz.fim') : t('quiz.rodada', { n: s.round + 1, total: s.total });
+      // O estado so tem ids: o texto sai do banco, na lingua de quem esta lendo.
+      const q = banco.porId(s.question.id);
+      if (!q) return;
+      const { pergunta: enunciado, alternativas: alts } = banco.texto(q, idiomaAtivo());
+      const visiveis = s.question.ordem.map((indice) => alts[indice]);
+      temaDaPergunta.textContent = t(`quiz.tema.${s.question.tema}`);
+      pergunta.textContent = enunciado;
       for (let i = 0; i < botoes.length; i++) {
-        const alt = s.question.alternativas[i];
+        const alt = visiveis[i];
         botoes[i].texto.textContent = alt;
         botoes[i].botao.hidden = !alt;
         botoes[i].botao.classList.toggle('is-escolhida', s.me.answer === i);
-        C.ligado(botoes[i].botao, s.me.canAnswer ? true : (enviado ? 'Resposta enviada' : 'Indisponivel'));
+        const motivo = enviado ? t('quiz.respostaEnviada') : t('mesa.tabuleiro.indisponivel');
+        C.ligado(botoes[i].botao, s.me.canAnswer ? true : motivo);
       }
       reiniciar.hidden = !s.can?.reset;
       desenharPlacar(s);
       const ultimaRodada = s.history?.[s.history.length - 1];
       const letraCerta = Number.isInteger(ultimaRodada?.certa)
         ? String.fromCharCode(65 + ultimaRodada.certa) : null;
-      const respostaCerta = letraCerta ? ` A resposta certa da pergunta anterior foi ${letraCerta}.` : '';
-      if (s.finished) status.textContent = letraCerta
-        ? `Partida encerrada. A resposta certa da ultima pergunta foi ${letraCerta}.` : 'Partida encerrada.';
-      else if (enviado) status.textContent = 'Resposta registrada. Aguarde a revelacao.';
-      else status.textContent = `Escolha uma alternativa.${respostaCerta}`;
+      if (s.finished) {
+        status.textContent = letraCerta ? t('quiz.status.encerradaCerta', { letra: letraCerta })
+          : t('quiz.status.encerrada');
+      } else if (enviado) status.textContent = t('quiz.status.aguarde');
+      else {
+        status.textContent = letraCerta ? t('quiz.status.escolhaCerta', { letra: letraCerta })
+          : t('quiz.status.escolha');
+      }
       atualizarPrazo();
     }
     const timer = setInterval(atualizarPrazo, 500);

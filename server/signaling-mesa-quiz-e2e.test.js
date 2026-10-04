@@ -73,7 +73,11 @@ test('Quiz nao vaza respostas no eco, no sync nem antes de todos responderem', a
   assert.ok(antesDaResposta.length > 0);
   assert.equal(JSON.stringify(antesDaResposta).includes('"certa"'), false);
   assert.equal(JSON.stringify(antesDaResposta).includes('"ordens"'), false);
-  assert.equal(add.win.state.question.alternativas.length, 4);
+  assert.equal(add.win.state.setup, true);
+  assert.equal(add.win.state.question, null);
+  const inicio = await ana.acao(id, { kind: 'start' });
+  assert.equal(inicio.state.question.ordem.length, 4);
+  assert.equal(JSON.stringify(inicio.state).includes('"alternativas"'), false);
   const antesDaAcaoDaAna = ana.mensagens.length;
   const antes = bia.mensagens.length;
   const deAna = await ana.acao(id, { kind: 'answer', option: 0 });

@@ -1,191 +1,64 @@
 'use strict';
 
 /*
- * Banco autoral e estavel do Quiz. Cada entrada tem pergunta, quatro respostas
- * distintas e o indice da resposta certa. O modulo valida o banco ao carregar.
+ * Banco do Quiz (spec 2026-10-03-idiomas, secao 5): 8 temas x 60, cada
+ * pergunta nas tres linguas, com a MESMA resposta certa. A sala sorteia ids;
+ * cada pessoa monta o texto no proprio idioma (texto()).
  */
 
 (function (root) {
-  // Texto ja acentuado como aparece na tela; certa = indice em alternativas.
-  const raw = [
-    ['Qual é a capital do Brasil?', ['Brasília', 'Goiânia', 'Salvador', 'Recife'], 0],
-    ['Qual é o maior estado brasileiro em área?', ['Amazonas', 'Pará', 'Mato Grosso', 'Minas Gerais'], 0],
-    ['Qual bioma ocupa grande parte do Nordeste brasileiro?', ['Caatinga', 'Pampa', 'Pantanal', 'Mata Atlântica'], 0],
-    ['Em que estado fica o arquipélago de Fernando de Noronha?', ['Pernambuco', 'Bahia', 'Ceará', 'Alagoas'], 0],
-    ['Qual rio passa pela cidade de Manaus?', ['Negro', 'Tietê', 'São Francisco', 'Paraná'], 0],
-    ['Qual é a capital de Minas Gerais?', ['Belo Horizonte', 'Vitória', 'Uberlândia', 'Ouro Preto'], 0],
-    ['Qual oceano banha a costa brasileira?', ['Atlântico', 'Pacífico', 'Índico', 'Ártico'], 0],
-    ['Qual foi a primeira capital do Brasil?', ['Salvador', 'Rio de Janeiro', 'Olinda', 'Brasília'], 0],
-    ['Qual cidade é conhecida como Cidade Maravilhosa?', ['Rio de Janeiro', 'São Paulo', 'Curitiba', 'Natal'], 0],
-    ['Qual é a moeda oficial do Brasil?', ['Real', 'Cruzeiro', 'Peso', 'Escudo'], 0],
-    ['Qual é o maior rio inteiramente brasileiro?', ['São Francisco', 'Amazonas', 'Parnaíba', 'Araguaia'], 0],
-    ['Qual cidade brasileira é conhecida como a capital do frevo?', ['Recife', 'Fortaleza', 'Salvador', 'Natal'], 0],
-    ['Em qual cidade fica o Pelourinho?', ['Salvador', 'Recife', 'São Luís', 'Belém'], 0],
-    ['Qual é a capital do estado do Pará?', ['Belém', 'Macapá', 'Boa Vista', 'Palmas'], 0],
-    ['Qual festa popular acontece no período junino?',
-      ['Festas de São João', 'Carnaval', 'Bumba meu boi', 'Lavagem do Bonfim'], 0],
-    ['Qual objeto colorido os passistas levam na mão ao dançar frevo?', ['Sombrinha', 'Leque', 'Bandeira', 'Lenço'], 0],
-    ['Qual é o estado brasileiro conhecido pela sigla RJ?',
-      ['Rio de Janeiro', 'Rondônia', 'Roraima', 'Rio Grande do Sul'], 0],
-    ['Qual cidade abriga as Cataratas do Iguaçu no lado brasileiro?',
-      ['Foz do Iguaçu', 'Cascavel', 'Londrina', 'Maringá'], 0],
-    ['Qual é a maior região brasileira em área?', ['Norte', 'Nordeste', 'Centro-Oeste', 'Sul'], 0],
-    ['Qual produto é tradicionalmente associado ao ciclo econômico amazônico?',
-      ['Borracha', 'Cacau', 'Café', 'Algodão'], 0],
-    ['Quantos jogadores formam um time de futebol em campo?', ['11', '9', '10', '12'], 0],
-    ['Quantas casas tem um tabuleiro de xadrez?', ['64', '32', '48', '72'], 0],
-    ['Qual peça do xadrez se move em L?', ['Cavalo', 'Bispo', 'Torre', 'Dama'], 0],
-    ['No truco paulista, quantas cartas cada jogador recebe?', ['3', '2', '4', '5'], 0],
-    ['Quantas faces tem um dado comum?', ['6', '4', '8', '12'], 0],
-    ['Qual jogo usa as peças rei, dama, torre e bispo?', ['Xadrez', 'Damas', 'Gamão', 'Dominó'], 0],
-    ['Quantas peças tem o jogo de dominó duplo-seis?', ['28', '24', '30', '32'], 0],
-    ['Em qual esporte se marca um touchdown?', ['Futebol americano', 'Rugby', 'Beisebol', 'Hóquei'], 0],
-    ['Qual carta costuma valer 11 no blackjack?', ['Ás', 'Rei', 'Dama', 'Coringa'], 0],
-    ['No voleibol, quantos jogadores de cada equipe ficam em quadra?', ['6', '5', '7', '8'], 0],
-    ['Qual peça do jogo de damas anda na diagonal?',
-      ['Todas as peças', 'Apenas a dama', 'Apenas a peça vermelha', 'Nenhuma'], 0],
-    ['Quantos buracos tem uma rodada tradicional de golfe?', ['18', '9', '12', '21'], 0],
-    ['Qual esporte usa uma peteca?', ['Badminton', 'Tênis', 'Squash', 'Handebol'], 0],
-    ['No basquete, quantos pontos vale uma cesta de lance livre?', ['1', '2', '3', '4'], 0],
-    ['Em qual jogo se usa a expressão xeque-mate?', ['Xadrez', 'Truco', 'Pôquer', 'Bilhar'], 0],
-    ['Qual é a peça mais valiosa do xadrez depois do rei?', ['Dama', 'Torre', 'Bispo', 'Cavalo'], 0],
-    ['Quantas cartas tem um baralho francês sem coringas?', ['52', '48', '54', '40'], 0],
-    ['Qual esporte é jogado com raquete e uma bolinha amarela?', ['Tênis', 'Voleibol', 'Críquete', 'Golfe'], 0],
-    ['Em qual jogo se tenta formar uma linha de quatro?', ['Ligue quatro', 'Velha', 'Damas', 'Batalha naval'], 0],
-    ['Qual é a peça de maior valor no dominó?', ['Duplo-seis', 'Duplo-cinco', 'Seis-cinco', 'Duplo-zero'], 0],
-    ['Qual planeta é conhecido como planeta vermelho?', ['Marte', 'Vênus', 'Júpiter', 'Mercúrio'], 0],
-    ['Qual é o satélite natural da Terra?', ['Lua', 'Fobos', 'Europa', 'Titã'], 0],
-    ['Qual gás é mais abundante na atmosfera terrestre?',
-      ['Nitrogênio', 'Oxigênio', 'Dióxido de carbono', 'Hidrogênio'], 0],
-    ['Qual órgão bombeia o sangue pelo corpo?', ['Coração', 'Pulmão', 'Fígado', 'Rim'], 0],
-    ['Qual é o maior planeta do Sistema Solar?', ['Júpiter', 'Saturno', 'Terra', 'Netuno'], 0],
-    ['Qual é o processo pelo qual plantas produzem alimento?',
-      ['Fotossíntese', 'Digestão', 'Fermentação', 'Combustão'], 0],
-    ['Quantos ossos tem aproximadamente o corpo humano adulto?', ['206', '106', '306', '406'], 0],
-    ['Qual metal é líquido em temperatura ambiente?', ['Mercúrio', 'Ferro', 'Cobre', 'Alumínio'], 0],
-    ['Qual é a unidade básica da vida?', ['Célula', 'Tecido', 'Órgão', 'Molécula'], 0],
-    ['Qual fenômeno ocorre quando a Lua fica entre a Terra e o Sol?',
-      ['Eclipse solar', 'Eclipse lunar', 'Solstício', 'Equinócio'], 0],
-    ['Qual é o ponto de congelamento da água ao nível do mar?',
-      ['0 graus Celsius', '10 graus Celsius', '32 graus Celsius', '100 graus Celsius'], 0],
-    ['Qual animal é conhecido por mudar de cor para se camuflar?', ['Camaleão', 'Elefante', 'Golfinho', 'Pinguim'], 0],
-    ['Qual é a estrela do nosso sistema planetário?', ['Sol', 'Sirius', 'Polaris', 'Vega'], 0],
-    ['Qual vitamina é produzida pela pele com exposição ao sol?',
-      ['Vitamina D', 'Vitamina C', 'Vitamina B12', 'Vitamina K'], 0],
-    ['Qual é o maior animal conhecido?', ['Baleia-azul', 'Elefante africano', 'Girafa', 'Tubarão-baleia'], 0],
-    ['Qual parte da planta absorve água do solo?', ['Raiz', 'Flor', 'Fruto', 'Semente'], 0],
-    ['Qual é o nome da passagem da água líquida para vapor?',
-      ['Evaporação', 'Condensação', 'Fusão', 'Solidificação'], 0],
-    ['Qual cientista formulou a teoria da relatividade?',
-      ['Albert Einstein', 'Isaac Newton', 'Charles Darwin', 'Galileu Galilei'], 0],
-    ['Qual é o continente com maior área?', ['Ásia', 'África', 'Europa', 'América'], 0],
-    ['Qual é o maior deserto quente do mundo?', ['Saara', 'Atacama', 'Gobi', 'Kalahari'], 0],
-    ['Qual país tem formato aproximado de uma bota?', ['Itália', 'Grécia', 'Espanha', 'Portugal'], 0],
-    ['Qual é a capital da França?', ['Paris', 'Lyon', 'Marselha', 'Nice'], 0],
-    ['Em qual país ficam as pirâmides de Gizé?', ['Egito', 'México', 'Peru', 'Índia'], 0],
-    ['Qual oceano é o maior do planeta?', ['Pacífico', 'Atlântico', 'Índico', 'Ártico'], 0],
-    ['Qual montanha é a mais alta do mundo acima do nível do mar?',
-      ['Everest', 'Aconcágua', 'Kilimanjaro', 'Mont Blanc'], 0],
-    ['Qual é a capital do Japão?', ['Tóquio', 'Quioto', 'Osaka', 'Hiroshima'], 0],
-    ['Qual país é famoso pelo formato de longa faixa na costa do Pacífico?',
-      ['Chile', 'Canadá', 'Índia', 'Noruega'], 0],
-    ['Qual linha imaginária divide a Terra em hemisférios norte e sul?',
-      ['Equador', 'Greenwich', 'Trópico de Câncer', 'Círculo Polar'], 0],
-    ['Qual mar separa a Europa da África?', ['Mediterrâneo', 'Caribe', 'Vermelho', 'Bering'], 0],
-    ['Qual é a capital de Portugal?', ['Lisboa', 'Porto', 'Coimbra', 'Braga'], 0],
-    ['Qual é o maior país do mundo em área?', ['Rússia', 'Canadá', 'China', 'Estados Unidos'], 0],
-    ['Qual é a capital da Argentina?', ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza'], 0],
-    ['Qual rio atravessa a cidade de Londres?', ['Tâmisa', 'Sena', 'Reno', 'Danúbio'], 0],
-    ['Qual é o idioma oficial do México?', ['Espanhol', 'Português', 'Inglês', 'Francês'], 0],
-    ['Qual país é conhecido como Terra do Sol Nascente?', ['Japão', 'China', 'Coreia do Sul', 'Tailândia'], 0],
-    ['Qual é a capital da Austrália?', ['Camberra', 'Sydney', 'Melbourne', 'Perth'], 0],
-    ['Qual é o maior país da América do Sul em área?', ['Brasil', 'Argentina', 'Peru', 'Colômbia'], 0],
-    ['Qual é a capital do Canadá?', ['Ottawa', 'Toronto', 'Vancouver', 'Montreal'], 0],
-    ['Quem escreveu Dom Casmurro?', ['Machado de Assis', 'José de Alencar', 'Carlos Drummond', 'Graciliano Ramos'], 0],
-    ['Quem escreveu O Pequeno Príncipe?',
-      ['Antoine de Saint-Exupéry', 'Victor Hugo', 'Júlio Verne', 'Albert Camus'], 0],
-    ['Qual obra é de William Shakespeare?', ['Hamlet', 'Os Lusíadas', 'A Moreninha', 'O Cortiço'], 0],
-    ['Quem pintou a Mona Lisa?', ['Leonardo da Vinci', 'Michelangelo', 'Rafael', 'Van Gogh'], 0],
-    ['Qual movimento artístico é associado a Tarsila do Amaral?',
-      ['Modernismo', 'Barroco', 'Romantismo', 'Realismo'], 0],
-    ['Qual instrumento tem teclas brancas e pretas?', ['Piano', 'Violino', 'Flauta', 'Trompete'], 0],
-    ['Qual é a cor obtida da mistura de azul e amarelo?', ['Verde', 'Roxo', 'Laranja', 'Marrom'], 0],
-    ['Quantas notas musicais há na escala natural?', ['7', '5', '8', '12'], 0],
-    ['Qual é o nome da arte japonesa de dobrar papel?', ['Origami', 'Ikebana', 'Kabuki', 'Haicai'], 0],
-    ['Qual escritor brasileiro criou Capitu?',
-      ['Machado de Assis', 'Jorge Amado', 'Monteiro Lobato', 'Érico Veríssimo'], 0],
-    ['Qual é o idioma original de Os Lusíadas?', ['Português', 'Espanhol', 'Latim', 'Italiano'], 0],
-    ['Quem compôs a Nona Sinfonia?', ['Beethoven', 'Mozart', 'Bach', 'Chopin'], 0],
-    ['Qual estilo musical nasceu em comunidades afro-americanas nos EUA?', ['Jazz', 'Fado', 'Tango', 'Samba'], 0],
-    ['Qual artista brasileiro é associado ao Abaporu?',
-      ['Tarsila do Amaral', 'Anita Malfatti', 'Cândido Portinari', 'Di Cavalcanti'], 0],
-    ['Qual é o nome de uma história curta com uma lição moral?', ['Fábula', 'Epopeia', 'Biografia', 'Crônica'], 0],
-    ['Quem escreveu A Divina Comédia?', ['Dante Alighieri', 'Homero', 'Virgílio', 'Cervantes'], 0],
-    ['Qual instrumento de cordas pequeno é presença constante nas rodas de samba e choro?',
-      ['Cavaquinho', 'Violino', 'Harpa', 'Contrabaixo'], 0],
-    ['Qual filme brasileiro acompanha a história de Buscapé?',
-      ['Cidade de Deus', 'Central do Brasil', 'O Pagador de Promessas', 'Carandiru'], 0],
-    ['Qual é o nome do conjunto de leis fundamentais de um país?',
-      ['Constituição', 'Tratado', 'Decreto', 'Manifesto'], 0],
-    ['Quantos lados tem um hexágono?', ['6', '5', '7', '8'], 0],
-    ['Quanto é 12 vezes 12?', ['144', '124', '132', '156'], 0],
-    ['Qual é o menor número primo?', ['2', '1', '0', '3'], 0],
-    ['Quantos minutos tem uma hora?', ['60', '30', '100', '90'], 0],
-    ['Qual figura geométrica tem três lados?', ['Triângulo', 'Quadrado', 'Pentágono', 'Círculo'], 0],
-    ['Qual é a raiz quadrada de 81?', ['9', '8', '7', '6'], 0],
-    ['Quantos graus tem um ângulo reto?', ['90', '45', '180', '360'], 0],
-    ['Qual fração representa metade?', ['1/2', '1/3', '2/3', '1/4'], 0],
-    ['Qual número vem depois de 999?', ['1000', '9990', '1001', '990'], 0],
-    ['Quantos dias tem um ano comum?', ['365', '360', '364', '366'], 0],
-    ['Qual unidade mede distância no Sistema Internacional?', ['Metro', 'Litro', 'Quilo', 'Segundo'], 0],
-    ['Qual é o dobro de 37?', ['74', '64', '77', '84'], 0],
-    ['Qual polígono tem oito lados?', ['Octógono', 'Heptágono', 'Decágono', 'Pentágono'], 0],
-    ['Qual é o valor aproximado de pi?', ['3,14', '2,14', '4,13', '1,41'], 0],
-    ['Em que ano tem um dia extra no calendário?', ['Ano bissexto', 'Ano solar', 'Ano fiscal', 'Ano lunar'], 0],
-    ['Qual é o coletivo de peixes?', ['Cardume', 'Manada', 'Alcateia', 'Rebanho'], 0],
-    ['Qual palavra é sinônimo de feliz?', ['Contente', 'Distante', 'Vazio', 'Lento'], 0],
-    ['Qual é o contrário de aumentar?', ['Diminuir', 'Somar', 'Crescer', 'Multiplicar'], 0],
-    ['Qual animal é um mamífero?', ['Baleia', 'Tartaruga', 'Sapo', 'Galinha'], 0],
-    ['Qual animal bota ovos?', ['Galinha', 'Cachorro', 'Gato', 'Cavalo'], 0],
-    ['Qual alimento é feito tradicionalmente de leite fermentado?', ['Iogurte', 'Arroz', 'Pão', 'Azeite'], 0],
-    ['Qual planta produz o fruto chamado banana?', ['Bananeira', 'Laranjeira', 'Macieira', 'Mangueira'], 0],
-    ['Qual é o sentido usado para ouvir?', ['Audição', 'Visão', 'Tato', 'Olfato'], 0],
-    ['Qual profissional projeta edifícios?', ['Arquiteto', 'Dentista', 'Agrônomo', 'Jornalista'], 0],
-    ['Qual objeto indica direções usando uma agulha?', ['Bússola', 'Termômetro', 'Barômetro', 'Cronômetro'], 0],
-    ['Qual material é atraído por um ímã?', ['Ferro', 'Madeira', 'Vidro', 'Borracha'], 0],
-    ['Qual aparelho mede a temperatura?', ['Termômetro', 'Velocímetro', 'Higrômetro', 'Altímetro'], 0],
-    ['Qual é o estado físico do gelo?', ['Sólido', 'Líquido', 'Gasoso', 'Plasma'], 0],
-    ['Qual é o nome dado a água que cai das nuvens?', ['Chuva', 'Névoa', 'Orvalho', 'Geada'], 0],
-    ['Qual é a camada de gás que envolve a Terra?', ['Atmosfera', 'Litosfera', 'Hidrosfera', 'Biosfera'], 0],
-    ['Qual fonte de energia usa a luz do Sol?', ['Solar', 'Eólica', 'Geotérmica', 'Maremotriz'], 0],
-    ['Qual é o maior felino das Américas?', ['Onça-pintada', 'Gato-do-mato', 'Puma', 'Jaguatirica'], 0],
-  ];
+  const TEMAS = Object.freeze(['games', 'anime', 'futebol', 'esportes', 'musica', 'filmes', 'ciencia', 'mundo']);
+  const LINGUAS = { 'pt-BR': 'pt', en: 'en', es: 'es' };
 
-  const perguntas = raw.map(([pergunta, alternativas, certa], id) => Object.freeze({
-    id,
-    pergunta,
-    alternativas: Object.freeze(alternativas.slice()),
-    certa,
-  }));
+  function carregar(tema) {
+    const g = root.GoLive && root.GoLive.mesaQuizBanco && root.GoLive.mesaQuizBanco[tema];
+    if (g) return g;
+    if (typeof module !== 'undefined') return require(`./quiz-banco/${tema}`);
+    return [];
+  }
 
-  function validarBanco() {
-    const vistas = new Set();
-    if (perguntas.length < 120) throw new Error('O banco do Quiz precisa de 120 perguntas');
+  const perguntas = Object.freeze(TEMAS.flatMap((tema) =>
+    carregar(tema).map((q) => Object.freeze({ ...q, tema }))));
+  const indice = new Map(perguntas.map((q) => [q.id, q]));
+
+  function porId(id) { return indice.get(id) || null; }
+
+  function texto(q, idioma) {
+    const [pergunta, alternativas] = q[LINGUAS[idioma] || 'pt'];
+    return { pergunta, alternativas };
+  }
+
+  function validarBanco(minimoPorTema = 60) {
+    const ids = new Set();
+    for (const tema of TEMAS) {
+      const doTema = perguntas.filter((q) => q.tema === tema);
+      if (doTema.length < minimoPorTema) throw new Error(`Tema ${tema}: ${doTema.length} de ${minimoPorTema}`);
+    }
     for (const q of perguntas) {
-      if (vistas.has(q.pergunta)) throw new Error(`Pergunta repetida: ${q.pergunta}`);
-      vistas.add(q.pergunta);
-      if (q.alternativas.length !== 4 || new Set(q.alternativas).size !== 4) {
-        throw new Error(`Alternativas invalidas: ${q.pergunta}`);
+      if (typeof q.id !== 'string' || !q.id.startsWith(`${q.tema}-`) || ids.has(q.id)) throw new Error(`id: ${q.id}`);
+      ids.add(q.id);
+      if (![1, 2, 3].includes(q.nivel)) throw new Error(`nivel: ${q.id}`);
+      if (!Number.isInteger(q.certa) || q.certa < 0 || q.certa > 3) throw new Error(`certa: ${q.id}`);
+      for (const l of ['pt', 'en', 'es']) {
+        const par = q[l];
+        if (!Array.isArray(par) || typeof par[0] !== 'string' || !par[0].trim()) throw new Error(`${l}: ${q.id}`);
+        const alts = par[1];
+        const invalidas = !Array.isArray(alts) || alts.length !== 4 || new Set(alts).size !== 4
+          || alts.some((a) => !String(a).trim());
+        if (invalidas) throw new Error(`alternativas ${l}: ${q.id}`);
       }
-      if (!Number.isInteger(q.certa) || q.certa < 0 || q.certa >= 4) {
-        throw new Error(`Resposta certa invalida: ${q.pergunta}`);
+    }
+    for (const l of ['pt', 'en', 'es']) {
+      const vistas = new Set();
+      for (const q of perguntas) {
+        if (vistas.has(q[l][0])) throw new Error(`repetida ${l}: ${q.id}`);
+        vistas.add(q[l][0]);
       }
     }
     return true;
   }
 
-  validarBanco();
-  const api = { perguntas, validarBanco };
+  const api = { TEMAS, perguntas, porId, texto, validarBanco };
   root.GoLive = root.GoLive || {};
   root.GoLive.mesaQuizPerguntas = api;
   if (typeof module !== 'undefined') module.exports = api;

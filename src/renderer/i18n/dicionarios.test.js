@@ -16,6 +16,7 @@ const PREFIXOS_DINAMICOS = {
   'mesa.poquer.valor.': () => require('../mesa-modules/baralho').RANKS.flatMap((valor) => {
     return [`${valor}.um`, `${valor}.varios`];
   }),
+  'quiz.tema.': () => require('../mesa-modules/quiz-perguntas').TEMAS,
   'mesa.sons.tocarTodos.': () => require('../mesa-modules/sons').SOUNDS,
   'mesa.sons.tocou.': () => require('../mesa-modules/sons').SOUNDS,
   'mesa.sons.tocouSom.': () => require('../mesa-modules/sons').SOUNDS,
