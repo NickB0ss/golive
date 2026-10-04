@@ -269,9 +269,6 @@ const EXCECOES = new Set([
   'radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)',
   'radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)',
   'class="mesa-menu-row menu__item', 'mj mj-', 'class="menu__item tile-menu-watch" role="menuitem"',
-  // SHIP_NAMES (mesa-modules/batalha.js) esta exportada mas nao e usada em lugar nenhum: a Batalha mostra
-  // so a frota por tamanho, nunca o nome do navio
-  'Porta-aviões', 'Encouraçado', 'Destróier',
 ]);
 
 // Codigo que o main injeta em paginas (executeJavaScript) ou manda ao PowerShell: nunca e texto de tela.

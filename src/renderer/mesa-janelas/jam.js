@@ -74,10 +74,6 @@
 
   // ---------- DOM ----------
 
-  // O comum.js ainda nao tem a nota musical.
-  const TRACO_MUSICA = '<path d="M9 18V5l11-2v13"/>'
-    + '<circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>';
-
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const m = mod();
@@ -106,13 +102,8 @@
       texto: t('mesa.jam.vazioTexto'),
       acao: form,
     });
-    const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
-    if (!vazioGlifo.innerHTML) vazioGlifo.innerHTML = TRACO_MUSICA;
-
     // Com Jam: quem e o Jam, quem entrou (e o "Entrei" junto da lista) e as acoes no pe.
-    const tracoMusica = C.icone('musica');
-    if (!tracoMusica.innerHTML) tracoMusica.innerHTML = TRACO_MUSICA;
-    const glifo = el('span', { class: 'mj-jam-glifo', attrs: { 'aria-hidden': 'true' } }, tracoMusica);
+    const glifo = el('span', { class: 'mj-jam-glifo', attrs: { 'aria-hidden': 'true' } }, C.icone('musica'));
     const titulo = el('p', { class: 'mj-jam-titulo', text: t('mesa.jam.aberto') });
     const host = el('span', { class: 'mj-jam-host' });
     const autor = el('span', { class: 'mj-jam-autor' });

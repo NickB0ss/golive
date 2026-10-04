@@ -38,7 +38,6 @@
   const N = 10;
   const CELLS = N * N;
   const FLEET = Object.freeze([5, 4, 3, 3, 2]);
-  const SHIP_NAMES = Object.freeze(['Porta-aviões', 'Encouraçado', 'Cruzador', 'Submarino', 'Destróier']);
   const TOTAL = FLEET.reduce((a, b) => a + b, 0);
   // Rotulos de cor do resumo: codigos, a vista traduz.
   const LABELS = ['mesa.batalha.frota1', 'mesa.batalha.frota2'];
@@ -472,7 +471,6 @@
     // Para os testes e a janela.
     N,
     FLEET,
-    SHIP_NAMES,
     TOTAL,
     TURN_MS,
     randomFleet,

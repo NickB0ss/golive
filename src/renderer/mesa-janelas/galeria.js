@@ -35,10 +35,6 @@
     return n;
   }
 
-  // O comum.js ainda nao tem o quadro de imagem.
-  const TRACO_IMAGEM = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/>'
-    + '<path d="M21 16l-5-5-8 8"/>';
-
   function mount(el) {
     const C = root.GoLive.mesaJanelasComum;
     const store = () => root.GoLive.chatImagens || null;
@@ -55,8 +51,6 @@
       titulo: t('mesa.galeria.vazioTitulo'),
       texto: t('mesa.galeria.vazioTexto'),
     });
-    const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
-    if (!vazioGlifo.innerHTML) vazioGlifo.innerHTML = TRACO_IMAGEM;
     const dica = h('p', 'mj-dica mj-gal-dica', t('mesa.galeria.dica'));
     raiz.append(cabeca, grade, vazio, dica);
     el.append(raiz);

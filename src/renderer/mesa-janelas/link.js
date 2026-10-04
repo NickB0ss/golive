@@ -72,9 +72,6 @@
 
   // ---------- DOM ----------
 
-  const TRACO_LINK = '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
-    + '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>';
-
   function mount(elRoot, api) {
     const C = root.GoLive.mesaJanelasComum;
     const m = mod();
@@ -108,10 +105,6 @@
       texto: t('mesa.link.vazioTexto'),
       acao: form,
     });
-    const vazioGlifo = vazio.querySelector('.mj-vazio-glifo .mj-i');
-    // O comum.js ainda nao tem o elo de corrente.
-    if (!vazioGlifo.innerHTML) vazioGlifo.innerHTML = TRACO_LINK;
-
     // Com link.
     const titulo = el('p', { class: 'mj-link-titulo' });
     const dominio = el('span', { class: 'mj-link-dominio' });

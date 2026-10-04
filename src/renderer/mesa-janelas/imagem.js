@@ -32,10 +32,6 @@
     return null;
   }
 
-  // O comum.js ainda nao tem o quadro de imagem.
-  const TRACO_IMAGEM = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/>'
-    + '<path d="M21 16l-5-5-8 8"/>';
-
   /** "Enviada por Bia" (ou vazio sem nome). */
   function legenda(img) {
     return img && img.name ? t('mesa.imagem.enviadaPor', { nome: img.name }) : '';
@@ -67,8 +63,6 @@
     const semImagem = faltaDaImagem(null, null);
     const falta = C.vazio({ icone: 'imagem', titulo: semImagem.titulo, texto: semImagem.texto });
     falta.classList.add('mj-img-falta');
-    const faltaGlifo = falta.querySelector('.mj-vazio-glifo .mj-i');
-    if (!faltaGlifo.innerHTML) faltaGlifo.innerHTML = TRACO_IMAGEM;
     const faltaTitulo = falta.querySelector('.mj-vazio-titulo');
     const faltaTexto = falta.querySelector('.mj-vazio-texto');
     const rodape = h('p', 'mj-img-legenda');
