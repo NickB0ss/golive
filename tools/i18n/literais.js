@@ -126,7 +126,8 @@ function fragmentosVisiveis(literal) {
 }
 
 const ACENTO = /[À-ÿ]/;
-const DUAS_PALAVRAS = /[A-Za-zÀ-ÿ]{2,}\s+[A-Za-zÀ-ÿ]{2,}/;
+// Duas palavras de 2+ letras, mesmo com palavras de 1 letra no meio ("Escolha a palavra", "Abra o menu").
+const DUAS_PALAVRAS = /[A-Za-zÀ-ÿ]{2,}(?:\s+[A-Za-zÀ-ÿ])*\s+[A-Za-zÀ-ÿ]{2,}/;
 const TOKEN_CSS = /^[a-z0-9]+(?:[-_]{1,2}[a-z0-9]+)*$/;
 const FORMA_CHAVE = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+(\?.*)?$/;
 
@@ -136,6 +137,9 @@ const EXCECOES = new Set([
   'GoLive', // marca
   'Esc', // nome da tecla de atalho
   'tic tac toe', // palavra de busca do menu Adicionar janela, nao texto de tela
+  'vinte e um', // palavra de busca do menu Adicionar janela (blackjack), nao texto de tela
+  'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // posicao inicial do xadrez em FEN
+  ') falhou, derrubando a conexao:', 'aceitou a conexao', // pedacos de linha de log em varias linhas
   'Português', // nome da lingua na propria lingua (spec 2.2)
   'English', // nome da lingua na propria lingua (spec 2.2)
   'Español', // nome da lingua na propria lingua (spec 2.2)
@@ -270,8 +274,13 @@ function literaisDoHtml(html) {
 function textosSoltos(arquivo, conteudo) {
   if (arquivo.endsWith('.html')) return literaisDoHtml(conteudo);
   const linhasDeLog = new Set();
+  // Bloco de DADOS (banco de palavras de busca/jogo, nao texto de tela), entre
+  // "// i18n: dados" e "// i18n: fim dos dados": fica fora da catraca inteiro.
+  let emDados = false;
   conteudo.split('\n').forEach((linha, indice) => {
-    if (/\b(console|logger)\.\w+\(/.test(linha)) linhasDeLog.add(indice + 1);
+    if (/\/\/ i18n: dados\s*$/.test(linha)) emDados = true;
+    if (emDados || /\b(console|logger)\.\w+\(/.test(linha)) linhasDeLog.add(indice + 1);
+    if (/\/\/ i18n: fim dos dados\s*$/.test(linha)) emDados = false;
   });
   const out = [];
   for (const literal of extrairLiterais(conteudo)) {

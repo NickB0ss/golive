@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 const desenha = require('./desenha');
 const { jsonBytes } = require('../mesa');
 
@@ -26,10 +27,45 @@ function entramTodos(s) {
   return st;
 }
 
-test('lista de palavras: 150+ palavras distintas, sem string vazia', () => {
+test('banco: ids unicos, tres linguas com ao menos uma forma, 150 ou mais', () => {
   assert.ok(desenha.PALAVRAS.length >= 150, `so ${desenha.PALAVRAS.length}`);
-  assert.equal(new Set(desenha.PALAVRAS).size, desenha.PALAVRAS.length, 'tem repetida');
-  for (const p of desenha.PALAVRAS) assert.ok(typeof p === 'string' && p.trim().length > 0);
+  assert.equal(new Set(desenha.PALAVRAS.map((p) => p.id)).size, desenha.PALAVRAS.length, 'tem repetida');
+  for (const p of desenha.PALAVRAS) {
+    for (const lingua of ['pt', 'en', 'es']) assert.ok(p[lingua].length >= 1, `${p.id} ${lingua}`);
+  }
+});
+
+test('palpite vale em qualquer uma das tres linguas', () => {
+  assert.ok(desenha.formasDe('casa').includes('house'));
+  assert.ok(desenha.acertou('casa', 'HOUSE'));
+  assert.ok(desenha.acertou('casa', 'Casa'));
+  assert.ok(!desenha.acertou('casa', 'carro'));
+});
+
+test('quase vale contra qualquer forma', () => {
+  assert.ok(desenha.quase('casa', 'housr'));
+});
+
+test('o estado guarda id, nao texto', () => {
+  let s = entramTodos(desenha.init());
+  s = passo(s, { kind: 'start' }, '1');
+  assert.equal(s.phase, 'choosing');
+  assert.ok(s.options.every((id) => desenha.PALAVRAS.some((p) => p.id === id)));
+  const escolhida = s.options[0];
+  const desenhista = s.players[s.drawerIdx].id;
+  s = passo(s, { kind: 'choose', index: 0 }, desenhista);
+  assert.equal(s.word, escolhida);
+  const adivinha = desenhista === '1' ? '2' : '1';
+  const palavra = desenha.PALAVRAS.find((p) => p.id === escolhida);
+  const estado = JSON.stringify(s);
+  const vista = JSON.stringify(desenha.view(s, adivinha, ctx(adivinha)));
+  for (const lingua of ['pt', 'en', 'es']) {
+    for (const forma of palavra[lingua]) {
+      if (forma === escolhida) continue; // o id e a forma pt sem acento por contrato
+      assert.ok(!estado.includes(JSON.stringify(forma)), `${lingua} "${forma}" no estado`);
+      assert.ok(!vista.includes(JSON.stringify(forma)), `${lingua} "${forma}" na view`);
+    }
+  }
 });
 
 test('normalizar: sem acento, sem caixa, espacos colapsados', () => {
@@ -330,11 +366,11 @@ test('o estado inteiro cabe no teto declarado mesmo com a mesa cheia de jogadore
   assert.ok(jsonBytes(s) <= 8192);
 });
 
-test('summary devolve texto em cada fase', () => {
+test('summary devolve chave e valores em cada fase', () => {
   let s = entramTodos(desenha.init());
-  assert.equal(typeof desenha.summary(s), 'string');
+  assert.deepEqual(desenha.summary(s), { chave: 'mesa.desenha.esperandoComecar', valores: { n: 2 } });
   s = passo(s, { kind: 'start' }, '1');
-  assert.match(desenha.summary(s), /escolhendo/);
+  assert.equal(desenha.summary(s).chave, 'mesa.desenha.escolhendo');
   s = passo(s, { kind: 'choose', index: 0 }, '1');
-  assert.match(desenha.summary(s), /desenhando/);
+  assert.equal(desenha.summary(s).chave, 'mesa.desenha.desenhando');
 });

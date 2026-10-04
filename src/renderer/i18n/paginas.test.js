@@ -33,3 +33,15 @@ test('o detector de paginas encontra texto e atributo de uma palavra sem ler com
 
   assert.deepEqual(literais.map((literal) => literal.texto), ['Entrar', 'Fechar']);
 });
+
+test('catraca: frase com palavra de uma letra no meio conta; bloco de dados marcado nao conta', () => {
+  const { textosSoltos } = require('../../../tools/i18n/literais');
+  const js = [
+    "const a = 'Escolha a palavra';",
+    '// i18n: dados',
+    "const B = ['jacaré', 'guitarra acústica'];",
+    '// i18n: fim dos dados',
+    "const c = 'Abra o menu';",
+  ].join('\n');
+  assert.deepEqual(textosSoltos('x.js', js).map((s) => s.texto), ['Escolha a palavra', 'Abra o menu']);
+});
