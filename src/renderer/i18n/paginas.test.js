@@ -45,3 +45,13 @@ test('catraca: frase com palavra de uma letra no meio conta; bloco de dados marc
   ].join('\n');
   assert.deepEqual(textosSoltos('x.js', js).map((s) => s.texto), ['Escolha a palavra', 'Abra o menu']);
 });
+
+test('catraca: analisa trecho estatico depois de interpolacao, inclusive template aninhado', () => {
+  const js = 'const frase = `Antes $' + '{`Parar de assistir $' + '{x} agora`} Agora vai`;';
+  assert.deepEqual(textosSoltos('x.js', js).map((s) => s.texto), ['Parar de assistir', 'Agora vai']);
+});
+
+test('catraca: template so com classes CSS nao e texto de tela', () => {
+  const js = 'const classes = `btn-$' + '{estado} primary-action`;';
+  assert.deepEqual(textosSoltos('x.js', js), []);
+});

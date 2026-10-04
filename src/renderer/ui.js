@@ -3317,9 +3317,11 @@
         <span class="src__text"><span class="src__name">${escapeHtml(nome)}</span><span class="src__sub">${sub}</span></span>
         <span class="cluster__nodes" aria-hidden="true">${quem}</span>
         ${podeJunto ? `<button class="btn btn--quiet btn--icon btn--sm src__add" type="button" tabindex="-1"
-          data-intent="add" aria-label="Ver ${escapeHtml(nome)} junto" title="Ver junto"><svg class="i i--sm"><use href="#i-plus" /></svg></button>` : ''}
+          data-intent="add" aria-label="${t('ui.fonte.verJunto', { nome: escapeHtml(nome) })}"
+          title="${t('ui.fonte.verJuntoTitulo')}"><svg class="i i--sm"><use href="#i-plus" /></svg></button>` : ''}
         ${podeLargar ? `<button class="btn btn--quiet btn--icon btn--sm src__drop" type="button" tabindex="-1"
-          data-intent="remove" aria-label="Parar de assistir ${escapeHtml(nome)}" title="Parar de assistir"><svg class="i i--sm"><use href="#i-x" /></svg></button>` : ''}
+          data-intent="remove" aria-label="${t('ui.fonte.pararAssistir', { nome: escapeHtml(nome) })}"
+          title="${t('ui.fonte.pararAssistirTitulo')}"><svg class="i i--sm"><use href="#i-x" /></svg></button>` : ''}
       </div>`;
   }
 
@@ -5145,8 +5147,8 @@
   // Ordem previsivel em vez da ordem em que o Chromium devolveu: telas por
   // nome com comparacao numerica ("Tela 10" depois de "Tela 2", nao antes),
   // janelas em alfabetica insensivel a caixa.
-  const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
   function sortSources(list) {
+    const collator = new Intl.Collator(idiomaAtivo(), { numeric: true, sensitivity: 'base' });
     return [...list].sort((a, b) => collator.compare(a.name || '', b.name || ''));
   }
 

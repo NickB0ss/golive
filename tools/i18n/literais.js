@@ -28,6 +28,92 @@ function extrairLiterais(src) {
     if (texto) out.push({ texto, linha: linhaInicio });
   }
 
+  function pularString(aspas) {
+    avancar();
+    while (i < src.length && src[i] !== aspas) {
+      if (src[i] === '\\') avancar(2);
+      else avancar();
+    }
+    avancar();
+  }
+
+  function consumirInterpolacao() {
+    let profundidade = 1;
+    let ultimoInterpolacao = '';
+    while (i < src.length && profundidade > 0) {
+      const atual = src[i];
+      const proximo = src[i + 1];
+      if (atual === '`') {
+        lerTemplate();
+        ultimoInterpolacao = '`';
+        continue;
+      }
+      if (atual === "'" || atual === '"') {
+        pularString(atual);
+        ultimoInterpolacao = atual;
+        continue;
+      }
+      if (atual === '/' && proximo === '/') {
+        while (i < src.length && src[i] !== '\n') avancar();
+        continue;
+      }
+      if (atual === '/' && proximo === '*') {
+        avancar(2);
+        while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) avancar();
+        avancar(2);
+        continue;
+      }
+      if (atual === '/' && REGEX_STARTS_AFTER.has(ultimoInterpolacao)) {
+        avancar();
+        let emClasse = false;
+        while (i < src.length) {
+          if (src[i] === '\\') {
+            avancar(2);
+            continue;
+          }
+          if (src[i] === '[') emClasse = true;
+          else if (src[i] === ']') emClasse = false;
+          else if (src[i] === '/' && !emClasse) {
+            avancar();
+            break;
+          }
+          avancar();
+        }
+        while (i < src.length && /[a-z]/i.test(src[i])) avancar();
+        ultimoInterpolacao = '/';
+        continue;
+      }
+      if (atual === '{') profundidade += 1;
+      else if (atual === '}') profundidade -= 1;
+      if (!/\s/.test(atual)) ultimoInterpolacao = atual;
+      avancar();
+    }
+  }
+
+  function lerTemplate() {
+    let linhaTrecho = linha;
+    let texto = '';
+    avancar();
+    while (i < src.length && src[i] !== '`') {
+      if (src[i] === '\\') {
+        avancar(2);
+        continue;
+      }
+      if (src[i] === '$' && src[i + 1] === '{') {
+        salvar(texto, linhaTrecho);
+        texto = '';
+        avancar(2);
+        consumirInterpolacao();
+        linhaTrecho = linha;
+        continue;
+      }
+      texto += src[i];
+      avancar();
+    }
+    avancar();
+    salvar(texto, linhaTrecho);
+  }
+
   while (i < src.length) {
     const atual = src[i];
     const proximo = src[i + 1];
@@ -83,31 +169,7 @@ function extrairLiterais(src) {
       continue;
     }
     if (atual === '`') {
-      const linhaInicio = linha;
-      let texto = '';
-      avancar();
-      while (i < src.length && src[i] !== '`') {
-        if (src[i] === '\\') {
-          avancar(2);
-          continue;
-        }
-        if (src[i] === '$' && src[i + 1] === '{') {
-          salvar(texto, linhaInicio);
-          texto = '';
-          avancar(2);
-          let profundidade = 1;
-          while (i < src.length && profundidade > 0) {
-            if (src[i] === '{') profundidade += 1;
-            else if (src[i] === '}') profundidade -= 1;
-            avancar();
-          }
-          continue;
-        }
-        texto += src[i];
-        avancar();
-      }
-      avancar();
-      salvar(texto, linhaInicio);
+      lerTemplate();
       ultimo = '`';
       continue;
     }
@@ -202,6 +264,7 @@ const EXCECOES = new Set([
   'Qualidade desconhecida:', 'A função de bloqueio é obrigatória.', 'A função de aviso é obrigatória.', // Error de uso
   '(repasse de #', 'videoId invalido', // linha de diagnostico de encode e Error de argumento
   'warn-center-icon warn-center-icon-', 'warn-center-item warn-center-item-', // classes CSS montadas por template
+  ', ultimo pacote ha', // trecho de log de diagnostico de conexao, nunca chega a tela
   // Sobras da migracao: classes CSS e valores de CSS montados por template, nunca texto de tela
   'radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)',
   'radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)',
