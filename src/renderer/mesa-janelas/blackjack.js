@@ -18,10 +18,14 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'blackjack';
   const LUGARES = 5;
   const FICHAS = [10, 25, 100, 500];
-  const NOMES_ACAO = { hit: 'Pedir', stand: 'Parar', double: 'Dobrar', split: 'Dividir' };
+  const NOMES_ACAO = {
+    hit: 'mesa.cartas.blackjack.pedir', stand: 'mesa.cartas.blackjack.parar',
+    double: 'mesa.cartas.blackjack.dobrar', split: 'mesa.cartas.blackjack.dividir',
+  };
 
   // ---------- Puras ----------
 
@@ -32,24 +36,27 @@
   /** "17 macio", "Blackjack!", "Estourou", "21". */
   function textoTotal(h) {
     if (!h || !Array.isArray(h.cards) || !h.cards.length) return '';
-    if (h.blackjack) return 'Blackjack!';
-    if (h.bust) return 'Estourou';
-    return h.soft ? `${h.total} macio` : String(h.total);
+    if (h.blackjack) return t('mesa.cartas.blackjack.blackjack');
+    if (h.bust) return t('mesa.cartas.blackjack.estourou');
+    return h.soft ? t('mesa.cartas.blackjack.macio', { total: h.total }) : String(h.total);
   }
 
   /** O total da banca: so a aberta enquanto a fechada nao vira. */
   function textoBanca(d) {
     if (!d || !Array.isArray(d.cards) || !d.cards.length) return '';
-    if (!d.revealed) return typeof d.cards[0] === 'string' && d.cards[0][0] === 'A' ? 'Mostra ás' : `Mostra ${d.total}`;
+    if (!d.revealed) return typeof d.cards[0] === 'string' && d.cards[0][0] === 'A'
+      ? t('mesa.cartas.blackjack.mostraAs') : t('mesa.cartas.blackjack.mostraTotal', { total: d.total });
     return textoTotal(d);
   }
 
   /** "Ganhou 30", "Empate", "Perdeu 10" (null antes do fim). */
   function textoResultado(h) {
     if (!h || !h.result) return null;
-    if (h.result === 'push') return 'Empate';
-    if (h.win > 0) return h.result === 'blackjack' ? `Blackjack! Ganhou ${milhar(h.win)}` : `Ganhou ${milhar(h.win)}`;
-    return `Perdeu ${milhar(-h.win)}`;
+    if (h.result === 'push') return t('mesa.cartas.blackjack.empate');
+    if (h.win > 0) return h.result === 'blackjack'
+      ? t('mesa.cartas.blackjack.blackjackGanhou', { valor: milhar(h.win) })
+      : t('mesa.cartas.blackjack.ganhou', { valor: milhar(h.win) });
+    return t('mesa.cartas.blackjack.perdeu', { valor: milhar(-h.win) });
   }
 
   /** Segundos inteiros que faltam (arredonda para cima; nunca negativo). */
@@ -61,7 +68,7 @@
   function nomeLugar(v, i, nameOf) {
     const id = v.seats && v.seats[i];
     const vivo = id && nameOf ? nameOf(id) : null;
-    return vivo || (v.names && v.names[i]) || `Lugar ${i + 1}`;
+    return vivo || (v.names && v.names[i]) || t('mesa.cartas.lugar', { n: i + 1 });
   }
 
   /** A linha de situacao, para todos. */
@@ -70,24 +77,27 @@
     const me = v.me || { seat: -1, actions: [] };
     const sentados = v.seats.filter((x) => x !== null).length;
     if (v.phase === 'bets') {
-      if (!sentados) return 'Lugares livres: sente-se para jogar';
-      if (me.seat >= 0 && (me.actions || []).includes('rebuy')) return 'Sem fichas: faça a recompra para apostar';
-      if (me.seat >= 0 && me.bet > 0) return `Você apostou ${milhar(me.bet)}; esperando os outros`;
-      return 'Façam as apostas';
+      if (!sentados) return t('mesa.cartas.blackjack.lugaresLivres');
+      if (me.seat >= 0 && (me.actions || []).includes('rebuy')) return t('mesa.cartas.blackjack.recompraApostar');
+      if (me.seat >= 0 && me.bet > 0) return t('mesa.cartas.blackjack.voceApostou', { valor: milhar(me.bet) });
+      return t('mesa.cartas.blackjack.facamApostas');
     }
     if (v.phase === 'insurance') {
-      return (me.actions || []).includes('insurance') ? 'A banca mostra ás: quer seguro?' : 'A banca mostra ás: seguro';
+      return t((me.actions || []).includes('insurance')
+        ? 'mesa.cartas.blackjack.perguntaSeguro' : 'mesa.cartas.blackjack.seguroBanca');
     }
     if (v.phase === 'play' && v.turn !== null && v.hands[v.turn]) {
       const h = v.hands[v.turn];
       if (h.seat === me.seat) {
         const minhas = v.hands.filter((x) => x.seat === me.seat);
         const k = minhas.indexOf(h);
-        return minhas.length > 1 ? `Sua vez (mão ${k + 1} de ${minhas.length})` : 'Sua vez';
+        return minhas.length > 1
+          ? t('mesa.cartas.blackjack.suaVezMao', { atual: k + 1, total: minhas.length })
+          : t('mesa.jogo.suaVez');
       }
-      return `Vez de ${nomeLugar(v, h.seat, nameOf)}`;
+      return t('mesa.jogo.vezDe', { nome: nomeLugar(v, h.seat, nameOf) });
     }
-    return 'Vez da banca';
+    return t('mesa.cartas.blackjack.vezBanca');
   }
 
   /** A dica da barra da pessoa. Com lugar livre para sentar nao ha dica: as proprias
@@ -95,8 +105,8 @@
   function textoDica(v) {
     const me = (v && v.me) || { seat: -1, actions: [] };
     const a = new Set(me.actions || []);
-    if (me.seat < 0) return a.has('sit') ? '' : 'Mesa cheia: assistindo';
-    if (!a.size || (a.size === 1 && a.has('leave'))) return v.phase === 'bets' ? '' : 'Esperando a sua vez';
+    if (me.seat < 0) return a.has('sit') ? '' : t('mesa.cartas.blackjack.mesaCheiaAssistindo');
+    if (!a.size || (a.size === 1 && a.has('leave'))) return v.phase === 'bets' ? '' : t('mesa.cartas.blackjack.esperandoVez');
     return '';
   }
 
@@ -108,27 +118,27 @@
     const partes = [];
     const novaRodada = !antes || v.round !== antes.round;
     if (novaRodada && v.round > 0 && v.phase !== 'bets') {
-      if (v.reshuffled) partes.push('Sapato novo embaralhado');
-      partes.push(`Cartas na mesa. Banca mostra ${textoBanca(v.dealer).replace('Mostra ', '')}`);
+      if (v.reshuffled) partes.push(t('mesa.cartas.blackjack.sapatoEmbaralhado'));
+      partes.push(t('mesa.cartas.blackjack.cartasMesa', { total: textoBanca(v.dealer) }));
       const minhas = v.hands.filter((h) => h.seat === me.seat);
-      if (minhas.length) partes.push(`você tem ${textoTotal(minhas[0])}`);
+      if (minhas.length) partes.push(t('mesa.cartas.blackjack.voceTem', { total: textoTotal(minhas[0]) }));
     }
     const fimAgora = antes && antes.phase !== 'bets' && v.phase === 'bets' && v.round === antes.round;
     const fimDireto = novaRodada && v.phase === 'bets' && v.round > 0 && v.hands.length && v.hands.every((h) => h.result);
     if (fimAgora || fimDireto) {
-      if (fimDireto && v.reshuffled) partes.push('Sapato novo embaralhado');
-      partes.push(`Banca: ${textoBanca(v.dealer)}`);
+      if (fimDireto && v.reshuffled) partes.push(t('mesa.cartas.blackjack.sapatoEmbaralhado'));
+      partes.push(t('mesa.cartas.blackjack.bancaTotal', { total: textoBanca(v.dealer) }));
       const minhas = v.hands.filter((h) => h.seat === me.seat).map(textoResultado).filter(Boolean);
-      if (minhas.length) partes.push(`você: ${minhas.join(', ')}`);
+      if (minhas.length) partes.push(t('mesa.cartas.blackjack.seusResultados', { resultados: minhas.join(', ') }));
     }
     if (v.phase === 'insurance' && (!antes || antes.phase !== 'insurance') && (me.actions || []).includes('insurance')) {
-      partes.push('Seguro?');
+      partes.push(t('mesa.cartas.blackjack.seguroPergunta'));
     }
     const minhaVez = (x) => x && x.phase === 'play' && x.me && x.me.hand !== null && x.me.hand !== undefined;
     if (minhaVez(v) && (!minhaVez(antes) || antes.me.hand !== v.me.hand || novaRodada)) {
-      partes.push(`Sua vez: ${textoTotal(v.hands[v.turn])}`);
+      partes.push(t('mesa.cartas.blackjack.suaVezTotal', { total: textoTotal(v.hands[v.turn]) }));
     } else if (!novaRodada && antes && v.phase === 'play' && v.turn !== antes.turn && v.turn !== null && v.hands[v.turn] && v.hands[v.turn].seat !== me.seat) {
-      partes.push(`Vez de ${nomeLugar(v, v.hands[v.turn].seat, nameOf)}`);
+      partes.push(t('mesa.jogo.vezDe', { nome: nomeLugar(v, v.hands[v.turn].seat, nameOf) }));
     }
     return partes.length ? partes.join('. ') : null;
   }
@@ -184,18 +194,18 @@
     // Banca.
     const bancaMao = el('div', { class: 'mj-bj-banca-mao' });
     const bancaTotal = el('span', { class: 'mj-bj-total' });
-    const banca = el('section', { class: 'mj-bj-banca', attrs: { 'aria-label': 'Banca' } },
-      el('span', { class: 'mj-rotulo', text: 'Banca' }), bancaMao, bancaTotal);
+    const banca = el('section', { class: 'mj-bj-banca', attrs: { 'aria-label': t('mesa.cartas.blackjack.banca') } },
+      el('span', { class: 'mj-rotulo', text: t('mesa.cartas.blackjack.banca') }), bancaMao, bancaTotal);
 
     // Lugares.
     const lugaresEl = el('div', { class: 'mj-bj-lugares' });
     const lugares = [];
     for (let i = 0; i < LUGARES; i += 1) {
-      const node = el('section', { class: 'mj-bj-lugar', attrs: { 'aria-label': `Lugar ${i + 1}` } });
+      const node = el('section', { class: 'mj-bj-lugar', attrs: { 'aria-label': t('mesa.cartas.lugar', { n: i + 1 }) } });
       const lugar = { node, chave: null, livre: true };
       // A cadeira comum de um lugar so; Levantar mora so no botao da barra (uma acao num lugar so).
       const cad = C.cadeiras({
-        rotulo: `Lugar ${i + 1}`,
+        rotulo: t('mesa.cartas.lugar', { n: i + 1 }),
         aoSentar() { b.acao(zona, { kind: 'sit', seat: i }); },
         aoRecusar(motivo) { if (lugar.livre) b.aviso.mostrar(motivo, zona); },
       });
@@ -210,28 +220,28 @@
     const zona = el('div', { class: 'mj-bj-barra' });
     const apostaCampo = el('input', {
       class: 'mj-campo mj-bj-campo',
-      attrs: { type: 'number', inputmode: 'numeric', min: '10', max: '500', step: '1', 'aria-label': 'Valor da aposta', id: `mj-bj-aposta-${Math.random().toString(36).slice(2, 8)}` },
+      attrs: { type: 'number', inputmode: 'numeric', min: '10', max: '500', step: '1', 'aria-label': t('mesa.cartas.valorAposta'), id: `mj-bj-aposta-${Math.random().toString(36).slice(2, 8)}` },
     });
-    const apostaRot = el('label', { class: 'mj-bj-rot', text: 'Aposta', attrs: { for: apostaCampo.id } });
+    const apostaRot = el('label', { class: 'mj-bj-rot', text: t('mesa.cartas.aposta'), attrs: { for: apostaCampo.id } });
     const fichas = FICHAS.map((n) => {
-      const bt = C.botao({ text: `+${n}`, class: 'mj-bj-ficha', label: `Somar ${n} à aposta` });
+      const bt = C.botao({ text: `+${n}`, class: 'mj-bj-ficha', label: t('mesa.cartas.somarAposta', { valor: n }) });
       bt.dataset.ficha = String(n);
       b.clique(bt, zona, () => somar(n));
       return bt;
     });
-    const btApostar = C.botao({ text: 'Apostar', class: 'mj-pri' });
-    const btTirar = C.botao({ text: 'Tirar aposta', class: 'mj-fantasma' });
+    const btApostar = C.botao({ text: t('mesa.cartas.apostar'), class: 'mj-pri' });
+    const btTirar = C.botao({ text: t('mesa.cartas.tirarAposta'), class: 'mj-fantasma' });
     const grupoAposta = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Aposta' } },
       apostaRot, apostaCampo, ...fichas, btApostar, btTirar);
 
-    const btSeguro = C.botao({ text: 'Seguro', class: 'mj-pri' });
-    const btSemSeguro = C.botao({ text: 'Sem seguro' });
+    const btSeguro = C.botao({ text: t('mesa.cartas.seguro'), class: 'mj-pri' });
+    const btSemSeguro = C.botao({ text: t('mesa.cartas.semSeguro') });
     const grupoSeguro = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Seguro' } }, btSeguro, btSemSeguro);
 
     const jogadas = {};
     const grupoJogo = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Sua jogada' } });
     for (const k of ['hit', 'stand', 'double', 'split']) {
-      const bt = C.botao({ text: NOMES_ACAO[k], class: k === 'hit' || k === 'stand' ? 'mj-pri' : '' });
+      const bt = C.botao({ text: t(NOMES_ACAO[k]), class: k === 'hit' || k === 'stand' ? 'mj-pri' : '' });
       bt.dataset.acao = k;
       b.clique(bt, zona, () => b.acao(zona, { kind: k }));
       jogadas[k] = bt;
@@ -239,8 +249,8 @@
     }
 
     const dica = el('p', { class: 'mj-dica mj-bj-dica' });
-    const btRecompra = C.botao({ text: 'Recompra', class: 'mj-pri' });
-    const btLevantar = C.botao({ text: 'Levantar', class: 'mj-fantasma' });
+    const btRecompra = C.botao({ text: t('mesa.jogo.recompra'), class: 'mj-pri' });
+    const btLevantar = C.botao({ text: t('mesa.jogo.levantar'), class: 'mj-fantasma' });
     zona.append(grupoAposta, grupoSeguro, grupoJogo, dica, el('span', { class: 'mj-mola' }), btRecompra, btLevantar);
 
     b.raiz.append(topo, falado, banca, lugaresEl, zona);
