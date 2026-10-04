@@ -81,7 +81,8 @@ const PROIBIDOS = {
     [/\bwidgets?\b/i, 'use "window" (never "widget")'],
     // 'card' nao entra: em ingles e a unica palavra para carta de baralho (poquer, truco).
     [/\binsert\b/i, 'use "Add window" (never "insert")'],
-    [/\bmode\b/i, 'use "view" (never "mode")'],
+    // Como no pt-BR: so "modo" para as vistas. "Theater mode" e "window mode" sao outra coisa.
+    [/\b(table|stream) mode\b|\bmode:? (table|stream)\b/i, 'use "Table view" / "Stream view" (never "mode")'],
     [/\blayout\b/i, 'use "view" (never "layout")'],
     [/\bcanvas\b/i, 'use "Table" (never "canvas")'],
     [/\bmaximi[sz]e\b/i, 'use "Full screen" (never "maximize")'],
@@ -101,7 +102,7 @@ const PROIBIDOS = {
     [/\bwidgets?\b/i, 'usa "ventana" (nunca "widget")'],
     [/\btarjetas?\b/i, 'usa "ventana" (nunca "tarjeta")'],
     [/\binsertar\b/i, 'usa "Añadir ventana" (nunca "insertar")'],
-    [/\bmodo\b/i, 'usa "vista" (nunca "modo")'],
+    [/\bmodo:? (mesa|transmisi[oó]n)\b/i, 'usa "vista Mesa" / "vista Transmisión" (nunca "modo")'],
     [/\blayout\b/i, 'usa "vista" (nunca "layout")'],
     [/\blienzo\b/i, 'usa "Mesa" (nunca "lienzo")'],
     [/\bmaximizar\b/i, 'usa "Pantalla completa" (nunca "maximizar")'],
@@ -229,11 +230,11 @@ test('cada regex novo encontra o termo proibido sem pegar a palavra legitima par
   const samples = {
     en: [
       'host', 'owner', 'broadcast', 'viewer', 'spectator', 'member', 'participant', 'peer', 'annotation',
-      'disconnect', 'widget', 'insert', 'mode', 'layout', 'canvas', 'maximize', 'viewport', 'Preferences',
+      'disconnect', 'widget', 'insert', 'Table mode', 'layout', 'canvas', 'maximize', 'viewport', 'Preferences',
     ],
     es: [
       'anfitriones', 'dueña', 'host', 'emisión', 'espectadoras', 'miembro', 'participante', 'anotaciones',
-      'desconectar', 'widget', 'tarjeta', 'insertar', 'modo', 'layout', 'lienzo', 'maximizar', 'Preferencias',
+      'desconectar', 'widget', 'tarjeta', 'insertar', 'modo Mesa', 'layout', 'lienzo', 'maximizar', 'Preferencias',
     ],
   };
   for (const [idioma, terms] of Object.entries(samples)) {
