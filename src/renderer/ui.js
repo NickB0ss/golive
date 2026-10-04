@@ -4,7 +4,7 @@
 (function (root) {
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
-  const { t } = root.GoLive.i18n;
+  const { t, maiuscula } = root.GoLive.i18n;
   const version = root.GoLive.version;
   const theme = root.GoLive.theme;
   const emoji = root.GoLive.emoji;
@@ -192,15 +192,15 @@
   // linha de resumo so aparece a nota da opcao escolhida, ao lado do numero
   // exato dela.
   const QUALITY_PRESET_NOTE = {
-    '720p30': 'o mais leve',
-    '1080p60': 'padrão',
+    '720p30': 'ui.qualidade.maisLeve',
+    '1080p60': 'ui.qualidade.padrao',
   };
 
   /** O servidor nomeia a sala padrao como 'sala de <host>'; na tela a
    * primeira letra vem maiuscula, como qualquer titulo. */
   function nomeDeSala(nome) {
     const s = String(nome || '');
-    return s.charAt(0).toLocaleUpperCase('pt-BR') + s.slice(1);
+    return maiuscula(s);
   }
 
   function escapeHtml(str) {
@@ -852,7 +852,7 @@
         <span class="tile__state-sub"></span>`;
       media.appendChild(veil);
     }
-    veil.querySelector('.tile__state-title').textContent = opts?.title || 'Transmissão pausada';
+    veil.querySelector('.tile__state-title').textContent = opts?.title || t('ui.tile.transmissaoPausada');
     veil.querySelector('.tile__state-sub').textContent = opts?.subtitle || '';
     tile.classList.add('is-paused');
   }
@@ -1093,18 +1093,21 @@
     }
     const aoVivo = [...tileRegistry.entries()]
       .filter(([id, t]) => !id.startsWith('cam-') && id !== 'me' && t.kind !== 'camera')
-      .map(([id, t]) => ({ id, nome: t.displayName || t.label || 'Alguém' }));
+      .map(([id, t]) => ({ id, nome: t.displayName || t.label || t('ui.pessoa.alguem') }));
     const chave = aoVivo.map((p) => p.id).join(',');
     if (vazio && vazio.dataset.chave === chave) return;
     vazio?.remove();
     const nomes = aoVivo.map((p) => p.nome);
     const titulo = !aoVivo.length
-      ? 'Ninguém está transmitindo.'
-      : `${nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)} estão` : `${nomes[0]} está`} ao vivo.`;
+      ? t('ui.palco.nadaTransmitindo')
+      : t('ui.palco.pessoasAoVivo', {
+        pessoas: nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}` : nomes[0],
+        verbo: nomes.length > 1 ? t('ui.palco.estao') : t('ui.palco.esta'),
+      });
     const acoes = aoVivo.length
       ? aoVivo.slice(0, 3).map((p) => `<button type="button" class="btn btn--secondary" data-assistir="${escapeHtml(p.id)}">
-          Assistir ${escapeHtml(p.nome)}</button>`).join('')
-      : '<button type="button" class="btn btn--secondary" data-transmitir>Transmitir tela</button>';
+          ${t('ui.tile.assistirPessoa', { nome: escapeHtml(p.nome) })}</button>`).join('')
+      : `<button type="button" class="btn btn--secondary" data-transmitir>${t('ui.tile.transmitirTela')}</button>`;
     gridEl.insertAdjacentHTML('beforeend', `
       <div class="stage-empty blank" data-chave="${escapeHtml(chave)}">
         <svg class="blank__art graph-art" viewBox="0 0 32 32" aria-hidden="true">
@@ -1115,8 +1118,8 @@
           </g>
         </svg>
         <p class="blank__title">${escapeHtml(titulo)}</p>
-        <p class="blank__text">${aoVivo.length ? 'Escolha quem assistir aqui ou nas fontes, embaixo.'
-    : 'Quando alguém transmitir, a tela aparece aqui embaixo.'}</p>
+        <p class="blank__text">${aoVivo.length ? t('ui.palco.escolhaQuem')
+    : t('ui.palco.quandoTransmitir')}</p>
         <div class="stage-empty__acoes">${acoes}</div>
       </div>`);
   }
@@ -1236,7 +1239,8 @@
   // Emojis de reacao: conteudo da lista fechada de reactions.js, nao icone
   // de UI -- por isso NAO entram em ANNOT_TOOLS (que e so SVG de ferramenta).
   const REACTION_EMOJI_LABEL = {
-    '👍': 'like', '😂': 'risada', '😮': 'surpresa', '🔥': 'fogo', '👏': 'palmas', '❤️': 'coração',
+    '👍': 'ui.reacao.like', '😂': 'ui.reacao.risada', '😮': 'ui.reacao.surpresa',
+    '🔥': 'ui.reacao.fogo', '👏': 'ui.reacao.palmas', '❤️': 'ui.reacao.coracao',
   };
 
   function annotSetSelf(id) {
@@ -1467,8 +1471,10 @@
     // No proprio tile a permissao e sua: "Voce nao liberou" no seu HUD seria cobrar de voce mesmo. Sem
     // permissao, o botao some; nos tiles dos outros ele fica desabilitado e diz quem nao liberou (05 §3.3).
     const proprio = tileId === 'me' || tileId === 'cam-me';
-    const nome = tile.querySelector('.tile__name')?.textContent || 'Esta fonte';
-    const label = permitido ? (acao === 'rabiscar' ? 'Rabiscar' : 'Reagir') : `${nome} não liberou ${sufixo}.`;
+    const nome = tile.querySelector('.tile__name')?.textContent || t('ui.tile.estaFonte');
+    const label = permitido
+      ? t(acao === 'rabiscar' ? 'ui.tile.rabiscar' : 'ui.tile.reagir')
+      : t('ui.tile.naoLiberou', { nome, sufixo });
     button.hidden = proprio && !permitido;
     button.disabled = !permitido;
     button.title = label;
@@ -1521,8 +1527,10 @@
   function reactionBarButtonsHtml() {
     if (!reactions) return '';
     return reactions.REACTIONS.map((e) => {
-      const nome = REACTION_EMOJI_LABEL[e] || e;
-      return `<button type="button" class="react-btn" data-emoji="${e}" title="Reagir com ${nome}" aria-label="Reagir com ${nome}">${e}</button>`;
+      const chave = REACTION_EMOJI_LABEL[e];
+      const nome = chave ? t(chave) : e;
+      const label = t('ui.reacao.reagirCom', { nome });
+      return `<button type="button" class="react-btn" data-emoji="${e}" title="${label}" aria-label="${label}">${e}</button>`;
     }).join('');
   }
 
@@ -1596,26 +1604,26 @@
   // fica estreito (container query em shell.css); "opcional" sai depois. As
   // que somem continuam no menu ⋯ ou no duplo clique.
   const TILE_HUD_ACOES = [
-    ['rabiscar', 'Rabiscar', 'pen-line', 'data-hud-extra'],
-    ['reagir', 'Reagir', 'smile-plus', 'data-hud-extra'],
-    ['espiar', 'Espiar numa janela por cima', 'picture-in-picture-2', 'data-hud-extra'],
-    ['volume', 'Volume', 'volume-2', ''],
-    ['destacar', 'Destacar no palco', 'scan', 'data-hud-strip'],
-    ['tela-cheia', 'Tela cheia', 'maximize', 'data-hud-optional'],
-    ['menu', 'Mais opções', 'ellipsis', ''],
-    ['parar', 'Parar de assistir', 'x', 'hidden'],
+    ['rabiscar', 'ui.tile.rabiscar', 'pen-line', 'data-hud-extra'],
+    ['reagir', 'ui.tile.reagir', 'smile-plus', 'data-hud-extra'],
+    ['espiar', 'ui.tile.espiarJanela', 'picture-in-picture-2', 'data-hud-extra'],
+    ['volume', 'ui.tile.volume', 'volume-2', ''],
+    ['destacar', 'ui.tile.destacarPalco', 'scan', 'data-hud-strip'],
+    ['tela-cheia', 'ui.tile.telaCheia', 'maximize', 'data-hud-optional'],
+    ['menu', 'ui.tile.maisOpcoes', 'ellipsis', ''],
+    ['parar', 'ui.tile.pararAssistir', 'x', 'hidden'],
   ];
   const TILE_HUD_HTML = `
     <div class="tile__hud">
       <div class="tile__who">
         <span class="node" data-size="24"></span>
         <span class="tile__label"><span class="tile__name"></span><span class="tile__what"></span></span>
-        <span class="tile__live tag tag--live">AO VIVO</span>
+        <span class="tile__live tag tag--live">${t('ui.tile.aoVivo')}</span>
         <span class="tile__watchers"></span>
       </div>
       <div class="tile__actions">${TILE_HUD_ACOES.map(([acao, nome, icone, extra]) => `
-        <button class="btn btn--icon btn--sm" type="button" data-acao="${acao}" title="${nome}"
-                aria-label="${nome}" ${extra}><svg class="i i--sm"><use href="#i-${icone}" /></svg></button>`)
+        <button class="btn btn--icon btn--sm" type="button" data-acao="${acao}" title="${t(nome)}"
+                aria-label="${t(nome)}" ${extra}><svg class="i i--sm"><use href="#i-${icone}" /></svg></button>`)
     .join('')}
       </div>
     </div>`;
@@ -1634,8 +1642,8 @@
     if (kind === 'camera') {
       node.insertAdjacentHTML('beforeend', '<span class="node__mark"><svg class="i"><use href="#i-video" /></svg></span>');
     }
-    nameEl.textContent = name || 'Alguém';
-    whatEl.textContent = kind === 'camera' ? 'câmera' : '';
+    nameEl.textContent = name || t('ui.pessoa.alguem');
+    whatEl.textContent = kind === 'camera' ? t('ui.tile.camera') : '';
   }
 
   /** Mantem o nome da funcao antiga: renderWatchGate e o PiP chamam depois
@@ -1828,7 +1836,7 @@
 
     if (!info.canDraw) {
       bar.innerHTML = info.canClearAll
-        ? `<button type="button" class="btn btn--danger btn--sm annot-tool" data-act="clear-all" title="Apagar tudo que a sala rabiscou na sua tela" aria-label="Apagar tudo que a sala rabiscou na sua tela">${ANNOT_TOOLS.clear}<span>Apagar tudo</span></button>`
+        ? `<button type="button" class="btn btn--danger btn--sm annot-tool" data-act="clear-all" title="${t('ui.rabisco.apagarTudoDica')}" aria-label="${t('ui.rabisco.apagarTudoDica')}">${ANNOT_TOOLS.clear}<span>${t('ui.rabisco.apagarTudo')}</span></button>`
         : '';
       return;
     }
@@ -1841,18 +1849,18 @@
     bar.innerHTML = `
       <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool annot-toggle${desenhando ? ' active' : ''}" data-act="toggle"
               aria-pressed="${desenhando}"
-              title="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}"
-              aria-label="${desenhando ? 'Desativar rabisco' : 'Ativar rabisco'}">${ANNOT_TOOLS.penOff}${ANNOT_TOOLS.penOn}</button>
+              title="${t(desenhando ? 'ui.rabisco.desativar' : 'ui.rabisco.ativar')}"
+              aria-label="${t(desenhando ? 'ui.rabisco.desativar' : 'ui.rabisco.ativar')}">${ANNOT_TOOLS.penOff}${ANNOT_TOOLS.penOn}</button>
       <span class="draw-bar__sep" aria-hidden="true"></span>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="Caneta" aria-label="Caneta"${travado}>${ANNOT_TOOLS.pen}</button>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="Escrever" aria-label="Escrever"${travado}>${ANNOT_TOOLS.text}</button>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="Laser" aria-label="Laser"${travado}>${ANNOT_TOOLS.laser}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'pen' ? ' active' : ''}" data-tool="pen" title="${t('ui.rabisco.caneta')}" aria-label="${t('ui.rabisco.caneta')}"${travado}>${ANNOT_TOOLS.pen}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'text' ? ' active' : ''}" data-tool="text" title="${t('ui.rabisco.escrever')}" aria-label="${t('ui.rabisco.escrever')}"${travado}>${ANNOT_TOOLS.text}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool${annotTool === 'laser' ? ' active' : ''}" data-tool="laser" title="${t('ui.rabisco.laser')}" aria-label="${t('ui.rabisco.laser')}"${travado}>${ANNOT_TOOLS.laser}</button>
       <span class="draw-bar__sep" aria-hidden="true"></span>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="undo" title="Desfazer o meu último" aria-label="Desfazer o meu último"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
-      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="clear-mine" title="Apagar os meus" aria-label="Apagar os meus"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="undo" title="${t('ui.rabisco.desfazer')}" aria-label="${t('ui.rabisco.desfazer')}"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.undo}</button>
+      <button type="button" class="btn btn--quiet btn--icon btn--sm annot-tool" data-act="clear-mine" title="${t('ui.rabisco.apagarMeus')}" aria-label="${t('ui.rabisco.apagarMeus')}"${temMeu ? '' : ' disabled'}>${ANNOT_TOOLS.clear}</button>
       <span class="draw-bar__sep" aria-hidden="true"></span>
       <input type="color" class="annot-ink" data-act="ink" value="${brushColor()}"
-             title="Cor do seu pincel" aria-label="Cor do seu pincel"${travado}>`;
+             title="${t('ui.rabisco.corPincel')}" aria-label="${t('ui.rabisco.corPincel')}"${travado}>`;
 
     // O par de icones do toggle segue a mesma regra do resto do app: classe
     // `.hidden`, nunca o atributo -- `hidden` nao esconde um <svg>.
@@ -2018,7 +2026,7 @@
     input.type = 'text';
     input.className = 'annot-text-input';
     input.maxLength = annotate.MAX_TEXT;
-    input.placeholder = 'escreva e dê Enter';
+    input.placeholder = t('ui.rabisco.placeholder');
     // Na janela da Mesa o tile esta dentro do mundo com zoom (transform no
     // conteiner): o retangulo da tela e o de layout vezes a escala, e o
     // campo e posicionado em px de layout. No palco a escala e 1. (Os pontos
@@ -2152,8 +2160,8 @@
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'pip-thumb-remove';
-    removeBtn.title = 'Remover miniatura';
-    removeBtn.textContent = '×';
+    removeBtn.title = t('ui.pip.removerMiniatura');
+    removeBtn.textContent = t('pagina.simboloFechar');
     removeBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       pipEscolhido = true;
@@ -2166,7 +2174,7 @@
 
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'pip-thumb-resize';
-    resizeHandle.title = 'Redimensionar';
+    resizeHandle.title = t('ui.pip.redimensionar');
     wrap.appendChild(resizeHandle);
 
     // Arrasto vs clique: clicar na miniatura troca o foco do fullscreen
@@ -2291,8 +2299,8 @@
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'pip-add-btn';
-    addBtn.innerHTML = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>Ver junto';
-    addBtn.setAttribute('aria-label', 'Ver outra fonte junto, em miniatura');
+    addBtn.innerHTML = `<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>${t('ui.tile.verJunto')}`;
+    addBtn.setAttribute('aria-label', t('ui.pip.verOutraFonte'));
     addBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       openPipPicker(addBtn, id);
@@ -2325,7 +2333,7 @@
     const point = anchor ? null : { x, y };
     const state = getOrCreateAudioState(id);
     const entry = tileRegistry.get(id);
-    const nome = entry?.displayName || entry?.label || 'esta tela';
+    const nome = entry?.displayName || entry?.label || t('ui.tile.estaTela');
     const kind = entry?.kind || (String(id).startsWith('cam-') ? 'camera' : 'screen');
 
     // Parar (ou voltar) de assistir. Camera e opt-out: sem estado
@@ -2341,23 +2349,23 @@
       watchItem = '';
     } else if (isCam) {
       watchItem = watched
-        ? '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta câmera</button>'
-        : '<button type="button" class="tile-menu-watch" data-watch="only">Assistir câmera</button>';
+        ? `<button type="button" class="tile-menu-watch" data-watch="remove">${t('ui.tile.pararAssistirCamera')}</button>`
+        : `<button type="button" class="tile-menu-watch" data-watch="only">${t('ui.tile.assistirCamera')}</button>`;
     } else if (watched && ws && !mesa) {
       // Na Mesa quem decide se a tela chega e a janela estar a vista
       // (mesa-view `wants`): "parar de assistir" ali nao faria nada.
-      watchItem = '<button type="button" class="tile-menu-watch" data-watch="remove">Parar de assistir esta tela</button>';
+      watchItem = `<button type="button" class="tile-menu-watch" data-watch="remove">${t('ui.tile.pararAssistirTela')}</button>`;
     }
     const items = tileMenu.menuItems({ id, kind, watched, mesa, parte });
     const qualidadeBloqueada = items.includes('qualidade')
       && root.GoLive.tetoRecebido.bloqueado(`${id}:screen`);
     const spyItem = items.includes('espiar')
-      ? '<button type="button" role="menuitem" class="menu__item tile-menu-spy">Espiar em janela</button>'
+      ? `<button type="button" role="menuitem" class="menu__item tile-menu-spy">${t('ui.tile.espiarJanela')}</button>`
       : '';
     const qualityItem = items.includes('qualidade')
       ? `<button type="button" role="menuitem" class="menu__item tile-menu-quality"
           aria-haspopup="menu" aria-expanded="false">
-          Qualidade que você recebe <span class="menu__hint">›</span>
+          ${t('ui.tile.qualidadeRecebida')} <span class="menu__hint">›</span>
         </button>`
       : '';
     const pararItem = watchItem
@@ -2365,30 +2373,30 @@
       : '';
     const abrirGrupoVer = spyItem
       ? '<div class="menu__sep" role="separator"></div>'
-        + '<div class="menu__group" role="group" aria-label="Ver">'
+        + `<div class="menu__group" role="group" aria-label="${t('ui.tile.ver')}">`
       : '';
     const abrirGrupoQualidade = qualityItem
       ? '<div class="menu__sep" role="separator"></div>'
-        + '<div class="menu__group" role="group" aria-label="Qualidade">'
+        + `<div class="menu__group" role="group" aria-label="${t('ui.qualidade.titulo')}">`
       : '';
     const abrirGrupoAssistir = pararItem
       ? '<div class="menu__sep" role="separator"></div>'
-        + '<div class="menu__group" role="group" aria-label="Assistir">'
+        + `<div class="menu__group" role="group" aria-label="${t('ui.tile.assistir')}">`
       : '';
 
     const audioGroup = items.includes('volume')
-      ? `<div class="menu__group" role="group" aria-label="Som">
+      ? `<div class="menu__group" role="group" aria-label="${t('ui.som')}">
           <label class="menu__volume">
-            <span class="menu__volume-head"><span>Volume</span>
+            <span class="menu__volume-head"><span>${t('ui.tile.volume')}</span>
               <b class="tile-menu-volume-label tx-data">${Math.round(state.volume * 100)}%</b>
             </span>
-            <input type="range" class="range" min="0" max="200" step="1" aria-label="Volume"
+            <input type="range" class="range" min="0" max="200" step="1" aria-label="${t('ui.tile.volume')}"
               value="${Math.round(state.volume * 100)}" style="--pct:${Math.round(state.volume * 50)}%" />
           </label>
           <label class="menu__item menu__item--check">
             <input type="checkbox" role="menuitemcheckbox" class="sr-only tile-menu-mute"
               aria-checked="${isMuted(id)}" ${isMuted(id) ? 'checked' : ''} />
-            Silenciar <span class="menu__hint">M</span>
+            ${t('ui.tile.silenciar')} <span class="menu__hint">M</span>
           </label>
         </div>`
       : '';
@@ -2453,13 +2461,13 @@
       submenu.innerHTML = `
         <div class="menu__label">
           <button type="button" role="menuitem" class="menu__item tile-menu-back">
-            <span aria-hidden="true">‹</span> Qualidade que você recebe
+            <span aria-hidden="true">‹</span> ${t('ui.tile.qualidadeRecebida')}
           </button>
         </div>
-        <div class="menu__group" role="group" aria-label="Qualidade que você recebe">
+        <div class="menu__group" role="group" aria-label="${t('ui.tile.qualidadeRecebida')}">
           ${opcoesHtml}
         </div>
-        ${bloqueado ? '<p class="menu__note">Você repassa esta tela para outras pessoas</p>' : ''}`;
+        ${bloqueado ? `<p class="menu__note">${t('ui.tile.repassaTela')}</p>` : ''}`;
       menu.querySelector('.tile-menu-quality').setAttribute('aria-expanded', 'true');
       popoverControl.openSubmenu({
         content: submenu,
@@ -2546,13 +2554,13 @@
     const people = lobbyRoom.peopleForRoom(room);
     const avatars = people.avatars.map(() => '<span class="node" data-size="16" data-state="present" aria-hidden="true"></span>');
     const extra = people.extra ? `<span class="cluster__more">+${people.extra}</span>` : '';
-    const label = room.peers === 1 ? '1 pessoa na sala' : `${room.peers || 0} pessoas na sala`;
+    const label = t('ui.sala.pessoas', { n: room.peers || 0 });
 
     return `<span class="cluster" aria-label="${label}"><span class="cluster__nodes">${avatars.join('')}</span>${extra}</span>`;
   }
 
   function emptyRoomsHint() {
-    return networkEmptyHint || 'Crie uma sala ou peça o endereço a quem criou e entre por ele.';
+    return networkEmptyHint || t('ui.sala.semSalasDica');
   }
 
   function renderEmptyRooms(listEl) {
@@ -2566,7 +2574,7 @@
           <circle cx="24" cy="16" r="3.75" stroke-dasharray="1.5 1.5" />
         </g>
       </svg>
-      <p class="blank__title">${networkEmptyHint ? 'Nenhuma rede encontrada' : 'Nenhuma sala na sua rede ainda'}</p>
+      <p class="blank__title">${networkEmptyHint ? t('ui.sala.semRede') : t('ui.sala.semSalas')}</p>
       <p class="blank__text rooms-empty-hint">${escapeHtml(emptyRoomsHint())}</p>`;
     // Sem botoes aqui: "Criar sala" e "Procurar de novo" ja estao logo acima, no topo e no cabecalho da lista.
     listEl.appendChild(empty);
@@ -2582,22 +2590,22 @@
     // Curta na linha (a frase completa fica na dica): quem precisa agir.
     if (incompatible) {
       const quem = version.compare(appVersionAtual, room.version) === 1
-        ? 'quem criou precisa atualizar'
-        : 'atualize o seu GoLive';
-      return escapeHtml(`Versão ${room.version} — ${quem}`);
+        ? t('ui.sala.criadorAtualizar')
+        : t('ui.sala.atualizeGoLive');
+      return escapeHtml(t('ui.sala.versaoIncompativel', { versao: room.version, quem }));
     }
     const parts = [];
     if (room.protected) parts.push('<svg class="i i--sm"><use href="#i-lock" /></svg>PIN');
     // Sala sem Mesa: o beacon avisa antes do clique (sem icone novo).
-    if (room.mesa === false) parts.push('<span>Só transmissões</span>');
+    if (room.mesa === false) parts.push(`<span>${t('ui.sala.soTransmissoes')}</span>`);
     return parts.join('');
   }
 
   /** Coluna da acao: "Entrar", "Conectando…" na sala escolhida, nada quando nao da para entrar. */
   function roomGoHtml({ isActive, onCooldown, incompatible }) {
-    if (isActive) return '<span class="room-row__go"><span class="spinner" aria-hidden="true"></span>Conectando…</span>';
+    if (isActive) return `<span class="room-row__go"><span class="spinner" aria-hidden="true"></span>${t('ui.sala.conectando')}</span>`;
     if (onCooldown || incompatible) return '<span></span>';
-    return '<span class="room-row__go">Entrar <svg class="i i--sm"><use href="#i-chevron-right" /></svg></span>';
+    return `<span class="room-row__go">${t('pagina.entrar')} <svg class="i i--sm"><use href="#i-chevron-right" /></svg></span>`;
   }
 
   function fillRoomList(listEl, rooms, { onSelect, activeAddress, isOnCooldown, appVersion }) {
@@ -2616,7 +2624,7 @@
       // pessoa conectar e voltar com um erro. Beacon sem versao (release
       // antiga anunciando) nao e marcado -- a recusa vem do servidor.
       const incompatible = !isActive && !!appVersion && !!room.version && !version.same(appVersion, room.version);
-      const name = nomeDeSala(room.name || room.hostName || 'sala');
+      const name = nomeDeSala(room.name || room.hostName || t('ui.sala.nomePadrao'));
       const li = document.createElement('button');
       li.type = 'button';
       li.className = 'room-row';
@@ -2632,7 +2640,7 @@
       // sem o campo, a coluna fica vazia em vez de afirmar um "—" falso.
       li.innerHTML = `
         ${renderRoomAvatars(room)}
-        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)} · ${room.peers === 1 ? '1 pessoa' : `${room.peers || 0} pessoas`}</span></span>
+        <span class="room-row__main"><span class="room-row__name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="room-row__addr" title="${escapeHtml(room.address)}">${escapeHtml(room.address)} · ${t('ui.sala.pessoas', { n: room.peers || 0 })}</span></span>
         <span class="room-row__meta${incompatible ? ' tx-warn' : ''}" title="${escapeHtml(versionNote)}">${roomMetaHtml(room, incompatible, appVersion)}</span>
         ${roomGoHtml({ isActive, onCooldown, incompatible })}`;
 
@@ -2640,7 +2648,7 @@
       if (isActive || onCooldown || incompatible || outraEntrando) {
         li.disabled = true;
       } else {
-        li.setAttribute('aria-label', `Entrar em ${name}`);
+        li.setAttribute('aria-label', t('ui.sala.entrarEm', { nome: name }));
         li.addEventListener('click', () => onSelect(room));
       }
 
@@ -2661,7 +2669,7 @@
 
   // ---------- Lobby: endereco desta maquina na rede ----------
 
-  const NET_LABELS = { radmin: 'Radmin VPN', tailscale: 'Tailscale', lan: 'Rede local' };
+  const NET_LABELS = { radmin: 'Radmin VPN', tailscale: 'Tailscale', lan: 'ui.rede.local' };
 
   /** `info` e o { address, kind } do IPC network:address, ou null. Tres
    * estados: rede virtual (verde), so LAN (amarelo), nada (cinza). */
@@ -2677,9 +2685,9 @@
     // Tres barras: verde com rede virtual, atencao so com LAN, apagadas sem
     // rede. Vermelho nunca: ele e so "ao vivo".
     if (!info) {
-      networkEmptyHint = 'Ligue o Radmin ou o Tailscale e procure de novo.';
+      networkEmptyHint = t('ui.rede.ligueVpn');
       dot.dataset.level = 'none';
-      kindEl.textContent = 'Sem rede';
+      kindEl.textContent = t('ui.rede.semRede');
       addrEl.textContent = '';
       if (copy) copy.hidden = true;
       if (homeNet) homeNet.textContent = '';
@@ -2687,13 +2695,13 @@
       return;
     }
     dot.dataset.level = info.kind === 'lan' ? 'warn' : 'ok';
-    kindEl.textContent = `${NET_LABELS[info.kind] || 'Rede'} ·`;
+    kindEl.textContent = `${NET_LABELS[info.kind] ? t(NET_LABELS[info.kind]) : t('ui.rede.rede')} ·`;
     addrEl.textContent = info.address;
     addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
     if (copy) copy.hidden = false;
     if (homeNet) {
       homeNet.textContent = info.kind === 'lan'
-        ? '— amigos de fora precisam do Radmin VPN ou do Tailscale.'
+        ? t('ui.rede.amigosFora')
         : '';
     }
     updateEmptyRoomsHint();
