@@ -326,7 +326,9 @@ test('espiar mostra as ultimas mensagens na hora e explica quando nao ha nenhuma
   const ui = lerRenderer('ui.js');
   const app = lerRenderer('app.js');
   assert.match(ui, /function espiarRecentes\(\)/);
-  assert.match(ui, /Espiando: mensagens novas aparecem aqui\./);
+  // O texto mora no dicionario desde a migracao de idiomas; o ui.js usa a chave.
+  assert.match(ui, /t\('ui\.chat\.espiandoVazio'\)/);
+  assert.equal(require('./i18n/pt-BR')['ui.chat.espiandoVazio'], 'Espiando: mensagens novas aparecem aqui.');
   assert.match(app, /setConversation\('peek', \{ persist: true \}\);\s*[^]*?ui\.chat\.espiarRecentes\(\);/);
   const html = lerRenderer('index.html');
   const botao = html.match(/<button id="btn-conv-peek"[\s\S]*?<\/button>/)[0];

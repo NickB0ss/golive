@@ -4,7 +4,7 @@
 (function (root) {
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
-  const { t, maiuscula, idiomaAtivo } = root.GoLive.i18n;
+  const { t, formatarData, formatarHora, idiomaAtivo, maiuscula } = root.GoLive.i18n;
   const version = root.GoLive.version;
   const theme = root.GoLive.theme;
   const emoji = root.GoLive.emoji;
@@ -2723,7 +2723,7 @@
   const roomPinInputEl = $('in-room-pin');
   const roomPinRandomEl = $('btn-room-pin-random');
   const ROOM_PIN_LENGTH = 6;
-  const ROOM_PIN_ERROR = 'O PIN precisa ter 6 dígitos.';
+  const ROOM_PIN_ERROR = t('ui.sala.pinInvalido');
 
   /** Marca a opcao escolhida do tipo de sala. Radiogroup: so a marcada entra
    * na ordem de Tab (tabindex 0); a outra e alcancada pelas setas. */
@@ -2805,7 +2805,7 @@
     btnCreateCancelEl.disabled = busy;
     btnCreateConfirmEl.classList.toggle('busy', busy);
     btnCreateConfirmEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
-    btnCreateConfirmEl.querySelector('.btn-label').textContent = busy ? 'Criando sala…' : 'Criar';
+    btnCreateConfirmEl.querySelector('.btn-label').textContent = busy ? t('ui.sala.criando') : t('pagina.criar');
     $('chk-protect-room').disabled = busy;
     $('chk-advertise-room').disabled = busy;
     $('in-room-name').disabled = busy;
@@ -2897,7 +2897,7 @@
     btnJoinCancelEl.disabled = busy;
     btnConnectEl.classList.toggle('busy', busy);
     btnConnectEl.querySelector('.btn-spinner').classList.toggle('hidden', !busy);
-    btnConnectEl.querySelector('.btn-label').textContent = busy ? 'Entrando…' : 'Entrar';
+    btnConnectEl.querySelector('.btn-label').textContent = busy ? t('ui.sala.entrando') : t('pagina.entrar');
     $('in-server').disabled = busy;
     $('in-pin').disabled = busy;
   }
@@ -2905,7 +2905,9 @@
   function openJoinRoom({ onConnect, address, showPinField = false, roomName = '' }) {
     $('setup-error').textContent = '';
     // Veio da lista: o titulo diz em qual sala se esta entrando.
-    $('dialog-join-room-title').textContent = roomName ? `Entrar em ${nomeDeSala(roomName)}` : 'Entrar na sala';
+    $('dialog-join-room-title').textContent = roomName
+      ? t('ui.sala.entrarEm', { nome: nomeDeSala(roomName) })
+      : t('pagina.entrarSala');
     $('in-server').value = address || '';
     $('in-pin').value = '';
     $('join-pin-field').classList.toggle('hidden', !showPinField);
@@ -2942,7 +2944,7 @@
     const pinVisible = !$('join-pin-field').classList.contains('hidden');
     const pinDigits = $('in-pin').value.replace(/\D/g, '');
     if (pinVisible && pinDigits.length !== 6) {
-      $('setup-error').textContent = 'Informe um PIN de 6 dígitos.';
+      $('setup-error').textContent = t('ui.sala.informePin');
       return;
     }
     const handler = onJoinConnect;
@@ -3040,13 +3042,13 @@
     memberMenuEl.classList.remove('hidden', 'in-modal');
     memberMenuEl.removeAttribute('role');
     memberMenuEl.innerHTML = `
-      ${canAdd ? '<button class="menu__item" type="button" role="menuitem" data-watch="add">Ver junto</button>' : ''}
-      ${live ? `<button class="menu__item menu__item--warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} Parar transmissão</button>` : ''}
-      ${targetIsOwner ? '' : `<button class="menu__item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} Passar a liderança</button>`}
+      ${canAdd ? `<button class="menu__item" type="button" role="menuitem" data-watch="add">${t('ui.tile.verJunto')}</button>` : ''}
+      ${live ? `<button class="menu__item menu__item--warn" type="button" role="menuitem" data-action="stop-share">${MODERATE_ICONS['stop-share']} ${t('ui.moderacao.pararTransmissao')}</button>` : ''}
+      ${targetIsOwner ? '' : `<button class="menu__item" type="button" role="menuitem" data-action="transfer-owner">${MODERATE_ICONS['transfer-owner']} ${t('ui.dialogo.passar')}</button>`}
       ${live || !targetIsOwner ? '<div class="menu__sep"></div>' : ''}
-      <button class="menu__item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} Expulsar da sala</button>
-      <button class="menu__item menu__item--danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} Banir da sala</button>
-      <div class="menu__note">Expulso pode voltar. Banido não, enquanto a sala existir.</div>
+      <button class="menu__item" type="button" role="menuitem" data-action="kick">${MODERATE_ICONS.kick} ${t('ui.moderacao.expulsarSala')}</button>
+      <button class="menu__item menu__item--danger" type="button" role="menuitem" data-action="ban">${MODERATE_ICONS.ban} ${t('ui.dialogo.banir')}</button>
+      <div class="menu__note">${t('ui.moderacao.aviso')}</div>
     `;
     if (!canModerate) {
       const moderacao = memberMenuEl.querySelectorAll(
@@ -3117,16 +3119,16 @@
     const linhaEstado = [estado, extras].filter(Boolean).join(' · ');
     const menuHtml = showMenu
       ? `<button class="btn btn--quiet btn--icon btn--sm member-menu-btn" type="button"
-           aria-label="Opções de ${escapeHtml(name)}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>`
+           aria-label="${t('ui.presenca.opcoes', { nome: escapeHtml(name) })}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>`
       : '';
     const estadoHtml = linhaEstado
       ? `<span class="person__state${strugglingTag ? ' tx-warn' : ''}">${escapeHtml(linhaEstado)}</span>`
       : '';
     li.innerHTML = `
       <span class="node" data-size="24" data-state="${noEstado}" style="--who:${avatarColorFor(String(id))}"
-            title="${isOwner ? 'Líder da sala' : ''}">${avatarInnerHtml(String(id), name, avatar)}${coroa}</span>
+            title="${isOwner ? t('ui.presenca.lider') : ''}">${avatarInnerHtml(String(id), name, avatar)}${coroa}</span>
       <span class="person__text">
-        <span class="person__name" title="${escapeHtml(name)}">${escapeHtml(name)}${isSelf ? ' <span class="tx-3">(você)</span>' : ''}</span>
+        <span class="person__name" title="${escapeHtml(name)}">${escapeHtml(name)}${isSelf ? ` <span class="tx-3">(${t('pagina.voce').toLowerCase()})</span>` : ''}</span>
         ${estadoHtml}
       </span>
       <span class="person__actions">${menuHtml}</span>
@@ -3135,7 +3137,7 @@
       const assistir = document.createElement('button');
       assistir.type = 'button';
       assistir.className = 'btn btn--quiet btn--sm';
-      assistir.textContent = 'Assistir';
+      assistir.textContent = t('ui.tile.assistir');
       assistir.addEventListener('click', (event) => {
         event.stopPropagation();
         onWatch?.(id, event.shiftKey && canAdd ? 'add' : 'only');
@@ -3171,7 +3173,7 @@
     });
     if (showMenu) {
       const menuBtn = li.querySelector('.member-menu-btn');
-      menuBtn.title = 'Opções';
+      menuBtn.title = t('ui.tile.maisOpcoes');
       menuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openMemberMenu(e.currentTarget, id, name, {
@@ -3215,7 +3217,7 @@
     const { ownerId, myId, onModerate, healthTags, mesaPeople } = opcoes;
     peerListEl.innerHTML = '';
     if (!self && !peers.size) {
-      peerListEl.innerHTML = '<li class="muted">você não está em nenhuma sala</li>';
+      peerListEl.innerHTML = `<li class="muted">${t('ui.presenca.semSala')}</li>`;
       return;
     }
     const iAmOwner = ownerId != null && myId != null && ownerId === myId;
@@ -3226,13 +3228,13 @@
     $('presence-count').textContent = String(presenceCount);
     renderBus(pessoas);
     renderMeNode(self);
-    $('btn-room-presence')?.setAttribute('aria-label', `Pessoas: ${presenceCount}`);
+    $('btn-room-presence')?.setAttribute('aria-label', t('ui.presenca.pessoas', { n: presenceCount }));
     // A mesma leitura dos nos: camera ligada ou tela pausada tambem estao no ar.
     const secoes = root.GoLive.salaLayout.ordenarPresencas(pessoas.map((pessoa) => ({
       ...pessoa, noAr: ['live', 'paused'].includes(estadoNo(pessoa)),
     })));
     // O cabecalho ja diz "Pessoas": so quem esta ao vivo ganha rotulo; o resto vem depois de uma linha.
-    for (const [titulo, lista] of [['AO VIVO', secoes.aoVivo], [null, secoes.naSala]]) {
+    for (const [titulo, lista] of [[t('ui.tile.aoVivo'), secoes.aoVivo], [null, secoes.naSala]]) {
       if (!lista.length) continue;
       if (titulo) {
         const secao = document.createElement('li');
@@ -3293,8 +3295,8 @@
     const watched = tileWatch.get(tileId)?.watched !== false && tileRegistry.has(tileId);
     const paused = Boolean(tilePaused.get(tileId)?.paused);
     const poor = ['atencao', 'ruim'].includes(tileHealth.get(tileId));
-    const nome = pessoa.name || 'Alguém';
-    const sub = paused ? 'Tela pausada' : (kind === 'camera' ? 'Câmera' : (tileRegistry.has(tileId) ? 'Tela' : 'Conectando…'));
+    const nome = pessoa.name || t('ui.pessoa.alguem');
+    const sub = paused ? t('ui.fonte.telaPausada') : (kind === 'camera' ? t('pagina.camera') : (tileRegistry.has(tileId) ? t('pagina.telas') : t('ui.sala.conectando')));
     const quem = (tileWatchers.get(tileId) || []).slice(0, 4)
       .map((w) => `<span class="node" data-size="16" data-state="watching" title="${escapeHtml(w.name || '')}"></span>`)
       .join('');
@@ -3302,10 +3304,10 @@
     const noPalco = root.GoLive.roomUi.controlesDoPalco(root.GoLive.salaVista?.temMesa?.() === true);
     const podeJunto = noPalco && kind === 'screen' && !watched && tileWatch.get(tileId)?.opts?.canAdd;
     const podeLargar = noPalco && watched && (kind === 'camera' || tileWatch.get(tileId)?.opts?.canDrop);
-    const estado = [paused ? 'pausada' : 'ao vivo', watched ? 'você está assistindo' : ''].filter(Boolean).join(', ');
+    const estado = [paused ? t('ui.fonte.pausada') : t('pagina.aoVivo'), watched ? t('ui.fonte.voceAssistindo') : ''].filter(Boolean).join(', ');
     return `
       <div class="src" role="option" tabindex="-1" data-tile="${escapeHtml(tileId)}" data-kind="${kind}"
-           aria-selected="${watched}" aria-label="${escapeHtml(`${nome}, ${sub}: ${estado}`)}"
+           aria-selected="${watched}" aria-label="${escapeHtml(t('ui.fonte.estado', { nome, fonte: sub, estado }))}"
            ${watched ? 'data-watching' : ''} ${paused ? 'data-paused' : ''} ${poor ? 'data-poor' : ''}>
         <span class="node" data-size="32" data-state="${paused ? 'paused' : 'live'}"
               style="--who:${avatarColorFor(String(pessoa.id))}">${avatarInnerHtml(String(pessoa.id), nome, pessoa.avatar)}${
@@ -3481,12 +3483,12 @@
   let onChatPut = null; // "Pôr na Mesa" de um link do YouTube ou de uma imagem
 
   const SYSTEM_LABELS = {
-    join: (actor) => `${actor} entrou`,
-    leave: (actor) => `${actor} saiu`,
-    'stop-share': (actor, target) => `${actor} parou a transmissão de ${target}`,
-    kick: (actor, target) => `${actor} expulsou ${target}`,
-    ban: (actor, target) => `${actor} baniu ${target}`,
-    unban: (actor, target) => `${actor} readmitiu ${target}`,
+    join: (actor) => t('ui.chat.entrou', { nome: actor }),
+    leave: (actor) => t('ui.chat.saiu', { nome: actor }),
+    'stop-share': (actor, target) => t('ui.chat.parou', { nome: actor, alvo: target }),
+    kick: (actor, target) => t('ui.chat.expulsou', { nome: actor, alvo: target }),
+    ban: (actor, target) => t('ui.chat.baniu', { nome: actor, alvo: target }),
+    unban: (actor, target) => t('ui.chat.readmitiu', { nome: actor, alvo: target }),
   };
   const SYSTEM_TONE = { 'stop-share': 'warn', kick: 'danger', ban: 'danger' };
   // Icone da linha de evento: entrar, sair e moderacao.
@@ -3495,7 +3497,7 @@
   };
 
   function formatTime(ts) {
-    return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return formatarHora(ts);
   }
 
   let lastChatDayKey = null;
@@ -3511,9 +3513,9 @@
     const d = new Date(ts);
     const hoje = new Date();
     const ontem = new Date(hoje.getTime() - 86400000);
-    if (dayKey(ts) === dayKey(hoje.getTime())) return 'Hoje';
-    if (dayKey(ts) === dayKey(ontem.getTime())) return 'Ontem';
-    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+    if (dayKey(ts) === dayKey(hoje.getTime())) return t('ui.chat.hoje');
+    if (dayKey(ts) === dayKey(ontem.getTime())) return t('ui.chat.ontem');
+    return formatarData(d.getTime());
   }
 
   function appendDaySeparatorIfNeeded(ts) {
@@ -3529,14 +3531,14 @@
 
   // Entradas e saidas seguidas viram uma linha so ("Bia, Leo e Caio entraram"):
   // quando a sala enche, onze linhas de "entrou" empurravam a conversa pra fora.
-  const SYSTEM_PLURAL = { join: 'entraram', leave: 'saíram' };
+  const SYSTEM_PLURAL = { join: 'ui.chat.entraram', leave: 'ui.chat.sairam' };
   const JUNTAR_JANELA_MS = 5 * 60 * 1000;
   let grupoSistema = null; // { event, actors, el, ts }
 
   function juntarNomes(nomes) {
     if (nomes.length <= 1) return nomes[0] || '';
-    if (nomes.length > 4) return `${nomes.slice(0, 3).join(', ')} e mais ${nomes.length - 3}`;
-    return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
+    if (nomes.length > 4) return t('ui.chat.eMais', { nomes: nomes.slice(0, 3).join(', '), n: nomes.length - 3 });
+    return t('ui.chat.e', { nomes: nomes.slice(0, -1).join(', '), nome: nomes[nomes.length - 1] });
   }
 
   function appendSystemLine(entry) {
@@ -3544,7 +3546,7 @@
     if (SYSTEM_PLURAL[entry.event] && g && g.event === entry.event && g.el === chatMessagesEl.lastElementChild
         && Math.abs((entry.ts || 0) - g.ts) < JUNTAR_JANELA_MS) {
       if (!g.actors.includes(entry.actor)) g.actors.push(entry.actor);
-      const texto = g.actors.length > 1 ? `${juntarNomes(g.actors)} ${SYSTEM_PLURAL[entry.event]}`
+      const texto = g.actors.length > 1 ? t(SYSTEM_PLURAL[entry.event], { nomes: juntarNomes(g.actors) })
         : SYSTEM_LABELS[entry.event](entry.actor);
       g.el.querySelector('span').textContent = texto;
       g.el.title = g.actors.join(', ');
@@ -3574,7 +3576,7 @@
     if (!chatmedia.isImageDataUrl(entry.image)) return '';
     const box = chatmedia.thumbBox(entry.w, entry.h);
     const dims = box ? ` style="width:${box.w}px;height:${box.h}px"` : '';
-    return `<button class="msg__img" type="button" title="Ver em tela cheia"${dims}><img src="${escapeHtml(entry.image)}" alt="imagem enviada por ${escapeHtml(entry.name)}" /></button>`;
+    return `<button class="msg__img" type="button" title="${t('ui.chat.verTelaCheia')}"${dims}><img src="${escapeHtml(entry.image)}" alt="${t('ui.chat.imagemPor', { nome: escapeHtml(entry.name) })}" /></button>`;
   }
 
   const PUT_ICON = '<svg class="i i--sm" aria-hidden="true"><use href="#i-plus" /></svg>';
@@ -3726,7 +3728,7 @@
     if (!chatPeekEl || $('app')?.dataset.conv !== 'peek') return;
     const item = novaBolhaEspiar();
     const cor = avatarColorFor(String(entry.from));
-    const texto = entry.text || (entry.image ? 'mandou uma imagem' : '');
+    const texto = entry.text || (entry.image ? t('ui.chat.mandouImagem') : '');
     item.innerHTML = `<span class="node" style="--who:${cor}">${avatarInnerHtml(String(entry.from), entry.name, entry.avatar || null)}</span>`
       + `<span class="peek__text"><b class="peek__who" style="--who:${cor}">${escapeHtml(entry.name)}</b>${escapeHtml(texto)}</span>`;
     chatPeekEl.appendChild(item);
@@ -3742,7 +3744,7 @@
     chatPeekEl.replaceChildren();
     if (!recentesConversa.length) {
       const aviso = novaBolhaEspiar('peek__msg--aviso');
-      aviso.innerHTML = '<span class="peek__text">Espiando: mensagens novas aparecem aqui.</span>';
+      aviso.innerHTML = `<span class="peek__text">${t('ui.chat.espiandoVazio')}</span>`;
       chatPeekEl.appendChild(aviso);
       return;
     }
