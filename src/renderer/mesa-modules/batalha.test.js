@@ -128,9 +128,9 @@ test('sortear de novo so antes de ficar pronto; comeca com os dois prontos', () 
   agora += 7;
   s = act(s, { kind: 'shuffle' }, 'bia');
   assert.notDeepEqual(s.fleets[0], antes);
-  assert.equal(batalha.validate(s, { kind: 'fire', cell: 0 }, ctx('bia')), 'Esperando os dois ficarem prontos');
+  assert.equal(batalha.validate(s, { kind: 'fire', cell: 0 }, ctx('bia')), 'mesa.batalha.esperandoProntos');
   s = act(s, { kind: 'ready' }, 'bia');
-  assert.equal(batalha.validate(s, { kind: 'shuffle' }, ctx('bia')), 'Você já disse que está pronto');
+  assert.equal(batalha.validate(s, { kind: 'shuffle' }, ctx('bia')), 'mesa.batalha.jaDisseProntoVoce');
   assert.equal(s.phase, 'setup');
   agora = 5000;
   s = act(s, { kind: 'ready' }, 'leo');
@@ -138,7 +138,7 @@ test('sortear de novo so antes de ficar pronto; comeca com os dois prontos', () 
   assert.equal(s.turn, 0);
   assert.equal(s.deadline, 5000 + batalha.TURN_MS);
   assert.equal(batalha.timeoutAt(s), 5000 + batalha.TURN_MS);
-  assert.equal(batalha.validate(s, { kind: 'shuffle' }, ctx('leo')), 'A partida já começou');
+  assert.equal(batalha.validate(s, { kind: 'shuffle' }, ctx('leo')), 'mesa.cadeiras.partidaComecou');
 });
 
 test('tiro por vez, alternado: acertar nao da outro tiro', () => {
@@ -147,13 +147,13 @@ test('tiro por vez, alternado: acertar nao da outro tiro', () => {
   s = act(s, { kind: 'fire', cell: alvo }, 'bia');
   assert.deepEqual(s.last, { seat: 0, cell: alvo, hit: true, sunk: null });
   assert.equal(s.turn, 1, 'acertou e mesmo assim passa a vez');
-  assert.equal(batalha.validate(s, { kind: 'fire', cell: 0 }, ctx('bia')), 'Não é a sua vez');
-  assert.equal(batalha.validate(s, { kind: 'fire', cell: 0 }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(batalha.validate(s, { kind: 'fire', cell: 0 }, ctx('bia')), 'mesa.jogo.naoESuaVez');
+  assert.equal(batalha.validate(s, { kind: 'fire', cell: 0 }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
   const agua = aguas(s, 0)[0];
   s = act(s, { kind: 'fire', cell: agua }, 'leo');
   assert.equal(s.last.hit, false);
-  assert.equal(batalha.validate(s, { kind: 'fire', cell: alvo }, ctx('bia')), 'Você já atirou aí');
-  assert.equal(batalha.validate(s, { kind: 'fire', cell: 100 }, ctx('bia')), 'Casa inválida');
+  assert.equal(batalha.validate(s, { kind: 'fire', cell: alvo }, ctx('bia')), 'mesa.batalha.jaAtirou');
+  assert.equal(batalha.validate(s, { kind: 'fire', cell: 100 }, ctx('bia')), 'mesa.batalha.casaInvalida');
 });
 
 test('afundar os 5 navios vence; navio afundado aparece inteiro para todos', () => {
@@ -174,7 +174,7 @@ test('afundar os 5 navios vence; navio afundado aparece inteiro para todos', () 
   assert.deepEqual(s.result, { winner: 0, reason: 'afundou' });
   assert.equal(s.deadline, null);
   assert.equal(batalha.timeoutAt(s), null);
-  assert.equal(batalha.validate(s, { kind: 'fire', cell: aguas(s, 1)[0] }, ctx('bia')), 'A partida acabou');
+  assert.equal(batalha.validate(s, { kind: 'fire', cell: aguas(s, 1)[0] }, ctx('bia')), 'mesa.cadeiras.partidaAcabou');
   // No fim as duas frotas aparecem.
   const v = batalha.view(s, 'ana', { peers: PEERS });
   assert.equal(v.boards[0].ships.length, 5);
@@ -242,16 +242,16 @@ test('tempo esgotado: o tiro sai sozinho numa casa sorteada ainda livre, e a vez
   assert.equal(s.turn, 1);
   assert.equal(s.deadline, 90000 + batalha.TURN_MS);
   const cedo = sentados();
-  assert.equal(batalha.validate(cedo, { kind: 'timeout' }, ctx('ana')), 'Nada correndo');
+  assert.equal(batalha.validate(cedo, { kind: 'timeout' }, ctx('ana')), 'mesa.batalha.nadaCorrendo');
   assert.equal(batalha.timeoutAt(cedo), null);
 });
 
 test('desistir da a vitoria ao outro; nova partida sorteia frotas novas para quem esta sentado', () => {
   let s = jogando();
-  assert.equal(batalha.validate(s, { kind: 'resign' }, ctx('ana')), 'Só quem está sentado desiste');
+  assert.equal(batalha.validate(s, { kind: 'resign' }, ctx('ana')), 'mesa.cadeiras.soSentadoDesiste');
   s = act(s, { kind: 'resign' }, 'leo');
   assert.deepEqual(s.result, { winner: 0, reason: 'abandono' });
-  assert.equal(batalha.validate(s, { kind: 'reset' }, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(batalha.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   agora += 13;
   s = act(s, { kind: 'reset' }, 'ana', { isLeader: true });
   assert.equal(s.phase, 'setup');
@@ -275,7 +275,7 @@ test('quem sai posicionando leva a frota; no meio da partida a frota fica para q
   assert.deepEqual(d.seats, ['bia', null]);
   assert.deepEqual(d.fleets[1], frotaLeo);
   assert.equal(batalha.timeoutAt(d), null, 'sem adversario o relogio para');
-  assert.equal(batalha.validate(d, { kind: 'fire', cell: 0 }, ctx('bia')), 'Espere alguém sentar na outra cadeira');
+  assert.equal(batalha.validate(d, { kind: 'fire', cell: 0 }, ctx('bia')), 'mesa.cadeiras.esperaOutra');
   agora = 70000;
   d = act(d, { kind: 'sit', seat: 1 }, 'ana');
   assert.deepEqual(d.fleets[1], frotaLeo, 'Ana continua com a frota do Leo');

@@ -79,20 +79,20 @@ test('lance simples move a pedra e passa a vez', () => {
   assert.equal(s.board[4], '...c....');
   assert.equal(s.turn, 1);
   assert.deepEqual(s.last, { path: [[5, 2], [4, 3]], captures: [] });
-  assert.equal(damas.validate(s, { kind: 'move', path: [[2, 1], [3, 0]] }, ctx('bia')), 'Não é a sua vez');
-  assert.equal(damas.validate(s, { kind: 'move', path: [[2, 1], [3, 0]] }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(damas.validate(s, { kind: 'move', path: [[2, 1], [3, 0]] }, ctx('bia')), 'mesa.jogo.naoESuaVez');
+  assert.equal(damas.validate(s, { kind: 'move', path: [[2, 1], [3, 0]] }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
 });
 
 test('pedra nao anda para tras sem capturar', () => {
   const s = position({ '4,3': 'c', '0,1': 'e' });
   assert.deepEqual(paths(s), ['[[4,3],[3,2]]', '[[4,3],[3,4]]']);
-  assert.equal(damas.validate(s, { kind: 'move', path: [[4, 3], [5, 2]] }, ctx('bia')), 'Lance inválido');
+  assert.equal(damas.validate(s, { kind: 'move', path: [[4, 3], [5, 2]] }, ctx('bia')), 'mesa.damas.lanceInvalido');
 });
 
 test('captura obrigatoria: lance simples e recusado quando ha captura', () => {
   const s = position({ '5,2': 'c', '5,6': 'c', '4,3': 'e', '0,1': 'e' });
   assert.deepEqual(paths(s), ['[[5,2],[3,4]]']);
-  assert.equal(damas.validate(s, { kind: 'move', path: [[5, 6], [4, 7]] }, ctx('bia')), 'Captura obrigatória');
+  assert.equal(damas.validate(s, { kind: 'move', path: [[5, 6], [4, 7]] }, ctx('bia')), 'mesa.damas.capturaObrigatoria');
   const t = act(s, { kind: 'move', path: [[5, 2], [3, 4]] }, 'bia');
   assert.equal(t.board[4], '........');
   assert.equal(t.board[3], '....c...');
@@ -117,7 +117,7 @@ test('captura em sequencia com as pecas saindo so no fim', () => {
 test('parar no meio da sequencia e recusado', () => {
   const s = position({ '7,0': 'c', '6,1': 'e', '4,3': 'e', '0,7': 'e' });
   assert.equal(damas.validate(s, { kind: 'move', path: [[7, 0], [5, 2]] }, ctx('bia')),
-    'Captura obrigatória de 2 peças (lei da maioria)');
+    'mesa.damas.capturaObrigatoriaN?n=2');
 });
 
 test('lei da maioria: vale a sequencia que captura mais, mesmo de pedra contra dama', () => {
@@ -125,7 +125,7 @@ test('lei da maioria: vale a sequencia que captura mais, mesmo de pedra contra d
   const s = position({ '7,0': 'C', '6,1': 'e', '4,3': 'c', '5,6': 'c', '4,5': 'e', '2,3': 'e' });
   assert.deepEqual(paths(s), ['[[5,6],[3,4],[1,2]]']);
   assert.equal(damas.validate(s, { kind: 'move', path: [[7, 0], [5, 2]] }, ctx('bia')),
-    'Captura obrigatória de 2 peças (lei da maioria)');
+    'mesa.damas.capturaObrigatoriaN?n=2');
 });
 
 test('peca capturada nao e pulada duas vezes: o giro termina onde comecou', () => {
@@ -222,11 +222,11 @@ test('lance de pedra zera a contagem de lances so de damas', () => {
 
 test('desistir da a vitoria ao outro e so vale para quem esta sentado', () => {
   const s = seated();
-  assert.equal(damas.validate(s, { kind: 'resign' }, ctx('ana')), 'Só quem está sentado desiste');
+  assert.equal(damas.validate(s, { kind: 'resign' }, ctx('ana')), 'mesa.cadeiras.soSentadoDesiste');
   const t = act(s, { kind: 'resign' }, 'leo');
   assert.deepEqual(t.result, { winner: 0, reason: 'abandono' });
   assert.equal(damas.summary(t), 'Leo desistiu, Bia venceu');
-  assert.equal(damas.validate(t, { kind: 'resign' }, ctx('bia')), 'A partida acabou');
+  assert.equal(damas.validate(t, { kind: 'resign' }, ctx('bia')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('reset volta a posicao inicial mantendo as cadeiras', () => {
@@ -243,7 +243,7 @@ test('dropPeer libera a cadeira sem mexer no tabuleiro', () => {
   assert.deepEqual(t.seats, ['bia', null]);
   assert.equal(t.board, s.board);
   assert.equal(damas.validate(t, { kind: 'move', path: [[2, 1], [3, 0]] }, ctx('bia')),
-    'Espere alguém sentar na outra cadeira');
+    'mesa.cadeiras.esperaOutra');
 });
 
 test('caminho malformado e mensagem estranha nunca lancam', () => {

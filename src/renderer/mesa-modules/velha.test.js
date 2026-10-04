@@ -56,27 +56,27 @@ test('X na cadeira 0 comeca e as vezes alternam', () => {
   s = act(s, { kind: 'move', cell: 4 }, 'bia');
   assert.equal(s.board, '....X....');
   assert.equal(velha.summary(s), 'Bia × Leo — vez de Leo');
-  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'Não é a sua vez');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'mesa.jogo.naoESuaVez');
   s = act(s, { kind: 'move', cell: 0 }, 'leo');
   assert.equal(s.board, 'O...X....');
 });
 
 test('so quem esta sentado joga; quem assiste e recusado', () => {
   const s = seated();
-  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
 });
 
 test('sem adversario sentado ninguem joga', () => {
   const s = act(deepFreeze(velha.init({})), { kind: 'sit', seat: 0 }, 'bia');
-  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'Espere alguém sentar na outra cadeira');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 0 }, ctx('bia')), 'mesa.cadeiras.esperaOutra');
   assert.equal(velha.summary(s), 'Bia espera adversário');
 });
 
 test('casa ocupada e casa fora do tabuleiro sao recusadas', () => {
   const s = playCells(seated(), [4]);
-  assert.equal(velha.validate(s, { kind: 'move', cell: 4 }, ctx('leo')), 'Casa ocupada');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 4 }, ctx('leo')), 'mesa.velha.casaOcupada');
   for (const cell of [-1, 9, 1.5, '3', null, undefined]) {
-    assert.equal(velha.validate(s, { kind: 'move', cell }, ctx('leo')), 'Casa inválida');
+    assert.equal(velha.validate(s, { kind: 'move', cell }, ctx('leo')), 'mesa.velha.casaInvalida');
   }
 });
 
@@ -86,7 +86,7 @@ test('tres em linha vence e marca a linha', () => {
   assert.deepEqual(s.result, { winner: 0, reason: 'linha' });
   assert.deepEqual(s.line, [0, 1, 2]);
   assert.equal(velha.summary(s), 'Bia venceu');
-  assert.equal(velha.validate(s, { kind: 'move', cell: 5 }, ctx('leo')), 'A partida acabou');
+  assert.equal(velha.validate(s, { kind: 'move', cell: 5 }, ctx('leo')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('diagonal da cadeira 1 tambem vence', () => {
@@ -114,7 +114,7 @@ test('vitoria na nona jogada conta como vitoria, nao como velha', () => {
 
 test('reset mantem as cadeiras; pode sentado ou lider, nao quem assiste', () => {
   const s = playCells(seated(), [0, 3, 1, 4, 2]);
-  assert.equal(velha.validate(s, { kind: 'reset' }, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(velha.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   const r = act(s, { kind: 'reset' }, 'ana', { isLeader: true });
   assert.deepEqual(r.seats, ['bia', 'leo']);
   assert.equal(r.board, '.........');

@@ -14,6 +14,8 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
+
   // ---------- Puras ----------
 
   /** Cadeira da pessoa (0 ou 1), ou -1 se esta assistindo. */
@@ -36,18 +38,36 @@
     const eu = minhaCadeira(state, me);
     const r = state.result;
     if (r) {
-      if (r.winner === null || r.winner === undefined) return empate ? empate(r) : 'Empate';
+      if (r.winner === null || r.winner === undefined) return empate ? empate(r) : t('mesa.tabuleiro.empate');
       const perdedor = 1 - r.winner;
       if (r.reason === 'abandono') {
-        return perdedor === eu ? 'Você desistiu' : `${nomeCadeira(state, perdedor, labels, nameOf)} desistiu; ${r.winner === eu ? 'você venceu' : `${nomeCadeira(state, r.winner, labels, nameOf)} venceu`}`;
+        if (perdedor === eu) return t('mesa.tabuleiro.voceDesistiu');
+        const nome = nomeCadeira(state, perdedor, labels, nameOf);
+        if (r.winner === eu) return t('mesa.tabuleiro.desistiuVoceVenceu', { nome });
+        return t('mesa.tabuleiro.desistiuVenceu', {
+          perdedor: nome,
+          vencedor: nomeCadeira(state, r.winner, labels, nameOf),
+        });
       }
-      return r.winner === eu ? 'Você venceu' : `${nomeCadeira(state, r.winner, labels, nameOf)} venceu`;
+      if (r.winner === eu) return t('mesa.tabuleiro.voceVenceu');
+      return t('mesa.tabuleiro.venceu', { nome: nomeCadeira(state, r.winner, labels, nameOf) });
     }
     const livres = state.seats.filter((s) => s === null).length;
     if (livres === 2) return '';
-    if (livres === 1) return eu >= 0 ? 'Esperando alguém sentar na outra cadeira' : 'Uma cadeira livre: sente-se para jogar';
-    if (state.turn === eu) return state.check ? 'Sua vez (xeque)' : 'Sua vez';
-    return `Vez de ${nomeCadeira(state, state.turn, labels, nameOf)}${state.check ? ' (xeque)' : ''}`;
+    if (livres === 1) return t(eu >= 0 ? 'mesa.tabuleiro.esperandoOutra' : 'mesa.tabuleiro.cadeiraLivre');
+    if (state.turn === eu) return t(state.check ? 'mesa.tabuleiro.suaVezXeque' : 'mesa.jogo.suaVez');
+    const nome = nomeCadeira(state, state.turn, labels, nameOf);
+    return t(state.check ? 'mesa.tabuleiro.vezDeXeque' : 'mesa.jogo.vezDe', { nome });
+  }
+
+  /** O que `api.validate` devolveu, sem traduzir: `true` ou o codigo da recusa. Serve
+   * para a janela decidir o que fazer pelo motivo, nao pelo texto. */
+  function motivoBruto(api, action) {
+    try {
+      return api.validate(action);
+    } catch {
+      return null;
+    }
   }
 
   /** Vista de cima para baixo virada para quem senta na cadeira 1. */
@@ -231,6 +251,8 @@
     // Jogo secret (contrato, secao 8): o `validate` da api diz sempre sim, e
     // quem liga e desliga os botoes e o `me` que veio na view do servidor.
     const pode = typeof opts.pode === 'function' ? opts.pode : (action) => C.podeFazer(api, action);
+    // Os rotulos das cores podem vir de uma funcao: o idioma pode mudar com a janela aberta.
+    const rotulosDe = () => (typeof opts.labels === 'function' ? opts.labels() : opts.labels);
 
     const topo = el('div', { class: 'mj-jogo-topo' });
     const placa = el('div', { class: 'mj-jogo-placa' });
@@ -238,13 +260,13 @@
     // Onde as recusas aparecem: logo abaixo da situacao, perto do tabuleiro.
     const zona = el('div', { class: 'mj-jogo-rodape' }, status);
     const cadeiras = C.cadeiras({
-      rotulo: 'Cadeiras do jogo',
+      rotulo: t('mesa.tabuleiro.cadeiras'),
       aoSentar(i) { b.acao(zona, { kind: 'sit', seat: i }); },
       aoLevantar() { b.acao(zona, { kind: 'stand' }); },
       aoRecusar(motivo) { b.aviso.mostrar(motivo, zona); },
     });
-    const nova = C.botao({ icone: 'zerar', class: 'mj-mini mj-fantasma', label: 'Nova partida' });
-    const desistir = opts.desistir ? C.botao({ icone: 'bandeira', class: 'mj-mini mj-fantasma', label: 'Desistir' }) : null;
+    const nova = C.botao({ icone: 'zerar', class: 'mj-mini mj-fantasma', label: t('mesa.tabuleiro.novaPartida') });
+    const desistir = opts.desistir ? C.botao({ icone: 'bandeira', class: 'mj-mini mj-fantasma', label: t('mesa.tabuleiro.desistir') }) : null;
     topo.append(cadeiras.node, nova);
     if (desistir) topo.append(desistir);
 
@@ -256,7 +278,7 @@
       // Dois toques: o primeiro so pergunta, e desarma sozinho.
       b.clique(desistir, zona, () => {
         if (!confirmando) {
-          b.aviso.mostrar('Toque de novo para desistir', zona);
+          b.aviso.mostrar(t('mesa.tabuleiro.toqueDeNovo'), zona);
           desistir.classList.add('is-confirmando');
           confirmando = setTimeout(() => {
             confirmando = null;
@@ -274,17 +296,19 @@
 
     const nameOf = (id) => {
       const n = C.nomeDe(api, id);
-      return n === 'Alguém' ? null : n;
+      // `nomeDe` devolve o mesmo marcador para quem nao tem nome (id nulo).
+      return n === C.nomeDe(api, null) ? null : n;
     };
 
     function update(novo) {
       state = novo;
       const me = api.me();
       const eu = minhaCadeira(state, me);
+      const labels = rotulosDe();
       const lugares = [0, 1].map((i) => {
         const id = state.seats[i];
         const ocupada = id !== null && id !== undefined;
-        const txt = ocupada ? (id === me ? 'Você' : nomeCadeira(state, i, opts.labels, nameOf)) : opts.labels[i];
+        const txt = ocupada ? (id === me ? t('mesa.tabuleiro.voce') : nomeCadeira(state, i, labels, nameOf)) : labels[i];
         return {
           peer: ocupada ? id : null,
           nome: txt,
@@ -292,24 +316,28 @@
           peca: opts.peca ? opts.peca(i) : null,
           vez: !state.result && ocupada && state.seats[1 - i] !== null && state.turn === i,
           eu: ocupada && id === me,
-          motivoSentar: eu < 0 ? pode({ kind: 'sit', seat: i }) : 'Você já está sentado',
-          motivoLevantar: id === me ? pode({ kind: 'stand' }) : 'Esta cadeira é de outra pessoa',
+          motivoSentar: eu < 0 ? pode({ kind: 'sit', seat: i }) : t('mesa.jogo.jaEstaSentado'),
+          motivoLevantar: id === me ? pode({ kind: 'stand' }) : t('mesa.tabuleiro.cadeiraDeOutra'),
         };
       });
       cadeiras.sync(lugares);
       cadeiras.node.querySelectorAll('.mj-cadeira-botao').forEach((botaoLugar, i) => {
         const ocupada = lugares[i].peer !== null;
-        let rotulo = `Sentar: ${opts.labels[i]}`;
-        if (ocupada) rotulo = lugares[i].eu ? 'Levantar da cadeira' : `${opts.labels[i]}: ${lugares[i].nome}`;
+        let rotulo = t('mesa.tabuleiro.sentarCor', { cor: labels[i] });
+        if (ocupada) {
+          rotulo = lugares[i].eu
+            ? t('mesa.tabuleiro.levantarDaCadeira')
+            : t('mesa.tabuleiro.cadeiraDe', { cor: labels[i], nome: lugares[i].nome });
+        }
         botaoLugar.setAttribute('aria-label', rotulo);
       });
-      C.ligado(nova, pode({ kind: 'reset' }), 'Nova partida');
+      C.ligado(nova, pode({ kind: 'reset' }), t('mesa.tabuleiro.novaPartida'));
       nova.hidden = pode({ kind: 'reset' }) !== true;
       if (desistir) {
         desistir.hidden = eu < 0 || !!state.result;
-        C.ligado(desistir, pode({ kind: 'resign' }), 'Desistir');
+        C.ligado(desistir, pode({ kind: 'resign' }), t('mesa.tabuleiro.desistir'));
       }
-      const st = textoStatus(state, me, opts.labels, nameOf, opts.empate);
+      const st = textoStatus(state, me, labels, nameOf, opts.empate);
       if (status.textContent !== st) status.textContent = st;
       b.raiz.classList.toggle('is-minha-vez', !state.result && eu >= 0 && state.turn === eu && state.seats[1 - eu] !== null);
       b.raiz.classList.toggle('is-fim', !!state.result);
@@ -321,6 +349,7 @@
   const api = {
     minhaCadeira,
     nomeCadeira,
+    motivoBruto,
     textoStatus,
     virado,
     casaDoEstado,

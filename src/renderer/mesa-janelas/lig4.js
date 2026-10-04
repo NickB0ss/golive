@@ -8,8 +8,9 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'lig4';
-  const LABELS = ['Vermelhas', 'Amarelas'];
+  const rotulos = () => [t('mesa.lig4.vermelhas'), t('mesa.lig4.amarelas')];
 
   function mod() {
     return root.GoLive.mesaModules[TYPE];
@@ -26,11 +27,12 @@
   /** "Coluna 3: 2 casas livres" / "Coluna 3: cheia". */
   function rotuloColuna(board, col) {
     const n = livresNaColuna(board, col);
-    return `Coluna ${col + 1}: ${n === 0 ? 'cheia' : n === 1 ? '1 casa livre' : `${n} casas livres`}`;
+    if (n === 0) return t('mesa.lig4.colunaCheiaRotulo', { col: col + 1 });
+    return t('mesa.lig4.colunaLivres', { col: col + 1, n });
   }
 
   function empate() {
-    return 'Empate, tabuleiro cheio';
+    return t('mesa.lig4.empate');
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -49,11 +51,11 @@
     let state = null;
 
     const mold = T.moldura(b, api, {
-      labels: LABELS,
+      labels: rotulos,
       empate,
       peca(i) { return { cor: i === 0 ? 'var(--mj-v)' : 'var(--mj-a)' }; },
     });
-    const grade = el('div', { class: 'mj-lig4-grade', attrs: { role: 'group', 'aria-label': 'Lig 4: escolha a coluna' } });
+    const grade = el('div', { class: 'mj-lig4-grade', attrs: { role: 'group', 'aria-label': t('mesa.lig4.escolhaColuna') } });
     mold.placa.append(grade);
     mold.placa.addEventListener('pointerdown', (e) => e.stopPropagation());
     const colunas = Array.from({ length: m.COLS }, (_, c) => {
@@ -146,7 +148,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, livresNaColuna, rotuloColuna, empate, atualizarBarra, LABELS };
+  const api = { type: TYPE, mount, livresNaColuna, rotuloColuna, empate, atualizarBarra, rotulos };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

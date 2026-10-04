@@ -58,16 +58,16 @@ test('a peca cai ate o fundo e empilha', () => {
 
 test('coluna cheia e coluna fora do tabuleiro sao recusadas', () => {
   const s = playCols(seated(), [0, 0, 0, 0, 0, 0]);
-  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('bia')), 'Coluna cheia');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('bia')), 'mesa.lig4.colunaCheia');
   for (const col of [-1, 7, 2.5, '1', null]) {
-    assert.equal(lig4.validate(s, { kind: 'move', col }, ctx('bia')), 'Coluna inválida');
+    assert.equal(lig4.validate(s, { kind: 'move', col }, ctx('bia')), 'mesa.lig4.colunaInvalida');
   }
 });
 
 test('fora da vez e quem assiste nao jogam', () => {
   const s = seated();
-  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('leo')), 'Não é a sua vez');
-  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('leo')), 'mesa.jogo.naoESuaVez');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 0 }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
 });
 
 test('quatro na horizontal vence', () => {
@@ -75,7 +75,7 @@ test('quatro na horizontal vence', () => {
   assert.deepEqual(s.result, { winner: 0, reason: 'linha' });
   assert.deepEqual(s.line, [[5, 0], [5, 1], [5, 2], [5, 3]]);
   assert.equal(lig4.summary(s), 'Bia venceu');
-  assert.equal(lig4.validate(s, { kind: 'move', col: 4 }, ctx('leo')), 'A partida acabou');
+  assert.equal(lig4.validate(s, { kind: 'move', col: 4 }, ctx('leo')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('quatro na vertical vence', () => {
@@ -111,7 +111,7 @@ test('tabuleiro cheio sem quatro em linha empata', () => {
 
 test('reset e dropPeer mantem o combinado das cadeiras', () => {
   let s = playCols(seated(), [0, 0, 1, 1, 2, 2, 3]);
-  assert.equal(lig4.validate(s, { kind: 'reset' }, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(lig4.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   s = act(s, { kind: 'reset' }, 'bia');
   assert.deepEqual(s.seats, ['bia', 'leo']);
   assert.equal(s.result, null);

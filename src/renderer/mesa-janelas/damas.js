@@ -13,8 +13,11 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'damas';
-  const LABELS = ['Claras', 'Escuras'];
+  const rotulos = () => [t('mesa.damas.claras'), t('mesa.damas.escuras')];
+  // Lances seguidos so de damas que empatam (o modulo usa o mesmo numero).
+  const LANCES_SO_DAMAS = 20;
   const N = 8;
 
   function mod() {
@@ -47,16 +50,18 @@
 
   function nomePeca(ch) {
     switch (ch) {
-      case 'c': return 'pedra clara';
-      case 'C': return 'dama clara';
-      case 'e': return 'pedra escura';
-      case 'E': return 'dama escura';
-      default: return 'vazia';
+      case 'c': return t('mesa.damas.pedraClara');
+      case 'C': return t('mesa.damas.damaClara');
+      case 'e': return t('mesa.damas.pedraEscura');
+      case 'E': return t('mesa.damas.damaEscura');
+      default: return t('mesa.tabuleiro.casaVazia');
     }
   }
 
   function empate(r) {
-    return r && r.reason === 'damas' ? 'Empate: 20 lances só de damas' : 'Empate';
+    return r && r.reason === 'damas'
+      ? t('mesa.damas.empateSoDamas', { n: LANCES_SO_DAMAS })
+      : t('mesa.tabuleiro.empate');
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -78,13 +83,13 @@
     let sel = null; // [l, c] da peca escolhida
 
     const mold = T.moldura(b, api, {
-      labels: LABELS,
+      labels: rotulos,
       empate,
       desistir: true,
       peca(i) { return { cor: i === 0 ? 'var(--mj-peca-clara)' : 'var(--mj-peca-escura)' }; },
     });
     const g = T.grade8(mold.placa, {
-      rotulo: 'Tabuleiro de damas',
+      rotulo: t('mesa.damas.tabuleiro'),
       clique(l, c) { tocar(l, c); },
     });
     const pecas = g.casas.map((bt) => {
@@ -114,11 +119,13 @@
         const ch = state.board[l][c];
         const eu = T.minhaCadeira(state, api.me());
         const minha = eu === 0 ? /[cC]/ : eu === 1 ? /[eE]/ : null;
-        const motivo = C.podeFazer(api, { kind: 'move', path: [[l, c], [l, c]] });
+        const tentativa = { kind: 'move', path: [[l, c], [l, c]] };
+        const motivo = C.podeFazer(api, tentativa);
+        const bruto = T.motivoBruto(api, tentativa);
         const minhaPeca = !!minha && minha.test(ch);
-        if (motivo === 'Lance inválido') {
-          if (minhaPeca) b.aviso.mostrar('Essa peça não tem lance', mold.zona);
-        } else if (/^Captura/.test(motivo)) {
+        if (bruto === 'mesa.damas.lanceInvalido') {
+          if (minhaPeca) b.aviso.mostrar(t('mesa.tabuleiro.pecaSemLance'), mold.zona);
+        } else if (typeof bruto === 'string' && bruto.startsWith('mesa.damas.capturaObrigatoria')) {
           if (minhaPeca) b.aviso.mostrar(motivo, mold.zona);
         } else if (motivo !== true) {
           b.aviso.mostrar(motivo, mold.zona);
@@ -167,9 +174,15 @@
         bt.classList.toggle('is-tem-peca', ch !== '.');
         bt.classList.toggle('is-cai', caem.has(k));
         bt.classList.toggle('is-ultimo', ultimo.has(k));
-        let rot = `${T.nomeCasa(l, c, N)}: ${nomePeca(ch)}`;
-        if (dest.has(k)) rot += dest.get(k).captures.length ? ', destino com captura' : ', destino';
-        else if (mexem.has(k)) rot += ', pode mexer';
+        const casa = { casa: T.nomeCasa(l, c, N), peca: nomePeca(ch) };
+        let rot = t('mesa.tabuleiro.casaPeca', casa);
+        if (dest.has(k)) {
+          const chaveDestino = dest.get(k).captures.length
+            ? 'mesa.tabuleiro.casaDestinoCaptura' : 'mesa.tabuleiro.casaDestino';
+          rot = t(chaveDestino, casa);
+        } else if (mexem.has(k)) {
+          rot = t('mesa.tabuleiro.casaPodeMexer', casa);
+        }
         bt.setAttribute('aria-label', rot);
         bt.setAttribute('aria-selected', String(!!sel && sel[0] === l && sel[1] === c));
       });
@@ -247,7 +260,7 @@
     G.mesaJanelas[api.type] = api;
   }
 
-  const api = { type: TYPE, mount, pecasQueMexem, destinos, nomePeca, empate, atualizarBarra, LABELS };
+  const api = { type: TYPE, mount, pecasQueMexem, destinos, nomePeca, empate, atualizarBarra, rotulos };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);
 

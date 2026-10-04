@@ -486,35 +486,6 @@
     "nao carregou",
     "nao registrou"
   ],
-  "src/renderer/mesa-janelas/batalha.js": [
-    ": escolha onde atirar",
-    "A frota já está posta",
-    "A partida não está correndo",
-    "Aqui não se atira",
-    "Aqui não se atira",
-    "Cadeira ocupada",
-    "Destróier",
-    "Encouraçado",
-    "Indisponível",
-    "Indisponível",
-    "Mar de",
-    "Nada correndo",
-    "Não é a sua vez",
-    "Porta-aviões",
-    "Posicionando as frotas",
-    "Pronto. Esperando alguém sentar na outra cadeira",
-    "Seu mar",
-    "Sortear de novo",
-    "Sorteie a frota até gostar e diga Pronto",
-    "Só quem está sentado ou o líder recomeça",
-    "Uma cadeira livre: sente-se para jogar",
-    "Você",
-    "Você já atirou aí",
-    "Você não está sentado",
-    "navio afundado",
-    "Água em",
-    "água"
-  ],
   "src/renderer/mesa-janelas/comum.js": [
     "Alguém",
     "Alguém",
@@ -553,18 +524,6 @@
     "O histórico já está vazio",
     "Quantos dados",
     "mj-dados-palco is-"
-  ],
-  "src/renderer/mesa-janelas/damas.js": [
-    ", destino com captura",
-    ", pode mexer",
-    "Empate: 20 lances só de damas",
-    "Essa peça não tem lance",
-    "Lance inválido",
-    "Tabuleiro de damas",
-    "dama clara",
-    "dama escura",
-    "pedra clara",
-    "pedra escura"
   ],
   "src/renderer/mesa-janelas/desenha.js": [
     "A palavra era \"",
@@ -687,9 +646,6 @@
     "Trocar o link do Jam",
     "pessoas no Jam",
     "· colado por"
-  ],
-  "src/renderer/mesa-janelas/lig4.js": [
-    "Empate, tabuleiro cheio"
   ],
   "src/renderer/mesa-janelas/link.js": [
     "Abrir no navegador",
@@ -853,40 +809,6 @@
     "Só quem gere a janela encerra a correção",
     "Última página"
   ],
-  "src/renderer/mesa-janelas/tabuleiro.js": [
-    "Alguém",
-    "Cadeiras do jogo",
-    "Esperando alguém sentar na outra cadeira",
-    "Esta cadeira é de outra pessoa",
-    "Levantar da cadeira",
-    "Nova partida",
-    "Nova partida",
-    "Sua vez",
-    "Sua vez (xeque)",
-    "Toque de novo para desistir",
-    "Uma cadeira livre: sente-se para jogar",
-    "Vez de",
-    "Você",
-    "Você desistiu",
-    "Você já está sentado",
-    "Você venceu"
-  ],
-  "src/renderer/mesa-janelas/velha.js": [
-    "Casa ocupada",
-    "Deu velha",
-    "Jogo da velha"
-  ],
-  "src/renderer/mesa-janelas/xadrez.js": [
-    ", destino com captura",
-    "Cancelar a promoção",
-    "Empate pela regra dos 50 lances",
-    "Empate por material insuficiente",
-    "Empate por repetição",
-    "Essa peça não tem lance",
-    "Promover o peão a",
-    "Tabuleiro de xadrez",
-    "peão"
-  ],
   "src/renderer/mesa-janelas/youtube.js": [
     "Cole um link do YouTube",
     "Cole um link do YouTube e a sala assiste junto.",
@@ -920,39 +842,12 @@
     "Nenhum canal"
   ],
   "src/renderer/mesa-modules/batalha.js": [
-    "A partida acabou",
-    "A partida acabou",
-    "A partida ainda não começou",
-    "A partida já começou",
-    "A partida já começou",
-    "Ação desconhecida",
-    "Ação inválida",
-    "Ação inválida",
     "Batalha naval",
     "Batalha naval",
-    "Cadeira inválida",
-    "Cadeira ocupada",
-    "Casa inválida",
     "Destróier",
     "Encouraçado",
-    "Esperando os dois ficarem prontos",
-    "Espere alguém sentar na outra cadeira",
-    "Nada correndo",
-    "Nada correndo",
-    "Não é a sua vez",
     "Porta-aviões",
-    "Posicionando as frotas",
-    "Quem mandou?",
-    "Sente-se para jogar",
-    "Sente-se para jogar",
-    "Sente-se para jogar",
-    "Sorteie a sua frota",
-    "Só quem está sentado desiste",
-    "Você já atirou aí",
-    "Você já disse que está pronto",
-    "Você já está pronto",
-    "Você já está sentado",
-    "Você não está sentado"
+    "Posicionando as frotas"
   ],
   "src/renderer/mesa-modules/blackjack.js": [
     ", apostas abertas",
@@ -963,19 +858,7 @@
     "na mesa"
   ],
   "src/renderer/mesa-modules/cadeiras.js": [
-    "A partida acabou",
-    "A partida acabou",
-    "Cadeira inválida",
-    "Cadeira ocupada",
     "Cadeiras livres",
-    "Espere alguém sentar na outra cadeira",
-    "Não é a sua vez",
-    "Quem mandou?",
-    "Sente-se para jogar",
-    "Só quem está sentado desiste",
-    "Só quem está sentado ou o líder recomeça",
-    "Você já está sentado",
-    "Você não está sentado",
     "espera adversário",
     "— vez de"
   ],
@@ -1004,15 +887,7 @@
     "Rolagem inválida"
   ],
   "src/renderer/mesa-modules/damas.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Ação inválida",
-    "Caminho inválido",
-    "Captura obrigatória",
-    "Captura obrigatória de",
-    "Lance inválido",
-    "lances só de damas",
-    "peças (lei da maioria)"
+    "lances só de damas"
   ],
   "src/renderer/mesa-modules/desenha.js": [
     "A rodada está cheia",
@@ -1175,11 +1050,6 @@
     "Você não está na lista"
   ],
   "src/renderer/mesa-modules/lig4.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Ação inválida",
-    "Coluna cheia",
-    "Coluna inválida",
     "Empate, tabuleiro cheio"
   ],
   "src/renderer/mesa-modules/link.js": [
@@ -1697,29 +1567,14 @@
     "· respostas escondidas"
   ],
   "src/renderer/mesa-modules/velha.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Ação inválida",
-    "Casa inválida",
-    "Casa ocupada",
     "Deu velha",
     "Jogo da velha",
     "Jogo da velha"
   ],
   "src/renderer/mesa-modules/xadrez.js": [
-    "Ação desconhecida",
-    "Ação inválida",
-    "Ação inválida",
-    "Ação inválida",
-    "Casa de chegada inválida",
-    "Casa de saída inválida",
     "Empate pela regra dos 50 lances",
     "Empate por material insuficiente",
-    "Empate por repetição",
-    "Escolha a peça da promoção",
-    "Lance inválido",
-    "Peça de promoção inválida",
-    "Só o peão na última fileira promove"
+    "Empate por repetição"
   ],
   "src/renderer/mesa-modules/youtube.js": [
     "Ação desconhecida",

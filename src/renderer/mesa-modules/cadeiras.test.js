@@ -26,17 +26,17 @@ test('o nome vem da acao preparada: servidor e clientes chegam ao mesmo estado',
 
 test('sit recusa cadeira ocupada, cadeira invalida e quem ja esta sentado', () => {
   const s = sit(C.emptySeats(), 0, 'bia');
-  assert.equal(C.validateSeat(s, { kind: 'sit', seat: 0 }, ctx('leo')), 'Cadeira ocupada');
-  assert.equal(C.validateSeat(s, { kind: 'sit', seat: 1 }, ctx('bia')), 'Você já está sentado');
+  assert.equal(C.validateSeat(s, { kind: 'sit', seat: 0 }, ctx('leo')), 'mesa.cadeiras.ocupada');
+  assert.equal(C.validateSeat(s, { kind: 'sit', seat: 1 }, ctx('bia')), 'mesa.jogo.jaEstaSentado');
   for (const seat of [2, -1, '0', 0.5, null, undefined]) {
-    assert.equal(C.validateSeat(s, { kind: 'sit', seat }, ctx('leo')), 'Cadeira inválida');
+    assert.equal(C.validateSeat(s, { kind: 'sit', seat }, ctx('leo')), 'mesa.cadeiras.invalida');
   }
-  assert.equal(C.validateSeat(s, { kind: 'sit', seat: 1 }, {}), 'Quem mandou?');
+  assert.equal(C.validateSeat(s, { kind: 'sit', seat: 1 }, {}), 'mesa.jogo.quemMandou');
 });
 
 test('stand so vale para quem esta sentado e libera a cadeira', () => {
   const s = sit(C.emptySeats(), 0, 'bia');
-  assert.equal(C.validateSeat(s, { kind: 'stand' }, ctx('leo')), 'Você não está sentado');
+  assert.equal(C.validateSeat(s, { kind: 'stand' }, ctx('leo')), 'mesa.cadeiras.naoEstaSentado');
   assert.equal(C.validateSeat(s, { kind: 'stand' }, ctx('bia')), true);
   assert.deepEqual(C.reduceSeat(s, { kind: 'stand' }, ctx('bia')), C.emptySeats());
 });
@@ -57,16 +57,16 @@ test('canReset aceita sentado ou lider e recusa quem so assiste', () => {
   const s = { seats: ['bia', null], names: ['Bia', null] };
   assert.equal(C.canReset(s, ctx('bia')), true);
   assert.equal(C.canReset(s, ctx('ana', { isLeader: true })), true);
-  assert.equal(C.canReset(s, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(C.canReset(s, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
 });
 
 test('canPlay exige cadeira, adversario, vez e partida em andamento', () => {
   const s = { seats: ['bia', 'leo'], names: ['Bia', 'Leo'], result: null };
   assert.equal(C.canPlay(s, ctx('bia'), 0), true);
-  assert.equal(C.canPlay(s, ctx('leo'), 0), 'Não é a sua vez');
-  assert.equal(C.canPlay(s, ctx('ana'), 0), 'Sente-se para jogar');
-  assert.equal(C.canPlay({ ...s, seats: ['bia', null] }, ctx('bia'), 0), 'Espere alguém sentar na outra cadeira');
-  assert.equal(C.canPlay({ ...s, result: { winner: 0 } }, ctx('bia'), 0), 'A partida acabou');
+  assert.equal(C.canPlay(s, ctx('leo'), 0), 'mesa.jogo.naoESuaVez');
+  assert.equal(C.canPlay(s, ctx('ana'), 0), 'mesa.jogo.senteSeParaJogar');
+  assert.equal(C.canPlay({ ...s, seats: ['bia', null] }, ctx('bia'), 0), 'mesa.cadeiras.esperaOutra');
+  assert.equal(C.canPlay({ ...s, result: { winner: 0 } }, ctx('bia'), 0), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('describePlaying cobre cadeiras vazias, meia e cheia', () => {

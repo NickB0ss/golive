@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 require('./comum');
 require('./tabuleiro');
 const J = require('./batalha');
@@ -73,4 +74,21 @@ test('a janela liga os botoes pela view do servidor, nunca pelo validate', () =>
 test('posicionamento sem ninguem nao repete o convite das cadeiras', () => {
   const vista = batalha.view(batalha.init({}), '1', { peers: PEERS });
   assert.equal(J.textoPosicionando(vista, () => 'Bia'), '');
+});
+
+test('textos da batalha seguem o idioma ativo', () => {
+  const { definirIdioma } = require('../i18n');
+  const nome = (i) => ['Ana', 'Bia'][i];
+  try {
+    definirIdioma('en');
+    assert.equal(J.textoUltimo({ seat: 1, cell: 22, hit: true, sunk: 2 }, nome), 'Bia sank the Cruiser');
+    assert.equal(J.textoUltimo({ seat: 0, cell: 22, hit: false, sunk: null }, nome), 'Water at C3');
+    assert.equal(J.rotuloCasa(55, 'agua'), 'F6: water');
+    assert.equal(J.podeDaView(null, { kind: 'fire', cell: 0 }), 'It is not your turn');
+    definirIdioma('es');
+    assert.equal(J.textoUltimo({ seat: 1, cell: 22, hit: true, sunk: 2 }, nome), 'Bia hundió el Crucero');
+    assert.equal(J.rotuloCasa(99, ''), 'J10: sin disparo');
+  } finally {
+    definirIdioma('pt-BR');
+  }
 });

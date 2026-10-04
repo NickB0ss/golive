@@ -110,10 +110,10 @@ test('lance de peao zera as marcas de posicao; lance reversivel acrescenta', () 
 
 test('lance ilegal, fora da vez e de quem assiste sao recusados', () => {
   const s = seated();
-  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e2', to: 'e5' }, ctx('bia')), 'Lance inválido');
-  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e7', to: 'e5' }, ctx('bia')), 'Lance inválido');
-  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e2', to: 'e4' }, ctx('leo')), 'Não é a sua vez');
-  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e2', to: 'e4' }, ctx('ana')), 'Sente-se para jogar');
+  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e2', to: 'e5' }, ctx('bia')), 'mesa.xadrez.lanceInvalido');
+  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e7', to: 'e5' }, ctx('bia')), 'mesa.xadrez.lanceInvalido');
+  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e2', to: 'e4' }, ctx('leo')), 'mesa.jogo.naoESuaVez');
+  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e2', to: 'e4' }, ctx('ana')), 'mesa.jogo.senteSeParaJogar');
 });
 
 test('xeque-mate encerra com vitoria de quem deu o mate', () => {
@@ -121,7 +121,7 @@ test('xeque-mate encerra com vitoria de quem deu o mate', () => {
   assert.deepEqual(s.result, { winner: 1, reason: 'mate' });
   assert.equal(s.check, false);
   assert.equal(xadrez.summary(s), 'Xeque-mate, Leo venceu');
-  assert.equal(xadrez.validate(s, { kind: 'move', from: 'a2', to: 'a3' }, ctx('bia')), 'A partida acabou');
+  assert.equal(xadrez.validate(s, { kind: 'move', from: 'a2', to: 'a3' }, ctx('bia')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('afogamento empata', () => {
@@ -155,9 +155,9 @@ test('regra dos 50 lances empata', () => {
 
 test('promocao exige a peca escolhida e da xeque', () => {
   const s = fromFen('k7/4P3/8/8/8/8/8/K7 w - - 0 1');
-  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e7', to: 'e8' }, ctx('bia')), 'Escolha a peça da promoção');
+  assert.equal(xadrez.validate(s, { kind: 'move', from: 'e7', to: 'e8' }, ctx('bia')), 'mesa.xadrez.escolhaPromocao');
   assert.equal(xadrez.validate(s, { kind: 'move', from: 'e7', to: 'e8', promotion: 'k' }, ctx('bia')),
-    'Peça de promoção inválida');
+    'mesa.xadrez.pecaPromocaoInvalida');
   const t = act(s, { kind: 'move', from: 'e7', to: 'e8', promotion: 'q' }, 'bia');
   assert.equal(t.fen.split(' ')[0], 'k3Q3/8/8/8/8/8/8/K7');
   assert.deepEqual(t.san, ['e8=Q+']);
@@ -169,7 +169,7 @@ test('promocao exige a peca escolhida e da xeque', () => {
 
 test('promocao em lance que nao e de promocao e recusada', () => {
   assert.equal(xadrez.validate(seated(), { kind: 'move', from: 'e2', to: 'e4', promotion: 'q' }, ctx('bia')),
-    'Só o peão na última fileira promove');
+    'mesa.xadrez.soPeaoPromove');
 });
 
 test('roque e en passant vem do chess.js', () => {
@@ -181,11 +181,11 @@ test('roque e en passant vem do chess.js', () => {
 
 test('desistir, recomecar e sair da sala', () => {
   let s = playUci(seated(), ['e2e4']);
-  assert.equal(xadrez.validate(s, { kind: 'resign' }, ctx('ana')), 'Só quem está sentado desiste');
+  assert.equal(xadrez.validate(s, { kind: 'resign' }, ctx('ana')), 'mesa.cadeiras.soSentadoDesiste');
   s = act(s, { kind: 'resign' }, 'bia');
   assert.deepEqual(s.result, { winner: 1, reason: 'abandono' });
   assert.equal(xadrez.summary(s), 'Bia desistiu, Leo venceu');
-  assert.equal(xadrez.validate(s, { kind: 'reset' }, ctx('ana')), 'Só quem está sentado ou o líder recomeça');
+  assert.equal(xadrez.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   s = act(s, { kind: 'reset' }, 'leo');
   assert.deepEqual(s.seats, ['bia', 'leo']);
   assert.equal(s.fen, xadrez.init({}).fen);
@@ -245,7 +245,7 @@ test('mensagem malformada nunca lanca e nao muda o estado', () => {
     }
   }
   const broken = deepFreeze(Object.assign({}, s, { fen: 'isso nao e fen' }));
-  assert.equal(xadrez.validate(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), 'Ação inválida');
+  assert.equal(xadrez.validate(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), 'mesa.jogo.acaoInvalida');
   assert.equal(xadrez.reduce(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), broken);
   assert.equal(typeof xadrez.summary(undefined), 'string');
 });
@@ -261,7 +261,7 @@ test('legalMoves lista os destinos de uma casa e aguenta entrada ruim', () => {
 test('canPlay diz quem pode lancar sem montar lance', () => {
   const s = seated();
   assert.equal(xadrez.canPlay(s, 'bia'), true);
-  assert.equal(xadrez.canPlay(s, 'leo'), 'Não é a sua vez');
-  assert.equal(xadrez.canPlay(s, 'ana'), 'Sente-se para jogar');
-  assert.equal(xadrez.canPlay(null, 'bia'), 'Ação inválida');
+  assert.equal(xadrez.canPlay(s, 'leo'), 'mesa.jogo.naoESuaVez');
+  assert.equal(xadrez.canPlay(s, 'ana'), 'mesa.jogo.senteSeParaJogar');
+  assert.equal(xadrez.canPlay(null, 'bia'), 'mesa.jogo.acaoInvalida');
 });

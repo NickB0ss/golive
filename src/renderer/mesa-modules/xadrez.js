@@ -33,6 +33,8 @@
 (function (root) {
   const C = (root.GoLive && root.GoLive.mesaCadeiras)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./cadeiras') : null);
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const chessjs = (root.GoLive && root.GoLive.chessjs)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('../vendor/chess.js') : null);
 
@@ -73,15 +75,15 @@
 
   function checkMove(state, action) {
     const { from, to, promotion } = action;
-    if (typeof from !== 'string' || !SQUARE.test(from)) return 'Casa de saída inválida';
-    if (typeof to !== 'string' || !SQUARE.test(to)) return 'Casa de chegada inválida';
-    if (promotion !== undefined && !PROMOTIONS.includes(promotion)) return 'Peça de promoção inválida';
+    if (typeof from !== 'string' || !SQUARE.test(from)) return codigo('mesa.xadrez.casaSaidaInvalida');
+    if (typeof to !== 'string' || !SQUARE.test(to)) return codigo('mesa.xadrez.casaChegadaInvalida');
+    if (promotion !== undefined && !PROMOTIONS.includes(promotion)) return codigo('mesa.xadrez.pecaPromocaoInvalida');
     const game = new chessjs.Chess(state.fen);
     const cands = game.moves({ square: from, verbose: true }).filter((m) => m.to === to);
-    if (!cands.length) return 'Lance inválido';
+    if (!cands.length) return codigo('mesa.xadrez.lanceInvalido');
     const promo = cands.some((m) => m.promotion);
-    if (promo && promotion === undefined) return 'Escolha a peça da promoção';
-    if (!promo && promotion !== undefined) return 'Só o peão na última fileira promove';
+    if (promo && promotion === undefined) return codigo('mesa.xadrez.escolhaPromocao');
+    if (!promo && promotion !== undefined) return codigo('mesa.xadrez.soPeaoPromove');
     return true;
   }
 
@@ -98,12 +100,12 @@
   /** `true` se `peerId` pode lancar agora (sentado, com adversario, na vez),
    * ou o motivo. Para a interface, sem montar um lance de mentira. */
   function canPlay(state, peerId) {
-    return C.safe(() => C.canPlay(state, { from: peerId }, state.turn), 'Ação inválida');
+    return C.safe(() => C.canPlay(state, { from: peerId }, state.turn), codigo('mesa.jogo.acaoInvalida'));
   }
 
   function validate(state, action, ctx) {
     return C.safe(() => {
-      if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+      if (!C.isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
       if (C.isSeatAction(action)) return C.validateSeat(state, action, ctx);
       if (action.kind === 'reset') return C.canReset(state, ctx);
       if (action.kind === 'resign') return C.canResign(state, ctx);
@@ -111,8 +113,8 @@
         const ok = C.canPlay(state, ctx, state.turn);
         return ok === true ? checkMove(state, action) : ok;
       }
-      return 'Ação desconhecida';
-    }, 'Ação inválida');
+      return codigo('mesa.jogo.acaoDesconhecida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   function resultOf(game, seat, seen, mark) {

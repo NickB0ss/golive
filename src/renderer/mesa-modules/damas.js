@@ -37,6 +37,8 @@
 (function (root) {
   const C = (root.GoLive && root.GoLive.mesaCadeiras)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./cadeiras') : null);
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
 
   const N = 8;
   const LABELS = ['Claras', 'Escuras'];
@@ -194,18 +196,18 @@
   }
 
   function checkMove(state, action) {
-    if (!isPath(action.path)) return 'Caminho inválido';
+    if (!isPath(action.path)) return codigo('mesa.damas.caminhoInvalido');
     const { legal, hit } = findMove(state, action.path);
     if (hit) return true;
     const need = legal.length ? legal[0].captures.length : 0;
-    if (need === 1) return 'Captura obrigatória';
-    if (need > 1) return `Captura obrigatória de ${need} peças (lei da maioria)`;
-    return 'Lance inválido';
+    if (need === 1) return codigo('mesa.damas.capturaObrigatoria');
+    if (need > 1) return codigo('mesa.damas.capturaObrigatoriaN', { n: need });
+    return codigo('mesa.damas.lanceInvalido');
   }
 
   function validate(state, action, ctx) {
     return C.safe(() => {
-      if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+      if (!C.isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
       if (C.isSeatAction(action)) return C.validateSeat(state, action, ctx);
       if (action.kind === 'reset') return C.canReset(state, ctx);
       if (action.kind === 'resign') return C.canResign(state, ctx);
@@ -213,8 +215,8 @@
         const ok = C.canPlay(state, ctx, state.turn);
         return ok === true ? checkMove(state, action) : ok;
       }
-      return 'Ação desconhecida';
-    }, 'Ação inválida');
+      return codigo('mesa.jogo.acaoDesconhecida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   function play(state, move) {

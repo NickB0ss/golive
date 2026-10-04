@@ -19,11 +19,15 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'batalha';
-  const LABELS = ['Frota 1', 'Frota 2'];
+  const rotulos = () => [t('mesa.batalha.frota1'), t('mesa.batalha.frota2')];
   const N = 10;
   const COLUNAS = 'ABCDEFGHIJ';
-  const NAVIOS = ['Porta-aviões', 'Encouraçado', 'Cruzador', 'Submarino', 'Destróier'];
+  const NAVIOS = [
+    'mesa.batalha.navio.portaAvioes', 'mesa.batalha.navio.encouracado', 'mesa.batalha.navio.cruzador',
+    'mesa.batalha.navio.submarino', 'mesa.batalha.navio.destroier',
+  ];
   // Quem nao e o adversario da vez espera um pouco antes de mandar o
   // timeout: o adversario, que tem o maior interesse, manda primeiro.
   const FOLGA_OUTROS_MS = 3000;
@@ -52,18 +56,26 @@
     return out;
   }
 
-  const ROTULO_MARCA = { navio: 'navio', afundado: 'navio afundado', acerto: 'acerto', agua: 'água' };
+  const ROTULO_MARCA = {
+    navio: 'mesa.batalha.casaNavio',
+    afundado: 'mesa.batalha.casaAfundado',
+    acerto: 'mesa.batalha.casaAcerto',
+    agua: 'mesa.batalha.casaAgua',
+  };
 
   function rotuloCasa(cell, marca) {
-    return `${nomeCasa(cell)}: ${ROTULO_MARCA[marca] || 'sem tiro'}`;
+    return t(ROTULO_MARCA[marca] || 'mesa.batalha.casaSemTiro', { casa: nomeCasa(cell) });
   }
 
   /** "Bia acertou C7", "Água em C7", "Bia afundou o Cruzador". */
   function textoUltimo(last, nomeDe) {
     if (!last || !Number.isInteger(last.cell)) return '';
     const quem = nomeDe(last.seat);
-    if (Number.isInteger(last.sunk)) return `${quem} afundou o ${NAVIOS[last.sunk] || 'navio'}`;
-    return last.hit ? `${quem} acertou ${nomeCasa(last.cell)}` : `Água em ${nomeCasa(last.cell)}`;
+    const casa = nomeCasa(last.cell);
+    if (Number.isInteger(last.sunk)) {
+      return t('mesa.batalha.afundou', { quem, navio: t(NAVIOS[last.sunk] || 'mesa.batalha.navio') });
+    }
+    return last.hit ? t('mesa.batalha.acertou', { quem, casa }) : t('mesa.batalha.aguaEm', { casa });
   }
 
   /** A linha de situacao durante o posicionamento. */
@@ -71,24 +83,25 @@
     const eu = state.me ? state.me.seat : -1;
     const livres = state.seats.filter((s) => s === null).length;
     if (livres === 2) return '';
-    if (eu < 0) return livres ? 'Uma cadeira livre: sente-se para jogar' : 'Posicionando as frotas';
-    if (!state.ready[eu]) return 'Sorteie a frota até gostar e diga Pronto';
-    if (state.seats[1 - eu] === null) return 'Pronto. Esperando alguém sentar na outra cadeira';
-    return `Pronto. Esperando ${nomeDe(1 - eu)}`;
+    if (eu < 0) return t(livres ? 'mesa.tabuleiro.cadeiraLivre' : 'mesa.batalha.posicionando');
+    if (!state.ready[eu]) return t('mesa.batalha.sorteieEDigaPronto');
+    if (state.seats[1 - eu] === null) return t('mesa.batalha.prontoEsperandoOutra');
+    return t('mesa.batalha.prontoEsperando', { nome: nomeDe(1 - eu) });
   }
 
   /** Motivo de um botao desligado, pelo `me.can` da view. */
   function podeDaView(state, action) {
     const can = (state && state.me && state.me.can) || {};
     switch (action.kind) {
-      case 'sit': return Array.isArray(can.sit) && can.sit[action.seat] === true ? true : 'Cadeira ocupada';
-      case 'reset': return can.reset === true ? true : 'Só quem está sentado ou o líder recomeça';
-      case 'resign': return can.resign === true ? true : 'A partida não está correndo';
-      case 'shuffle': return can.shuffle === true ? true : 'A frota já está posta';
-      case 'ready': return can.ready === true ? true : 'Indisponível';
-      case 'fire': return can.fire === true ? true : 'Não é a sua vez';
-      case 'stand': return can.stand === true ? true : 'Você não está sentado';
-      default: return 'Indisponível';
+      case 'sit':
+        return Array.isArray(can.sit) && can.sit[action.seat] === true ? true : t('mesa.cadeiras.ocupada');
+      case 'reset': return can.reset === true ? true : t('mesa.cadeiras.soSentadoOuLiderRecomeca');
+      case 'resign': return can.resign === true ? true : t('mesa.batalha.naoEstaCorrendo');
+      case 'shuffle': return can.shuffle === true ? true : t('mesa.batalha.frotaPosta');
+      case 'ready': return can.ready === true ? true : t('mesa.tabuleiro.indisponivel');
+      case 'fire': return can.fire === true ? true : t('mesa.jogo.naoESuaVez');
+      case 'stand': return can.stand === true ? true : t('mesa.cadeiras.naoEstaSentado');
+      default: return t('mesa.tabuleiro.indisponivel');
     }
   }
 
@@ -108,7 +121,7 @@
     const api = Object.assign({}, apiVista, {
       onDenied(fn) {
         return apiVista.onDenied((d) => {
-          if (d && (d.reason === 'early' || (d.reason === 'invalid' && d.detail === 'Nada correndo'))) return;
+          if (d && (d.reason === 'early' || (d.reason === 'invalid' && d.detail === 'mesa.batalha.nadaCorrendo'))) return;
           fn(d);
         });
       },
@@ -117,7 +130,7 @@
     let state = null;
 
     const mold = T.moldura(b, api, {
-      labels: LABELS,
+      labels: rotulos,
       desistir: true,
       pode: (action) => podeDaView(state, action),
       peca(i) { return { texto: String(i + 1) }; },
@@ -150,8 +163,8 @@
     // Nada que comeca nos mares sobe para a mesa.
     mold.placa.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    const sortear = C.botao({ icone: 'embaralhar', text: 'Sortear de novo', class: 'mj-bn-sortear' });
-    const pronto = C.botao({ icone: 'check', text: 'Pronto', class: 'mj-bn-pronto' });
+    const sortear = C.botao({ icone: 'embaralhar', text: t('mesa.batalha.sortearDeNovo'), class: 'mj-bn-sortear' });
+    const pronto = C.botao({ icone: 'check', text: t('mesa.batalha.pronto'), class: 'mj-bn-pronto' });
     const acoes = el('div', { class: 'mj-bn-acoes' }, sortear, pronto);
     mold.placa.append(acoes);
     b.clique(sortear, mold.zona, () => b.acao(mold.zona, { kind: 'shuffle' }));
@@ -162,24 +175,26 @@
 
     const nomeDe = (seat) => {
       const me = api.me();
-      if (state && state.seats[seat] === me) return 'Você';
-      return state ? T.nomeCadeira(state, seat, LABELS, mold.nameOf) : LABELS[seat];
+      if (state && state.seats[seat] === me) return t('mesa.tabuleiro.voce');
+      return state ? T.nomeCadeira(state, seat, rotulos(), mold.nameOf) : rotulos()[seat];
     };
 
     function desenharMar(lado, board, seat, alvo) {
       const eu = state.me ? state.me.seat : -1;
       lado.seat = seat;
       lado.alvo = alvo;
-      const dono = seat === eu ? 'Seu mar' : `Mar de ${eu >= 0 ? nomeDe(seat) : T.nomeCadeira(state, seat, LABELS, mold.nameOf)}`;
+      const dono = seat === eu
+        ? t('mesa.batalha.seuMar')
+        : t('mesa.batalha.marDe', { nome: eu >= 0 ? nomeDe(seat) : T.nomeCadeira(state, seat, rotulos(), mold.nameOf) });
       if (lado.titulo.textContent !== dono) lado.titulo.textContent = dono;
       const left = board && Number.isInteger(board.left) ? board.left : null;
-      const conta = left === null ? '' : `${left} ${left === 1 ? 'navio' : 'navios'}`;
+      const conta = left === null ? '' : t('mesa.batalha.naviosRestantes', { n: left });
       if (lado.conta.textContent !== conta) lado.conta.textContent = conta;
       lado.caixa.classList.toggle('is-alvo', alvo);
       lado.grade.setAttribute('role', 'grid');
-      lado.grade.setAttribute('aria-label', alvo ? `${dono}: escolha onde atirar` : dono);
+      lado.grade.setAttribute('aria-label', alvo ? t('mesa.batalha.escolhaOndeAtirar', { mar: dono }) : dono);
       const m = marcas(board);
-      const podeAtirar = alvo ? podeDaView(state, { kind: 'fire', cell: 0 }) : 'Aqui não se atira';
+      const podeAtirar = alvo ? podeDaView(state, { kind: 'fire', cell: 0 }) : t('mesa.batalha.aquiNaoSeAtira');
       const ultimo = state.last && state.last.seat === 1 - seat ? state.last.cell : -1;
       lado.casas.forEach((bt, x) => {
         const marca = m.get(x) || '';
@@ -187,7 +202,7 @@
         bt.classList.toggle('is-ultimo', x === ultimo);
         bt.setAttribute('aria-label', rotuloCasa(x, marca));
         const livre = marca === '' || marca === 'navio';
-        C.ligado(bt, alvo && livre ? podeAtirar : (alvo ? 'Você já atirou aí' : 'Aqui não se atira'), '');
+        C.ligado(bt, alvo && livre ? podeAtirar : t(alvo ? 'mesa.batalha.jaAtirou' : 'mesa.batalha.aquiNaoSeAtira'), '');
       });
       lado.tecl.marcar();
     }
@@ -220,9 +235,9 @@
       let st;
       if (posicionando) st = textoPosicionando(state, nomeDe);
       else {
-        const base = T.textoStatus(state, api.me(), LABELS, mold.nameOf);
+        const base = T.textoStatus(state, api.me(), rotulos(), mold.nameOf);
         const ult = textoUltimo(state.last, nomeDe);
-        st = ult && !state.result ? `${ult}. ${base}` : base;
+        st = ult && !state.result ? t('mesa.batalha.ultimoESituacao', { ultimo: ult, situacao: base }) : base;
       }
       if (mold.status.textContent !== st) mold.status.textContent = st;
       atualizarBarra(api, st, !posicionando && !state.result && state.turn === eu);
@@ -318,7 +333,7 @@
 
   const api = {
     type: TYPE, mount, nomeCasa, marcas, rotuloCasa, textoUltimo, textoPosicionando, podeDaView,
-    atualizarBarra, LABELS,
+    atualizarBarra, rotulos,
   };
 
   registrar(api, ['comum.js', 'tabuleiro.js']);

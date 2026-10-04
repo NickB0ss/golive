@@ -15,6 +15,8 @@
 (function (root) {
   const C = (root.GoLive && root.GoLive.mesaCadeiras)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./cadeiras') : null);
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
 
   const MARKS = ['X', 'O'];
   const LABELS = ['X', 'O'];
@@ -42,22 +44,22 @@
 
   function checkMove(state, action) {
     const cell = action.cell;
-    if (!Number.isInteger(cell) || cell < 0 || cell > 8) return 'Casa inválida';
-    if (state.board[cell] !== '.') return 'Casa ocupada';
+    if (!Number.isInteger(cell) || cell < 0 || cell > 8) return codigo('mesa.velha.casaInvalida');
+    if (state.board[cell] !== '.') return codigo('mesa.velha.casaOcupada');
     return true;
   }
 
   function validate(state, action, ctx) {
     return C.safe(() => {
-      if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+      if (!C.isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
       if (C.isSeatAction(action)) return C.validateSeat(state, action, ctx);
       if (action.kind === 'reset') return C.canReset(state, ctx);
       if (action.kind === 'move') {
         const ok = C.canPlay(state, ctx, state.turn);
         return ok === true ? checkMove(state, action) : ok;
       }
-      return 'Ação desconhecida';
-    }, 'Ação inválida');
+      return codigo('mesa.jogo.acaoDesconhecida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   function play(state, cell) {
