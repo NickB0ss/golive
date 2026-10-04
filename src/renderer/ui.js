@@ -4,7 +4,7 @@
 (function (root) {
   const $ = (id) => document.getElementById(id);
   const configApi = root.GoLive.config;
-  const { t, maiuscula } = root.GoLive.i18n;
+  const { t, maiuscula, idiomaAtivo } = root.GoLive.i18n;
   const version = root.GoLive.version;
   const theme = root.GoLive.theme;
   const emoji = root.GoLive.emoji;
@@ -1101,8 +1101,9 @@
     const titulo = !aoVivo.length
       ? t('ui.palco.nadaTransmitindo')
       : t('ui.palco.pessoasAoVivo', {
-        pessoas: nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}` : nomes[0],
-        verbo: nomes.length > 1 ? t('ui.palco.estao') : t('ui.palco.esta'),
+        // "Ana, Bia e Caio" com o "e" da lingua ativa.
+        pessoas: new Intl.ListFormat(idiomaAtivo(), { type: 'conjunction' }).format(nomes),
+        n: nomes.length,
       });
     const acoes = aoVivo.length
       ? aoVivo.slice(0, 3).map((p) => `<button type="button" class="btn btn--secondary" data-assistir="${escapeHtml(p.id)}">
@@ -1464,7 +1465,7 @@
     if (bolha) spawnReactionPop(tileId, bolha);
   }
 
-  function syncHudPermission(tileId, acao, permitido, sufixo) {
+  function syncHudPermission(tileId, acao, permitido) {
     const tile = document.getElementById(`tile-${tileId}`);
     const button = tile?.querySelector(`[data-acao="${acao}"]`);
     if (!button) return;
@@ -1474,7 +1475,7 @@
     const nome = tile.querySelector('.tile__name')?.textContent || t('ui.tile.estaFonte');
     const label = permitido
       ? t(acao === 'rabiscar' ? 'ui.tile.rabiscar' : 'ui.tile.reagir')
-      : t('ui.tile.naoLiberou', { nome, sufixo });
+      : t(acao === 'rabiscar' ? 'ui.tile.naoLiberouRabiscos' : 'ui.tile.naoLiberouReacoes', { nome });
     button.hidden = proprio && !permitido;
     button.disabled = !permitido;
     button.title = label;
@@ -1484,13 +1485,13 @@
   // Liberado = a superficie esta em annotSurfaces (setAnnotSurface apaga a entrada quando `allowed` cai). Nao e
   // `canDraw`: no proprio tile ele e false (o dono nao desenha) e o botao abre a barra de "apagar tudo".
   function syncAnnotButton(tileId) {
-    syncHudPermission(tileId, 'rabiscar', annotSurfaces.has(tileId), 'rabiscos');
+    syncHudPermission(tileId, 'rabiscar', annotSurfaces.has(tileId));
   }
 
   function syncReactionButton(tileId) {
     const tile = document.getElementById(`tile-${tileId}`);
     const isCamera = tile?.dataset.kind === 'camera';
-    syncHudPermission(tileId, 'reagir', isCamera || reactionSurfaces.get(tileId) === true, 'reações');
+    syncHudPermission(tileId, 'reagir', isCamera || reactionSurfaces.get(tileId) === true);
   }
 
   function setReactionSurface(tileId, { allowed = false } = {}) {

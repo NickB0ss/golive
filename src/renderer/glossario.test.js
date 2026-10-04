@@ -79,7 +79,7 @@ const PROIBIDOS = {
     [/\bannotations?\b/i, 'use "scribble" (never "annotation")'],
     [/\bdisconnect\b/i, 'use "Leave room" (never "disconnect")'],
     [/\bwidgets?\b/i, 'use "window" (never "widget")'],
-    [/\bcards?\b/i, 'use "window" (never "card")'],
+    // 'card' nao entra: em ingles e a unica palavra para carta de baralho (poquer, truco).
     [/\binsert\b/i, 'use "Add window" (never "insert")'],
     [/\bmode\b/i, 'use "view" (never "mode")'],
     [/\blayout\b/i, 'use "view" (never "layout")'],
@@ -229,7 +229,7 @@ test('cada regex novo encontra o termo proibido sem pegar a palavra legitima par
   const samples = {
     en: [
       'host', 'owner', 'broadcast', 'viewer', 'spectator', 'member', 'participant', 'peer', 'annotation',
-      'disconnect', 'widget', 'card', 'insert', 'mode', 'layout', 'canvas', 'maximize', 'viewport', 'Preferences',
+      'disconnect', 'widget', 'insert', 'mode', 'layout', 'canvas', 'maximize', 'viewport', 'Preferences',
     ],
     es: [
       'anfitriones', 'dueña', 'host', 'emisión', 'espectadoras', 'miembro', 'participante', 'anotaciones',

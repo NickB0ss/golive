@@ -20,7 +20,7 @@ tratam a pessoa por **tú**, sem *vosotros* nem regionalismos.
 | Encerrar a própria conexão com a sala | **Sair da sala** (rótulo real do botão) | **Leave room** | **Salir de la sala** | desconectar · disconnect · desconectar |
 | Qualquer pessoa na sala | **pessoa** | **person**, **people** | **persona**, **personas** | membro, participante, peer · member, participant, peer · miembro, participante |
 | Os dois jeitos de ver a sala, que cada pessoa escolhe para si | **vista**: **Transmissão** e **Mesa** | **view**: **Stream** and **Table** | **vista**: **Transmisión** y **Mesa** | modo, tipo da sala, layout, canvas · mode, layout, canvas · modo, layout, lienzo |
-| O que se põe na Mesa | **janela** ("janela na mesa" quando puder confundir) | **window** | **ventana** | widget, card, item · widget, card · widget, tarjeta |
+| O que se põe na Mesa | **janela** ("janela na mesa" quando puder confundir) | **window** | **ventana** | widget, card, item · widget ("card" só para carta de baralho) · widget, tarjeta |
 | Pôr / tirar uma janela | **Adicionar janela** / **Tirar da mesa** | **Add window** / **Take off the table** | **Añadir ventana** / **Quitar de la mesa** | inserir, fechar, remover · insert · insertar |
 | Ocupar a tela toda com uma janela | **Tela cheia** | **Full screen** | **Pantalla completa** | maximizar · maximize · maximizar |
 | Para onde você olha dentro da Mesa | sem nome na interface: os botões dizem **Ver tudo** e **Ir até** | **See all** / **Go to** | **Ver todo** / **Ir a** | câmera (é a webcam), viewport · viewport · viewport |
