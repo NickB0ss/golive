@@ -950,7 +950,7 @@
           <video class="tile__video" autoplay playsinline></video>
           <canvas class="tile__canvas"></canvas>
           <div class="tile__pops"></div>
-          <div class="draw-bar" role="toolbar" aria-label="Rabisco" hidden></div>
+          <div class="draw-bar" role="toolbar" aria-label="${t('ui.rabisco.barra')}" hidden></div>
           <div class="pip-strip"></div>
         </div>
         ${TILE_HUD_HTML}

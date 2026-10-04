@@ -19,7 +19,7 @@
     const maxBtn = doc.getElementById('tb-max');
     win.onMaximizeChange((isMax) => {
       maxBtn.classList.toggle('is-maximized', isMax);
-      maxBtn.setAttribute('aria-label', isMax ? 'Restaurar' : 'Maximizar');
+      maxBtn.setAttribute('aria-label', root.GoLive.i18n.t(isMax ? 'pagina.restaurar' : 'pagina.maximizar'));
     });
   }
 
