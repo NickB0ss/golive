@@ -16,6 +16,11 @@
  */
 
 (function (root) {
+  const KEYWORDS_EN = (root.GoLive && root.GoLive.emojiKeywordsEn)
+    || (typeof module !== 'undefined' ? module.require('./emoji-en') : {});
+  const KEYWORDS_ES = (root.GoLive && root.GoLive.emojiKeywordsEs)
+    || (typeof module !== 'undefined' ? module.require('./emoji-es') : {});
+
   // [emoji, 'palavras chave', peso?]. A primeira palavra e a mais obvia --
   // e a que aparece no `title` do botao.
   //
@@ -27,7 +32,7 @@
   const GROUPS = [
     {
       id: 'rostos',
-      label: 'Rostos',
+      label: 'emoji.grupo.rostos',
       icon: '😀',
       items: [
         ['😀', 'sorriso feliz alegre', 1],
@@ -113,7 +118,7 @@
     },
     {
       id: 'gestos',
-      label: 'Gestos',
+      label: 'emoji.grupo.gestos',
       icon: '👍',
       items: [
         ['👍', 'joia positivo curti ok', 1],
@@ -176,7 +181,7 @@
     },
     {
       id: 'natureza',
-      label: 'Natureza',
+      label: 'emoji.grupo.natureza',
       icon: '🐶',
       items: [
         ['🐶', 'cachorro dog', 1],
@@ -263,7 +268,7 @@
     },
     {
       id: 'comida',
-      label: 'Comida',
+      label: 'emoji.grupo.comida',
       icon: '🍔',
       items: [
         ['🍏', 'maca verde fruta'],
@@ -334,7 +339,7 @@
     },
     {
       id: 'atividades',
-      label: 'Atividades',
+      label: 'emoji.grupo.atividades',
       icon: '🎮',
       items: [
         ['🎮', 'jogo videogame controle'],
@@ -389,7 +394,7 @@
     },
     {
       id: 'viagem',
-      label: 'Lugares',
+      label: 'emoji.grupo.lugares',
       icon: '🚗',
       items: [
         ['🚗', 'carro automovel', 1],
@@ -438,7 +443,7 @@
     },
     {
       id: 'objetos',
-      label: 'Objetos',
+      label: 'emoji.grupo.objetos',
       icon: '💻',
       items: [
         ['💻', 'notebook computador laptop'],
@@ -508,7 +513,7 @@
     },
     {
       id: 'simbolos',
-      label: 'Símbolos',
+      label: 'emoji.grupo.simbolos',
       icon: '❤️',
       items: [
         ['❤️', 'coracao amor vermelho', 1],
@@ -573,9 +578,24 @@
   // grupos. `keys` ja vem normalizado -- normalizar 400 strings a cada
   // tecla digitada seria trabalho jogado fora.
   const INDEX = [];
+  function idiomaAtivo() {
+    return root.GoLive && root.GoLive.i18n && typeof root.GoLive.i18n.idiomaAtivo === 'function'
+      ? root.GoLive.i18n.idiomaAtivo() : 'pt-BR';
+  }
+
+  function palavrasDoIdioma(char, idioma) {
+    if (idioma === 'en') return KEYWORDS_EN[char] || '';
+    if (idioma === 'es') return KEYWORDS_ES[char] || '';
+    return '';
+  }
+
   for (const group of GROUPS) {
     for (const [char, keywords, weight] of group.items) {
-      INDEX.push({ char, keywords, group: group.id, weight: weight || 0, keys: normalize(keywords).split(/\s+/) });
+      const en = KEYWORDS_EN[char] || '';
+      const es = KEYWORDS_ES[char] || '';
+      const keys = [keywords, palavrasDoIdioma(char, idiomaAtivo()), en, es]
+        .filter(Boolean).flatMap((value) => normalize(value).split(/\s+/));
+      INDEX.push({ char, keywords, group: group.id, weight: weight || 0, keys });
     }
   }
 
@@ -603,7 +623,14 @@
     if (!q) return [];
     const terms = q.split(/\s+/).filter(Boolean);
     const hits = [];
+    const idioma = idiomaAtivo();
     for (const entry of INDEX) {
+      const idiomas = [entry.keywords, palavrasDoIdioma(entry.char, idioma)];
+      const en = KEYWORDS_EN[entry.char];
+      const es = KEYWORDS_ES[entry.char];
+      if (en) idiomas.push(en);
+      if (es) idiomas.push(es);
+      entry.keys = idiomas.flatMap((value) => normalize(value).split(/\s+/));
       let score = 0;
       let all = true;
       for (const term of terms) {
@@ -623,7 +650,9 @@
   /** Primeira palavra-chave -- vira o `title` do botao ("carro", "pizza"). */
   function labelFor(char) {
     const entry = BY_CHAR.get(char);
-    return entry ? entry.keywords.split(' ')[0] : '';
+    if (!entry) return '';
+    const palavras = palavrasDoIdioma(char, idiomaAtivo()) || entry.keywords;
+    return palavras.split(/\s+/)[0];
   }
 
   function isKnown(char) {

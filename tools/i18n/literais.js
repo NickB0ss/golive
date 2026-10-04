@@ -131,6 +131,7 @@ const TOKEN_CSS = /^[a-z0-9]+(?:[-_]{1,2}[a-z0-9]+)*$/;
 const FORMA_CHAVE = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+(\?.*)?$/;
 
 const EXCECOES = new Set([
+  // palavras de busca do emoji, nao texto de tela
   'GoLive LAN', // marca
   'GoLive', // marca
   'Esc', // nome da tecla de atalho
@@ -282,7 +283,7 @@ const PASTAS = [
   'src/main',
   'src/splash',
 ];
-const FORA = /(\.test\.js$|dom-falso|[\\/]vendor[\\/]|[\\/]i18n[\\/]|quiz-banco|pcm-injector-worklet)/;
+const FORA = /(\.test\.js$|dom-falso|[\\/]vendor[\\/]|[\\/]i18n[\\/]|quiz-banco|pcm-injector-worklet|[\\/]emoji-(en|es)\.js$|[\\/]emoji\.js$)/;
 
 function ARQUIVOS_VARRIDOS(raizRepo) {
   const lista = ['src/main.js'];

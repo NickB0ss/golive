@@ -3919,8 +3919,8 @@
   function initEmojiPanel(deps) {
     emojiDeps = { getEmojiRecents: () => [], onEmojiUsed: () => {}, ...deps };
     emojiTabsEl.innerHTML = [
-      { id: 'recentes', icon: '🕐', label: 'Recentes' },
-      ...emoji.GROUPS.map((g) => ({ id: g.id, icon: g.icon, label: g.label })),
+      { id: 'recentes', icon: '🕐', label: t('emoji.grupo.recentes') },
+      ...emoji.GROUPS.map((g) => ({ id: g.id, icon: g.icon, label: t(g.label) })),
     ]
       .map((t) => `<button type="button" class="emoji__tab" data-group="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}">${t.icon}</button>`)
       .join('');
