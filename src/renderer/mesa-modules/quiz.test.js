@@ -29,8 +29,18 @@ test('banco provisorio: formato valido nas tres linguas e consulta por id e idio
 });
 
 test('validarBanco recusa o tema que não chegou ao mínimo', () => {
-  // Enquanto algum tema estiver provisorio (Tarefas 14a-14h), o minimo de 60 reprova; a 14i troca este teste.
-  assert.throws(() => banco.validarBanco(60), /Tema \w+/);
+  assert.throws(() => banco.validarBanco(61), /Tema \w+/);
+});
+
+test('banco completo: 8 temas, 60 por tema, 480 no total, nada provisório', () => {
+  assert.equal(banco.validarBanco(), true);
+  assert.equal(banco.perguntas.length, 480);
+  const fs = require('node:fs');
+  const path = require('node:path');
+  for (const t of banco.TEMAS) {
+    const src = fs.readFileSync(path.join(__dirname, 'quiz-banco', `${t}.js`), 'utf8');
+    assert.doesNotMatch(src, /PROVISORIO/, t);
+  }
 });
 
 test('nasce em preparo, com todos os temas marcados e sem rodada', () => {

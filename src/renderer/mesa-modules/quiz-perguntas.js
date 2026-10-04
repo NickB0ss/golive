@@ -58,6 +58,9 @@
     return true;
   }
 
+  // Banco completo (Tarefa 14i): erro de conteudo aparece ja na carga, nos testes e no servidor da sala.
+  validarBanco();
+
   const api = { TEMAS, perguntas, porId, texto, validarBanco };
   root.GoLive = root.GoLive || {};
   root.GoLive.mesaQuizPerguntas = api;
