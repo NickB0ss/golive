@@ -29,7 +29,8 @@ test('banco provisorio: formato valido nas tres linguas e consulta por id e idio
 });
 
 test('validarBanco recusa o tema que não chegou ao mínimo', () => {
-  assert.throws(() => banco.validarBanco(60), /Tema games/);
+  // Enquanto algum tema estiver provisorio (Tarefas 14a-14h), o minimo de 60 reprova; a 14i troca este teste.
+  assert.throws(() => banco.validarBanco(60), /Tema \w+/);
 });
 
 test('nasce em preparo, com todos os temas marcados e sem rodada', () => {
