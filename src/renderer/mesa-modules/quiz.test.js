@@ -312,3 +312,8 @@ test('acao desconhecida, timeout sem partida e contexto ausente sao seguros', ()
     i18n.codigo('mesa.quiz.nadaCorrendo'));
   assert.equal(quiz.validate(s, null, null), i18n.codigo('mesa.jogo.acaoInvalida'));
 });
+
+test('pergunta em espanhol que termina em ? abre com ¿', () => {
+  const sem = banco.perguntas.filter((p) => p.es[0].endsWith('?') && !p.es[0].includes('¿')).map((p) => p.id);
+  assert.deepEqual(sem, []);
+});
