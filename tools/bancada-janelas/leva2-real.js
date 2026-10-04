@@ -68,7 +68,7 @@ const espera = (ms) => new Promise((r) => { setTimeout(r, ms); });
  * `ownerToken`, todo mundo virava "dono" da sala (`isLeader() === true`)
  * pra sempre, e testes de "so o lider" ou "so quem pos a janela" (Quadro:
  * `podeLimpar()`) passariam por engano mesmo quebrados de verdade. */
-function PONTE({ nome, ehDona }) {
+function PONTE({ nome, ehDona, idioma }) {
   const OrigWS = window.WebSocket;
   const enviarOriginal = OrigWS.prototype.send;
   OrigWS.prototype.send = function send(data) {
@@ -93,6 +93,8 @@ function PONTE({ nome, ehDona }) {
   });
   window.golive = new Proxy({}, {
     get: (_, k) => {
+      // So na sala mista: o idioma que o processo principal entregaria ao preload.
+      if (k === 'idioma' && idioma) return { preferencia: idioma, ativo: idioma };
       if (k === 'getNetworkAddress') return async () => ({ address: '26.114.8.201', kind: 'radmin' });
       if (k === 'getVersion') return async () => null;
       if (k === 'win') return { show() {} };
@@ -136,12 +138,12 @@ async function ultimoEstado(page, id) {
   return null;
 }
 
-async function abrirPessoa(browser, servidor, nome, ehDona = false) {
+async function abrirPessoa(browser, servidor, nome, ehDona = false, idioma = null) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   const erros = [];
   page.on('console', (m) => { if (m.type() === 'error') erros.push(m.text()); });
   page.on('pageerror', (e) => erros.push(`pageerror: ${e.message}`));
-  await page.addInitScript(PONTE, { nome, ehDona });
+  await page.addInitScript(PONTE, { nome, ehDona, idioma });
   await page.goto(PAGINA);
   await page.fill('#join-address', `127.0.0.1:${servidor.port}`);
   await page.press('#join-address', 'Enter');
@@ -801,6 +803,182 @@ async function cenaDesenha(browser) {
 
 // ---------------------------------------------------------------------
 
+// Sala mista: Ana em pt-BR (dona) e Bia em es na MESMA sala. Entre PCs so
+// viajam codigos; cada pessoa monta o texto no proprio idioma. O texto
+// esperado sai dos dicionarios de verdade, nunca de frase escrita a mao.
+
+const DICIONARIOS = {
+  'pt-BR': require('../../src/renderer/i18n/pt-BR'),
+  es: require('../../src/renderer/i18n/es'),
+};
+
+/** Texto do dicionario `idioma` para `chave`, com {valores} preenchidos. */
+function texto(idioma, chave, valores = {}) {
+  const bruto = DICIONARIOS[idioma][chave];
+  if (typeof bruto !== 'string') throw new Error(`sem texto ${idioma}/${chave}`);
+  return bruto.replace(/\{(\w+)\}/g, (inteiro, nome) => (nome in valores ? String(valores[nome]) : inteiro));
+}
+
+/** Espera `fn` devolver algo verdadeiro (so para ler o DOM mudando). */
+async function ate(fn, ms = 6000) {
+  const fim = Date.now() + ms;
+  while (Date.now() < fim) {
+    const v = await fn();
+    if (v) return v;
+    await espera(40);
+  }
+  return null;
+}
+
+/** Algum `.mj-aviso` da pagina tem exatamente `esperado`? */
+function temAviso(page, esperado) {
+  return page.evaluate((e) => [...document.querySelectorAll('.mj-aviso')].some((n) => n.textContent.trim() === e),
+    esperado);
+}
+
+function avisosDe(page) {
+  return page.evaluate(() => [...document.querySelectorAll('.mj-aviso')].map((n) => `${n.className}|${n.textContent}`));
+}
+
+async function cenaMista(browser) {
+  const servidor = await createSignalingServer({ port: 0, ownerToken: 'bancada-leva2', log: () => {} });
+  const rotulo = 'mista';
+  try {
+    const ana = await abrirPessoa(browser, servidor, 'Ana', true, 'pt-BR');
+    const bia = await abrirPessoa(browser, servidor, 'Bia', false, 'es');
+    const pessoas = [ana, bia];
+    const lingua = { Ana: 'pt-BR', Bia: 'es' };
+    const ativos = await Promise.all(pessoas.map((p) => p.page.evaluate(() => window.GoLive.i18n.idiomaAtivo())));
+    conferir(ativos[0] === 'pt-BR' && ativos[1] === 'es', `${rotulo}: idioma ativo da janela (${ativos})`);
+
+    // ---------------- a. Truco: recusa no idioma de quem tentou ----------------
+    const idTruco = await adicionarJanela(ana, 'truco', 140, 140, 720, 460);
+    const idEnq = await adicionarJanela(ana, 'enquete', 900, 140, 360, 300);
+    const idQuiz = await adicionarJanela(ana, 'quiz', 140, 700, 560, 460);
+    await espera(500);
+    await verTudo(ana, bia);
+    const wTruco = { Ana: janela(ana.page, idTruco), Bia: janela(bia.page, idTruco) };
+    const sentarAna = texto('pt-BR', 'mesa.cartas.sentar');
+    const sentarBia = texto('es', 'mesa.cartas.sentar');
+    await wTruco.Ana.locator('.mj-tr-pos-0').getByRole('button', { name: sentarAna }).click();
+    await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idTruco && m.state.seats[0]);
+    await wTruco.Bia.locator('.mj-tr-pos-1').getByRole('button', { name: sentarBia }).click();
+    await esperaMsg(ana.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idTruco && m.state.seats[1]);
+    await espera(200);
+    await wTruco.Ana.getByRole('button', { name: texto('pt-BR', 'mesa.poquer.darAsCartas') }).click();
+    await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idTruco && m.state.hand);
+    await espera(300);
+
+    // Quem NAO esta na vez: a janela nao oferece "Jogar" (sem can.play); a
+    // tentativa vai pelo mesmo canal que a janela usaria (act) e o servidor recusa.
+    const vez = {};
+    for (const p of pessoas) vez[p.nome] = (await ultimoEstado(p.page, idTruco))?.me?.can?.play === true;
+    conferir(vez.Ana !== vez.Bia, `${rotulo}: exatamente uma na vez (${JSON.stringify(vez)})`);
+    const fora = vez.Ana ? bia : ana;
+    const botoesFora = await wTruco[fora.nome].locator('.mj-tr-carta button').count();
+    conferir(botoesFora === 0, `${rotulo}: ${fora.nome} (fora da vez) nao tem botao de jogar (${botoesFora})`);
+    await fora.page.evaluate((id) => {
+      window.__ws.send(JSON.stringify({ type: 'mesa', op: 'act', id, action: { kind: 'play', index: 0, covered: false } }));
+    }, idTruco);
+    const negou = await esperaMsg(fora.page, (m) => m.type === 'mesa-denied', 4000).catch(() => null);
+    conferir(!!negou, `${rotulo}: o servidor recusou a jogada de ${fora.nome}`);
+    const recusa = texto(lingua[fora.nome], 'mesa.jogo.naoESuaVez');
+    const viu = await ate(() => temAviso(fora.page, recusa), 3000);
+    conferir(!!viu, `${rotulo}: recusa de ${fora.nome} em ${lingua[fora.nome]} "${recusa}" `
+      + `(avisos ${JSON.stringify(await avisosDe(fora.page))}; mensagem ${JSON.stringify(negou)})`);
+    await conferirSemErro(pessoas, `${rotulo}/truco`);
+
+    // ---------------- b. Enquete: Sim/Nao no idioma de cada uma ----------------
+    const wEnq = { Ana: janela(ana.page, idEnq), Bia: janela(bia.page, idEnq) };
+    for (const p of pessoas) {
+      const esperado = [texto(lingua[p.nome], 'mesa.enquete.sim'), texto(lingua[p.nome], 'mesa.enquete.nao')];
+      await ate(async () => (await wEnq[p.nome].locator('.mj-enq-texto').count()) >= 2);
+      const lidos = await wEnq[p.nome].locator('.mj-enq-texto').evaluateAll((els) => els.map((e) => e.textContent.trim()));
+      conferir(JSON.stringify(lidos) === JSON.stringify(esperado),
+        `${rotulo}: enquete de ${p.nome} mostra ${JSON.stringify(esperado)} (leu ${JSON.stringify(lidos)})`);
+    }
+    await conferirSemErro(pessoas, `${rotulo}/enquete`);
+
+    // ---------------- c. Quiz: pergunta e alternativas na lingua de cada uma ----------------
+    const banco = require('../../src/renderer/mesa-modules/quiz-perguntas');
+    const wQuiz = { Ana: janela(ana.page, idQuiz), Bia: janela(bia.page, idQuiz) };
+    await wQuiz.Ana.getByRole('button', { name: texto('pt-BR', 'quiz.comecar') }).click();
+    await wQuiz.Ana.locator('.mj-quiz-alternativas .mj-quiz-opcao').first().waitFor();
+    await wQuiz.Bia.locator('.mj-quiz-alternativas .mj-quiz-opcao').first().waitFor();
+    await espera(300);
+    for (const p of pessoas) {
+      const view = await ultimoEstado(p.page, idQuiz);
+      const q = view && view.question && banco.porId(view.question.id);
+      conferir(!!q, `${rotulo}: ${p.nome} recebeu uma pergunta do banco (${JSON.stringify(view && view.question)})`);
+      if (!q) continue;
+      const alvo = lingua[p.nome] === 'es' ? 'es' : 'pt';
+      const lido = (await wQuiz[p.nome].locator('.mj-quiz-pergunta').textContent()).trim();
+      conferir(lido === q[alvo][0], `${rotulo}: pergunta de ${p.nome} em ${alvo} "${q[alvo][0]}" (leu "${lido}")`);
+      const alts = await wQuiz[p.nome].locator('.mj-quiz-opcao .mj-quiz-opcao-texto')
+        .evaluateAll((els) => els.map((e) => e.textContent.trim()));
+      const esperadas = view.question.ordem.map((i) => q[alvo][1][i]);
+      conferir(JSON.stringify(alts) === JSON.stringify(esperadas),
+        `${rotulo}: alternativas de ${p.nome} em ${alvo} ${JSON.stringify(esperadas)} (leu ${JSON.stringify(alts)})`);
+    }
+    await conferirSemErro(pessoas, `${rotulo}/quiz`);
+
+    // ---------------- d. Desenha: Bia acerta digitando a palavra em ESPANHOL ----------------
+    const desenha = require('../../src/renderer/mesa-modules/desenha');
+    const idDs = await adicionarJanela(ana, 'desenha', 900, 500, 720, 560);
+    await espera(400);
+    await verTudo(ana, bia);
+    const wDs = { Ana: janela(ana.page, idDs), Bia: janela(bia.page, idDs) };
+    await wDs.Ana.getByRole('button', { name: texto('pt-BR', 'mesa.desenha.entrarRodada') }).click();
+    await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idDs && m.state.players.length >= 1);
+    await wDs.Bia.getByRole('button', { name: texto('es', 'mesa.desenha.entrarRodada') }).click();
+    await esperaMsg(ana.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idDs && m.state.players.length >= 2);
+    await espera(200);
+    await wDs.Ana.getByRole('button', { name: texto('pt-BR', 'mesa.desenha.comecar') }).click();
+    await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idDs && m.state.phase === 'choosing');
+    await espera(200);
+    // Escolhe de proposito uma palavra cuja forma em es difere da pt (senao nao provaria nada).
+    const opcoesIds = (await ultimoEstado(ana.page, idDs)).options;
+    let indice = opcoesIds.findIndex((id) => desenha.normalizar(desenha.palavraEm(id, 'es'))
+      !== desenha.normalizar(desenha.palavraEm(id, 'pt-BR')));
+    conferir(indice >= 0, `${rotulo}: ha opcao com forma es diferente da pt (${opcoesIds})`);
+    if (indice < 0) indice = 0;
+    const opcoesAna = await wDs.Ana.locator('.mj-ds-opcoes .mj-ds-opcao').evaluateAll((els) => els.map((e) => e.textContent.trim()));
+    conferir(opcoesAna[indice] === desenha.palavraEm(opcoesIds[indice], 'pt-BR'),
+      `${rotulo}: Ana ve a opcao em pt (${opcoesAna[indice]})`);
+    await wDs.Ana.locator('.mj-ds-opcoes .mj-ds-opcao').nth(indice).click();
+    await esperaMsg(bia.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idDs && m.state.phase === 'drawing');
+    await espera(300);
+    const palavraId = (await ultimoEstado(ana.page, idDs)).word;
+    const emEs = desenha.palavraEm(palavraId, 'es');
+    const emPt = desenha.palavraEm(palavraId, 'pt-BR');
+    const vistaAna = (await wDs.Ana.locator('.mj-ds-palavra').textContent()).trim();
+    conferir(vistaAna === emPt, `${rotulo}: Ana ve a palavra em pt "${emPt}" (leu "${vistaAna}")`);
+    await wDs.Bia.locator('.mj-ds-campo').fill(emEs);
+    await wDs.Bia.locator('.mj-ds-palpite button').click();
+    const acertou = await esperaMsg(ana.page, (m) => m.type === 'mesa' && m.op === 'state' && m.id === idDs
+      && (m.state.players.find((q) => q.name === 'Bia') || {}).score > 0, 4000).catch(() => null);
+    const estadoAna = await ultimoEstado(ana.page, idDs);
+    conferir(!!acertou, `${rotulo}: o acerto "${emEs}" (es) da Bia foi aceito (estado da Ana: `
+      + `${JSON.stringify(estadoAna).slice(0, 300)})`);
+    // A rodada fecha com 2 pessoas; o aviso "a palavra era X" sai na lingua de cada uma.
+    for (const p of pessoas) {
+      const esperado = texto(lingua[p.nome], 'mesa.desenha.palavraEra', {
+        palavra: desenha.palavraEm(palavraId, lingua[p.nome]),
+        nome: p.nome === 'Ana' ? texto(lingua[p.nome], 'mesa.desenha.voce') : 'Ana',
+      });
+      const ok = await ate(() => temAviso(p.page, esperado), 3000);
+      conferir(!!ok, `${rotulo}: aviso da palavra de ${p.nome} em ${lingua[p.nome]} "${esperado}" `
+        + `(avisos ${JSON.stringify(await avisosDe(p.page))})`);
+    }
+    await conferirSemErro(pessoas, `${rotulo}/desenha`);
+    await fecharPessoas(pessoas);
+  } finally {
+    await servidor.close();
+  }
+}
+
+// ---------------------------------------------------------------------
+
 const CENAS = {
   truco: cenaTruco,
   oito: cenaOito,
@@ -809,6 +987,7 @@ const CENAS = {
   quiz: cenaQuiz,
   quadro: cenaQuadro,
   desenha: cenaDesenha,
+  mista: cenaMista,
 };
 
 async function main() {
