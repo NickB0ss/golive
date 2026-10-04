@@ -231,15 +231,15 @@
     });
     const btApostar = C.botao({ text: t('mesa.cartas.apostar'), class: 'mj-pri' });
     const btTirar = C.botao({ text: t('mesa.cartas.tirarAposta'), class: 'mj-fantasma' });
-    const grupoAposta = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Aposta' } },
+    const grupoAposta = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': t('mesa.cartas.aposta') } },
       apostaRot, apostaCampo, ...fichas, btApostar, btTirar);
 
     const btSeguro = C.botao({ text: t('mesa.cartas.seguro'), class: 'mj-pri' });
     const btSemSeguro = C.botao({ text: t('mesa.cartas.semSeguro') });
-    const grupoSeguro = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Seguro' } }, btSeguro, btSemSeguro);
+    const grupoSeguro = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': t('mesa.cartas.seguro') } }, btSeguro, btSemSeguro);
 
     const jogadas = {};
-    const grupoJogo = el('div', { class: 'mj-bj-grupo', attrs: { role: 'group', 'aria-label': 'Sua jogada' } });
+    const grupoJogo = el('div', { class: 'mj-bj-grupo', attrs: { 'aria-label': t('mesa.cartas.suaJogada'), role: 'group' } });
     for (const k of ['hit', 'stand', 'double', 'split']) {
       const bt = C.botao({ text: t(NOMES_ACAO[k]), class: k === 'hit' || k === 'stand' ? 'mj-pri' : '' });
       bt.dataset.acao = k;
@@ -284,7 +284,9 @@
       const n = valorCampo();
       const me = (v && v.me) || { minBet: 10, maxBet: 500 };
       if (n < me.minBet || n > me.maxBet) {
-        b.aviso.mostrar(me.maxBet < me.minBet ? 'Fichas insuficientes' : `Aposta de ${me.minBet} a ${milhar(me.maxBet)}`, zona);
+        b.aviso.mostrar(me.maxBet < me.minBet
+          ? t('mesa.cartas.fichasInsuficientes')
+          : t('mesa.cartas.apostaIntervalo', { min: me.minBet, max: milhar(me.maxBet) }), zona);
         return;
       }
       ultimaAposta = n;
@@ -316,8 +318,9 @@
         peca: null,
         vez: !!vez,
         eu: me.seat === i,
-        motivoSentar: podeSentar ? true : (me.seat >= 0 ? 'Você já está sentado' : 'Indisponível agora'),
-        motivoLevantar: 'Use o botão Levantar',
+        motivoSentar: podeSentar ? true : (me.seat >= 0
+          ? t('mesa.cartas.voceJaEstaSentado') : t('mesa.cartas.indisponivelAgora')),
+        motivoLevantar: t('mesa.cartas.useBotaoLevantar'),
       }]);
       const botaoLugar = L.cad.node.children[0].children[0];
       L.corpo.replaceChildren();
@@ -326,19 +329,25 @@
       L.node.classList.toggle('is-meu', me.seat === i);
       L.node.classList.toggle('is-anterior', v.phase === 'bets');
       if (id === null) {
-        L.node.setAttribute('aria-label', `Lugar ${i + 1}, livre`);
-        botaoLugar.setAttribute('aria-label', `Sentar no lugar ${i + 1}`);
+        L.node.setAttribute('aria-label', t('mesa.cartas.lugarLivre', { n: i + 1 }));
+        botaoLugar.setAttribute('aria-label', t('mesa.cartas.sentarLugar', { n: i + 1 }));
         return;
       }
-      L.node.setAttribute('aria-label', `Lugar ${i + 1}: ${nome}${me.seat === i ? ' (você)' : ''}`);
-      botaoLugar.setAttribute('aria-label', `Lugar ${i + 1}: ${nome}`);
+      L.node.setAttribute('aria-label', me.seat === i
+        ? t('mesa.cartas.lugarComNomeVoce', { n: i + 1, nome })
+        : t('mesa.cartas.lugarComNome', { n: i + 1, nome }));
+      botaoLugar.setAttribute('aria-label', t('mesa.cartas.lugarComNome', { n: i + 1, nome }));
       const saldo = el('div', { class: 'mj-bj-saldo' },
-        el('span', { class: 'mj-bj-fichas', text: `${milhar(v.chips[i])} fichas` }));
-      if (v.bets[i] > 0) saldo.append(el('span', { class: 'mj-bj-aposta', text: `Aposta ${milhar(v.bets[i])}` }));
+        el('span', { class: 'mj-bj-fichas', text: t('mesa.cartas.fichas', { valor: milhar(v.chips[i]) }) }));
+      if (v.bets[i] > 0) saldo.append(el('span', {
+        class: 'mj-bj-aposta', text: t('mesa.cartas.apostaValor', { valor: milhar(v.bets[i]) }),
+      }));
       if (v.insurance[i] > 0) {
         const net = v.insuranceNet[i];
-        const t = net === null ? `Seguro ${milhar(v.insurance[i])}` : net > 0 ? `Seguro: ganhou ${milhar(net)}` : `Seguro: perdeu ${milhar(-net)}`;
-        saldo.append(el('span', { class: 'mj-bj-seguro', text: t }));
+        const seguro = net === null ? t('mesa.cartas.seguroValor', { valor: milhar(v.insurance[i]) })
+          : net > 0 ? t('mesa.cartas.seguroGanhou', { valor: milhar(net) })
+            : t('mesa.cartas.seguroPerdeu', { valor: milhar(-net) });
+        saldo.append(el('span', { class: 'mj-bj-seguro', text: seguro }));
       }
       L.corpo.append(saldo);
       const lista = el('div', { class: 'mj-bj-maos' });
@@ -347,9 +356,18 @@
         const mao = el('div', { class: `mj-bj-mao${k === v.turn && vez ? ' is-vez' : ''}${h.result ? ` is-${h.result === 'push' ? 'empate' : h.win > 0 ? 'ganhou' : 'perdeu'}` : ''}` },
           K.mao(h.cards, { tamanho: 'p' }),
           el('span', { class: 'mj-bj-total', text: textoTotal(h) }),
-          el('span', { class: 'mj-bj-mao-aposta', text: milhar(h.bet), attrs: { title: h.doubled ? 'Aposta dobrada' : 'Aposta' } }));
+          el('span', { class: 'mj-bj-mao-aposta', text: milhar(h.bet), attrs: {
+            title: h.doubled ? t('mesa.cartas.apostaDobrada') : t('mesa.cartas.aposta'),
+          } }));
         if (res) mao.append(el('span', { class: 'mj-bj-res', text: res }));
-        mao.setAttribute('aria-label', `${maos.length > 1 ? `Mão ${maos.findIndex((x) => x.k === k) + 1}: ` : ''}${K.rotuloMao(h.cards)}; ${textoTotal(h)}; aposta ${h.bet}${h.doubled ? ', dobrada' : ''}${res ? `; ${res}` : ''}`);
+        const cartasAria = maos.length > 1
+          ? t('mesa.cartas.blackjack.maoComCartasAria', {
+            n: maos.findIndex((x) => x.k === k) + 1, cartas: K.rotuloMao(h.cards),
+          })
+          : K.rotuloMao(h.cards);
+        const apostaAria = t(h.doubled ? 'mesa.cartas.blackjack.apostaDobradaAria'
+          : 'mesa.cartas.blackjack.apostaAria', { valor: h.bet });
+        mao.setAttribute('aria-label', [cartasAria, textoTotal(h), apostaAria, res].filter(Boolean).join('; '));
         mao.setAttribute('role', 'group');
         lista.append(mao);
       }
@@ -377,13 +395,15 @@
         if (apostaCampo.dataset.tocado !== '1' && root.document.activeElement !== apostaCampo) {
           apostaCampo.value = String(Math.min(me.maxBet, me.bet > 0 ? me.bet : ultimaAposta));
         }
-        btApostar.querySelector('span').textContent = me.bet > 0 ? 'Trocar aposta' : 'Apostar';
+        btApostar.querySelector('span').textContent = me.bet > 0
+          ? t('mesa.cartas.trocarAposta') : t('mesa.cartas.apostar');
         btTirar.hidden = !(me.bet > 0);
-        for (const f of fichas) C.ligado(f, Number(f.dataset.ficha) <= me.maxBet ? true : 'Fichas insuficientes');
+        for (const f of fichas) C.ligado(f, Number(f.dataset.ficha) <= me.maxBet
+          ? true : t('mesa.cartas.fichasInsuficientes'));
       }
       grupoSeguro.hidden = !a.has('insurance');
       if (a.has('insurance')) {
-        btSeguro.querySelector('span').textContent = `Seguro de ${milhar(me.insuranceMax)}`;
+        btSeguro.querySelector('span').textContent = t('mesa.cartas.seguroDe', { valor: milhar(me.insuranceMax) });
         btSeguro.hidden = !(me.insuranceMax > 0);
       }
       const joga = ['hit', 'stand', 'double', 'split'].some((k) => a.has(k));
@@ -420,7 +440,7 @@
       prazo.hidden = false;
       prazo.textContent = `${s} s`;
       prazo.classList.toggle('is-fim', s <= 5);
-      prazo.title = v.phase === 'bets' ? 'Tempo para apostar' : 'Tempo para decidir';
+      prazo.title = v.phase === 'bets' ? t('mesa.cartas.tempoApostar') : t('mesa.cartas.tempoDecidir');
       if (agora >= v.deadline + esperaTimeout(v)) {
         if (enviado && enviado.deadline === v.deadline && agora - enviado.em < 2000) return;
         enviado = { deadline: v.deadline, em: agora };
@@ -448,9 +468,9 @@
       }
       status.textContent = textoStatus(v, (x) => C.nomeDe(api, x));
       atualizarBarra(api, status.textContent, Boolean(v.me?.hand !== null && v.me?.hand !== undefined && !v.finished));
-      sapato.textContent = `Sapato: ${v.shoeLeft}`;
-      sapato.title = `${v.shoeLeft} de ${v.shoeTotal} cartas no sapato`;
-      sapato.setAttribute('aria-label', `${v.shoeLeft} cartas no sapato`);
+      sapato.textContent = t('mesa.cartas.blackjack.sapatoQuantas', { n: v.shoeLeft });
+      sapato.title = t('mesa.cartas.sapatoTitulo', { atual: v.shoeLeft, total: v.shoeTotal });
+      sapato.setAttribute('aria-label', t('mesa.cartas.sapatoAria', { atual: v.shoeLeft }));
       desenharBanca();
       for (let i = 0; i < LUGARES; i += 1) desenharLugar(i);
       desenharBarra();
