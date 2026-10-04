@@ -102,12 +102,16 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Painel de estatísticas mostra os dois lados: o que sai e o que está
   **sendo recebido**.
 - Atualização via GitHub Releases, disparada pelo usuário (não baixa sozinha).
+  Os releases moram aqui no `golive`. A 0.23.0 saiu com o updater apontando
+  para `NickB0ss/golive-releases` (plano de deixar o código privado, desfeito
+  em 2026-10-03) e não tem ponte de volta: quem estiver nela precisa
+  reinstalar a versão seguinte pelo instalador.
 - Log em arquivo por sessão (Configurações > Estatísticas > "Abrir pasta de
   logs").
 
 ## Versão atual
 
-`0.22.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+`0.24.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
 Testes: `node --test` → **1977 testes, 1977 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
@@ -553,6 +557,12 @@ Pendências:
 - **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
   anterior a estas fases, contra a regra de não usar `filter`.
 - **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
+## Lançado na 0.24.0 (2026-10-03)
+
+As atualizações voltam a sair nos releases do próprio `golive`: o plano de fechar o código, que levou a 0.23.0
+a buscar atualização no `golive-releases`, foi desfeito. O app continua gratuito e o EULA perdeu o modelo pago
+(cláusula 5, "Gratuidade e Doações"). Quem instalou a 0.23.0 precisa reinstalar esta versão pelo instalador.
 
 ## Lançado na 0.22.0 (2026-09-28)
 

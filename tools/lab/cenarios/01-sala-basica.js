@@ -12,8 +12,8 @@ module.exports = {
     lab.igual(await ana.js(`getComputedStyle(document.getElementById('titlebar')).display`), 'none', 'faixa de titulo escondida fora do Windows (C6)');
 
     const endereco = await ana.criarSala();
-    lab.contem(await ana.js(`document.querySelector('#grid > .empty')?.innerText || ''`), 'Ninguém transmitindo ainda', 'sala vazia explica o estado (D1)');
-    lab.verificar(await ana.js(`Boolean(document.querySelector('#grid .empty-share'))`), 'sala vazia tem o botao de compartilhar (D1)');
+    lab.contem(await ana.js(`document.querySelector('#grid > .stage-empty')?.innerText || ''`), 'Ninguém está transmitindo', 'sala vazia explica o estado (D1)');
+    lab.verificar(await ana.js(`Boolean(document.querySelector('#grid .stage-empty [data-transmitir]'))`), 'sala vazia tem o botao de compartilhar (D1)');
 
     const fontes = await ana.transmitir();
     lab.contem(fontes.join(' | '), 'Monitor 1', 'nome da tela em portugues (D6)');

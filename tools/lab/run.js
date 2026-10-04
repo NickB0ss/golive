@@ -93,6 +93,16 @@ async function rodarCenario(cenario) {
     erro = err;
     passo(`FALHOU: ${err.message}`);
     await Promise.all(instancias.map((i) => i.print('falha')));
+    // Duas leituras da captura falsa, com 2 s entre elas: separa "o canvas
+    // parou de pintar" de "a track parou de entregar" de "a track esta viva e
+    // o problema e dali pra frente" (relay, encoder, rede).
+    const vivas = instancias.filter((i) => i.saiu === null);
+    const antes = await Promise.all(vivas.map((i) => i.estadoDaCaptura()));
+    await sleep(2000);
+    const depois = await Promise.all(vivas.map((i) => i.estadoDaCaptura()));
+    vivas.forEach((i, k) => {
+      if (depois[k]?.trilhas?.length) passo(`  ${i.nome} captura falsa: ${JSON.stringify(antes[k])} -> ${JSON.stringify(depois[k])}`);
+    });
     // No log do job, sem precisar baixar o artefato: o que cada instancia
     // disse sobre sinalizacao, malha e vigia nos ultimos instantes.
     for (const i of instancias) {
