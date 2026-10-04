@@ -250,6 +250,11 @@ class Instancia {
     // assistir (e o app faz isso de proposito -- viewhold.js).
     this.xvfb = await iniciarXvfb();
     this.display = this.xvfb.display;
+    // Os cenarios conferem textos em pt-BR: sem isto o app segue o idioma do
+    // runner (en no Ubuntu do CI) e todo texto esperado diverge.
+    const dados = path.join(this.dir, 'dados');
+    fs.mkdirSync(dados, { recursive: true });
+    fs.writeFileSync(path.join(dados, 'idioma.json'), JSON.stringify({ preferencia: 'pt-BR' }));
     this.proc = spawn(electronBin(), [
       '--no-sandbox',
       `--user-data-dir=${path.join(this.dir, 'dados')}`,
