@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 const J = require('./truco');
 
 test('Truco envia estado proprio e alheio para a barra', () => {

@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 const janela = require('./oito');
 
 test('textoDeStatus mostra a vez e o placar da rodada', () => {

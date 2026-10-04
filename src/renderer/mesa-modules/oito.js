@@ -17,6 +17,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const req = (name) => (
     typeof module !== 'undefined' && typeof module.require === 'function'
       ? module.require(name)
@@ -93,43 +95,45 @@
 
   function validate(s, action, ctx) {
     try {
-      if (!obj(s) || !obj(action) || !KINDS.includes(action.kind)) return 'Ação inválida';
+      if (!obj(s) || !obj(action) || !KINDS.includes(action.kind)) return codigo('mesa.jogo.acaoInvalida');
       const from = fromOf(ctx);
-      if (!from) return 'Quem mandou?';
+      if (!from) return codigo('mesa.jogo.quemMandou');
       const me = seatOf(s, from);
       if (action.kind === 'sit') {
         if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= N) {
-          return 'Lugar inválido';
+          return codigo('mesa.jogo.lugarInvalido');
         }
-        if (me >= 0 && occupied(s, me, ctx)) return 'Você já está jogando';
-        return occupied(s, action.seat, ctx) ? 'Lugar ocupado' : true;
+        if (me >= 0 && occupied(s, me, ctx)) return codigo('mesa.oito.jaEstaJogando');
+        return occupied(s, action.seat, ctx) ? codigo('mesa.jogo.lugarOcupado') : true;
       }
-      if (action.kind === 'stand') return me >= 0 && occupied(s, me, ctx) ? true : 'Você não está jogando';
+      if (action.kind === 'stand') {
+        return me >= 0 && occupied(s, me, ctx) ? true : codigo('mesa.oito.naoEstaJogando');
+      }
       if (action.kind === 'reset') {
         return ctx && ctx.isLeader === true
           ? true
-          : (me >= 0 ? true : 'Só quem joga ou o líder reinicia');
+          : (me >= 0 ? true : codigo('mesa.oito.soQuemJogaReinicia'));
       }
       if (action.kind === 'start') {
-        if (s.phase === 'play') return 'A rodada ainda está correndo';
-        return players(s, ctx).length >= 2 ? true : 'Precisa de 2 pessoas';
+        if (s.phase === 'play') return codigo('mesa.oito.rodadaCorrendo');
+        return players(s, ctx).length >= 2 ? true : codigo('mesa.oito.precisaDuasPessoas');
       }
-      if (s.phase !== 'play') return 'A rodada não está correndo';
+      if (s.phase !== 'play') return codigo('mesa.oito.rodadaParada');
       if (action.kind === 'timeout') return true;
-      if (me !== s.turn || !occupied(s, me, ctx)) return 'Não é a sua vez';
+      if (me !== s.turn || !occupied(s, me, ctx)) return codigo('mesa.jogo.naoESuaVez');
       if (action.kind === 'play') {
-        if (!B.isCard(action.card) || !s.hands[me].includes(action.card)) return 'Carta inválida';
-        if (!canPlay(action.card, s.suit, s.discard.at(-1))) return 'Essa carta não combina';
-        if (action.card[0] === '8' && !SUITS.includes(action.suit)) return 'Escolha um naipe';
+        if (!B.isCard(action.card) || !s.hands[me].includes(action.card)) return codigo('mesa.jogo.cartaInvalida');
+        if (!canPlay(action.card, s.suit, s.discard.at(-1))) return codigo('mesa.oito.naoCombina');
+        if (action.card[0] === '8' && !SUITS.includes(action.suit)) return codigo('mesa.oito.escolhaNaipe');
         return true;
       }
       if (action.kind === 'draw') {
         return s.hands[me].some((c) => canPlay(c, s.suit, s.discard.at(-1)))
-          ? 'Você já pode jogar'
+          ? codigo('mesa.oito.jaPodeJogar')
           : true;
       }
-      return 'Ação inválida';
-    } catch { return 'Ação inválida'; }
+      return codigo('mesa.jogo.acaoInvalida');
+    } catch { return codigo('mesa.jogo.acaoInvalida'); }
   }
 
   function prepare(s, action, ctx) {

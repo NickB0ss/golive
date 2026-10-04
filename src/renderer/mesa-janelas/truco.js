@@ -3,8 +3,8 @@
 /* Conteudo do Truco. A janela recebe apenas a view filtrada pelo servidor;
  * carta nula vira verso e, por isso, a mao de ferro nao vaza valores. */
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const VALORES = [1, 3, 6, 9, 12];
-  const TEXTO_VAZIO = 'Sente 2 ou 4 pessoas. As duplas ficam frente a frente.';
   const NAIPES = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
   function proximoValor(valor) {
@@ -16,8 +16,8 @@
 
   function rotuloCanto(view) {
     const valor = proximoValor(view?.hand?.value);
-    if (valor === 3) return 'Pedir truco';
-    return valor ? `Pedir ${valor}` : 'Canto encerrado';
+    if (valor === 3) return t('mesa.truco.pedirTruco');
+    return valor ? t('mesa.truco.pedirValor', { valor }) : t('mesa.truco.cantoEncerrado');
   }
 
   function face(carta) {
@@ -36,22 +36,25 @@
     const vencedora = (rodada) => rodada && typeof rodada === 'object' ? rodada.winner : rodada;
     const primeira = lista.filter((rodada) => vencedora(rodada) === 0).length;
     const segunda = lista.filter((rodada) => vencedora(rodada) === 1).length;
-    const plural = (n) => `rodada${n === 1 ? '' : 's'}`;
-    return `1ª dupla venceu ${primeira} ${plural(primeira)} · `
-      + `2ª dupla venceu ${segunda} ${plural(segunda)}`;
+    // `n` so escolhe a forma: no pt-BR o zero cairia no singular (CLDR), e aqui 0 e plural.
+    const forma = (qtd) => (qtd === 1 ? 1 : 2);
+    return [
+      t('mesa.truco.rodadasDuplaUm', { n: forma(primeira), qtd: primeira }),
+      t('mesa.truco.rodadasDuplaDois', { n: forma(segunda), qtd: segunda }),
+    ].join(' · ');
   }
 
   function resumoMao(view, agora) {
     const mao = view?.hand;
     if (!mao) return '';
     const partes = [
-      `Vira ${face(mao.vira)}`,
-      `manilha ${mao.manilha || '?'}`,
-      `vale ${mao.value || 1}`,
+      t('mesa.truco.resumoVira', { carta: face(mao.vira) }),
+      t('mesa.truco.resumoManilha', { valor: mao.manilha || '?' }),
+      t('mesa.truco.resumoVale', { valor: mao.value || 1 }),
       textoRodadas(mao.rounds),
     ];
     const tempo = segundos(mao.deadline, agora);
-    if (tempo !== null) partes.push(`${tempo} s`);
+    if (tempo !== null) partes.push(t('mesa.cartas.segundos', { n: tempo }));
     return partes.join(' · ');
   }
 
@@ -59,19 +62,19 @@
     if (!view) return '';
     if (view.phase === 'waiting' || view.phase === 'finished') {
       return view.me?.seat < 0
-        ? 'Escolha um lugar para sentar'
-        : 'Dê as cartas quando houver 2 ou 4 jogadores';
+        ? t('mesa.poquer.escolhaLugar')
+        : t('mesa.truco.darCartas24');
     }
     if (view.phase === 'eleven' && view.me?.team === view.hand?.eleven) {
-      return 'Mão de onze: jogam por 3 ou correm';
+      return t('mesa.truco.maoDeOnze');
     }
     const pendente = view.hand?.pending;
     if (pendente && view.me?.team === pendente.toTeam) {
-      return `Responder ${pendente.amount}: aceitar, correr ou aumentar`;
+      return t('mesa.truco.responder', { valor: pendente.amount });
     }
-    if (pendente) return `Esperando a resposta ao ${pendente.amount}`;
-    if (view.hand?.turn === view.me?.seat) return 'Sua vez';
-    return `Vez de ${nome(view.hand?.turn)}`;
+    if (pendente) return t('mesa.truco.esperandoResposta', { valor: pendente.amount });
+    if (view.hand?.turn === view.me?.seat) return t('mesa.jogo.suaVez');
+    return t('mesa.jogo.vezDe', { nome: nome(view.hand?.turn) });
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -127,7 +130,7 @@
     const cruz = criar(doc, 'div', 'mj-tr-cruz');
     const cadeiras = [0, 1, 2, 3].map((seat) => {
       const grupo = comum.cadeiras({
-        rotulo: `Lugar ${seat + 1}`,
+        rotulo: t('mesa.cartas.lugar', { n: seat + 1 }),
         aoSentar() { base.acao(cruz, { kind: 'sit', seat }); },
         aoRecusar(motivo) { base.aviso.mostrar(motivo, cruz); },
       });
@@ -137,8 +140,8 @@
     });
     const vazio = comum.vazio({
       icone: 'pessoas',
-      titulo: 'Quatro lugares, duas duplas',
-      texto: TEXTO_VAZIO,
+      titulo: t('mesa.truco.vazioTitulo'),
+      texto: t('mesa.truco.vazioTexto'),
       acao: cruz,
     });
     base.raiz.append(vazio, topo, resumo, lugares, mesa, minhas, acoes);
@@ -147,7 +150,7 @@
 
     function nome(seat) {
       const id = view?.seats?.[seat];
-      return id ? comum.nomeDe(api, id) : 'Livre';
+      return id ? comum.nomeDe(api, id) : t('mesa.poquer.livre');
     }
 
     function botao(texto, action, zona = acoes, classe = '') {
@@ -167,13 +170,15 @@
           peca: null,
           vez: false,
           eu: Boolean(id) && view?.me?.seat === seat,
-          motivoSentar: view?.me?.can?.sit ? true : (sentado ? 'Você já está sentado' : 'Indisponível agora'),
+          motivoSentar: view?.me?.can?.sit
+            ? true
+            : t(sentado ? 'mesa.cartas.voceJaEstaSentado' : 'mesa.cartas.indisponivelAgora'),
           // Levantar mora so no botao "Levantar" de baixo: uma acao num lugar so.
-          motivoLevantar: 'Use o botão Levantar',
+          motivoLevantar: t('mesa.cartas.useBotaoLevantar'),
         }]);
       });
       const sentados = (view?.seats || []).filter(Boolean).length;
-      vazio.children[2].textContent = sentados ? textoStatus(view, nome) : TEXTO_VAZIO;
+      vazio.children[2].textContent = sentados ? textoStatus(view, nome) : t('mesa.truco.vazioTexto');
     }
 
     function desenharLugares() {
@@ -183,7 +188,7 @@
         if (view?.hand?.turn === seat) lugar.classList.add('is-vez');
         lugar.append(criar(doc, 'span', 'mj-tr-nome', nome(seat)));
         if (!view?.seats?.[seat] && view?.me?.can?.sit) {
-          lugar.append(botao('Sentar', { kind: 'sit', seat }, lugar, 'mj-fantasma'));
+          lugar.append(botao(t('mesa.cartas.sentar'), { kind: 'sit', seat }, lugar, 'mj-fantasma'));
         }
         lugares.append(lugar);
       }
@@ -210,7 +215,7 @@
       minhas.replaceChildren();
       const mao = view?.hand?.cards || [];
       if (Array.isArray(view?.hand?.partnerCards)) {
-        minhas.append(criar(doc, 'p', 'mj-tr-parceiro', 'Cartas do parceiro'));
+        minhas.append(criar(doc, 'p', 'mj-tr-parceiro', t('mesa.truco.parceiro')));
         for (const carta of view.hand.partnerCards) {
           minhas.append(cartas.carta(carta, { tamanho: 'p' }));
         }
@@ -219,7 +224,10 @@
         const item = criar(doc, 'div', 'mj-tr-carta');
         item.append(cartas.carta(carta, { tamanho: 'g' }));
         for (const action of acoesDaView(view, index)) {
-          item.append(botao(action.covered ? 'Encoberta' : 'Jogar', action, acoes, action.covered ? '' : 'mj-pri'));
+          item.append(botao(
+            action.covered ? t('mesa.truco.encoberta') : t('mesa.truco.jogar'), action, acoes,
+            action.covered ? '' : 'mj-pri',
+          ));
         }
         minhas.append(item);
       });
@@ -230,17 +238,20 @@
       const itens = [];
       for (const action of acoesPrincipais(view)) {
         const levantar = action.kind === 'stand';
-        itens.push({ texto: levantar ? 'Levantar' : 'Dar as cartas', action, principal: !levantar });
+        const texto = t(levantar ? 'mesa.jogo.levantar' : 'mesa.poquer.darAsCartas');
+        itens.push({ texto, action, principal: !levantar });
       }
       if (view?.me?.can?.eleven) {
-        itens.push({ texto: 'Jogar por 3', action: { kind: 'eleven', choice: 'play' }, principal: true });
-        itens.push({ texto: 'Correr', action: { kind: 'eleven', choice: 'run' } });
+        itens.push({
+          texto: t('mesa.truco.jogarPorTres'), action: { kind: 'eleven', choice: 'play' }, principal: true,
+        });
+        itens.push({ texto: t('mesa.truco.correr'), action: { kind: 'eleven', choice: 'run' } });
       }
       if (view?.me?.can?.call) itens.push({ texto: rotuloCanto(view), action: { kind: 'call' } });
       if (view?.me?.can?.answer) {
-        itens.push({ texto: 'Aceitar', action: { kind: 'answer', answer: 'accept' }, principal: true });
-        itens.push({ texto: 'Correr', action: { kind: 'answer', answer: 'run' } });
-        itens.push({ texto: 'Aumentar', action: { kind: 'answer', answer: 'raise' } });
+        itens.push({ texto: t('mesa.truco.aceitar'), action: { kind: 'answer', answer: 'accept' }, principal: true });
+        itens.push({ texto: t('mesa.truco.correr'), action: { kind: 'answer', answer: 'run' } });
+        itens.push({ texto: t('mesa.poquer.aumentar'), action: { kind: 'answer', answer: 'raise' } });
       }
       const botoes = itens.map((item) => ({ item, botao: botao(item.texto, item.action) }));
       const principal = botoes.find((x) => x.item.principal);
@@ -257,7 +268,7 @@
       placar.textContent = `${view.scores?.[0] || 0} × ${view.scores?.[1] || 0}`;
       vira.replaceChildren();
       if (view.hand?.vira) {
-        vira.append('Vira ', cartas.carta(view.hand.vira, { tamanho: 'p' }));
+        vira.append(`${t('mesa.truco.vira')} `, cartas.carta(view.hand.vira, { tamanho: 'p' }));
       }
       resumo.textContent = resumoMao(view, api.serverNow());
       status.textContent = textoStatus(view, nome);

@@ -515,12 +515,6 @@
     "Água em",
     "água"
   ],
-  "src/renderer/mesa-janelas/cartas.js": [
-    "carta virada",
-    "sem cartas",
-    "três",
-    "ás"
-  ],
   "src/renderer/mesa-janelas/comum.js": [
     "Alguém",
     "Alguém",
@@ -738,20 +732,6 @@
     "Salvo por",
     "salvou outra versão; a sua vale se você salvar"
   ],
-  "src/renderer/mesa-janelas/oito.js": [
-    "Comprar só quando não houver jogada",
-    "Dar cartas",
-    "Naipe escolhido pelo oito",
-    "Não pode jogar esta carta agora",
-    "Precisa de duas pessoas e rodada parada",
-    "Recomeçar",
-    "Sente-se e dê as cartas",
-    "Sente-se e dê as cartas",
-    "Sente-se para recomeçar",
-    "Vez de",
-    "Vez de",
-    "Você não está jogando"
-  ],
   "src/renderer/mesa-janelas/placar.js": [
     ": fecha com",
     "Melhor de",
@@ -890,27 +870,6 @@
     "Você desistiu",
     "Você já está sentado",
     "Você venceu"
-  ],
-  "src/renderer/mesa-janelas/truco.js": [
-    "1ª dupla venceu",
-    "2ª dupla venceu",
-    ": aceitar, correr ou aumentar",
-    "Canto encerrado",
-    "Cartas do parceiro",
-    "Dar as cartas",
-    "Dê as cartas quando houver 2 ou 4 jogadores",
-    "Escolha um lugar para sentar",
-    "Esperando a resposta ao",
-    "Indisponível agora",
-    "Jogar por 3",
-    "Mão de onze: jogam por 3 ou correm",
-    "Pedir truco",
-    "Quatro lugares, duas duplas",
-    "Sente 2 ou 4 pessoas. As duplas ficam frente a frente.",
-    "Sua vez",
-    "Use o botão Levantar",
-    "Vez de",
-    "Você já está sentado"
   ],
   "src/renderer/mesa-janelas/velha.js": [
     "Casa ocupada",
@@ -1258,26 +1217,9 @@
     "texto inválido"
   ],
   "src/renderer/mesa-modules/oito.js": [
-    "A rodada ainda está correndo",
-    "A rodada não está correndo",
-    "Ação inválida",
-    "Ação inválida",
-    "Ação inválida",
-    "Carta inválida",
-    "Escolha um naipe",
-    "Essa carta não combina",
-    "Lugar inválido",
-    "Lugar ocupado",
-    "Não é a sua vez",
     "Oito maluco",
     "Oito maluco —",
-    "Oito maluco — lugares livres",
-    "Precisa de 2 pessoas",
-    "Quem mandou?",
-    "Só quem joga ou o líder reinicia",
-    "Você já está jogando",
-    "Você já pode jogar",
-    "Você não está jogando"
+    "Oito maluco — lugares livres"
   ],
   "src/renderer/mesa-modules/placar.js": [
     "(melhor de",
@@ -1753,29 +1695,6 @@
     "Voto inválido",
     "pessoas por rodada",
     "· respostas escondidas"
-  ],
-  "src/renderer/mesa-modules/truco.js": [
-    "A mão não está jogando",
-    "Ação desconhecida.",
-    "Canto indisponível",
-    "Canto indisponível",
-    "Canto indisponível",
-    "Carta inválida.",
-    "Decisão inválida.",
-    "Encoberta só da segunda rodada",
-    "Lugar inválido.",
-    "Lugar ocupado.",
-    "Não há decisão pendente.",
-    "Não há mão em andamento.",
-    "Não passa de doze.",
-    "Não é a sua vez",
-    "Não é possível dar agora.",
-    "Não é sua decisão.",
-    "Não é sua resposta.",
-    "Resposta inválida.",
-    "Só quem está na mesa reinicia.",
-    "Você já está sentado.",
-    "Você não está sentado."
   ],
   "src/renderer/mesa-modules/velha.js": [
     "Ação desconhecida",

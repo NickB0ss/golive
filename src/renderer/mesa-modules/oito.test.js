@@ -127,12 +127,12 @@ test('carta do mesmo valor vale', () => {
 
 test('carta que nao combina e recusada', () => {
   const s = { ...pronto(), hands: [['2s'], ['3s']], discard: ['Kh'], suit: 'h', turn: 0 };
-  assert.equal(oito.validate(s, { kind: 'play', card: '2s' }, ctx('ana')), 'Essa carta não combina');
+  assert.equal(oito.validate(s, { kind: 'play', card: '2s' }, ctx('ana')), 'mesa.oito.naoCombina');
 });
 
 test('oito vale sobre qualquer carta e exige naipe', () => {
   const s = { ...pronto(), hands: [['8s'], ['3s']], discard: ['Kh'], suit: 'h', turn: 0 };
-  assert.equal(oito.validate(s, { kind: 'play', card: '8s' }, ctx('ana')), 'Escolha um naipe');
+  assert.equal(oito.validate(s, { kind: 'play', card: '8s' }, ctx('ana')), 'mesa.oito.escolhaNaipe');
   assert.equal(oito.validate(s, { kind: 'play', card: '8s', suit: 'c' }, ctx('ana')), true);
 });
 
@@ -171,5 +171,5 @@ test('aceita oito jogadores', () => {
 
 test('acao fora da vez e recusada', () => {
   const s = pronto();
-  assert.equal(oito.validate(s, { kind: 'draw' }, ctx('bia')), 'Não é a sua vez');
+  assert.equal(oito.validate(s, { kind: 'draw' }, ctx('bia')), 'mesa.jogo.naoESuaVez');
 });
