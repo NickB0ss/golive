@@ -2670,7 +2670,8 @@
 
   // ---------- Lobby: endereco desta maquina na rede ----------
 
-  const NET_LABELS = { radmin: 'Radmin VPN', tailscale: 'Tailscale', lan: 'ui.rede.local' };
+  // Marcas ficam como sao em toda lingua; so a rede local e a generica se traduzem.
+  const NET_MARCAS = { radmin: 'Radmin VPN', tailscale: 'Tailscale' };
 
   /** `info` e o { address, kind } do IPC network:address, ou null. Tres
    * estados: rede virtual (verde), so LAN (amarelo), nada (cinza). */
@@ -2696,7 +2697,8 @@
       return;
     }
     dot.dataset.level = info.kind === 'lan' ? 'warn' : 'ok';
-    kindEl.textContent = `${NET_LABELS[info.kind] ? t(NET_LABELS[info.kind]) : t('ui.rede.rede')} ·`;
+    const rede = NET_MARCAS[info.kind] || t(info.kind === 'lan' ? 'ui.rede.local' : 'ui.rede.rede');
+    kindEl.textContent = `${rede} ·`;
     addrEl.textContent = info.address;
     addrEl.title = info.iface ? `${info.address} (${info.iface})` : info.address;
     if (copy) copy.hidden = false;

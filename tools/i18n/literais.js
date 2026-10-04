@@ -139,6 +139,7 @@ const EXCECOES = new Set([
   'Español', // nome da lingua na propria lingua (spec 2.2)
   'use strict', // diretiva JavaScript, nao texto de tela
   'NAO tocou', // codigo de status tecnico recebido pelo teste de som
+  'Radmin VPN', // marca (nome da rede virtual), igual em toda lingua
 ]);
 
 function ehListaDeClasses(texto) {
