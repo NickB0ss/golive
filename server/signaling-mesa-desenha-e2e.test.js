@@ -180,9 +180,14 @@ async function cena(p, opts = {}) {
 /** Nenhuma mensagem que chegou neste socket contem `texto` em lugar
  * nenhum -- nem cru no fio, nem dentro de um estado. */
 function naoVaza(cliente, texto, oque) {
+  // Palavra inteira (limites Unicode), nao substring: a palavra "mesa" nao pode
+  // casar com campos do protocolo como `mesaCount`, e "maçã" tem de casar mesmo
+  // com acento no fim (o \b do JS so conhece ASCII).
+  const escapado = String(texto).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const palavra = new RegExp(`(?<![\\p{L}\\p{N}])${escapado}(?![\\p{L}\\p{N}])`, 'iu');
   const linhas = cliente.entrada.map((m) => JSON.stringify(m));
   for (const linha of linhas) {
-    assert.equal(linha.toLowerCase().includes(String(texto).toLowerCase()), false, `${oque}: "${texto}" vazou: ${linha}`);
+    assert.equal(palavra.test(linha), false, `${oque}: "${texto}" vazou: ${linha}`);
   }
 }
 
