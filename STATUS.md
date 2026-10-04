@@ -111,8 +111,8 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.24.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **1977 testes, 1977 passando, 0 falhando**. `npm run lint` → 0
+`0.25.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **2129 testes, 2129 passando, 0 falhando**. `npm run lint` → 0
 erros, 9 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
@@ -294,7 +294,7 @@ mediu:
   `sala-basica` acaba antes de ver). Corrigido junto do
   fanout 2 (a origem desconta a própria parte do `relayLoad`).
 
-## Idiomas — pt-BR, en e es (branch `feat/idiomas`, sem release)
+## Idiomas — pt-BR, en e es (lançado na 0.25.0)
 
 Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpowers/plans/2026-10-03-idiomas.md`.
 
@@ -557,6 +557,15 @@ Pendências:
 - **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
   anterior a estas fases, contra a regra de não usar `filter`.
 - **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
+## Lançado na 0.25.0 (2026-10-04)
+
+O app passa a falar **português, inglês e espanhol** (seção "Idiomas" acima): segue o idioma do sistema e troca em
+Configurações › Aparência; numa sala com idiomas diferentes, cada pessoa vê tudo no próprio idioma. O **Quiz** ganha
+um banco novo de 480 perguntas em 8 temas globais, com escolha de temas na partida, e o **Desenha** aceita o palpite
+em qualquer das três línguas. Também entra o **rework das janelas da Mesa** (PR #92): materiais (feltro, tabuleiro,
+papel, lousa, palco), cadeiras, vazio e ações comuns nas 30 janelas. Antes de ir para todos, falta a revisão de um
+falante nativo do espanhol e o teste em 2+ PCs reais com idiomas diferentes.
 
 ## Lançado na 0.24.0 (2026-10-03)
 
