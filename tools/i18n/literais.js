@@ -138,6 +138,7 @@ const EXCECOES = new Set([
   'English', // nome da lingua na propria lingua (spec 2.2)
   'Español', // nome da lingua na propria lingua (spec 2.2)
   'use strict', // diretiva JavaScript, nao texto de tela
+  'NAO tocou', // codigo de status tecnico recebido pelo teste de som
 ]);
 
 function ehListaDeClasses(texto) {

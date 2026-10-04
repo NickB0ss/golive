@@ -3420,8 +3420,9 @@
       const vendo = (tileWatchers.get('me') || []).length;
       // Quem transmite precisa saber se alguem esta do outro lado, inclusive
       // quando ninguem esta.
-      sub.textContent = pausado ? 'Tela pausada'
-        : [nomeFonteAoVivo || 'Ao vivo', vendo ? `${vendo} assistindo` : 'ninguém assistindo'].join(' · ');
+      sub.textContent = pausado ? t('ui.fonte.telaPausada')
+        : [nomeFonteAoVivo || t('ui.tile.aoVivo'), vendo ? t('ui.fonte.assistindo', { n: vendo })
+          : t('ui.fonte.niguemAssistindo')].join(' · ');
       sub.title = vendo ? (tileWatchers.get('me') || []).map((w) => w.name).filter(Boolean).join(', ') : '';
       sub.classList.toggle('tx-live', pausado);
     }
@@ -3438,9 +3439,9 @@
     // Ao vivo e nao assistido: o botao Assistir ja diz o estado, e na coluna
     // de 232 px o texto a mais espremia o nome ate uma letra.
     if (pessoa.live && !assistido && !pessoa.isSelf) return '';
-    if (pessoa.live && assistido && !pessoa.isSelf) return 'você assiste';
-    if (tileRegistry.has(`cam-${pessoa.id}`)) return 'câmera';
-    if (mesaPeople?.has(String(pessoa.id))) return 'na Mesa';
+    if (pessoa.live && assistido && !pessoa.isSelf) return t('ui.fonte.voceAssiste');
+    if (tileRegistry.has(`cam-${pessoa.id}`)) return t('ui.tile.camera');
+    if (mesaPeople?.has(String(pessoa.id))) return t('ui.fonte.naMesa');
     return '';
   }
 
@@ -3465,7 +3466,7 @@
       li.innerHTML = `
         <span class="node" data-size="24" style="--who:${avatarColorFor(String(entry.key))}">${avatarInnerHtml(String(entry.key), entry.name, null)}</span>
         <span class="person__text"><span class="person__name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span></span>
-        <span class="person__actions"><button class="btn btn--secondary btn--sm banned-readmit" type="button">Readmitir</button></span>
+        <span class="person__actions"><button class="btn btn--secondary btn--sm banned-readmit" type="button">${t('ui.moderacao.readmitir')}</button></span>
       `;
       li.querySelector('.banned-readmit').addEventListener('click', () => onUnban?.(entry.key));
       bannedListEl.appendChild(li);
@@ -3590,9 +3591,9 @@
     const L = root.GoLive.mesaMidiaLinks;
     const lib = root.GoLive.chatImagensLib;
     const links = lib && L ? lib.youtubeLinks(entry.text, L.parseYouTube) : [];
-    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="Pôr este vídeo na Mesa"${links.length > 1 ? ` aria-label="Pôr na Mesa o vídeo ${i + 1}"` : ''}>${PUT_ICON}<span>Pôr na Mesa${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
+    const out = links.map((l, i) => `<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="youtube" data-i="${i}" title="${t('ui.chat.porVideoMesa')}"${links.length > 1 ? ` aria-label="${t('ui.chat.porVideoMesaN', { n: i + 1 })}"` : ''}>${PUT_ICON}<span>${t('ui.chat.porMesa')}${links.length > 1 ? ` (${i + 1})` : ''}</span></button>`);
     if (chatmedia.isImageDataUrl(entry.image) && lib?.isMsgId(entry.id)) {
-      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="Pôr esta imagem na Mesa">${PUT_ICON}<span>Pôr na Mesa</span></button>`);
+      out.push(`<button type="button" class="btn btn--quiet btn--sm chat-put" data-put="imagem" title="${t('ui.chat.porImagemMesa')}">${PUT_ICON}<span>${t('ui.chat.porMesa')}</span></button>`);
     }
     return out.length ? `<span class="msg__put">${out.join('')}</span>` : '';
   }
@@ -3949,10 +3950,10 @@
     let vazio = '';
     if (query) {
       chars = emoji.search(query);
-      vazio = 'nenhum emoji com esse nome';
+      vazio = t('ui.emoji.nenhum');
     } else if (emojiGroup === 'recentes') {
       chars = emoji.loadRecents(emojiDeps.getEmojiRecents());
-      vazio = 'os que você usar aparecem aqui';
+      vazio = t('ui.emoji.vazio');
     } else {
       chars = (emoji.GROUPS.find((g) => g.id === emojiGroup)?.items || []).map(([c]) => c);
     }
@@ -4188,7 +4189,7 @@
 
   async function startSettingsCameraPreview(deviceId) {
     stopSettingsCameraPreview();
-    notaDaPrevia('Abrindo a câmera…');
+    notaDaPrevia(t('ui.config.abrindoCamera'));
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: deviceId ? { deviceId: { exact: deviceId } } : true,
@@ -4207,8 +4208,8 @@
     } catch (err) {
       // Permissao negada, camera ocupada por outro app ou nenhuma camera: a
       // previa diz o que houve em vez de ficar um retangulo preto mudo.
-      notaDaPrevia(err?.name === 'NotFoundError' ? 'Nenhuma câmera encontrada.'
-        : 'A câmera não abriu. Veja se outro app está usando ou escolha outro dispositivo.');
+      notaDaPrevia(err?.name === 'NotFoundError' ? t('ui.config.nenhumaCamera')
+        : t('ui.config.cameraNaoAbriu'));
     }
   }
 
@@ -4256,7 +4257,7 @@
     // Virgula: a linha inteira e em portugues, e "2.5 Mbps" no meio dela
     // era o unico numero do app com ponto decimal.
     const texto = screenMbps.toFixed(1).replace(/\.0$/, '').replace('.', ',');
-    return `≈${texto} Mbps por pessoa assistindo enquanto você estiver transmitindo`;
+    return t('ui.compartilhar.bandaPorPessoa', { mbps: texto });
   }
 
   /** Linha de resumo do seletor de qualidade: o custo exato da combinacao
@@ -4341,7 +4342,7 @@
     const host = $('my-themes');
     if (!host) return;
     if (!myThemes.length) {
-      host.innerHTML = '<p class="field__help">Nenhum tema salvo ainda.</p>';
+      host.innerHTML = `<p class="field__help">${t('ui.tema.nenhumSalvo')}</p>`;
       return;
     }
     host.innerHTML = myThemes.map((t) => {
@@ -4355,7 +4356,7 @@
             <span class="theme-card__label">${escapeHtml(t.name)}</span>
           </button>
           <button class="btn btn--quiet btn--icon btn--sm my-theme-menu-btn" type="button" data-theme-menu="${escapeHtml(t.id)}"
-                  title="Opções de ${escapeHtml(t.name)}" aria-label="Opções de ${escapeHtml(t.name)}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>
+                  title="${t('ui.tema.opcoes', { nome: escapeHtml(t.name) })}" aria-label="${t('ui.tema.opcoes', { nome: escapeHtml(t.name) })}"><svg class="i i--sm"><use href="#i-ellipsis" /></svg></button>
         </div>`;
     }).join('');
   }
@@ -4403,9 +4404,9 @@
     const t = myThemes.find((x) => x.id === id);
     if (!t) return;
     const itens = [
-      { rotulo: 'Renomear', acao: () => {
+      { rotulo: t('ui.tema.renomear'), acao: () => {
         openText({
-          title: 'Renomear tema',
+          title: t('ui.tema.renomearTitulo'),
           value: t.name,
           onAccept: (nome) => {
             t.name = themeName(nome);
@@ -4414,12 +4415,12 @@
           },
         });
       } },
-      { rotulo: 'Copiar código', acao: () => copiarCodigoDoTema(t, anchorEl) },
-      { rotulo: 'Apagar', tom: 'danger', acao: () => {
+      { rotulo: t('ui.tema.copiarCodigo'), acao: () => copiarCodigoDoTema(t, anchorEl) },
+      { rotulo: t('ui.tema.apagar'), tom: 'danger', acao: () => {
         openConfirm({
-          title: 'Apagar tema',
-          text: `"${t.name}" some da lista. Quem já tem o código continua podendo usar.`,
-          confirmLabel: 'Apagar',
+          title: t('ui.tema.apagarTitulo'),
+          text: t('ui.tema.apagarAviso', { nome: t.name }),
+          confirmLabel: t('ui.tema.apagar'),
           onConfirm: () => {
             myThemes = myThemes.filter((x) => x.id !== id);
             onThemesChange?.(myThemes);
@@ -4439,7 +4440,7 @@
     void navigator.clipboard.writeText(codigo).then(() => {
       anchorEl.classList.add('copied-flash');
       const status = $('theme-code-status');
-      if (status) status.textContent = 'Código copiado.';
+      if (status) status.textContent = t('ui.tema.codigoCopiado');
       setTimeout(() => anchorEl.classList.remove('copied-flash'), 1200);
     }).catch(() => {});
   }
@@ -4493,7 +4494,7 @@
       const fixBtn = document.createElement('button');
       fixBtn.type = 'button';
       fixBtn.className = 'btn btn--secondary btn--sm theme-warning-fix';
-      fixBtn.textContent = `usar ${result.nearestAct}`;
+      fixBtn.textContent = t('ui.tema.usarCor', { cor: result.nearestAct });
       fixBtn.addEventListener('click', () => {
         $('theme-act').value = result.nearestAct;
         applyCustomThemeFromControls(deps, opcoes);
@@ -4530,19 +4531,19 @@
       <div class="settings__block">
         <div class="settings__profile">
           <button id="settings-profile-avatar" class="settings__avatar" type="button"
-            title="Trocar a foto" aria-label="Trocar a foto de perfil">
+            title="${t('ui.config.trocarFoto')}" aria-label="${t('ui.config.trocarFotoPerfil')}">
             <span class="node" data-size="56">
               <img id="settings-profile-avatar-img" class="hidden" alt="" />
               <span id="settings-profile-avatar-fallback"></span>
             </span>
-            <span class="tx-meta">Trocar foto</span>
+            <span class="tx-meta">${t('ui.config.trocarFoto')}</span>
           </button>
           <input id="settings-profile-avatar-input" type="file" accept="image/*" class="hidden" />
           <div class="field">
-            <label class="field__label" for="settings-profile-name">Seu nome</label>
-            <input id="settings-profile-name" class="input" type="text" placeholder="Como te chamam no grupo"
+            <label class="field__label" for="settings-profile-name">${t('ui.config.seuNome')}</label>
+            <input id="settings-profile-name" class="input" type="text" placeholder="${t('ui.config.nomeGrupo')}"
               spellcheck="false" maxlength="32" />
-            <p class="field__help">Aparece para quem está na sala a partir da próxima entrada.</p>
+            <p class="field__help">${t('ui.config.nomeAjuda')}</p>
           </div>
         </div>
       </div>`;
@@ -4563,45 +4564,45 @@
       </div>
 
       <div class="settings__block">
-        <h3 class="settings__h">Tema</h3>
+        <h3 class="settings__h">${t('ui.config.tema')}</h3>
         <div id="theme-presets" class="theme-grid"></div>
       </div>
 
       <div class="settings__block">
-        <h3 class="settings__h">Personalizar</h3>
+        <h3 class="settings__h">${t('ui.config.personalizar')}</h3>
         <div class="field">
-          <label class="field__label" for="theme-act">Cor de ação</label>
-          <p class="field__help">Botão principal e seleção. Tem de passar no contraste com o fundo.</p>
+          <label class="field__label" for="theme-act">${t('ui.config.corAcao')}</label>
+          <p class="field__help">${t('ui.config.corAcaoAjuda')}</p>
           <input id="theme-act" class="settings__color" type="color" value="#EDEDF2" aria-describedby="theme-warning" />
         </div>
         <div class="field">
-          <label class="field__label" for="theme-temp">Temperatura das superfícies</label>
+          <label class="field__label" for="theme-temp">${t('ui.config.temperatura')}</label>
           <input id="theme-temp" class="range" type="range" min="0" max="100" value="50" />
         </div>
         <div class="field">
-          <label class="field__label" for="theme-level">Claridade das superfícies</label>
+          <label class="field__label" for="theme-level">${t('ui.config.claridade')}</label>
           <input id="theme-level" class="range" type="range" min="0" max="100" value="20" />
         </div>
         <p id="theme-warning" class="field__error" role="alert"></p>
         <div class="settings__actions">
-          <button id="btn-theme-reset" type="button" class="btn btn--quiet btn--sm">Voltar ao padrão</button>
+          <button id="btn-theme-reset" type="button" class="btn btn--quiet btn--sm">${t('ui.config.voltarPadrao')}</button>
         </div>
       </div>
 
       <div class="settings__block">
-        <h3 class="settings__h">Meus temas</h3>
-        <p class="field__help">Guarde a combinação que você montou e mande o código para quem quiser usar igual.</p>
+        <h3 class="settings__h">${t('ui.config.meusTemas')}</h3>
+        <p class="field__help">${t('ui.config.temasAjuda')}</p>
         <div id="my-themes" class="theme-grid"></div>
         <div class="settings__actions">
-          <button id="btn-theme-save" type="button" class="btn btn--secondary btn--sm">Salvar tema atual</button>
-          <p id="theme-save-hint" class="field__help hidden">Mexa na temperatura ou na claridade para montar um tema seu.</p>
+          <button id="btn-theme-save" type="button" class="btn btn--secondary btn--sm">${t('ui.config.salvarTema')}</button>
+          <p id="theme-save-hint" class="field__help hidden">${t('ui.config.salvarTemaAjuda')}</p>
         </div>
         <div class="field">
-          <label class="field__label" for="theme-code-input">Usar um código</label>
+          <label class="field__label" for="theme-code-input">${t('ui.config.usarCodigo')}</label>
           <div class="combo">
             <input id="theme-code-input" class="input input--mono" type="text" placeholder="GL-XXXX-XXXX-XXXX"
               spellcheck="false" autocomplete="off" />
-            <button id="btn-theme-code-use" type="button" class="btn btn--secondary" disabled>Salvar como…</button>
+            <button id="btn-theme-code-use" type="button" class="btn btn--secondary" disabled>${t('ui.config.salvarComo')}</button>
           </div>
           <p id="theme-code-status" class="field__help" role="status"></p>
         </div>
@@ -4609,51 +4610,50 @@
 
     settingsPanes.voice.innerHTML = `
       <div class="settings__block">
-        <h3 class="settings__h">Câmera</h3>
+        <h3 class="settings__h">${t('ui.config.camera')}</h3>
         <div class="field">
-          <label class="field__label" for="settings-camera-device">Dispositivo</label>
+          <label class="field__label" for="settings-camera-device">${t('ui.config.dispositivo')}</label>
           <select id="settings-camera-device" class="input"></select>
         </div>
         <div class="settings__preview">
           <video id="settings-camera-preview" autoplay playsinline muted></video>
-          <p id="settings-camera-note" class="settings__preview-note">Abrindo a câmera…</p>
+          <p id="settings-camera-note" class="settings__preview-note">${t('ui.config.abrindoCamera')}</p>
         </div>
       </div>
       <div class="settings__block">
-        <h3 class="settings__h">Sons e avisos</h3>
+        <h3 class="settings__h">${t('ui.config.sonsAvisos')}</h3>
         <label class="opt">
-          <span class="opt__text"><span class="opt__title">Sons do app</span>
-            <span class="opt__desc">Entrada, saída, conversa, transmissão começando e moderação.</span></span>
+          <span class="opt__text"><span class="opt__title">${t('ui.config.sonsApp')}</span>
+            <span class="opt__desc">${t('ui.config.sonsAppAjuda')}</span></span>
           <input id="settings-sounds" class="switch" type="checkbox" />
         </label>
         <label class="opt">
-          <span class="opt__text"><span class="opt__title">Avisar quando alguém ficar ao vivo</span>
-            <span class="opt__desc">Notificação do Windows quando a janela do GoLive não está em foco.</span></span>
+          <span class="opt__text"><span class="opt__title">${t('ui.config.avisarAoVivo')}</span>
+            <span class="opt__desc">${t('ui.config.avisarAoVivoAjuda')}</span></span>
           <input id="settings-live-notify" class="switch" type="checkbox" />
         </label>
       </div>
       <div class="settings__block sound-check" aria-labelledby="sound-check-title">
         <div class="settings__row">
-          <h3 id="sound-check-title" class="settings__h">Testar os sons</h3>
-          <button id="btn-test-sounds" type="button" class="btn btn--secondary btn--sm">Tocar todos</button>
+          <h3 id="sound-check-title" class="settings__h">${t('ui.config.testarSons')}</h3>
+          <button id="btn-test-sounds" type="button" class="btn btn--secondary btn--sm">${t('ui.config.tocarTodos')}</button>
         </div>
-        <p id="sound-test-current" class="field__help" aria-live="polite">Toca cada aviso, inclusive o da conversa com a
-          janela em foco.</p>
+        <p id="sound-test-current" class="field__help" aria-live="polite">${t('ui.config.testarSonsAjuda')}</p>
         <details class="sound-log">
-          <summary>Últimas tentativas</summary>
+          <summary>${t('ui.config.ultimasTentativas')}</summary>
           <ul id="sound-recent" class="sound-recent" aria-live="polite"></ul>
         </details>
       </div>`;
 
     settingsPanes.stats.innerHTML = `
       <div class="settings__block">
-        <p class="field__help">Números de cada fonte, enviando e recebendo. Atualiza sozinho enquanto está aberto.</p>
+        <p class="field__help">${t('ui.diag.numerosAjuda')}</p>
         <div id="settings-stats-body" class="stats"></div>
       </div>
       <div class="settings__block settings__row">
-        <p class="field__help">Para mandar a quem for investigar um problema.</p>
+        <p class="field__help">${t('ui.diag.enviarAjuda')}</p>
         <button id="btn-open-logs" type="button" class="btn btn--secondary btn--sm">
-          <svg class="i i--sm"><use href="#i-folder-open" /></svg>Abrir pasta de logs</button>
+          <svg class="i i--sm"><use href="#i-folder-open" /></svg>${t('ui.diag.abrirLogs')}</button>
       </div>`;
     setStatsHtml(lastStatsHtml, { force: true });
 
@@ -4691,12 +4691,12 @@
       const list = $('sound-recent');
       const entries = deps.getRecentSounds ? deps.getRecentSounds() : [];
       if (!entries.length) {
-        list.innerHTML = '<li class="sound-recent-empty">Nenhuma tentativa nesta sessão.</li>';
+        list.innerHTML = `<li class="sound-recent-empty">${t('ui.config.semTentativas')}</li>`;
         return;
       }
       list.innerHTML = entries.slice().reverse().map((entry) => {
-        const status = entry.status === 'NAO tocou' ? 'não tocou' : entry.status;
-        const hour = new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const status = entry.status === 'NAO tocou' ? t('ui.config.naoTocou') : entry.status;
+        const hour = formatarHora(entry.at, { segundos: true });
         return `<li><time>${hour}</time><span>${entry.name}</span><b class="sound-${entry.status === 'tocou' ? 'played' : 'skipped'}">${status}</b><em>${entry.reason}</em></li>`;
       }).join('');
     };
@@ -4706,10 +4706,10 @@
       button.disabled = true;
       try {
         await deps.onTestSounds((name) => {
-          $('sound-test-current').textContent = `Tocando: ${name}.`;
+          $('sound-test-current').textContent = t('ui.config.tocando', { nome: name });
           renderRecentSounds();
         });
-        $('sound-test-current').textContent = 'Teste concluído.';
+        $('sound-test-current').textContent = t('ui.config.testeConcluido');
       } finally {
         button.disabled = false;
         renderRecentSounds();
@@ -4776,21 +4776,21 @@
       // Codigo invalido nao muda NADA na tela: a pessoa colou errado, nao
       // pediu tema novo.
       if (!temaColado) {
-        status.textContent = 'Esse código não parece certo.';
+        status.textContent = t('ui.tema.codigoInvalido');
         return;
       }
-      status.textContent = 'Código válido. Dê um nome para salvar.';
+      status.textContent = t('ui.tema.codigoValido');
       aplicarPreviaImportada(temaColado);
     });
     $('btn-theme-code-use').addEventListener('click', () => {
       if (!temaColado) return;
       if (myThemes.length >= 12) {
-        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar este.');
+        deps.onToast(t('ui.tema.limite', { tipo: t('ui.tema.este') }));
         return;
       }
       openText({
-        title: 'Nome do tema',
-        value: 'Tema importado',
+        title: t('ui.tema.nomeTitulo'),
+        value: t('ui.tema.importado'),
         onAccept: (nome) => {
           const novo = { id: `t${Date.now()}`, name: themeName(nome), base: temaColado.base, act: temaColado.act };
           myThemes = [...myThemes, novo];
@@ -4805,13 +4805,13 @@
     });
     $('btn-theme-save').addEventListener('click', () => {
       if (myThemes.length >= 12) {
-        deps.onToast('Você já tem 12 temas salvos. Apague um pra guardar outro.');
+        deps.onToast(t('ui.tema.limite', { tipo: t('ui.tema.outro') }));
         return;
       }
       const cfg = themeCfgFromControls({ comSuperficies: true });
       openText({
-        title: 'Nome do tema',
-        value: 'Meu tema',
+        title: t('ui.tema.nomeTitulo'),
+        value: t('ui.tema.meu'),
         onAccept: (nome) => {
           const novo = { id: `t${Date.now()}`, name: themeName(nome), base: cfg.base, act: cfg.act };
           myThemes = [...myThemes, novo];
@@ -4857,7 +4857,7 @@
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cameraSelect = $('settings-camera-device');
       for (const d of devices.filter((d) => d.kind === 'videoinput')) {
-        cameraSelect.add(new Option(d.label || 'Câmera', d.deviceId));
+        cameraSelect.add(new Option(d.label || t('ui.config.camera'), d.deviceId));
       }
       if (config.camera.deviceId) cameraSelect.value = config.camera.deviceId;
       cameraSelect.addEventListener('change', () => {
@@ -4964,8 +4964,8 @@
     // fora dela, e que nao ha o que medir.
     const naSala = document.getElementById('app')?.dataset.place === 'room';
     empty.textContent = naSala
-      ? 'Sem números ainda: aparecem quando você envia ou recebe alguma fonte.'
-      : 'Os números de envio e recepção aparecem aqui quando você está numa sala.';
+      ? t('ui.diag.semNumerosSala')
+      : t('ui.diag.semNumerosFora');
     body.replaceChildren(empty);
   }
 
@@ -5009,8 +5009,8 @@
   // Cada trilha e um radiogroup PROPRIO: os eixos sao independentes, e seta
   // so anda dentro do proprio eixo (Tab e quem troca de eixo).
   const QUALITY_AXES = [
-    { axis: 'resolution', label: 'Resolução', values: configApi.QUALITY_RESOLUTIONS, text: (v) => v },
-    { axis: 'fps', label: 'Fluidez', values: configApi.QUALITY_FPS, text: (v) => `${v} fps` },
+    { axis: 'resolution', label: 'ui.compartilhar.resolucao', values: configApi.QUALITY_RESOLUTIONS, text: (v) => v },
+    { axis: 'fps', label: 'ui.compartilhar.fluidez', values: configApi.QUALITY_FPS, text: (v) => `${v} fps` },
   ];
 
   pickerQualityEl.innerHTML = QUALITY_AXES.map(({ axis, label, values, text }) => {
@@ -5019,7 +5019,7 @@
       `<button class="seg__opt quality-seg-opt" type="button" role="radio" aria-checked="false" tabindex="-1" data-value="${escapeHtml(valor)}">${escapeHtml(text(valor))}</button>`
     )).join('');
     return `<div class="picker__axis">
-      <span class="sr-only" id="${labelId}">${escapeHtml(label)}</span>
+      <span class="sr-only" id="${labelId}">${escapeHtml(t(label))}</span>
       <div class="seg quality-seg" role="radiogroup" aria-labelledby="${labelId}" data-axis="${axis}" style="--seg-count: ${values.length}">${opcoes}</div>
     </div>`;
   }).join('');
@@ -5141,8 +5141,9 @@
   /** Rotulo do botao principal: a acao com o nome da fonte (05 §5). */
   function rotuloTransmitir(fonte) {
     const nome = fonte?.name ? (fonte.name.length > 28 ? `${fonte.name.slice(0, 27)}…` : fonte.name) : '';
-    if (pickerMode === 'swap') return nome ? `Trocar para ${nome}` : 'Trocar';
-    return nome ? `Transmitir ${nome}` : 'Transmitir';
+    if (pickerMode === 'swap') return nome ? t('ui.compartilhar.trocarPara', { nome })
+      : t('ui.compartilhar.trocar');
+    return nome ? t('ui.compartilhar.transmitirNome', { nome }) : t('ui.compartilhar.transmitir');
   }
 
   function escolherFonteDoSeletor(fonte, card) {
@@ -5169,12 +5170,14 @@
         pickerGridEl.innerHTML = Array.from({ length: pickerTab === 'screen' ? 2 : 6 },
           () => '<div class="src-card src-card--skel" aria-hidden="true"><span class="src-card__thumb skel"></span>'
             + '<span class="skel src-card__skel-line"></span></div>').join('')
-          + `<p class="sr-only" role="status">${pickerTab === 'screen' ? 'Procurando telas…' : 'Procurando janelas…'}</p>`;
+          + `<p class="sr-only" role="status">${t('ui.compartilhar.procurando', {
+            tipo: pickerTab === 'screen' ? t('ui.compartilhar.telas') : t('ui.compartilhar.janelas'),
+          })}</p>`;
         return;
       }
-      pickerGridEl.innerHTML = `<p class="picker__empty">${
-        pickerTab === 'screen' ? 'Nenhuma tela encontrada.' : 'Nenhuma janela aberta para mostrar.'
-      } <button type="button" class="btn btn--secondary btn--sm" data-picker-refresh>Procurar de novo</button></p>`;
+      pickerGridEl.innerHTML = `<p class="picker__empty">${t('ui.compartilhar.semFonte', {
+        tipo: pickerTab === 'screen' ? t('ui.compartilhar.tela') : t('ui.compartilhar.janelaAberta'),
+      })} <button type="button" class="btn btn--secondary btn--sm" data-picker-refresh>${t('ui.compartilhar.procurarDeNovo')}</button></p>`;
       return;
     }
     for (const source of filtered) {
@@ -5352,7 +5355,8 @@
     syncQualityAxes(quality.preset, false);
     pickerQualityBandwidthEl.innerHTML = bandwidthLineHtml(quality);
     const swapping = mode === 'swap';
-    $('picker-title').textContent = swapping ? 'Trocar fonte' : 'Transmitir';
+    $('picker-title').textContent = swapping ? t('ui.compartilhar.trocarFonte')
+      : t('ui.compartilhar.transmitir');
     btnGoLiveEl.textContent = rotuloTransmitir(null);
     pickerQualityTitleEl.classList.toggle('hidden', swapping);
     pickerQualityEl.classList.toggle('hidden', swapping);
@@ -5372,7 +5376,7 @@
     shareDiscordEl.disabled = !nativeAudioAvailable;
     shareDiscordRowEl.title = nativeAudioAvailable
       ? ''
-      : 'Indisponível nesta máquina (requer o addon nativo de áudio, só existe no Windows)';
+      : t('ui.compartilhar.indisponivelAudio');
 
     btnGoLiveEl.onclick = async () => {
       nomeFonteAoVivo = pickerSources.find((s) => s.id === selectedSourceId)?.name || nomeFonteAoVivo;
@@ -5409,7 +5413,7 @@
   const dlgConfirmEl = $('dialog-confirm');
   let onConfirmAccept = null;
 
-  function openConfirm({ title, text, confirmLabel = 'Confirmar', tone = 'destructive', onConfirm }) {
+  function openConfirm({ title, text, confirmLabel = t('ui.dialogo.confirmar'), tone = 'destructive', onConfirm }) {
     $('dialog-confirm-title').textContent = title;
     $('dialog-confirm-text').textContent = text;
     const okBtn = $('btn-confirm-ok');
@@ -5441,7 +5445,7 @@
   const dlgTextEl = $('dialog-text');
   let onTextAccept = null;
 
-  function openText({ title, value = '', confirmLabel = 'Salvar', onAccept }) {
+  function openText({ title, value = '', confirmLabel = t('ui.dialogo.salvar'), onAccept }) {
     $('dialog-text-title').textContent = title;
     $('dialog-text-input').value = value;
     $('btn-text-ok').textContent = confirmLabel;
@@ -5475,9 +5479,9 @@
 
   function openBan({ name, onConfirm }) {
     openConfirm({
-      title: `Banir ${name} da sala?`,
-      text: `${name} sai agora e não consegue entrar de novo enquanto esta sala existir. Você pode readmitir depois, na lista de pessoas.`,
-      confirmLabel: 'Banir',
+      title: t('ui.dialogo.banirTitulo', { nome: name }),
+      text: t('ui.dialogo.banirTexto', { nome: name }),
+      confirmLabel: t('ui.dialogo.banir'),
       tone: 'destructive',
       onConfirm,
     });
@@ -5488,9 +5492,9 @@
    * passa, o que e exatamente o que o texto diz. */
   function openTransferOwner({ name, onConfirm }) {
     openConfirm({
-      title: `Passar a liderança para ${name}?`,
-      text: `${name} passa a poder parar transmissões, expulsar e banir. Você deixa de poder — só ${name} pode devolver.`,
-      confirmLabel: 'Passar a liderança',
+      title: t('ui.dialogo.passarTitulo', { nome: name }),
+      text: t('ui.dialogo.passarTexto', { nome: name }),
+      confirmLabel: t('ui.dialogo.passar'),
       tone: 'primary',
       onConfirm,
     });
@@ -5528,16 +5532,17 @@
   };
   const TOGGLE_LABELS = {
     // `curto`: o texto visivel quando o nome inteiro nao cabe no bloco ao vivo.
-    share: { off: 'Transmitir tela', on: 'Parar de transmitir', curto: { on: 'Parar' } },
-    camera: { off: 'Câmera', loading: 'Abrindo…', on: 'Desligar câmera' },
-    pause: { off: 'Pausar', on: 'Retomar' },
+    share: { off: 'ui.toggle.transmitirTela', on: 'ui.toggle.pararTransmitir', curto: { on: 'ui.toggle.parar' } },
+    camera: { off: 'ui.toggle.camera', loading: 'ui.toggle.abrindo', on: 'ui.toggle.desligarCamera' },
+    pause: { off: 'ui.toggle.pausar', on: 'ui.toggle.retomar' },
   };
 
   function setToggleState(id, state) {
     const btn = $(TOGGLE_BUTTON_IDS[id]);
     if (!btn) return;
-    const label = TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off;
-    btn.querySelector('.btn-label').textContent = TOGGLE_LABELS[id].curto?.[state] || label;
+    const label = t(TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off);
+    btn.querySelector('.btn-label').textContent = t(TOGGLE_LABELS[id].curto?.[state]
+      || TOGGLE_LABELS[id][state] || TOGGLE_LABELS[id].off);
     // O .btn-label do dock fica com display:none (sai da arvore de
     // acessibilidade): o nome do botao mora no aria-label e acompanha o estado.
     btn.setAttribute('aria-label', label);
@@ -5586,12 +5591,12 @@
     const app = $('app');
     const fontes = [...document.querySelectorAll('#bus-live .src')].map((src) => ({
       tileId: src.dataset.tile,
-      nome: src.querySelector('.src__name')?.textContent || 'Alguém',
+      nome: src.querySelector('.src__name')?.textContent || t('ui.pessoa.alguem'),
       assistindo: src.hasAttribute('data-watching'),
     }));
     const salas = [...document.querySelectorAll('#room-list-live .room-row:not(:disabled)')].map((row, indice) => ({
       indice,
-      nome: row.querySelector('.room-row__name')?.textContent || 'sala',
+      nome: row.querySelector('.room-row__name')?.textContent || t('ui.sala.nomePadrao'),
     }));
     return {
       lugar: app?.dataset.place === 'room' ? 'room' : 'lobby',
@@ -5641,7 +5646,7 @@
       ? visiveis.map((acao, i) => `<li id="cmd-${i}" class="menu__item${i === cmdAtiva ? ' is-active' : ''}" role="option"
           aria-selected="${i === cmdAtiva}" data-i="${i}">${escapeHtml(acao.rotulo)}${acao.dica
   ? `<span class="menu__hint">${escapeHtml(acao.dica)}</span>` : ''}</li>`).join('')
-      : '<li class="menu__note" role="presentation">Nada com esse nome.</li>';
+      : `<li class="menu__note" role="presentation">${t('ui.comando.nada')}</li>`;
     cmdInputEl.setAttribute('aria-activedescendant', visiveis.length ? `cmd-${cmdAtiva}` : '');
     cmdListEl._visiveis = visiveis;
     cmdListEl.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
