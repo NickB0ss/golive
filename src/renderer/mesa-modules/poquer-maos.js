@@ -19,19 +19,18 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const RANKS = '23456789TJQKA';
   const SUITS = 'shdc';
 
-  const CATEGORIAS = Object.freeze([
-    'Carta alta', 'Par', 'Dois pares', 'Trinca', 'Sequência', 'Flush', 'Full house', 'Quadra', 'Straight flush',
-  ]);
+  const CATEGORIAS = Object.freeze(['0', '1', '2', '3', '4', '5', '6', '7', '8']);
   const CAT = Object.freeze({
     ALTA: 0, PAR: 1, DOIS_PARES: 2, TRINCA: 3, SEQUENCIA: 4, FLUSH: 5, FULL: 6, QUADRA: 7, STRAIGHT_FLUSH: 8,
   });
 
-  // Nomes no plural e no singular para a frase do showdown ("Par de reis").
-  const NOME_PLURAL = ['dois', 'três', 'quatros', 'cincos', 'seis', 'setes', 'oitos', 'noves', 'dez', 'valetes', 'damas', 'reis', 'ases'];
-  const NOME_UM = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'valete', 'dama', 'rei', 'ás'];
+  const NOME_PLURAL = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+  const NOME_UM = NOME_PLURAL;
 
   function isCard(c) {
     return typeof c === 'string' && c.length === 2 && RANKS.includes(c[0]) && SUITS.includes(c[1]);
@@ -103,18 +102,21 @@
     return out;
   }
 
-  /** Frase curta do jogo: "Par de reis", "Flush", "Full house de damas com setes". */
-  function nomeDoJogo(cat, score) {
+  /** Frase curta do jogo, montada no idioma de quem ve a janela. */
+  function nomeDoJogo(cat, score, t) {
+    const traduzir = t || codigo;
+    const plural = (valor) => traduzir(`mesa.poquer.valor.${NOME_PLURAL[valor]}.varios`);
+    const um = (valor) => traduzir(`mesa.poquer.valor.${NOME_UM[valor]}.um`);
     switch (cat) {
-      case CAT.STRAIGHT_FLUSH: return score[1] === 12 ? 'Royal flush' : 'Straight flush';
-      case CAT.QUADRA: return `Quadra de ${NOME_PLURAL[score[1]]}`;
-      case CAT.FULL: return `Full house de ${NOME_PLURAL[score[1]]} com ${NOME_PLURAL[score[2]]}`;
-      case CAT.FLUSH: return 'Flush';
-      case CAT.SEQUENCIA: return `Sequência até o ${NOME_UM[score[1]]}`;
-      case CAT.TRINCA: return `Trinca de ${NOME_PLURAL[score[1]]}`;
-      case CAT.DOIS_PARES: return `Dois pares, ${NOME_PLURAL[score[1]]} e ${NOME_PLURAL[score[2]]}`;
-      case CAT.PAR: return `Par de ${NOME_PLURAL[score[1]]}`;
-      default: return `Carta alta, ${NOME_UM[score[1]]}`;
+      case CAT.STRAIGHT_FLUSH: return traduzir(score[1] === 12 ? 'mesa.poquer.jogo.royal' : 'mesa.poquer.jogo.straight');
+      case CAT.QUADRA: return traduzir('mesa.poquer.jogo.quadra', { v: plural(score[1]) });
+      case CAT.FULL: return traduzir('mesa.poquer.jogo.full', { a: plural(score[1]), b: plural(score[2]) });
+      case CAT.FLUSH: return traduzir('mesa.poquer.jogo.flush');
+      case CAT.SEQUENCIA: return traduzir('mesa.poquer.jogo.sequencia', { v: um(score[1]) });
+      case CAT.TRINCA: return traduzir('mesa.poquer.jogo.trinca', { v: plural(score[1]) });
+      case CAT.DOIS_PARES: return traduzir('mesa.poquer.jogo.doisPares', { a: plural(score[1]), b: plural(score[2]) });
+      case CAT.PAR: return traduzir('mesa.poquer.jogo.par', { v: plural(score[1]) });
+      default: return traduzir('mesa.poquer.jogo.cartaAlta', { v: um(score[1]) });
     }
   }
 
@@ -149,8 +151,6 @@
     }
     return {
       cat: melhor.cat,
-      category: CATEGORIAS[melhor.cat],
-      name: nomeDoJogo(melhor.cat, melhor.score),
       score: melhor.score,
       cards: ordenar(melhorCards, melhor.cat),
     };

@@ -199,6 +199,13 @@
     'pagina.fecharComEsc': 'Cerrar (Esc)',
     'pagina.incluirDiscord': 'Incluir Discord',
     'pagina.transmitir': 'Transmitir',
+    // --- mesa.cartas ---
+    'mesa.carta': 'carta', 'mesa.carta.nome': '{valor} de {naipe}',
+    'mesa.carta.valor.2': 'dos', 'mesa.carta.valor.3': 'tres', 'mesa.carta.valor.4': 'cuatro', 'mesa.carta.valor.5': 'cinco', 'mesa.carta.valor.6': 'seis', 'mesa.carta.valor.7': 'siete', 'mesa.carta.valor.8': 'ocho', 'mesa.carta.valor.9': 'nueve', 'mesa.carta.valor.T': 'diez', 'mesa.carta.valor.J': 'jota', 'mesa.carta.valor.Q': 'reina', 'mesa.carta.valor.K': 'rey', 'mesa.carta.valor.A': 'as',
+    'mesa.carta.naipe.s': 'picas', 'mesa.carta.naipe.h': 'corazones', 'mesa.carta.naipe.d': 'diamantes', 'mesa.carta.naipe.c': 'tréboles',
+    'mesa.poquer.cat.0': 'Carta alta', 'mesa.poquer.cat.1': 'Pareja', 'mesa.poquer.cat.2': 'Dos parejas', 'mesa.poquer.cat.3': 'Trío', 'mesa.poquer.cat.4': 'Escalera', 'mesa.poquer.cat.5': 'Color', 'mesa.poquer.cat.6': 'Full', 'mesa.poquer.cat.7': 'Póker', 'mesa.poquer.cat.8': 'Escalera de color',
+    'mesa.poquer.valor.2.um': 'dos', 'mesa.poquer.valor.2.varios': 'doses', 'mesa.poquer.valor.3.um': 'tres', 'mesa.poquer.valor.3.varios': 'treses', 'mesa.poquer.valor.4.um': 'cuatro', 'mesa.poquer.valor.4.varios': 'cuatros', 'mesa.poquer.valor.5.um': 'cinco', 'mesa.poquer.valor.5.varios': 'cincos', 'mesa.poquer.valor.6.um': 'seis', 'mesa.poquer.valor.6.varios': 'seises', 'mesa.poquer.valor.7.um': 'siete', 'mesa.poquer.valor.7.varios': 'sietes', 'mesa.poquer.valor.8.um': 'ocho', 'mesa.poquer.valor.8.varios': 'ochos', 'mesa.poquer.valor.9.um': 'nueve', 'mesa.poquer.valor.9.varios': 'nueves', 'mesa.poquer.valor.T.um': 'diez', 'mesa.poquer.valor.T.varios': 'dieces', 'mesa.poquer.valor.J.um': 'jota', 'mesa.poquer.valor.J.varios': 'jotas', 'mesa.poquer.valor.Q.um': 'reina', 'mesa.poquer.valor.Q.varios': 'reinas', 'mesa.poquer.valor.K.um': 'rey', 'mesa.poquer.valor.K.varios': 'reyes', 'mesa.poquer.valor.A.um': 'as', 'mesa.poquer.valor.A.varios': 'ases',
+    'mesa.poquer.jogo.royal': 'Escalera real', 'mesa.poquer.jogo.straight': 'Escalera de color', 'mesa.poquer.jogo.quadra': 'Póker de {v}', 'mesa.poquer.jogo.full': 'Full de {a} y {b}', 'mesa.poquer.jogo.flush': 'Color', 'mesa.poquer.jogo.sequencia': 'Escalera hasta {v}', 'mesa.poquer.jogo.trinca': 'Trío de {v}', 'mesa.poquer.jogo.doisPares': 'Dos parejas, {a} y {b}', 'mesa.poquer.jogo.par': 'Pareja de {v}', 'mesa.poquer.jogo.cartaAlta': 'Carta alta, {v}',
   };
 
   root.GoLive = root.GoLive || {};

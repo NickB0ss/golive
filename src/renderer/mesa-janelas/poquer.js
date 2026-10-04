@@ -18,6 +18,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'poquer';
   const N = 8;
   // Folga das janelas de quem NAO esta na vez antes de mandar o `timeout`
@@ -76,11 +77,13 @@
     return result.pots.map((p, i) => {
       const nomes = p.winners.map(nomeDe);
       const quem = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes[0];
-      const qual = result.pots.length > 1 && p.name ? (i === 0 ? ' (pote principal)' : ` (pote paralelo ${i})`) : '';
+      const maos = root.GoLive.mesaPoquerMaos;
+      const jogo = p.jogo && maos ? maos.nomeDoJogo(p.jogo.cat, p.jogo.score, t) : null;
+      const qual = result.pots.length > 1 && jogo ? (i === 0 ? ' (pote principal)' : ` (pote paralelo ${i})`) : '';
       if (result.byFold) return `${quem} levou ${fichas(p.amount)}`;
-      if (!p.name) return `Voltaram ${fichas(p.amount)} para ${quem}`;
+      if (!jogo) return `Voltaram ${fichas(p.amount)} para ${quem}`;
       const verbo = nomes.length > 1 ? 'dividiram' : 'ganhou';
-      return `${quem} ${verbo} ${fichas(p.amount)} com ${p.name}${qual}`;
+      return `${quem} ${verbo} ${fichas(p.amount)} com ${jogo}${qual}`;
     });
   }
 

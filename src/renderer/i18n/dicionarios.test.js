@@ -9,7 +9,14 @@ const i18n = require('./index');
 const IDIOMAS = i18n.IDIOMAS;
 const dicionarios = Object.fromEntries(IDIOMAS.map((idioma) => [idioma, require(`./${idioma}`)]));
 const RAIZ = path.join(__dirname, '..', '..', '..');
-const PREFIXOS_DINAMICOS = {};
+const PREFIXOS_DINAMICOS = {
+  'mesa.carta.valor.': () => ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'],
+  'mesa.carta.naipe.': () => ['s', 'h', 'd', 'c'],
+  'mesa.poquer.cat.': () => require('../mesa-modules/poquer-maos').CATEGORIAS,
+  'mesa.poquer.valor.': () => require('../mesa-modules/baralho').RANKS.flatMap((valor) => {
+    return [`${valor}.um`, `${valor}.varios`];
+  }),
+};
 
 function marcadores(valor) {
   const textos = typeof valor === 'string' ? [valor] : Object.values(valor || {});

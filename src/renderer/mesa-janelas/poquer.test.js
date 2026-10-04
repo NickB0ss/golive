@@ -1,4 +1,6 @@
 'use strict';
+require('../i18n');
+require('../mesa-modules/poquer-maos');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const J = require('./poquer');
@@ -47,13 +49,13 @@ test('textoEvento: anuncios curtos em PT', () => {
 
 test('textoResultado: vencedor, divisao, pote paralelo, todos desistiram, devolucao', () => {
   const nome = (s) => ['Ana', 'Bia', 'Caio', 'Duda'][s];
-  assert.deepEqual(J.textoResultado({ byFold: true, pots: [{ amount: 30, winners: [2], name: null }] }, nome), ['Caio levou 30']);
+  assert.deepEqual(J.textoResultado({ byFold: true, pots: [{ amount: 30, winners: [2], jogo: null }] }, nome), ['Caio levou 30']);
   assert.deepEqual(J.textoResultado({
     byFold: false,
     pots: [
-      { amount: 400, winners: [1], name: 'Trinca de ases' },
-      { amount: 600, winners: [0, 2], name: 'Flush' },
-      { amount: 300, winners: [3], name: null },
+      { amount: 400, winners: [1], jogo: { cat: 3, score: [3, 12] } },
+      { amount: 600, winners: [0, 2], jogo: { cat: 5, score: [5, 12] } },
+      { amount: 300, winners: [3], jogo: null },
     ],
   }, nome), [
     'Bia ganhou 400 com Trinca de ases (pote principal)',

@@ -1246,10 +1246,6 @@
     "Nenhum canal",
     "Nenhum canal"
   ],
-  "src/renderer/mesa-modules/baralho.js": [
-    "três",
-    "ás"
-  ],
   "src/renderer/mesa-modules/batalha.js": [
     "A partida acabou",
     "A partida acabou",
@@ -1617,24 +1613,6 @@
     "Time inválido",
     "Time inválido",
     "×"
-  ],
-  "src/renderer/mesa-modules/poquer-maos.js": [
-    "Carta alta",
-    "Carta alta,",
-    "Dois pares",
-    "Dois pares,",
-    "Full house",
-    "Full house de",
-    "Par de",
-    "Quadra de",
-    "Royal flush",
-    "Sequência",
-    "Sequência até o",
-    "Straight flush",
-    "Straight flush",
-    "Trinca de",
-    "três",
-    "ás"
   ],
   "src/renderer/mesa-modules/poquer.js": [
     ", mão",

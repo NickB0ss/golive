@@ -226,16 +226,19 @@
     const hands = {};
     for (const i of liveSeats) {
       const b = M.best(h.holes[i].concat(h.board));
-      hands[i] = { name: b.name, category: b.category, cards: b.cards, score: b.score };
+      hands[i] = { cat: b.cat, score: b.score, cards: b.cards };
     }
     const pots = [];
     for (const pot of computePots(h.contrib, liveSeats)) {
       const idx = M.winners(pot.seats.map((i) => hands[i]));
       const winners = idx.map((k) => pot.seats[k]);
       for (const p of split(pot.amount, winners, state.button)) state.stacks[p.seat] += p.amount;
-      pots.push({ amount: pot.amount, winners, name: pot.seats.length > 1 ? hands[winners[0]].name : null });
+      pots.push({
+        amount: pot.amount,
+        winners,
+        jogo: pot.seats.length > 1 ? { cat: hands[winners[0]].cat, score: hands[winners[0]].score } : null,
+      });
     }
-    for (const i of liveSeats) delete hands[i].score;
     finish(state, h, { byFold: false, pots, shown: liveSeats, hands });
   }
 

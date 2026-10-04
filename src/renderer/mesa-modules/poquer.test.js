@@ -299,14 +299,18 @@ test('all-in completo reabre; varios all-ins: potes paralelos (3 all-ins de tama
   const pots = h.result.pots;
   // principal 100x4 = 400 (bia), paralelo 1: 200x3 = 600 (caio), paralelo 2: 300x2 = 600 (duda).
   assert.deepEqual(pots.map((p) => [p.amount, p.winners]), [[400, [1]], [600, [2]], [600, [3]]]);
-  assert.equal(pots[0].name, 'Trinca de ases');
+  assert.deepEqual(pots[0].jogo, { cat: 3, score: [3, 12, 11, 10] });
   assert.deepEqual(s.stacks.slice(0, 4), [400, 400, 600, 600]);
   assert.equal(s.stacks.reduce((a, b) => a + b, 0), 2000);
   assert.deepEqual(h.result.shown.slice().sort(), [0, 1, 2, 3]);
   // Todos veem todas as maos do showdown.
   const vv = P.view(s, null);
   assert.deepEqual(vv.hand.holes[1], ['As', 'Ad']);
-  assert.equal(vv.hand.result.hands[1].category, 'Trinca');
+  assert.equal(vv.hand.result.hands[1].cat, 3);
+  const i18n = require('../i18n');
+  const maos = require('./poquer-maos');
+  i18n.definirIdioma('pt-BR');
+  assert.equal(maos.nomeDoJogo(3, vv.hand.result.hands[1].score, i18n.t), 'Trinca de ases');
 });
 
 test('aposta que ninguem pagou volta para quem apostou', () => {
@@ -333,7 +337,7 @@ test('empate divide o pote; a ficha impar vai para o primeiro a esquerda do bota
   assert.equal(r.pots.length, 1);
   assert.equal(r.pots[0].amount, 25);
   assert.deepEqual(r.pots[0].winners.slice().sort(), [0, 2]);
-  assert.equal(r.pots[0].name, 'Royal flush');
+  assert.deepEqual(r.pots[0].jogo, { cat: 8, score: [8, 12] });
   // caio (cadeira 2) e o primeiro a esquerda do botao entre os vencedores.
   assert.equal(s.stacks[2], 990 + 13);
   assert.equal(s.stacks[0], 990 + 12);

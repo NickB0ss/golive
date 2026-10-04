@@ -199,6 +199,28 @@
     'pagina.fecharComEsc': 'Close (Esc)',
     'pagina.incluirDiscord': 'Include Discord',
     'pagina.transmitir': 'Stream',
+    // --- mesa.cartas ---
+    'mesa.carta': 'card', 'mesa.carta.nome': '{valor} of {naipe}',
+    'mesa.carta.valor.2': 'two', 'mesa.carta.valor.3': 'three', 'mesa.carta.valor.4': 'four',
+    'mesa.carta.valor.5': 'five', 'mesa.carta.valor.6': 'six', 'mesa.carta.valor.7': 'seven',
+    'mesa.carta.valor.8': 'eight', 'mesa.carta.valor.9': 'nine', 'mesa.carta.valor.T': 'ten',
+    'mesa.carta.valor.J': 'jack', 'mesa.carta.valor.Q': 'queen', 'mesa.carta.valor.K': 'king',
+    'mesa.carta.valor.A': 'ace', 'mesa.carta.naipe.s': 'spades', 'mesa.carta.naipe.h': 'hearts',
+    'mesa.carta.naipe.d': 'diamonds', 'mesa.carta.naipe.c': 'clubs',
+    'mesa.poquer.cat.0': 'High card', 'mesa.poquer.cat.1': 'Pair', 'mesa.poquer.cat.2': 'Two pair',
+    'mesa.poquer.cat.3': 'Three of a kind', 'mesa.poquer.cat.4': 'Straight', 'mesa.poquer.cat.5': 'Flush',
+    'mesa.poquer.cat.6': 'Full house', 'mesa.poquer.cat.7': 'Four of a kind', 'mesa.poquer.cat.8': 'Straight flush',
+    'mesa.poquer.valor.2.um': 'two', 'mesa.poquer.valor.2.varios': 'twos', 'mesa.poquer.valor.3.um': 'three', 'mesa.poquer.valor.3.varios': 'threes',
+    'mesa.poquer.valor.4.um': 'four', 'mesa.poquer.valor.4.varios': 'fours', 'mesa.poquer.valor.5.um': 'five', 'mesa.poquer.valor.5.varios': 'fives',
+    'mesa.poquer.valor.6.um': 'six', 'mesa.poquer.valor.6.varios': 'sixes', 'mesa.poquer.valor.7.um': 'seven', 'mesa.poquer.valor.7.varios': 'sevens',
+    'mesa.poquer.valor.8.um': 'eight', 'mesa.poquer.valor.8.varios': 'eights', 'mesa.poquer.valor.9.um': 'nine', 'mesa.poquer.valor.9.varios': 'nines',
+    'mesa.poquer.valor.T.um': 'ten', 'mesa.poquer.valor.T.varios': 'tens', 'mesa.poquer.valor.J.um': 'jack', 'mesa.poquer.valor.J.varios': 'jacks',
+    'mesa.poquer.valor.Q.um': 'queen', 'mesa.poquer.valor.Q.varios': 'queens', 'mesa.poquer.valor.K.um': 'king', 'mesa.poquer.valor.K.varios': 'kings',
+    'mesa.poquer.valor.A.um': 'ace', 'mesa.poquer.valor.A.varios': 'aces',
+    'mesa.poquer.jogo.royal': 'Royal flush', 'mesa.poquer.jogo.straight': 'Straight flush', 'mesa.poquer.jogo.quadra': 'Four {v}',
+    'mesa.poquer.jogo.full': 'Full house, {a} over {b}', 'mesa.poquer.jogo.flush': 'Flush', 'mesa.poquer.jogo.sequencia': 'Straight to {v}',
+    'mesa.poquer.jogo.trinca': 'Three {v}', 'mesa.poquer.jogo.doisPares': 'Two pair, {a} and {b}', 'mesa.poquer.jogo.par': 'Pair of {v}',
+    'mesa.poquer.jogo.cartaAlta': 'High card, {v}',
   };
 
   root.GoLive = root.GoLive || {};
