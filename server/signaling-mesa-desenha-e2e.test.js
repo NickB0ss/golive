@@ -204,7 +204,11 @@ test('a Ana escolhe: so ela ve a palavra; Bia e Caio (que ainda nao acertaram) n
   const vCaio = await caio.esperaMsg(doSeq, 'estado do Caio');
   assert.equal(vBia.state.word, null, 'a Bia ainda nao acertou: nao ve a palavra');
   assert.equal(vCaio.state.word, null, 'o Caio ainda nao acertou: nao ve a palavra');
-  assert.equal(vBia.state.wordLen, palavra.length, 'mas ve o tamanho, pra pista');
+  assert.deepEqual(vBia.state.wordLens, {
+    pt: desenha.palavraEm(palavra, 'pt-BR').length,
+    en: desenha.palavraEm(palavra, 'en').length,
+    es: desenha.palavraEm(palavra, 'es').length,
+  }, 'mas ve o tamanho local, pra pista');
   assert.equal(vBia.state.options, null, 'quem nao desenha nunca ve as opcoes');
 
   await bia.barreira();

@@ -267,7 +267,22 @@ test('view: quem desenha ve a palavra e as 3 opcoes; quem so assiste, nao', () =
   assert.equal(desenha.view(s, '1', { peers: PEERS }).word, palavra, 'o desenhista ve');
   assert.equal(desenha.view(s, '2', { peers: PEERS }).word, null, 'quem ainda nao acertou nao ve');
   assert.equal(desenha.view(s, null, { peers: PEERS }).word, null, 'quem so assiste nao ve');
-  assert.equal(desenha.view(s, '2', { peers: PEERS }).wordLen, palavra.length, 'mas ve o tamanho');
+  assert.deepEqual(desenha.view(s, '2', { peers: PEERS }).wordLens, {
+    pt: desenha.palavraEm(palavra, 'pt-BR').length,
+    en: desenha.palavraEm(palavra, 'en').length,
+    es: desenha.palavraEm(palavra, 'es').length,
+  }, 'mas ve o tamanho de cada idioma');
+});
+
+test('view: manda os tres tamanhos locais sem entregar a palavra a quem adivinha', () => {
+  const s = {
+    ...desenha.init(), phase: 'drawing', word: 'telefone', drawerIdx: 0,
+    players: PEERS.map((p) => ({ ...p, score: 0 })), drawCounts: {}, guessedBy: [],
+  };
+  const vista = desenha.view(s, '2', { peers: PEERS });
+  assert.deepEqual(vista.wordLens, { pt: 8, en: 9, es: 8 });
+  assert.equal(vista.word, null);
+  assert.equal(JSON.stringify(vista).includes('telephone'), false);
 });
 
 test('view: "quase" so aparece pra quem chutou; acerto/erro aparecem pra todos (sem a palavra)', () => {

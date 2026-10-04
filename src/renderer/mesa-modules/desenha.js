@@ -459,8 +459,8 @@
    * palavra so pra quem desenha ou ja acertou; as 3 opcoes so pro
    * desenhista; o "quase" so pra quem chutou (o resto do `lastEvent`,
    * 'correct'/'wrong'/'started', e seguro pra todo mundo -- nunca leva a
-   * palavra). `wordLen` da o tamanho da palavra pra quem ainda nao
-   * acertou, pista comum do genero, sem entregar letra nenhuma. */
+   * palavra). `wordLens` da o tamanho da primeira forma em cada idioma pra
+   * quem ainda nao acertou, pista comum do genero, sem entregar letra nenhuma. */
   function view(state, peerId, ctx) {
     const roomIds = ctx && Array.isArray(ctx.peers) ? new Set(ctx.peers.map((p) => p.id)) : null;
     const players = state.players.map((p) => ({
@@ -485,7 +485,11 @@
       iGuessed: jaAcertei,
       lastRound: state.lastRound,
       word: revelaPalavra ? state.word : null,
-      wordLen: state.phase === 'drawing' ? palavraEm(state.word, 'pt-BR').length : null,
+      wordLens: state.phase === 'drawing' ? {
+        pt: palavraEm(state.word, 'pt-BR').length,
+        en: palavraEm(state.word, 'en').length,
+        es: palavraEm(state.word, 'es').length,
+      } : null,
       options: state.phase === 'choosing' && souDesenhista ? state.options : null,
       event,
       me: {

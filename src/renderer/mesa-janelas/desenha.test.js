@@ -44,6 +44,19 @@ test('desenha esperando gente mostra o vazio com "Entrar na rodada" como acao', 
   t.destruir();
 });
 
+test('desenha: mostra os tracos no tamanho do idioma ativo', () => {
+  const { definirIdioma } = globalThis.GoLive.i18n;
+  definirIdioma('en');
+  const t = montar(require('./desenha'), {
+    phase: 'drawing', round: 1, players: [], drawerId: '1', deadline: 0,
+    word: null, wordLens: { pt: 8, en: 9, es: 8 }, iGuessed: false,
+    me: { joined: true, isDrawer: false },
+  });
+  assert.equal(t.achar('.mj-ds-palavra').textContent, '_ _ _ _ _ _ _ _ _');
+  t.destruir();
+  definirIdioma('pt-BR');
+});
+
 test('desenha: Começar e a acao principal do rodape e Sair e secundaria', () => {
   const t = montar(require('./desenha'), lobby({ me: { joined: true, isDrawer: false } }));
   const comecar = t.botao('Começar');

@@ -268,7 +268,11 @@
       if (!state || state.phase !== 'drawing') return;
       let texto;
       if (state.me.isDrawer || state.iGuessed) texto = modulo().palavraEm(state.word, idiomaAtivo());
-      else texto = typeof state.wordLen === 'number' ? '_ '.repeat(state.wordLen).trim() : '';
+      else {
+        const idioma = idiomaAtivo() === 'pt-BR' ? 'pt' : idiomaAtivo();
+        const tamanho = state.wordLens && state.wordLens[idioma];
+        texto = typeof tamanho === 'number' ? '_ '.repeat(tamanho).trim() : '';
+      }
       if (palavraLinha.textContent !== texto) palavraLinha.textContent = texto;
     }
 
