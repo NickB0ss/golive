@@ -24,7 +24,13 @@
   // Folga das janelas de quem NAO esta na vez antes de mandar o `timeout`
   // (a da pessoa da vez manda na hora): evita a enxurrada de recusas.
   const FOLGA_OUTROS_MS = 2500;
-  const RUAS = { preflop: 'Pré-flop', flop: 'Flop', turn: 'Turn', river: 'River', fim: 'Fim da mão' };
+  const RUAS = {
+    preflop: 'mesa.poquer.rua.preflop',
+    flop: 'mesa.poquer.rua.flop',
+    turn: 'mesa.poquer.rua.turn',
+    river: 'mesa.poquer.rua.river',
+    fim: 'mesa.poquer.rua.fim',
+  };
 
   // ---------- Puras ----------
 
@@ -51,20 +57,21 @@
   /** Texto curto do acontecimento para o anuncio e a linha de estado. */
   function textoEvento(ev, nome, blinds) {
     if (!ev) return '';
-    const n = nome || 'Alguém';
-    const tempo = ev.timeout ? 'Tempo esgotado: ' : '';
+    const n = nome || t('mesa.poquer.alguem');
     switch (ev.kind) {
-      case 'sit': return `${n} sentou`;
-      case 'stand': return `${n} levantou`;
-      case 'deal': return `Mão ${ev.hand}: cartas dadas`;
-      case 'fold': return `${tempo}${n} desistiu`;
-      case 'check': return `${tempo}${n} passou`;
-      case 'call': return `${n} pagou ${fichas(ev.amount)}`;
-      case 'bet': return `${n} apostou ${fichas(ev.to)}`;
-      case 'raise': return `${n} aumentou para ${fichas(ev.to)}`;
-      case 'allin': return `${n} foi all-in com ${fichas(ev.to)}`;
-      case 'rebuy': return `${n} fez recompra`;
-      case 'blinds': return blinds ? `Blinds agora ${fichas(blinds.sb)}/${fichas(blinds.bb)}` : 'Blinds trocados';
+      case 'sit': return t('mesa.poquer.evento.sentou', { nome: n });
+      case 'stand': return t('mesa.poquer.evento.levantou', { nome: n });
+      case 'deal': return t('mesa.poquer.evento.cartasDadas', { mao: ev.hand });
+      case 'fold': return t(ev.timeout ? 'mesa.poquer.evento.tempoDesistiu' : 'mesa.poquer.evento.desistiu', { nome: n });
+      case 'check': return t(ev.timeout ? 'mesa.poquer.evento.tempoPassou' : 'mesa.poquer.evento.passou', { nome: n });
+      case 'call': return t('mesa.poquer.evento.pagou', { nome: n, valor: fichas(ev.amount) });
+      case 'bet': return t('mesa.poquer.evento.apostou', { nome: n, valor: fichas(ev.to) });
+      case 'raise': return t('mesa.poquer.evento.aumentou', { nome: n, valor: fichas(ev.to) });
+      case 'allin': return t('mesa.poquer.evento.allIn', { nome: n, valor: fichas(ev.to) });
+      case 'rebuy': return t('mesa.poquer.evento.recompra', { nome: n });
+      case 'blinds': return blinds
+        ? t('mesa.poquer.evento.blindsAgora', { sb: fichas(blinds.sb), bb: fichas(blinds.bb) })
+        : t('mesa.poquer.evento.blindsTrocados');
       default: return '';
     }
   }
@@ -76,14 +83,16 @@
     if (!result || !Array.isArray(result.pots)) return [];
     return result.pots.map((p, i) => {
       const nomes = p.winners.map(nomeDe);
-      const quem = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes[0];
+      const quem = new Intl.ListFormat(root.GoLive.i18n.idiomaAtivo(), { type: 'conjunction' }).format(nomes);
       const maos = root.GoLive.mesaPoquerMaos;
       const jogo = p.jogo && maos ? maos.nomeDoJogo(p.jogo.cat, p.jogo.score, t) : null;
-      const qual = result.pots.length > 1 && jogo ? (i === 0 ? ' (pote principal)' : ` (pote paralelo ${i})`) : '';
-      if (result.byFold) return `${quem} levou ${fichas(p.amount)}`;
-      if (!jogo) return `Voltaram ${fichas(p.amount)} para ${quem}`;
-      const verbo = nomes.length > 1 ? 'dividiram' : 'ganhou';
-      return `${quem} ${verbo} ${fichas(p.amount)} com ${jogo}${qual}`;
+      const qual = result.pots.length > 1 && jogo
+        ? t(i === 0 ? 'mesa.poquer.potePrincipal' : 'mesa.poquer.poteParalelo', { n: i })
+        : '';
+      if (result.byFold) return t('mesa.poquer.resultado.levou', { nome: quem, valor: fichas(p.amount) });
+      if (!jogo) return t('mesa.poquer.resultado.voltaram', { nome: quem, valor: fichas(p.amount) });
+      const chave = nomes.length > 1 ? 'mesa.poquer.resultado.dividiram' : 'mesa.poquer.resultado.ganhou';
+      return t(chave, { nome: quem, valor: fichas(p.amount), jogo, qual });
     });
   }
 
@@ -110,9 +119,12 @@
   function linhaDeEstado(v) {
     const h = v.hand;
     const emMao = h && !h.result;
-    const mao = v.handNo ? ` · mão ${v.handNo}` : '';
-    const rua = emMao ? ` · ${RUAS[h.street]}` : '';
-    return `Blinds ${fichas(v.blinds.sb)}/${fichas(v.blinds.bb)}${mao}${rua}`;
+    return t('mesa.poquer.linhaEstado', {
+      sb: fichas(v.blinds.sb),
+      bb: fichas(v.blinds.bb),
+      mao: v.handNo ? t('mesa.poquer.linhaMao', { n: v.handNo }) : '',
+      rua: emMao ? t('mesa.poquer.linhaRua', { rua: t(RUAS[h.street]) }) : '',
+    });
   }
 
   /** Segundos que faltam (arredondados para cima, nunca negativo). */
@@ -122,17 +134,17 @@
 
   /** O rotulo do botao de pagar/passar. */
   function rotuloPagar(me) {
-    if (!me) return 'Passar';
-    if (me.canCheck) return 'Passar';
-    return `Pagar ${fichas(me.toCall)}`;
+    if (!me || me.canCheck) return t('mesa.poquer.passar');
+    return t('mesa.poquer.pagar', { valor: fichas(me.toCall) });
   }
 
   /** O rotulo do botao de apostar/aumentar para `to`. */
   function rotuloAumentar(me, to) {
-    if (!me) return 'Apostar';
+    if (!me) return t('mesa.poquer.apostar');
     const tudo = to >= me.maxRaise;
-    if (me.actions.includes('bet')) return tudo ? `All-in ${fichas(to)}` : `Apostar ${fichas(to)}`;
-    return tudo ? `All-in ${fichas(to)}` : `Aumentar para ${fichas(to)}`;
+    if (tudo) return t('mesa.poquer.allIn', { valor: fichas(to) });
+    if (me.actions.includes('bet')) return t('mesa.poquer.apostar', { valor: fichas(to) });
+    return t('mesa.poquer.aumentarPara', { valor: fichas(to) });
   }
 
   // ---------- DOM ----------

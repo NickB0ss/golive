@@ -48,6 +48,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const B = (root.GoLive && root.GoLive.mesaBaralho)
     || (globalThis.GoLive && globalThis.GoLive.mesaBaralho)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('./baralho') : null);
@@ -299,67 +301,69 @@
 
   function validate(state, action, ctx) {
     return safe(() => {
-      if (!isObj(action) || !KINDS.includes(action.kind)) return 'Ação desconhecida';
+      if (!isObj(action) || !KINDS.includes(action.kind)) return codigo('mesa.jogo.acaoDesconhecida');
       const ghosts = ghostSeats(state, ctx);
       if (ghosts.length) state = withoutGhosts(state, ghosts);
       const from = fromOf(ctx);
-      if (!from) return 'Quem mandou?';
+      if (!from) return codigo('mesa.jogo.quemMandou');
       const seat = seatOf(state, from);
       const k = action.kind;
       if (k === 'timeout') {
         const now = isObj(ctx) ? ctx.now : undefined;
         const due = timeoutAt(state);
-        if (due === null) return 'Não há prazo correndo';
-        if (typeof now !== 'number' || !Number.isFinite(now)) return 'Sem a hora da sala';
-        if (now < due) return 'Ainda há tempo';
+        if (due === null) return codigo('mesa.jogo.semPrazo');
+        if (typeof now !== 'number' || !Number.isFinite(now)) return codigo('mesa.jogo.semHoraSala');
+        if (now < due) return codigo('mesa.jogo.aindaHaTempo');
         return true;
       }
       if (k === 'sit') {
-        if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= SEATS) return 'Lugar inválido';
-        if (seat >= 0) return 'Você já está sentado';
-        if (state.seats[action.seat] !== null) return 'Lugar ocupado';
+        if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= SEATS) return codigo('mesa.jogo.lugarInvalido');
+        if (seat >= 0) return codigo('mesa.jogo.jaEstaSentado');
+        if (state.seats[action.seat] !== null) return codigo('mesa.jogo.lugarOcupado');
         return true;
       }
-      if (seat < 0) return 'Sente-se para jogar';
-      if (k === 'leave') return playing(state, seat) ? 'Espere a rodada acabar para levantar' : true;
+      if (seat < 0) return codigo('mesa.jogo.senteSeParaJogar');
+      if (k === 'leave') return playing(state, seat) ? codigo('mesa.blackjack.espereRodada') : true;
       if (k === 'rebuy') {
-        if (playing(state, seat) || state.bets[seat] > 0) return 'Recompra só entre rodadas';
-        if ((state.chips[seat] || 0) >= MIN_BET) return 'Recompra só sem fichas';
+        if (playing(state, seat) || state.bets[seat] > 0) return codigo('mesa.blackjack.recompraEntreRodadas');
+        if ((state.chips[seat] || 0) >= MIN_BET) return codigo('mesa.blackjack.recompraSemFichas');
         return true;
       }
       if (k === 'bet') {
-        if (state.phase !== 'bets') return 'As apostas estão fechadas';
+        if (state.phase !== 'bets') return codigo('mesa.blackjack.apostasFechadas');
         const a = action.amount;
-        if (!Number.isInteger(a)) return 'Aposta inválida';
-        if (a === 0) return state.bets[seat] > 0 ? true : 'Você não apostou';
-        if (a < MIN_BET || a > MAX_BET) return `Aposta de ${MIN_BET} a ${MAX_BET}`;
-        if (a > (state.chips[seat] || 0) + state.bets[seat]) return 'Fichas insuficientes';
+        if (!Number.isInteger(a)) return codigo('mesa.blackjack.apostaInvalida');
+        if (a === 0) return state.bets[seat] > 0 ? true : codigo('mesa.blackjack.naoApostou');
+        if (a < MIN_BET || a > MAX_BET) return codigo('mesa.blackjack.apostaEntre', { min: MIN_BET, max: MAX_BET });
+        if (a > (state.chips[seat] || 0) + state.bets[seat]) return codigo('mesa.jogo.fichasInsuficientes');
         return true;
       }
       if (k === 'insurance') {
-        if (state.phase !== 'insurance') return 'Seguro só quando a banca mostra ás';
-        if (!handsOf(state, seat).length) return 'Você não está nesta rodada';
-        if (state.insurance[seat] !== null) return 'Você já decidiu o seguro';
+        if (state.phase !== 'insurance') return codigo('mesa.blackjack.seguroMostraAs');
+        if (!handsOf(state, seat).length) return codigo('mesa.blackjack.naoEstaRodada');
+        if (state.insurance[seat] !== null) return codigo('mesa.blackjack.jaDecidiuSeguro');
         const a = action.amount;
-        if (!Number.isInteger(a) || a < 0) return 'Seguro inválido';
-        if (a > insuranceMax(state, seat)) return 'Seguro vai até metade da aposta';
+        if (!Number.isInteger(a) || a < 0) return codigo('mesa.blackjack.seguroInvalido');
+        if (a > insuranceMax(state, seat)) return codigo('mesa.blackjack.seguroMetadeAposta');
         return true;
       }
       // hit, stand, double, split
-      if (state.phase !== 'play') return 'Não é hora de jogar';
+      if (state.phase !== 'play') return codigo('mesa.jogo.naoEHoraJogar');
       const hand = currentHand(state);
-      if (!hand || hand.seat !== seat) return 'Não é a sua vez';
+      if (!hand || hand.seat !== seat) return codigo('mesa.jogo.naoESuaVez');
       if (k === 'double' && !canDouble(state, hand)) {
-        return hand.cards.length !== 2 ? 'Dobrar só com duas cartas' : 'Fichas insuficientes para dobrar';
+        return hand.cards.length !== 2
+          ? codigo('mesa.blackjack.dobrarDuasCartas')
+          : codigo('mesa.blackjack.fichasDobrar');
       }
       if (k === 'split' && !canSplit(state, hand)) {
-        if (!samePair(hand.cards)) return 'Dividir só com duas cartas de mesmo valor';
-        if (hand.aces) return 'Ases divididos não se dividem de novo';
-        if (handsOf(state, seat).length >= MAX_HANDS) return 'No máximo 4 mãos';
-        return 'Fichas insuficientes para dividir';
+        if (!samePair(hand.cards)) return codigo('mesa.blackjack.dividirMesmoValor');
+        if (hand.aces) return codigo('mesa.blackjack.asesDivididos');
+        if (handsOf(state, seat).length >= MAX_HANDS) return codigo('mesa.blackjack.maximoMaos');
+        return codigo('mesa.blackjack.fichasDividir');
       }
       return true;
-    }, 'Ação inválida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   // ---------- prepare (so no servidor) ----------

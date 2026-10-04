@@ -47,6 +47,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const req = (name) => (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require(name) : null);
   const B = (root.GoLive && root.GoLive.mesaBaralho) || req('./baralho');
   const M = (root.GoLive && root.GoLive.mesaPoquerMaos) || req('./poquer-maos');
@@ -361,82 +363,82 @@
 
   function turnCheck(state, action, ctx) {
     const h = state.hand;
-    if (!active(h)) return 'Nenhuma mão em andamento';
+    if (!active(h)) return codigo('mesa.poquer.nenhumaMao');
     const seat = seatOf(state, fromOf(ctx));
-    if (seat < 0) return 'Sente-se para jogar';
-    if (h.toAct !== seat || h.ids[seat] !== state.seats[seat]) return 'Não é a sua vez';
+    if (seat < 0) return codigo('mesa.jogo.senteSeParaJogar');
+    if (h.toAct !== seat || h.ids[seat] !== state.seats[seat]) return codigo('mesa.jogo.naoESuaVez');
     const toCall = h.currentBet - h.bets[seat];
     const all = h.bets[seat] + state.stacks[seat];
     switch (action.kind) {
       case 'fold':
         return true;
       case 'check':
-        return toCall === 0 ? true : 'Há aposta para pagar';
+        return toCall === 0 ? true : codigo('mesa.poquer.haApostaPagar');
       case 'call':
-        return toCall > 0 ? true : 'Não há o que pagar; passe';
+        return toCall > 0 ? true : codigo('mesa.poquer.naoHaPagar');
       case 'allin':
         if (state.stacks[seat] <= toCall || canRaise(state, h, seat)) return true;
-        return 'Não dá para aumentar agora; pague ou desista';
+        return codigo('mesa.poquer.naoDaAumentar');
       case 'bet':
       case 'raise': {
-        if (action.kind === 'bet' && h.currentBet > 0) return 'Já há aposta; aumente';
-        if (action.kind === 'raise' && h.currentBet === 0) return 'Ninguém apostou; aposte';
-        if (!Number.isInteger(action.to)) return 'Valor inválido';
-        if (!canRaise(state, h, seat)) return 'Não dá para aumentar agora; pague ou desista';
-        if (action.to > all) return 'Você não tem fichas para isso';
-        if (action.to < minTo(h) && action.to !== all) return `O mínimo é ${minTo(h)}`;
-        if (action.to <= h.currentBet) return `O mínimo é ${minTo(h)}`;
+        if (action.kind === 'bet' && h.currentBet > 0) return codigo('mesa.poquer.jaHaAposta');
+        if (action.kind === 'raise' && h.currentBet === 0) return codigo('mesa.poquer.ninguemApostou');
+        if (!Number.isInteger(action.to)) return codigo('mesa.jogo.valorInvalido');
+        if (!canRaise(state, h, seat)) return codigo('mesa.poquer.naoDaAumentar');
+        if (action.to > all) return codigo('mesa.poquer.semFichas');
+        if (action.to < minTo(h) && action.to !== all) return codigo('mesa.poquer.minimo', { valor: minTo(h) });
+        if (action.to <= h.currentBet) return codigo('mesa.poquer.minimo', { valor: minTo(h) });
         return true;
       }
       default:
-        return 'Ação inválida';
+        return codigo('mesa.jogo.acaoInvalida');
     }
   }
 
   function validate(state, action, ctx) {
     return safe(() => {
-      if (!isObj(action) || !KINDS.includes(action.kind)) return 'Ação inválida';
+      if (!isObj(action) || !KINDS.includes(action.kind)) return codigo('mesa.jogo.acaoInvalida');
       const ghosts = ghostSeats(state, ctx);
       if (ghosts.length) state = withoutGhosts(state, ghosts, Number(ctx && ctx.now));
       const from = fromOf(ctx);
-      if (!from) return 'Quem mandou?';
+      if (!from) return codigo('mesa.jogo.quemMandou');
       const seat = seatOf(state, from);
       const h = state.hand;
       switch (action.kind) {
         case 'sit':
-          if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= N) return 'Cadeira inválida';
-          if (seat >= 0) return 'Você já está sentado';
-          if (state.seats[action.seat] !== null) return 'Cadeira ocupada';
+          if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= N) return codigo('mesa.poquer.cadeiraInvalida');
+          if (seat >= 0) return codigo('mesa.jogo.jaEstaSentado');
+          if (state.seats[action.seat] !== null) return codigo('mesa.poquer.cadeiraOcupada');
           return true;
         case 'stand':
-          return seat >= 0 ? true : 'Você não está sentado';
+          return seat >= 0 ? true : codigo('mesa.poquer.naoEstaSentado');
         case 'deal': {
-          if (seat < 0) return 'Sente-se para dar as cartas';
-          if (active(h)) return 'A mão ainda não acabou';
+          if (seat < 0) return codigo('mesa.poquer.senteSeDarCartas');
+          if (active(h)) return codigo('mesa.poquer.maoNaoAcabou');
           const ready = state.seats.filter((id, i) => id !== null && state.stacks[i] > 0).length;
-          return ready >= 2 ? true : 'Precisa de 2 pessoas com fichas';
+          return ready >= 2 ? true : codigo('mesa.poquer.precisaDuasPessoas');
         }
         case 'rebuy':
-          if (seat < 0) return 'Sente-se primeiro';
-          if (state.stacks[seat] > 0) return 'Recompra só com zero fichas';
-          if (active(h) && live(h, seat) && h.ids[seat] === from) return 'Espere a mão acabar';
+          if (seat < 0) return codigo('mesa.poquer.senteSePrimeiro');
+          if (state.stacks[seat] > 0) return codigo('mesa.poquer.recompraZeroFichas');
+          if (active(h) && live(h, seat) && h.ids[seat] === from) return codigo('mesa.poquer.espereMao');
           return true;
         case 'blinds': {
-          if (!isObj(ctx) || ctx.isLeader !== true) return 'Só o líder troca os blinds';
-          if (!Number.isInteger(action.level) || action.level < 0 || action.level >= LEVELS.length) return 'Blinds inválidos';
-          if (active(h)) return 'Troque os blinds entre as mãos';
+          if (!isObj(ctx) || ctx.isLeader !== true) return codigo('mesa.poquer.liderTrocaBlinds');
+          if (!Number.isInteger(action.level) || action.level < 0 || action.level >= LEVELS.length) return codigo('mesa.poquer.blindsInvalidos');
+          if (active(h)) return codigo('mesa.poquer.blindsEntreMaos');
           return true;
         }
         case 'timeout': {
-          if (!active(h) || h.toAct < 0) return 'Ninguém está com a vez';
+          if (!active(h) || h.toAct < 0) return codigo('mesa.poquer.ninguemVez');
           const now = Number(ctx.now);
-          if (!Number.isFinite(now) || now < h.deadline) return 'Ainda há tempo';
+          if (!Number.isFinite(now) || now < h.deadline) return codigo('mesa.jogo.aindaHaTempo');
           return true;
         }
         default:
           return turnCheck(state, action, ctx);
       }
-    }, 'Ação inválida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   /** So no servidor: hora em toda acao, nome no `sit`, baralho no `deal`.

@@ -127,7 +127,7 @@ test('sentar da 1 000 fichas; cadeira ocupada, dupla e fora da faixa sao recusad
 
 test('dar as cartas: so sentado, com 2+ com fichas, e nao no meio da mao', () => {
   let s = table({ 0: 'ana' });
-  assert.match(denied(s, { kind: 'deal' }, 'ana'), /2 pessoas/);
+  assert.equal(denied(s, { kind: 'deal' }, 'ana'), 'mesa.poquer.precisaDuasPessoas');
   s = act(s, { kind: 'sit', seat: 1 }, 'bia');
   denied(s, { kind: 'deal' }, 'caio');
   s = act(s, { kind: 'deal' }, 'ana');
@@ -220,7 +220,7 @@ test('lider troca os blinds entre as maos', () => {
 test('aposta minima = big blind; aumento minimo = o maior aumento da rodada', () => {
   let s = table({ 0: 'ana', 1: 'bia', 2: 'caio' });
   s = act(s, { kind: 'deal' }, 'ana'); // botao 0, sb 1, bb 2, fala 0
-  assert.match(denied(s, { kind: 'raise', to: 39 }, 'ana'), /mínimo é 40/);
+  assert.equal(denied(s, { kind: 'raise', to: 39 }, 'ana'), 'mesa.poquer.minimo?valor=40');
   denied(s, { kind: 'bet', to: 40 }, 'ana');
   denied(s, { kind: 'check' }, 'ana');
   assert.deepEqual(P.view(s, 'ana').me.minRaise, 40);
@@ -234,7 +234,7 @@ test('aposta minima = big blind; aumento minimo = o maior aumento da rodada', ()
   assert.equal(s.hand.street, 'flop');
   // Depois do flop: aposta minima = big blind.
   const who = turn(s);
-  assert.match(denied(s, { kind: 'bet', to: 19 }, who), /mínimo é 20/);
+  assert.equal(denied(s, { kind: 'bet', to: 19 }, who), 'mesa.poquer.minimo?valor=20');
   denied(s, { kind: 'raise', to: 40 }, who);
   denied(s, { kind: 'call' }, who);
   denied(s, { kind: 'bet', to: 1.5 }, who);
@@ -270,8 +270,8 @@ test('all-in menor que um aumento completo nao reabre a acao para quem ja agiu',
   v = P.view(s, 'bia').me;
   assert.deepEqual(v.actions.filter((a) => ['fold', 'check', 'call', 'bet', 'raise', 'allin'].includes(a)).sort(), ['call', 'fold']);
   assert.equal(v.toCall, 30);
-  assert.match(denied(s, { kind: 'raise', to: 300 }, 'bia'), /aumentar/);
-  assert.match(denied(s, { kind: 'allin' }, 'bia'), /aumentar/);
+  assert.equal(denied(s, { kind: 'raise', to: 300 }, 'bia'), 'mesa.poquer.naoDaAumentar');
+  assert.equal(denied(s, { kind: 'allin' }, 'bia'), 'mesa.poquer.naoDaAumentar');
   s = play(s, { kind: 'call' });
   assert.equal(s.hand.street, 'turn');
 });
@@ -381,7 +381,7 @@ test('tempo: 30 s por decisao; estourou, passa se puder, senao desiste', () => {
   let s = table({ 0: 'ana', 1: 'bia', 2: 'caio' });
   s = act(s, { kind: 'deal' }, 'ana', { now: T0 });
   assert.equal(P.timeoutAt(s), T0 + 30000);
-  assert.match(denied(s, { kind: 'timeout' }, 'bia', { now: T0 + 29999 }), /tempo/);
+  assert.equal(denied(s, { kind: 'timeout' }, 'bia', { now: T0 + 29999}), 'mesa.jogo.aindaHaTempo');
   denied(s, { kind: 'timeout' }, 'bia', { now: undefined });
   // Qualquer um pode mandar; ana tinha 20 a pagar: desiste.
   s = act(s, { kind: 'timeout' }, 'caio', { now: T0 + 30000 });
