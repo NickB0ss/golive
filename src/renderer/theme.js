@@ -166,7 +166,7 @@
   // superficie mais clara da rampa, como pede a spec.
   const PRESETS = {
     sinal: {
-      label: 'Sinal',
+      labelKey: 'config.tema.sinal',
       surfaces: {
         bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
         tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',
@@ -178,7 +178,7 @@
       onAct: '#0E0E14',
     },
     'sinal-claro': {
-      label: 'Sinal claro',
+      labelKey: 'config.tema.sinalClaro',
       surfaces: {
         bg: '#F4F4F7', s1: '#FFFFFF', s2: '#FFFFFF', s3: '#EBEBF0', s4: '#E0E0E8',
         tx: '#0E0E14', tx2: '#4A4A5C', tx3: '#666678',
@@ -190,7 +190,7 @@
       onAct: '#EDEDF2',
     },
     marca: {
-      label: 'GoLive',
+      labelKey: 'config.tema.marca',
       surfaces: {
         bg: '#0A0A0F', s1: '#101018', s2: '#16161F', s3: '#1E1E2A', s4: '#292936',
         tx: '#EDEDF2', tx2: '#A3A3B8', tx3: '#9292AB',
@@ -201,7 +201,7 @@
       actHover: '#6D5CF6',
     },
     signal: {
-      label: 'Superfície e sinal',
+      labelKey: 'config.tema.superficieSinal',
       surfaces: {
         bg: '#0E0F13', s1: '#16181D', s2: '#1D2026', s3: '#262A32', s4: '#323742',
         tx: '#E8EAED', tx2: '#9AA0AA', tx3: '#868D9B',
@@ -212,7 +212,7 @@
       actHover: '#6257EB',
     },
     midnight: {
-      label: 'Meia-noite',
+      labelKey: 'config.tema.meiaNoite',
       surfaces: {
         bg: '#080B14', s1: '#0D1220', s2: '#121A2C', s3: '#1A2438', s4: '#243149',
         tx: '#E7ECF7', tx2: '#98A3BE', tx3: '#7C87A3',
@@ -223,7 +223,7 @@
       actHover: '#6FA3F9',
     },
     carvao: {
-      label: 'Carvão',
+      labelKey: 'config.tema.carvao',
       surfaces: {
         bg: '#111111', s1: '#181818', s2: '#202020', s3: '#2A2A2A', s4: '#363636',
         tx: '#EDEDED', tx2: '#A3A3A3', tx3: '#8C8C8C',
@@ -234,7 +234,7 @@
       actHover: '#B0B7C3',
     },
     amber: {
-      label: 'Âmbar quente',
+      labelKey: 'config.tema.ambarQuente',
       surfaces: {
         bg: '#15100C', s1: '#1D1712', s2: '#261E17', s3: '#332821', s4: '#42352B',
         tx: '#F1E7DD', tx2: '#B8A697', tx3: '#9C8C7E',
@@ -245,7 +245,7 @@
       actHover: '#D4BF54',
     },
     forest: {
-      label: 'Floresta',
+      labelKey: 'config.tema.floresta',
       surfaces: {
         bg: '#0A120E', s1: '#0F1913', s2: '#16231B', s3: '#1F2F25', s4: '#2A3D31',
         tx: '#E6F0EA', tx2: '#9DB5A8', tx3: '#84998C',
@@ -294,7 +294,7 @@
     // (nao e zero), so nao bate o piso de 3:1 que os outros cinco temas
     // batem com folga.
     paper: {
-      label: 'Papel',
+      labelKey: 'config.tema.papel',
       surfaces: {
         bg: '#FCFAF7', s1: '#FBF8F4', s2: '#F0ECE4', s3: '#DFD6C6', s4: '#CBBEA4',
         tx: '#1C1A16', tx2: '#47423A', tx3: '#5C564B',
@@ -493,6 +493,7 @@
    * CSS deles define isso a parte) mas a checagem 3 ainda precisa de um
    * valor pra testar. */
   function validate(tokens) {
+    const { t } = root.GoLive.i18n;
     const failures = [];
     const s = (tokens && tokens.surfaces) || {};
     const act = (tokens && tokens.act) || PRESETS.sinal.act;
@@ -503,7 +504,9 @@
       if (!isHex(s.tx) || !isHex(bgHex)) continue;
       const c = contrast(s.tx, bgHex);
       if (c < MIN_TEXT_CONTRAST) {
-        failures.push(`--tx sobre ${nome} tem contraste ${c.toFixed(2)}:1, abaixo do piso de ${MIN_TEXT_CONTRAST}:1`);
+        failures.push(t('config.tema.contrasteTexto', {
+          token: '--tx', fundo: nome, contraste: c.toFixed(2), piso: MIN_TEXT_CONTRAST,
+        }));
       }
     }
 
@@ -512,7 +515,9 @@
       if (!isHex(s.tx3) || !isHex(bgHex)) continue;
       const c = contrast(s.tx3, bgHex);
       if (c < MIN_TEXT_CONTRAST) {
-        failures.push(`--tx3 sobre ${nome} tem contraste ${c.toFixed(2)}:1, abaixo do piso de ${MIN_TEXT_CONTRAST}:1`);
+        failures.push(t('config.tema.contrasteTexto', {
+          token: '--tx3', fundo: nome, contraste: c.toFixed(2), piso: MIN_TEXT_CONTRAST,
+        }));
       }
     }
 
@@ -520,7 +525,7 @@
     if (isHex(onAct) && isHex(act)) {
       const c = contrast(onAct, act);
       if (c < MIN_TEXT_CONTRAST) {
-        failures.push(`texto do botão sobre --act tem contraste ${c.toFixed(2)}:1, abaixo do piso de ${MIN_TEXT_CONTRAST}:1`);
+        failures.push(t('config.tema.contrasteBotao', { contraste: c.toFixed(2), piso: MIN_TEXT_CONTRAST }));
       }
     }
 
@@ -540,7 +545,9 @@
       if (!isHex(s.s1)) continue;
       const c = contrast(hex, s.s1);
       if (c < MIN_SEMANTIC_CONTRAST) {
-        failures.push(`${nome} sobre --s1 tem contraste ${c.toFixed(2)}:1, abaixo do piso de ${MIN_SEMANTIC_CONTRAST}:1`);
+        failures.push(t('config.tema.contrasteSemantico', {
+          token: nome, contraste: c.toFixed(2), piso: MIN_SEMANTIC_CONTRAST,
+        }));
       }
     }
 
@@ -551,7 +558,9 @@
       if (!seen) continue;
       const c = contrast(seen, s.bg);
       if (c < GRID_CONTRAST.min || c > GRID_CONTRAST.max) {
-        failures.push(`--${nome} sobre --bg tem contraste ${c.toFixed(2)}:1, fora da faixa de ${GRID_CONTRAST.min}:1 a ${GRID_CONTRAST.max}:1`);
+        failures.push(t('config.tema.contrasteGrade', {
+          token: `--${nome}`, contraste: c.toFixed(2), min: GRID_CONTRAST.min, max: GRID_CONTRAST.max,
+        }));
       }
     }
 
@@ -560,7 +569,7 @@
     if (isHex(act)) {
       const dist = hueDistance(act, LIVE);
       if (dist < MIN_ACT_HUE_DISTANCE) {
-        failures.push(`--act fica a ${dist.toFixed(0)}° de --live, abaixo do mínimo de ${MIN_ACT_HUE_DISTANCE}°`);
+        failures.push(t('config.tema.matizPerto', { graus: dist.toFixed(0), minimo: MIN_ACT_HUE_DISTANCE }));
         nearestAct = nearestAcceptableAct(act);
       }
     }

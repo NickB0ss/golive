@@ -1,4 +1,5 @@
 'use strict';
+require('./i18n'); // registra GoLive.i18n (pt-BR por padrao) para t()
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -121,7 +122,7 @@ test('todo preset do catalogo passa em validate', () => {
 
 test('catalogo oferece Sinal como preset padrao', () => {
   assert.ok(PRESETS.sinal);
-  assert.equal(PRESETS.sinal.label, 'Sinal');
+  assert.equal(PRESETS.sinal.labelKey, 'config.tema.sinal');
   assert.deepEqual(PRESETS.sinal.surfaces, {
     bg: '#0E0E14', s1: '#15151D', s2: '#1C1C26', s3: '#262632', s4: '#33333F',
     tx: '#EDEDF2', tx2: '#B4B4C3', tx3: '#8A8A9E',

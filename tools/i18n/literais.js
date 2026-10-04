@@ -140,6 +140,31 @@ const EXCECOES = new Set([
   'use strict', // diretiva JavaScript, nao texto de tela
   'NAO tocou', // codigo de status tecnico recebido pelo teste de som
   'Radmin VPN', // marca (nome da rede virtual), igual em toda lingua
+  // Log e relatorio para o desenvolvedor (console e diagnostico copiado): ficam em pt-BR (spec 2.4)
+  'conexao direta', // relatorio para o desenvolvedor (spec 2.4)
+  'validacao apos assumir', // relatorio para o desenvolvedor (spec 2.4)
+  'via relay #', // relatorio para o desenvolvedor (spec 2.4)
+  'sem conexao de entrada (a arvore diz que devia haver uma)', // relatorio para o desenvolvedor (spec 2.4)
+  'congelou depois de mostrar imagem', // relatorio para o desenvolvedor (spec 2.4)
+  'segue sem imagem desde que passou a ser assistida', // relatorio para o desenvolvedor (spec 2.4)
+  '[assistir] tela de', // relatorio para o desenvolvedor (spec 2.4)
+  'voltou a mostrar imagem depois de', // relatorio para o desenvolvedor (spec 2.4)
+  // relatorio para o desenvolvedor (spec 2.4)
+  'voltou a mostrar imagem sem refazer a conexao (reoferta segurada: rede)',
+  '[signaling] sala migrada, renegociando a malha', // relatorio para o desenvolvedor (spec 2.4)
+  '[signaling] retomada recusada, renegociando tudo', // relatorio para o desenvolvedor (spec 2.4)
+  'mudancas em', // relatorio para o desenvolvedor (spec 2.4)
+  'sem par de candidatos selecionado', // relatorio para o desenvolvedor (spec 2.4)
+  'banda estimada', // relatorio para o desenvolvedor (spec 2.4)
+  'rede (nada chegando)', // relatorio para o desenvolvedor (spec 2.4)
+  'origem parou de enviar video (caminho vivo)', // relatorio para o desenvolvedor (spec 2.4)
+  'video chegando sem decodificar (quadro-chave/decoder)', // relatorio para o desenvolvedor (spec 2.4)
+  'quadros decodificados sem aparecer na tela', // relatorio para o desenvolvedor (spec 2.4)
+  'sem estatistica suficiente', // relatorio para o desenvolvedor (spec 2.4)
+  ', par ICE +', // relatorio para o desenvolvedor (spec 2.4)
+  'respostas STUN', // relatorio para o desenvolvedor (spec 2.4)
+  'load failed', // mensagem interna de Error, nunca chega a tela
+  '×', // simbolo de multiplicacao entre largura e altura
 ]);
 
 function ehListaDeClasses(texto) {

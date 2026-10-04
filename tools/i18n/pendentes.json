@@ -38,96 +38,6 @@
     "origem local: falha servindo",
     "url invalida"
   ],
-  "src/renderer/app.js": [
-    "A captura da tela está falhando — o jogo pode estar em tela cheia exclusiva ou bloqueando captura. Tente o modo janela sem borda, ou compartilhe só a janela do jogo.",
-    "Alguém",
-    "Alguém",
-    "Alguém",
-    "Alguém",
-    "CPU no limite",
-    "Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de pessoas assistindo.",
-    "Endereço copiado",
-    "O líder da sala saiu.",
-    "PIN copiado",
-    "Transmissão pausada",
-    "Você",
-    "Você",
-    "Você é o líder da sala agora.",
-    "[assistir] tela de",
-    "[assistir] tela de",
-    "[signaling] retomada recusada, renegociando tudo",
-    "[signaling] sala migrada, renegociando a malha",
-    "a câmera não respondeu",
-    "banda da rede insuficiente",
-    "banda disponível",
-    "baniu você da sala.",
-    "conexao direta",
-    "conexao direta",
-    "congelou depois de mostrar imagem",
-    "encode somado",
-    "enviando pra",
-    "enviando pra",
-    "está assumindo a sala...",
-    "expulsou você da sala.",
-    "ficou ao vivo",
-    "limite do encoder",
-    "load failed",
-    "load failed",
-    "load failed",
-    "mudancas em",
-    "parou sua transmissão.",
-    "perda rede",
-    "resolução",
-    "resolução",
-    "saída total",
-    "segue sem imagem desde que passou a ser assistida",
-    "sem conexao de entrada (a arvore diz que devia haver uma)",
-    "validacao apos assumir",
-    "via relay #",
-    "voltou a mostrar imagem depois de",
-    "voltou a mostrar imagem sem refazer a conexao (reoferta segurada: rede)",
-    "×",
-    "é o líder da sala agora."
-  ],
-  "src/renderer/comando.js": [
-    "Configurações",
-    "Configurações",
-    "Copiar endereço da sala",
-    "Criar sala",
-    "Desligar câmera",
-    "Diagnóstico",
-    "Entrar em",
-    "Ir até",
-    "Ligar câmera",
-    "Modo teatro",
-    "Parar de assistir",
-    "Parar de transmitir",
-    "Pausar a transmissão",
-    "Procurar salas de novo",
-    "Pôr na Mesa…",
-    "Retomar a transmissão",
-    "Sair da sala",
-    "Transmitir tela",
-    "Trocar fonte"
-  ],
-  "src/renderer/conndiag.js": [
-    ", par ICE +",
-    ". Tentando de novo…",
-    "A imagem de",
-    "A imagem parou. Tentando de novo…",
-    "Sem contato com o PC de",
-    "Sem contato com o PC de",
-    "banda estimada",
-    "não voltou.",
-    "origem parou de enviar video (caminho vivo)",
-    "parou de enviar imagem. Tentando de novo…",
-    "quadros decodificados sem aparecer na tela",
-    "rede (nada chegando)",
-    "respostas STUN",
-    "sem estatistica suficiente",
-    "sem par de candidatos selecionado",
-    "video chegando sem decodificar (quadro-chave/decoder)"
-  ],
   "src/renderer/emoji.js": [
     "Símbolos",
     "abacaxi fruta",
@@ -840,8 +750,7 @@
     "Sente-se para recomeçar",
     "Vez de",
     "Vez de",
-    "Você não está jogando",
-    "×"
+    "Você não está jogando"
   ],
   "src/renderer/mesa-janelas/placar.js": [
     ": fecha com",
@@ -1001,9 +910,7 @@
     "Sua vez",
     "Use o botão Levantar",
     "Vez de",
-    "Você já está sentado",
-    "×",
-    "×"
+    "Você já está sentado"
   ],
   "src/renderer/mesa-janelas/velha.js": [
     "Casa ocupada",
@@ -1111,7 +1018,6 @@
     "Você já está sentado",
     "Você não está sentado",
     "espera adversário",
-    "×",
     "— vez de"
   ],
   "src/renderer/mesa-modules/cronometro.js": [
@@ -1387,8 +1293,7 @@
     "Só dá para somar 1 ou tirar 1",
     "Time inválido",
     "Time inválido",
-    "Time inválido",
-    "×"
+    "Time inválido"
   ],
   "src/renderer/mesa-modules/poquer.js": [
     ", mão",
@@ -1810,8 +1715,7 @@
     "Sorteio de times",
     "Sorteio inválido",
     "Sorteio inválido",
-    "Todo mundo da sala já está na lista",
-    "×"
+    "Todo mundo da sala já está na lista"
   ],
   "src/renderer/mesa-modules/stop.js": [
     "A rodada ainda não começou",
@@ -2013,8 +1917,7 @@
     "saiu da Mesa",
     "travou a Mesa: só o líder mexe",
     "uma janela",
-    "uma janela",
-    "×"
+    "uma janela"
   ],
   "src/renderer/mesa-vista.js": [
     "radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)",
@@ -2036,9 +1939,6 @@
     "Não achei o monitor para rabiscos e reações; eles ficam só no app."
   ],
   "src/renderer/sound.js": [
-    "NAO tocou",
-    "NAO tocou",
-    "NAO tocou",
     "ao vivo",
     "ao vivo",
     "contexto nao retomou em 1s",
@@ -2063,25 +1963,6 @@
     "A função de bloqueio é obrigatória.",
     "Qualidade desconhecida:"
   ],
-  "src/renderer/theme.js": [
-    "--act fica a",
-    "--tx sobre",
-    ":1, abaixo do piso de",
-    ":1, abaixo do piso de",
-    ":1, abaixo do piso de",
-    ":1, abaixo do piso de",
-    ":1, fora da faixa de",
-    "Carvão",
-    "Sinal claro",
-    "Superfície e sinal",
-    "sobre --bg tem contraste",
-    "sobre --s1 tem contraste",
-    "tem contraste",
-    "tem contraste",
-    "texto do botão sobre --act tem contraste",
-    "° de --live, abaixo do mínimo de",
-    "Âmbar quente"
-  ],
   "src/renderer/ui.js": [
     "A câmera só chega quando você pede.",
     "A tela só chega quando você pede, e quem transmite economiza enquanto ninguém assiste.",
@@ -2089,24 +1970,10 @@
     "Todo mundo já está junto.",
     "class=\"menu__item tile-menu-watch\" role=\"menuitem\""
   ],
-  "src/renderer/version.js": [
-    ". Atualize o GoLive pra entrar.",
-    ". Quem criou a sala precisa atualizar.",
-    ". Todo mundo precisa estar na mesma versão.",
-    "Essa sala está na versão",
-    "Essa sala está na versão",
-    "Essa sala está numa versão diferente da sua. Todo mundo precisa estar na mesma versão.",
-    "Você está na versão",
-    "e essa sala está na",
-    "e o seu app, na",
-    "e você está na",
-    "versão diferente"
-  ],
   "src/renderer/warningcenter.js": [
     "Dispensar aviso",
     "warn-center-icon warn-center-icon-",
-    "warn-center-item warn-center-item-",
-    "×"
+    "warn-center-item warn-center-item-"
   ],
   "src/renderer/ytplayer.js": [
     "Link de vídeo inválido.",

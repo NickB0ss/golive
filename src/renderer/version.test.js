@@ -1,4 +1,5 @@
 'use strict';
+require('./i18n'); // registra GoLive.i18n (pt-BR por padrao) para t()
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { parse, compare, same, mismatchText, mismatchBadge } = require('./version');

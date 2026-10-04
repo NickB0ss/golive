@@ -3999,7 +3999,7 @@
         // P1: server antigo sem o campo cai no que o welcome anterior ja
         // ensinou (mesmo padrao do ramo de queda abrupta acima).
         if (typeof msg.roomName === 'string' && msg.roomName) currentRoomName = msg.roomName;
-        showLobbyError(`O líder da sala saiu. ${msg.successorName || 'Alguém'} está assumindo a sala...`);
+        showLobbyError(t('sala.liderSaiuAssumindo', { nome: msg.successorName || t('sala.alguem') }));
         renderRoomStatus();
         // Caminho gracioso: todos recebem isto no mesmo instante, entao a
         // queda e agora e a base do prazo e zero (tempos iguais aos de
@@ -4079,13 +4079,13 @@
         if (msg.action === 'stop-share') {
           if (localStream) stopShare(); // reusa o caminho que ja para de compartilhar
           playSoundEvent('moderated', { action: msg.action });
-          showToast(`${msg.by} parou sua transmissão.`);
+          showToast(t('sala.parouTransmissao', { nome: msg.by }));
         } else {
           resumeToken = null;
           playSoundEvent('moderated', { action: msg.action });
           // 'kick'/'ban': o servidor fecha o socket em seguida (1008) -- o
           // onClose padrao (room-closed) cuida de voltar pro lobby.
-          showToast(msg.action === 'ban' ? `${msg.by} baniu você da sala.` : `${msg.by} expulsou você da sala.`);
+          showToast(t(msg.action === 'ban' ? 'sala.baniuVoce' : 'sala.expulsouVoce', { nome: msg.by }));
         }
         break;
       }
@@ -4140,7 +4140,7 @@
         const souEu = ownerId === 'me';
         if (!souEu) ui.members.renderBanned([], {}); // a lista de banidos e ferramenta de dono
         if (msg.id != null) {
-          showToast(souEu ? 'Você é o líder da sala agora.' : `${msg.name} é o líder da sala agora.`);
+          showToast(t(souEu ? 'sala.voceELiderAgora' : 'sala.eLiderAgora', { nome: msg.name }));
         }
         renderMembersPanel();
         mesaView?.onLeaderChange();
@@ -4208,8 +4208,8 @@
           playSoundEvent('broadcast-state', { live: true, wasLive, bootstrap });
           if (!wasLive) maybeNotifyLive(peer, msg.id, { bootstrap });
           ui.grid.setPaused(msg.id, peer.paused, {
-            title: 'Transmissão pausada',
-            subtitle: `${peer.name || 'Alguém'} pausou a tela`,
+            title: t('sala.transmissaoPausadaTitulo'),
+            subtitle: t('sala.pausouTela', { nome: peer.name || t('sala.alguem') }),
           });
         }
         // A sala mudou de "quantas telas ha pra escolher": pode ser a
@@ -5230,7 +5230,7 @@
   function handleCaptureTransition(transition) {
     if (transition.state === 'instavel') {
       console.warn(`[captura] instavel: ${transition.mutes} quedas em 20 s (surface=${captureSurface})`);
-      captureWarning = 'A captura da tela está falhando — o jogo pode estar em tela cheia exclusiva ou bloqueando captura. Tente o modo janela sem borda, ou compartilhe só a janela do jogo.';
+      captureWarning = t('aviso.capturaFalhando');
     } else {
       console.info('[captura] estavel de novo');
       captureWarning = '';
@@ -5458,7 +5458,7 @@
       let timer = setTimeout(() => {
         timer = null;
         promise.then((stream) => stream.getTracks().forEach((t) => t.stop()), () => {});
-        reject(new Error('a câmera não respondeu'));
+        reject(new Error(t('erro.cameraNaoRespondeu')));
       }, ms);
       promise.then(
         (stream) => { if (timer !== null) { clearTimeout(timer); resolve(stream); } },
@@ -5724,7 +5724,7 @@
     const id = String(ownerId);
     const peer = currentSession?.mesh?.peers.get(id);
     ui.grid.setWatched(`cam-${id}`, watchingCamera(id), {
-      name: peer?.name || 'Alguém',
+      name: peer?.name || t('sala.alguem'),
       avatar: peer?.avatar || null,
       kind: 'camera',
     });
@@ -5761,7 +5761,7 @@
       const peer = session?.mesh?.peers.get(id);
       const assistindo = watchingScreen(id);
       ui.grid.setWatched(id, assistindo, {
-        name: peer?.name || 'Alguém',
+        name: peer?.name || t('sala.alguem'),
         avatar: peer?.avatar || null,
         // "+ Ver junto" so faz sentido havendo outra tela ja no ar; largar
         // uma so faz sentido havendo outra pra ficar.
@@ -5794,7 +5794,7 @@
     });
     if (!ok) return;
     livenotify.markNotified(notifyTracker, peerId, Date.now());
-    const n = new Notification(`${peer?.name || 'Alguém'} ficou ao vivo`, {
+    const n = new Notification(t('sala.ficouAoVivo', { nome: peer?.name || t('sala.alguem') }), {
       icon: peer?.avatar || undefined,
       silent: true, // o app ja tem tom proprio (playLiveSound); o ding nativo dobraria o aviso
     });
@@ -5868,10 +5868,10 @@
   }
 
   function mesaPeerName(id) {
-    if (id == null) return 'Alguém';
-    if (String(id) === String(myId)) return cfg.name || 'Você';
+    if (id == null) return t('sala.alguem');
+    if (String(id) === String(myId)) return cfg.name || t('sala.voce');
     const peer = (currentSession || orphanSession)?.mesh?.peers.get(String(id));
-    return peer?.name || 'Alguém';
+    return peer?.name || t('sala.alguem');
   }
 
   mesaView = window.GoLive.mesaView.create({
@@ -5885,7 +5885,7 @@
     me: () => myId,
     isLeader: () => ownerId === 'me',
     peers: () => {
-      const out = myId != null ? [{ id: String(myId), name: cfg.name || 'Você' }] : [];
+      const out = myId != null ? [{ id: String(myId), name: cfg.name || t('sala.voce') }] : [];
       for (const p of currentSession?.mesh?.peers.values() || []) out.push({ id: String(p.id), name: p.name });
       return out;
     },
@@ -6053,7 +6053,7 @@
     if (copy) {
       const texto = copy === 'pin' ? (hostInfo?.pin || $('stage-room-pin').textContent.replace(/\D/g, ''))
         : $('stage-room-address').textContent;
-      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(copy === 'pin' ? 'PIN copiado' : 'Endereço copiado', 1500)).catch(() => {});
+      if (texto) navigator.clipboard.writeText(texto).then(() => showToast(t(copy === 'pin' ? 'sala.pinCopiado' : 'sala.enderecoCopiado'), 1500)).catch(() => {});
       setRoomMoreOpen(false);
       return;
     }
@@ -6852,9 +6852,9 @@
   }
 
   const LIMITATION_LABELS = {
-    bandwidth: 'banda da rede insuficiente',
-    cpu: 'CPU no limite',
-    other: 'limite do encoder',
+    bandwidth: 'diag.limiteBanda',
+    cpu: 'diag.limiteCpu',
+    other: 'diag.limiteEncoder',
   };
 
   async function updateStats() {
@@ -7148,9 +7148,9 @@
     // A tabela "Recebendo" existe mesmo sem nenhum sender nosso: um espectador
     // puro tem rows vazio e e justamente quem precisa deste painel.
     const rxHtml = !rxRows.length ? '' : `
-      <h4 class="stats-subtitle">Recebendo</h4>
+      <h4 class="stats-subtitle">${t('diag.recebendo')}</h4>
       <table class="stats-table">
-        <tr><th>de</th><th>fps</th><th>resolução</th><th>perda</th><th>travadas</th><th>buffer</th></tr>
+        <tr><th>${t('diag.colDe')}</th><th>fps</th><th>${t('diag.resolucao')}</th><th>${t('diag.colPerda')}</th><th>${t('diag.colTravadas')}</th><th>buffer</th></tr>
         ${rxRows.map((r) => `
           <tr>
             <td>${esc(r.name)}</td>
@@ -7164,7 +7164,7 @@
 
     if (!rows.length) {
       ui.settings.setStatsHtml(
-        rxHtml || '<div class="stat"><span>enviando pra</span><b>0 pessoas</b></div>'
+        rxHtml || `<div class="stat"><span>${t('diag.enviandoPra')}</span><b>${t('diag.zeroPessoas')}</b></div>`
       );
       return;
     }
@@ -7181,17 +7181,17 @@
     const targetBitrate = qualityFor(rows[0].kind).bitrate;
 
     const summary = `
-      <div class="stat"><span>enviando pra</span><b>${rows.length} sender(s)</b></div>
-      <div class="stat"><span>resolução</span><b>${first.width}x${first.height}</b></div>
-      <div class="stat"><span>saída total</span><b>${totalMbps.toFixed(1)} Mbps</b></div>
+      <div class="stat"><span>${t('diag.enviandoPra')}</span><b>${t('diag.senders', { n: rows.length })}</b></div>
+      <div class="stat"><span>${t('diag.resolucao')}</span><b>${first.width}x${first.height}</b></div>
+      <div class="stat"><span>${t('diag.saidaTotal')}</span><b>${totalMbps.toFixed(1)} Mbps</b></div>
       <div class="stat"><span>codec</span><b>${esc(first.codec || '-')}</b></div>
       <div class="stat"><span>encoder</span><b class="${anySoftware ? 'warn-text' : 'good'}">${
-        anySoftware ? 'software (CPU)' : 'hardware'
+        t(anySoftware ? 'diag.encoderSoftwareCpu' : 'diag.encoderHardware')
       }</b></div>
-      <div class="stat"><span>encode somado</span><b class="${
+      <div class="stat"><span>${t('diag.encodeSomado')}</span><b class="${
         encodeMsRows.length && totalEncodeMs > budget ? 'warn-text' : 'good'
       }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>
-      <div class="stat"><span>banda disponível</span><b class="${
+      <div class="stat"><span>${t('diag.bandaDisponivel')}</span><b class="${
         minAvailableBps != null && minAvailableBps < targetBitrate ? 'warn-text' : ''
       }">${minAvailableBps != null ? `${(minAvailableBps / 1_000_000).toFixed(1)} Mbps` : '-'}</b></div>`;
 
@@ -7200,7 +7200,7 @@
         const software = isSoftwareEncoder(r.encoder);
         const dropped = Math.max(r.framesEncoded - r.framesSent, 0);
         return `<tr>
-          <td>${esc(r.name)}<span class="stats-kind">${r.kind === 'camera' ? 'câmera' : 'tela'}</span></td>
+          <td>${esc(r.name)}<span class="stats-kind">${t(r.kind === 'camera' ? 'diag.kindCamera' : 'diag.kindTela')}</span></td>
           <td class="${r.fps >= 50 ? 'good' : 'warn-text'}">${Math.round(r.fps)}${
             r.captureFps != null ? `<span class="stats-kind">cap ${Math.round(r.captureFps)}</span>` : ''
           }</td>
@@ -7208,7 +7208,7 @@
             r.msPerFrame != null ? `${r.msPerFrame.toFixed(1)} ms` : '-'
           }</td>
           <td class="${software ? 'warn-text' : ''}">${esc(r.encoder || '-')}${
-            r.powerEfficient === false ? '<span class="stats-kind">não eficiente</span>' : ''
+            r.powerEfficient === false ? `<span class="stats-kind">${t('diag.naoEficiente')}</span>` : ''
           }</td>
           <td>${r.mbps.toFixed(1)}</td>
           <td>${r.rtt != null ? `${Math.round(r.rtt)} ms` : '-'}</td>
@@ -7222,14 +7222,14 @@
 
     const limited = rows.filter((r) => r.limitation);
     const limitWarn = limited.length
-      ? `<div class="stat-warn">Limitado por: ${limited
-          .map((r) => `${esc(r.name)} — ${LIMITATION_LABELS[r.limitation] || esc(r.limitation)}`)
+      ? `<div class="stat-warn">${t('diag.limitadoPor')} ${limited
+          .map((r) => `${esc(r.name)} — ${LIMITATION_LABELS[r.limitation] ? t(LIMITATION_LABELS[r.limitation]) : esc(r.limitation)}`)
           .join('; ')}</div>`
       : '';
 
     ui.settings.setStatsHtml(`${summary}
       <table class="stats-table">
-        <thead><tr><th>pessoa</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>perda rede</th><th>perdidos</th></tr></thead>
+        <thead><tr><th>${t('diag.colPessoa')}</th><th>fps</th><th>encode</th><th>encoder</th><th>Mbps</th><th>rtt</th><th>${t('diag.colPerdaRede')}</th><th>${t('diag.colPerdidos')}</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       ${limitWarn}
@@ -7247,7 +7247,7 @@
     const software = screen.filter((r) => isSoftwareEncoder(r.encoder));
     const next =
       software.length && screen.length > 1
-        ? 'Encoder em software — o vídeo está sendo codificado pela CPU. Reduza a qualidade ou o número de pessoas assistindo.'
+        ? t('aviso.encoderSoftwareDetalhe')
         : '';
     if (next === encoderWarning) return;
     encoderWarning = next;

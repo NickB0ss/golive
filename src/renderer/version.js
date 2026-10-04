@@ -54,21 +54,21 @@
   function mismatchText({ mine, theirs }) {
     const cmp = compare(mine, theirs);
     if (cmp === -1) {
-      return `Essa sala está na versão ${theirs} e você está na ${mine}. Atualize o GoLive pra entrar.`;
+      return root.GoLive.i18n.t('aviso.versaoSalaMaisNova', { minha: mine, sala: theirs });
     }
     if (cmp === 1) {
-      return `Você está na versão ${mine} e essa sala está na ${theirs}. Quem criou a sala precisa atualizar.`;
+      return root.GoLive.i18n.t('aviso.versaoAppMaisNova', { minha: mine, sala: theirs });
     }
     if (theirs) {
-      return `Essa sala está na versão ${theirs} e o seu app, na ${mine || 'desconhecida'}. Todo mundo precisa estar na mesma versão.`;
+      return root.GoLive.i18n.t('aviso.versaoDiferenteComSala', { minha: mine || 'desconhecida', sala: theirs });
     }
-    return 'Essa sala está numa versão diferente da sua. Todo mundo precisa estar na mesma versão.';
+    return root.GoLive.i18n.t('aviso.versaoDiferente');
   }
 
   /** Selo curto do card da sala na lista da rede (espaco de uma linha). */
   function mismatchBadge({ mine, theirs }) {
-    if (!theirs) return 'versão diferente';
-    return compare(mine, theirs) === 1 ? `v${theirs} · desatualizada` : `v${theirs} · atualize`;
+    if (!theirs) return root.GoLive.i18n.t('aviso.versaoDiferenteCurto');
+    return root.GoLive.i18n.t(compare(mine, theirs) === 1 ? 'aviso.versaoDesatualizada' : 'aviso.versaoAtualize', { versao: theirs });
   }
 
   const api = { parse, compare, same, mismatchText, mismatchBadge };

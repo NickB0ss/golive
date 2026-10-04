@@ -31,7 +31,7 @@ tratam a pessoa por **tú**, sem *vosotros* nem regionalismos.
 | Palco vazio | **Ninguém em foco** | **Nobody in focus** | **Nadie en foco** | — |
 | Navegação do lobby para a lista de salas | **Salas** | **Rooms** | **Salas** | — |
 | Navegação do lobby para os ajustes do app | **Configurações** | **Settings** | **Configuración** | — · Preferences · Preferencias |
-| Tema padrão do app | **Estúdio** | **Studio** | **Estudio** | — |
+| Tema padrão do app (nome próprio da identidade visual) | **Sinal** | **Sinal** | **Sinal** | Signal, Señal |
 
 ### A Mesa (2026-09-24)
 

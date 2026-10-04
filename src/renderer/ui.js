@@ -4327,7 +4327,7 @@
     return `
       <button type="button" class="theme-card${active ? ' active' : ''}" data-preset="${id}" aria-pressed="${active}">
         ${amostraTema(preset.surfaces, preset.act)}
-        <span class="theme-card__label">${escapeHtml(preset.label)}</span>
+        <span class="theme-card__label">${escapeHtml(t(preset.labelKey))}</span>
       </button>`;
   }
 

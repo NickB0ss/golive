@@ -209,14 +209,14 @@
    * mentira. */
   function stallNotice(cause, nome, { gaveUp = false } = {}) {
     if (gaveUp) {
-      return cause === 'rede' ? `Sem contato com o PC de ${nome}.` : `A imagem de ${nome} não voltou.`;
+      return root.GoLive.i18n.t(cause === 'rede' ? 'diag.semContato' : 'diag.imagemNaoVoltou', { nome });
     }
     switch (cause) {
-      case 'rede': return `Sem contato com o PC de ${nome}. Tentando de novo…`;
-      case 'origem': return `${nome} parou de enviar imagem. Tentando de novo…`;
+      case 'rede': return root.GoLive.i18n.t('diag.semContatoTentando', { nome });
+      case 'origem': return root.GoLive.i18n.t('diag.parouEnviarTentando', { nome });
       case 'decoder':
-      case 'pintura': return 'Recuperando a imagem…';
-      default: return 'A imagem parou. Tentando de novo…';
+      case 'pintura': return root.GoLive.i18n.t('diag.recuperandoImagem');
+      default: return root.GoLive.i18n.t('diag.imagemParouTentando');
     }
   }
 

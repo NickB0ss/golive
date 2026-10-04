@@ -4,6 +4,7 @@
 // medidos contra --bg pela trava de contraste. Aparecem (>= 1,1:1) sem
 // competir com as janelas (<= 1,4:1); a forte e mais forte que a fina.
 
+require('./i18n'); // registra GoLive.i18n (pt-BR por padrao) para t()
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
