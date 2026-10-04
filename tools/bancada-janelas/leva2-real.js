@@ -592,6 +592,9 @@ async function cenaQuiz(browser) {
 
     const wAna = janela(ana.page, id);
     const wBia = janela(bia.page, id);
+    // O Quiz nasce em preparo (todos os temas marcados): alguem aperta Comecar.
+    await wAna.getByRole('button', { name: 'Começar' }).click();
+    await janela(ana.page, idMin).getByRole('button', { name: 'Começar' }).click();
     await wAna.locator('.mj-quiz-alternativas .mj-quiz-opcao').first().waitFor();
 
     // Sigilo: antes dos dois responderem, ninguem sabe o que o outro

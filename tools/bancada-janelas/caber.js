@@ -29,6 +29,8 @@ const PRINTS = path.join(RAIZ, 'docs', 'prints', '2026-09-27-caber');
 const TEMAS = ['sinal', 'paper'];
 const CHEIOS = new Set(['roleta', 'poquer', 'blackjack', 'lista', 'enquete', 'stop', 'quiz', 'truco']);
 const pedidos = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
+// --idioma=en|es: mede a janela com o texto nessa lingua (o es costuma ser ~20% mais longo).
+const IDIOMA = (process.argv.find((arg) => arg.startsWith('--idioma=')) || '').slice('--idioma='.length);
 const falhas = [];
 let conferidos = 0;
 
@@ -57,7 +59,9 @@ async function abrir(browser, tipo, tam, tema) {
   page.on('console', (msg) => {
     if (msg.type() === 'error') erros.push(msg.text());
   });
-  const params = new URLSearchParams({ tipo, tam, ...(tema === 'paper' ? { tema } : {}) });
+  const params = new URLSearchParams({
+    tipo, tam, ...(tema === 'paper' ? { tema } : {}), ...(IDIOMA ? { idioma: IDIOMA } : {}),
+  });
   await page.goto(`${PAGINA}?${params}`);
   await page.waitForSelector('body[data-pronto="1"]', { timeout: 5000 });
   return { page, erros };
@@ -215,7 +219,8 @@ async function conferirEstado(ctx, tipo, tam, tema, estadoNome, estado, assinatu
   conferir(problemas.length === 0, `${tipo}/${tam}/${tema}/${estadoNome}: ${problemas.join(' | ')}`);
   if (problemas.length) {
     fs.mkdirSync(PRINTS, { recursive: true });
-    await ctx.page.screenshot({ path: path.join(PRINTS, `${tipo}-${tam}-${tema}.png`) });
+    const sufixo = IDIOMA ? `-${IDIOMA}` : '';
+    await ctx.page.screenshot({ path: path.join(PRINTS, `${tipo}-${tam}-${tema}${sufixo}.png`) });
   }
   return medida.assinatura;
 }
