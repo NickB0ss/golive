@@ -78,15 +78,14 @@
     return playing ? t('mesa.radio.tocandoAgora') : t('mesa.radio.pausado');
   }
 
-  // O comum.js ainda nao tem a nota musical.
-  const TRACO_MUSICA = '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>';
-
   function mountReal(el, api) {
     const C = root.GoLive.mesaJanelasComum;
     const M = mod();
     const L = root.GoLive.mesaMidiaLinks;
     const YP = root.GoLive.ytplayer;
     const S = root.GoLive.mesaSyncMedia;
+    const b = C.base(el, api, 'radio');
+    b.raiz.classList.add('mjm', 'mjm-radio');
     const now = () => root.performance.now();
     let state = M.init({});
     let player = null;
@@ -130,16 +129,14 @@
       texto: t('mesa.radio.vazioTexto'),
       acao: form,
     });
-    const idleGlifo = idle.querySelector('.mj-vazio-glifo .mj-i');
-    if (!idleGlifo.innerHTML) idleGlifo.innerHTML = TRACO_MUSICA;
     const idleAcao = idle.querySelector('.mj-vazio-acao');
     const pe = h('div', { class: 'mjm-radio-pe' });
     const note = h('p', { class: 'mjm-note', 'aria-live': 'polite' });
     const audio = h('div', { class: 'mjm-radio-audio', 'aria-hidden': 'true' });
-    const rootEl = h('div', { class: 'mj mjm mjm-radio' },
+    const rootEl = h('div', {},
       nowBox, idle, standby, msg, failed, queueHead, list, pe, note, audio);
-    rootEl.dataset.superficie = C.SUPERFICIES.radio;
-    el.appendChild(rootEl);
+    b.raiz.appendChild(rootEl);
+    b.aviso.em(b.raiz);
 
     /** Leva o formulario para onde ele mora agora, sem derrubar o foco de quem digita. */
     function moverForm(destino) {
@@ -246,15 +243,20 @@
       const linhas = linhasDaFila(state.queue, api.nameOf && ((id) => api.nameOf(id)));
       state.queue.forEach((it, i) => {
         const canRemove = api.validate({ kind: 'remove', id: it.id }) === true;
-        const icone = (rotulo, desligado, nome) => h('button', {
-          class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': rotulo, disabled: desligado,
-        }, C.icone(nome));
-        const up = icone(t('mesa.radio.subir'), i === 0, 'sobe');
-        const down = icone(t('mesa.radio.descer'), i === state.queue.length - 1, 'desce');
-        const rm = icone(t('mesa.radio.tirar'), !canRemove, 'x');
-        up.addEventListener('click', () => send({ kind: 'move', id: it.id, to: i - 1 }));
-        down.addEventListener('click', () => send({ kind: 'move', id: it.id, to: i + 1 }));
-        rm.addEventListener('click', () => send({ kind: 'remove', id: it.id }));
+        const icone = (rotulo, motivo, nome) => {
+          const botao = h('button', {
+            class: 'mjm-btn mjm-icon', type: 'button', 'aria-label': rotulo,
+          }, C.icone(nome));
+          C.ligado(botao, motivo);
+          return botao;
+        };
+        const up = icone(t('mesa.radio.subir'), i === 0 ? t('mesa.radio.primeiraDaFila') : true, 'sobe');
+        const down = icone(t('mesa.radio.descer'),
+          i === state.queue.length - 1 ? t('mesa.radio.ultimaDaFila') : true, 'desce');
+        const rm = icone(t('mesa.radio.tirar'), canRemove ? true : t('mesa.radio.soQuemPosTira'), 'x');
+        b.clique(up, rootEl, () => send({ kind: 'move', id: it.id, to: i - 1 }));
+        b.clique(down, rootEl, () => send({ kind: 'move', id: it.id, to: i + 1 }));
+        b.clique(rm, rootEl, () => send({ kind: 'remove', id: it.id }));
         const dot = h('span', { class: 'mjm-dot', 'aria-hidden': 'true' });
         if (typeof api.colorFor === 'function' && it.by) dot.style.background = api.colorFor(it.by);
         list.appendChild(h('li', { class: 'mjm-radio-item' },
@@ -300,7 +302,7 @@
         const need = M.votesNeeded(typeof api.peers === 'function' ? api.peers().length : 1);
         const voted = state.votes.includes(String(api.me()));
         voteBtn.textContent = t(voted ? 'mesa.radio.votou' : 'mesa.radio.votar', { votos: state.votes.length, precisa: need });
-        voteBtn.disabled = voted;
+        C.ligado(voteBtn, voted ? t('mesa.radio.jaVotou') : true);
       }
       const last = state.failed[state.failed.length - 1];
       failed.hidden = !last;
@@ -331,7 +333,7 @@
       return send(cur !== null && Math.abs(cur - target()) < 2 ? { kind: 'pause', pos: Math.round(cur * 100) / 100 } : { kind: 'pause' });
     });
     skipBtn.addEventListener('click', () => send({ kind: 'skip' }));
-    voteBtn.addEventListener('click', () => send({ kind: 'vote-skip' }));
+    b.clique(voteBtn, rootEl, () => send({ kind: 'vote-skip' }));
     takeBtn.addEventListener('click', () => slot.take());
     vol.addEventListener('input', () => {
       volume.vol = Number(vol.value);
@@ -349,6 +351,7 @@
       ? api.onDenied((d) => showNote(d && (d.detail || d.reason)
         ? t('mesa.midia.naoDeuMotivo', { motivo: C.motivoRecusa(d.reason, d.detail) }) : t('mesa.midia.naoDeu')))
       : null;
+    if (typeof offDenied === 'function') b.faxina.push(offDenied);
 
     const timer = root.setInterval(() => {
       if (sync && state.current && slot.active()) sync.tick();
@@ -370,10 +373,9 @@
         root.clearInterval(timer);
         if (noteTimer) root.clearTimeout(noteTimer);
         root.removeEventListener('online', onOnline);
-        if (typeof offDenied === 'function') offDenied();
         destroyPlayer();
         slot.release();
-        rootEl.remove();
+        b.destruir();
       },
       focus() {
         (state.current ? playBtn : input).focus();

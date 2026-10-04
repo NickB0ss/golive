@@ -109,6 +109,28 @@ test('com musica: a faixa em destaque, a fila numerada e o formulario desce para
   }
 });
 
+test('controles indisponiveis da fila e do voto mantem foco e explicam o motivo', async () => {
+  const estado = { ...tocando(), votes: ['1'] };
+  const { el, tela } = await montar(estado);
+  try {
+    const raiz = el.querySelector('.mjm-radio');
+    const [primeira, ultima] = raiz.querySelectorAll('.mjm-radio-item');
+    const subir = botaoDe(primeira, 'Subir na fila');
+    const descer = botaoDe(ultima, 'Descer na fila');
+    const voto = botaoDe(raiz, 'Você votou (1/1)');
+    assert.equal(subir.getAttribute('aria-disabled'), 'true');
+    assert.equal(subir.title, 'Esta música já é a primeira da fila');
+    assert.equal(descer.getAttribute('aria-disabled'), 'true');
+    assert.equal(descer.title, 'Esta música já é a última da fila');
+    assert.equal(voto.getAttribute('aria-disabled'), 'true');
+    assert.equal(voto.title, 'Você já votou');
+    subir.dispatch('click');
+    assert.equal(el.querySelector('.mj-aviso').textContent, 'Esta música já é a primeira da fila');
+  } finally {
+    tela.destroy();
+  }
+});
+
 test('o formulario volta para o vazio quando a fila acaba, com o foco junto se estava nele', async () => {
   const { el, tela } = await montar(tocando());
   try {
