@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+require('../i18n');
 require('./comum');
 const janela = require('./domino');
 

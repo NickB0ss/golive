@@ -81,7 +81,7 @@ test('encaixa pela ponta direita e gira a pedra', () => {
 
 test('recusa peça que não encaixa', () => {
   const s = state({ hands: [[[1, 2]], [[3, 4]], [], []] });
-  assert.equal(domino.validate(s, { kind: 'play', stone: 0, end: 'left' }, ctx('a')), 'Pedra não encaixa');
+  assert.equal(domino.validate(s, { kind: 'play', stone: 0, end: 'left' }, ctx('a')), 'mesa.domino.naoEncaixa');
 });
 
 test('compra até poder jogar com monte', () => {
@@ -99,7 +99,7 @@ test('sem monte, passa a vez', () => {
 
 test('com quatro jogadores passa e nunca compra', () => {
   const s = state({ seats: ['a', 'b', 'c', 'd'], hands: [[[1, 1]], [[2, 2]], [[3, 3]], [[4, 4]]], stock: [] });
-  assert.equal(domino.validate(s, { kind: 'draw' }, ctx('a')), 'Você já pode jogar ou não há monte');
+  assert.equal(domino.validate(s, { kind: 'draw' }, ctx('a')), 'mesa.domino.jaPodeJogar');
   assert.equal(domino.validate(s, { kind: 'pass' }, ctx('a')), true);
 });
 
@@ -155,7 +155,7 @@ test('timeout compra quando não há pedra e passa sem monte', () => {
 
 test('recusa ação fora da vez', () => {
   const s = state({ hands: [[[6, 6]], [[6, 5]], [], []] });
-  assert.equal(domino.validate(s, { kind: 'play', stone: 0, end: 'left' }, ctx('b')), 'Não é a sua vez');
+  assert.equal(domino.validate(s, { kind: 'play', stone: 0, end: 'left' }, ctx('b')), 'mesa.jogo.naoESuaVez');
 });
 
 test('view mostra só as próprias pedras, contagens e não revela o monte', () => {

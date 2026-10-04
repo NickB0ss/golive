@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const i18n = require('../i18n');
 const stop = require('./stop');
 
 const peers = [
@@ -49,7 +50,7 @@ test('sorteia apenas letras permitidas pelo servidor', () => {
 test('somente quem criou troca categorias entre rodadas', () => {
   const state = stop.init(ctx('ana'));
   assert.equal(stop.validate(state, { kind: 'categories', categories: ['Nome', 'Filme'] }, ctx('bia')),
-    'Só quem criou a janela');
+    'mesa.stop.soQuemCriou');
   const changed = act(state, { kind: 'categories', categories: ['Nome', 'Filme'] }, 'ana');
   assert.deepEqual(changed.categories, ['Nome', 'Filme']);
 });
@@ -58,29 +59,29 @@ test('aceita no maximo dez categorias entre rodadas', () => {
   const state = stop.init(ctx('ana'));
   const eleven = Array.from({ length: 11 }, (_, i) => `Categoria ${i}`);
   assert.equal(stop.validate(state, { kind: 'categories', categories: eleven }, ctx('ana')),
-    'No máximo 10 categorias');
+    'mesa.stop.maxCategorias?n=10');
 });
 
 test('recusa categorias vazias, repetidas e troca durante a rodada', () => {
   const setup = stop.init(ctx('ana'));
-  assert.match(stop.validate(setup, { kind: 'categories', categories: ['Nome', ' '] }, ctx('ana')), /vazia/);
-  assert.match(stop.validate(setup, { kind: 'categories', categories: ['Nome', 'nome'] }, ctx('ana')), /repetidas/);
+  assert.match(stop.validate(setup, { kind: 'categories', categories: ['Nome', ' '] }, ctx('ana')), /categoriaVazia/);
+  assert.match(stop.validate(setup, { kind: 'categories', categories: ['Nome', 'nome'] }, ctx('ana')), /categoriasRepetidas/);
   const state = rodada();
   assert.equal(stop.validate(state, { kind: 'categories', categories: ['Nome'] }, ctx('ana')),
-    'Troque as categorias entre rodadas');
+    'mesa.stop.trocarEntreRodadas');
 });
 
 test('cada resposta e limitada a quarenta caracteres', () => {
   const state = rodada();
   const answers = state.categories.map(() => 'a'.repeat(41));
-  assert.equal(stop.validate(state, { kind: 'answer', answers }, ctx('ana')), 'Resposta longa demais (máx. 40)');
+  assert.equal(stop.validate(state, { kind: 'answer', answers }, ctx('ana')), 'mesa.stop.respostaLonga?max=40');
 });
 
 test('participantes da rodada ficam fixados ao iniciar', () => {
   const state = rodada(peers.slice(0, 2));
   assert.deepEqual(state.players, ['ana', 'bia']);
   assert.equal(stop.validate(state, { kind: 'answer', answers: state.categories.map(() => 'A') }, ctx('caio')),
-    'Você não está nesta rodada');
+    'mesa.stop.naoEstaNaRodada');
 });
 
 test('respostas ficam secretas antes do STOP', () => {
@@ -95,7 +96,7 @@ test('respostas ficam secretas antes do STOP', () => {
 
 test('STOP exige todas as respostas do proprio participante', () => {
   const state = rodada();
-  assert.equal(stop.validate(state, { kind: 'stop' }, ctx('ana')), 'Preencha todas as respostas');
+  assert.equal(stop.validate(state, { kind: 'stop' }, ctx('ana')), 'mesa.stop.preenchaTodas');
 });
 
 test('quem preencheu tudo encerra a escrita para todos', () => {
@@ -105,7 +106,7 @@ test('quem preencheu tudo encerra a escrita para todos', () => {
   assert.equal(state.phase, 'review');
   assert.equal(state.deadline, null);
   assert.equal(stop.validate(state, { kind: 'answer', answers: state.categories.map(() => 'A') }, ctx('bia')),
-    'A rodada já parou');
+    'mesa.stop.rodadaParou');
 });
 
 test('o timeout de tres minutos revela as respostas', () => {
@@ -119,7 +120,7 @@ test('o timeout de tres minutos revela as respostas', () => {
 
 test('timeout sem prazo e recusado pelo modulo', () => {
   const state = stop.init(ctx('ana'));
-  assert.equal(stop.validate(state, { kind: 'timeout' }, ctx('ana')), 'Nada correndo');
+  assert.equal(stop.validate(state, { kind: 'timeout' }, ctx('ana')), 'mesa.stop.nadaCorrendo');
 });
 
 test('voto de anulacao aceita uma resposta por participante e mostra o placar', () => {
@@ -181,14 +182,14 @@ test('encerrar correcao soma os pontos e permite nova rodada', () => {
   state = act(state, { kind: 'finish' }, 'ana');
   assert.equal(state.phase, 'setup');
   assert.equal(state.scores.ana, 10);
-  assert.equal(stop.validate(state, { kind: 'start' }, ctx('bia')), 'Só quem criou a janela');
+  assert.equal(stop.validate(state, { kind: 'start' }, ctx('bia')), 'mesa.stop.soQuemCriou');
 });
 
 test('acao fora da fase e de quem nao participa e recusada', () => {
   const state = stop.init(ctx('ana'));
   assert.equal(stop.validate(state, { kind: 'vote', player: 'ana', category: 0, annul: true }, ctx('ana')),
-    'Ainda não é hora de corrigir');
-  assert.equal(stop.validate(state, { kind: 'answer', answers: ['A'] }, ctx('ana')), 'A rodada ainda não começou');
+    'mesa.stop.aindaNaoCorrigir');
+  assert.equal(stop.validate(state, { kind: 'answer', answers: ['A'] }, ctx('ana')), 'mesa.stop.rodadaNaoComecou');
 });
 
 test('dropPeer tira jogador fantasma da rodada e de seus votos', () => {
@@ -229,4 +230,25 @@ test('lider sobrevivente gere a janela depois da saida ou migracao do criador', 
   assert.equal(stop.validate(abandoned, { kind: 'start' }, { ...ctx('bia'), isLeader: true }), true);
   const migrated = stop.migrate(stop.init(ctx('ana')));
   assert.equal(stop.validate(migrated, { kind: 'categories', categories: ['Nome'] }, { ...ctx('bia'), isLeader: true }), true);
+});
+
+test('categorias padrão viajam como código e aparecem traduzidas', () => {
+  const s = stop.init({ peers: [], now: 0 });
+  assert.ok(s.categories.every((c) => i18n.existe(c)));
+  i18n.definirIdioma('es');
+  try {
+    assert.notEqual(i18n.traduzirCodigo(s.categories[0]), s.categories[0]);
+  } finally { i18n.definirIdioma('pt-BR'); }
+});
+
+test('categoria em código não muda a comparação: vale o texto digitado', () => {
+  let state = stop.init({ by: 'ana' });
+  assert.ok(state.categories[0].startsWith('mesa.stop.cat.'));
+  state = act(state, { kind: 'start' }, 'ana');
+  state = { ...state, letter: 'A', phase: 'review', answers: { ana: ['Ana', 'Anta'], bia: ['ana', 'Anta'], caio: ['', ''] } };
+  const pontos = stop.points(state);
+  const de = (player, category) => pontos.find((p) => p.player === player && p.category === category).points;
+  assert.equal(de('ana', 0), 5); // "Ana" e "ana" são a mesma resposta (sem acento e caixa)
+  assert.equal(de('bia', 0), 5);
+  assert.equal(de('caio', 0), 0);
 });

@@ -51,7 +51,7 @@ const MALFORMADAS = [
 
 test('init comeca com dois times zerados e sem serie', () => {
   assert.deepEqual(placar.init({}), {
-    teams: [{ name: 'Azul', score: 0 }, { name: 'Vermelho', score: 0 }],
+    teams: [{ name: 'mesa.placar.azul', score: 0 }, { name: 'mesa.placar.vermelho', score: 0 }],
     bestOf: null,
   });
 });
@@ -73,13 +73,13 @@ test('+1 e -1 mexem no time certo e o resumo mostra o placar', () => {
     { kind: 'score', team: 0, delta: -1 },
   ]);
   assert.deepEqual(s.teams.map((t) => t.score), [2, 1]);
-  assert.equal(placar.summary(s), 'Azul 2 × 1 Vermelho');
+  assert.equal(placar.summary(s), 'mesa.placar.azul 2 × 1 mesa.placar.vermelho');
 });
 
 test('placar nunca fica negativo', () => {
   const s = placar.init({});
   const a = { kind: 'score', team: 0, delta: -1 };
-  assert.equal(placar.validate(s, a, ctxCliente), 'O placar não fica negativo');
+  assert.equal(placar.validate(s, a, ctxCliente), 'mesa.placar.naoNegativo');
   assert.equal(placar.reduce(deepFreeze(s), a, ctxCliente).teams[0].score, 0);
 });
 
@@ -87,7 +87,7 @@ test('placar tem teto', () => {
   let s = placar.init({});
   s = { ...s, teams: [{ name: 'A', score: placar.MAX_SCORE }, s.teams[1]] };
   const a = { kind: 'score', team: 0, delta: 1 };
-  assert.equal(placar.validate(s, a, ctxCliente), 'Placar no máximo');
+  assert.equal(placar.validate(s, a, ctxCliente), 'mesa.placar.maximo');
   assert.equal(placar.reduce(deepFreeze(s), a, ctxCliente).teams[0].score, placar.MAX_SCORE);
 });
 
@@ -101,7 +101,7 @@ test('nome no teto passa; um a mais e recusado', () => {
   assert.equal(placar.validate(s, { kind: 'rename', team: 0, name: 'x'.repeat(placar.MAX_NAME) }), true);
   assert.equal(
     placar.validate(s, { kind: 'rename', team: 0, name: 'x'.repeat(placar.MAX_NAME + 1) }),
-    `Nome longo demais (máx. ${placar.MAX_NAME})`,
+    `mesa.placar.nomeLongo?max=${placar.MAX_NAME}`,
   );
 });
 
@@ -111,16 +111,16 @@ test('zerar mantem os nomes', () => {
     { kind: 'score', team: 0, delta: 1 },
     { kind: 'reset' },
   ]);
-  assert.deepEqual(s.teams, [{ name: 'Nós', score: 0 }, { name: 'Vermelho', score: 0 }]);
+  assert.deepEqual(s.teams, [{ name: 'Nós', score: 0 }, { name: 'mesa.placar.vermelho', score: 0 }]);
 });
 
 test('ate quatro times; tirar time corta os ultimos', () => {
   let s = aplica(placar.init({}), [{ kind: 'teams', count: 4 }, { kind: 'score', team: 3, delta: 1 }]);
-  assert.deepEqual(s.teams.map((t) => t.name), ['Azul', 'Vermelho', 'Verde', 'Amarelo']);
-  assert.equal(placar.summary(s), 'Azul 0 · Vermelho 0 · Verde 0 · Amarelo 1');
+  assert.deepEqual(s.teams.map((t) => t.name), ['mesa.placar.azul', 'mesa.placar.vermelho', 'mesa.placar.verde', 'mesa.placar.amarelo']);
+  assert.equal(placar.summary(s), 'mesa.placar.azul 0 · mesa.placar.vermelho 0 · mesa.placar.verde 0 · mesa.placar.amarelo 1');
   s = aplica(s, [{ kind: 'teams', count: 3 }]);
   assert.equal(s.teams.length, 3);
-  assert.equal(placar.validate(s, { kind: 'score', team: 3, delta: 1 }), 'Time inválido');
+  assert.equal(placar.validate(s, { kind: 'score', team: 3, delta: 1 }), 'mesa.placar.timeInvalido');
   assert.equal(placar.reduce(deepFreeze(s), { kind: 'score', team: 3, delta: 1 }), s);
 });
 
@@ -130,11 +130,11 @@ test('melhor de 3 fecha em 2 vitorias e trava o +1', () => {
     { kind: 'score', team: 1, delta: 1 },
     { kind: 'score', team: 0, delta: 1 },
   ]);
-  assert.equal(placar.summary(s), 'Azul 1 × 1 Vermelho (melhor de 3)');
+  assert.equal(placar.summary(s), 'mesa.placar.azul 1 × 1 mesa.placar.vermelho (melhor de 3)');
   const fim = aplica(s, [{ kind: 'score', team: 1, delta: 1 }]);
   assert.equal(placar.winner(fim), 1);
-  assert.equal(placar.summary(fim), 'Azul 1 × 2 Vermelho — Vermelho venceu');
-  assert.equal(placar.validate(fim, { kind: 'score', team: 0, delta: 1 }), 'A série acabou; zere para recomeçar');
+  assert.equal(placar.summary(fim), 'mesa.placar.azul 1 × 2 mesa.placar.vermelho — mesa.placar.vermelho venceu');
+  assert.equal(placar.validate(fim, { kind: 'score', team: 0, delta: 1 }), 'mesa.placar.serieAcabou');
   assert.equal(placar.reduce(deepFreeze(fim), { kind: 'score', team: 0, delta: 1 }), fim);
   // -1 continua valendo (corrigir engano) e zerar recomeca.
   assert.equal(placar.validate(fim, { kind: 'score', team: 1, delta: -1 }), true);

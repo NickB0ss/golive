@@ -4,6 +4,7 @@
  * pessoa: as respostas alheias nunca chegam nesta vista secret. Na correcao
  * mostra respostas, pontos e os votos de anulacao em tempo real. */
 (function (root) {
+  const { t, traduzirCodigo } = root.GoLive.i18n;
   const TYPE = 'stop';
 
   function tempo(deadline, now) {
@@ -33,9 +34,9 @@
   }
 
   function textoBarra(state) {
-    if (state.phase === 'writing') return `Letra ${state.letter || '—'} · escrevendo`;
-    if (state.phase === 'review') return 'Corrigindo respostas';
-    return 'Prepare as categorias';
+    if (state.phase === 'writing') return t('mesa.stop.barraEscrevendo', { letra: state.letter || '—' });
+    if (state.phase === 'review') return t('mesa.stop.barraCorrigindo');
+    return t('mesa.stop.barraPrepare');
   }
 
   function atualizarBarra(api, texto, vez) {
@@ -91,22 +92,25 @@
 
     function drawSetup() {
       const form = el('form', { class: 'mj-stop-categories' });
-      const title = el('p', { class: 'mj-dica', text: 'Categorias da próxima rodada' });
+      const title = el('p', { class: 'mj-dica', text: t('mesa.stop.categoriasProxima') });
       const list = el('div', { class: 'mj-stop-category-list' });
       state.categories.forEach((value, i) => {
         const input = el('input', {
           class: 'mj-campo',
-          attrs: { maxlength: '32', type: 'text', 'aria-label': `Categoria ${i + 1}` },
+          attrs: { maxlength: '32', type: 'text', 'aria-label': t('mesa.stop.categoriaN', { n: i + 1 }) },
         });
-        input.value = value;
+        input.value = traduzirCodigo(value);
         list.append(input);
       });
       // "Começar rodada" e a acao principal e mora no rodape (C.acoes), fora do form:
       // o Enter nos campos faz o mesmo que o clique.
-      const start = C.botao({ text: 'Começar rodada' });
+      const start = C.botao({ text: t('mesa.stop.comecarRodada') });
       function comecar() {
         if (state.me?.canManage || api.isLeader()) {
-          action(form, { kind: 'categories', categories: [...list.querySelectorAll('input')].map((i) => i.value) });
+          // Categoria que a pessoa nao mexeu segue como codigo: cada um a le na sua lingua.
+          const categories = [...list.querySelectorAll('input')]
+            .map((i, n) => (i.value === traduzirCodigo(state.categories[n]) ? state.categories[n] : i.value));
+          action(form, { kind: 'categories', categories });
           action(form, { kind: 'start' });
         }
       }
@@ -125,7 +129,7 @@
       });
       body.replaceChildren(form);
       footer.replaceChildren(C.acoes({ principal: start }));
-      C.ligado(start, state.me?.canManage || api.isLeader() ? true : 'Só quem gere a janela começa');
+      C.ligado(start, state.me?.canManage || api.isLeader() ? true : t('mesa.stop.soQuemGereComeca'));
     }
 
     function chaveRodada(next) {
@@ -187,20 +191,21 @@
     function atualizarRodape() {
       if (state.phase !== 'writing') return;
       const responded = Object.values(state.answered || {}).filter(Boolean).length;
-      count.textContent = `${responded}/${state.players.length} responderam`;
-      status.textContent = confirmadas() ? 'Salvo' : 'Salvando…';
+      count.textContent = t('mesa.stop.responderam', { n: responded, total: state.players.length });
+      status.textContent = confirmadas() ? t('mesa.stop.salvo') : t('mesa.stop.salvando');
       const allFilled = respostasLocais().every((answer) => answer.trim());
-      C.ligado(stop, allFilled ? true : 'Preencha todas as respostas');
+      C.ligado(stop, allFilled ? true : t('mesa.stop.preenchaTodas'));
     }
 
     function drawWriting() {
       const form = el('form', { class: 'mj-stop-answers' });
       const title = el('p', {
         class: 'mj-dica',
-        text: 'Suas respostas ficam escondidas até o STOP e são salvas sozinhas.',
+        text: t('mesa.stop.dicaEscondidas'),
       });
       const draft = drafts.get(roundKey) || state.myAnswers || [];
-      inputs = state.categories.map((category, i) => {
+      inputs = state.categories.map((codigoCategoria, i) => {
+        const category = traduzirCodigo(codigoCategoria);
         const input = el('input', {
           class: 'mj-campo',
           attrs: { maxlength: '40', type: 'text', placeholder: category, 'aria-label': category },
@@ -218,7 +223,7 @@
       });
       // Cada categoria e uma linha de caderno: o nome a esquerda e o traco para escrever.
       const linhas = inputs.map((input, i) => el('label', { class: 'mj-stop-linha' },
-        el('span', { class: 'mj-stop-rotulo', text: state.categories[i] }), input));
+        el('span', { class: 'mj-stop-rotulo', text: traduzirCodigo(state.categories[i]) }), input));
       form.append(title, ...linhas);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -236,8 +241,8 @@
       const pages = Math.max(1, Math.ceil(allRows.length / perPage));
       page = Math.min(page, pages - 1);
       for (const row of allRows.slice(page * perPage, (page + 1) * perPage)) {
-        const yes = C.botao({ text: `Anular ${row.yes}`, class: 'mj-fantasma' });
-        const no = C.botao({ text: `Manter ${row.no}`, class: 'mj-fantasma' });
+        const yes = C.botao({ text: t('mesa.stop.anular', { n: row.yes }), class: 'mj-fantasma' });
+        const no = C.botao({ text: t('mesa.stop.manter', { n: row.no }), class: 'mj-fantasma' });
         yes.addEventListener('click', () => {
           action(table, { kind: 'vote', player: row.player, category: row.category, annul: true });
         });
@@ -245,28 +250,31 @@
           action(table, { kind: 'vote', player: row.player, category: row.category, annul: false });
         });
         table.append(el('div', { class: 'mj-stop-row' },
-          el('span', { class: 'mj-stop-name', text: `${row.name} · ${state.categories[row.category]}` }),
+          el('span', {
+            class: 'mj-stop-name',
+            text: t('mesa.stop.nomeCategoria', { nome: row.name, categoria: traduzirCodigo(state.categories[row.category]) }),
+          }),
           el('span', { class: 'mj-stop-answer', text: row.answer }), yes, no,
-          el('strong', { text: `${row.points} pts` })));
+          el('strong', { text: t('mesa.stop.pontos', { n: row.points }) })));
       }
       body.replaceChildren(table);
-      const finish = button('Somar e próxima rodada', { kind: 'finish' }, 'mj-pri');
-      const previous = C.botao({ text: '‹', class: 'mj-fantasma', label: 'Página anterior' });
-      const next = C.botao({ text: '›', class: 'mj-fantasma', label: 'Próxima página' });
+      const finish = button(t('mesa.stop.somarProxima'), { kind: 'finish' }, 'mj-pri');
+      const previous = C.botao({ text: '‹', class: 'mj-fantasma', label: t('mesa.stop.paginaAnterior') });
+      const next = C.botao({ text: '›', class: 'mj-fantasma', label: t('mesa.stop.proximaPagina') });
       previous.addEventListener('click', () => { page = Math.max(0, page - 1); drawReview(); });
       next.addEventListener('click', () => { page = Math.min(pages - 1, page + 1); drawReview(); });
       footer.replaceChildren(previous, el('span', { class: 'mj-dica', text: `${page + 1}/${pages}` }), next,
         el('span', { class: 'mj-mola' }), finish);
-      C.ligado(previous, page > 0 ? true : 'Primeira página');
-      C.ligado(next, page < pages - 1 ? true : 'Última página');
-      C.ligado(finish, state.me?.canManage || api.isLeader() ? true : 'Só quem gere a janela encerra a correção');
+      C.ligado(previous, page > 0 ? true : t('mesa.stop.primeiraPagina'));
+      C.ligado(next, page < pages - 1 ? true : t('mesa.stop.ultimaPagina'));
+      C.ligado(finish, state.me?.canManage || api.isLeader() ? true : t('mesa.stop.soQuemGereEncerra'));
     }
 
     function render() {
       // Na preparacao nao ha letra: o alto some (o nome do jogo ja esta na barra da janela).
       head.hidden = state.phase === 'setup';
       head.replaceChildren(
-        el('span', { class: 'mj-dica', text: 'Letra' }),
+        el('span', { class: 'mj-dica', text: t('mesa.stop.letra') }),
         letter,
         el('span', { class: 'mj-mola' }),
         clock);

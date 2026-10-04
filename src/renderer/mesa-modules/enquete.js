@@ -20,6 +20,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'enquete';
   const MAX_QUESTION = 120;
   const MAX_OPTION = 40;
@@ -27,7 +29,7 @@
   const MAX_OPTIONS = 6;
   const MAX_VOTERS = 64;
   const MAX_PEER_ID = 16; // ids do servidor: ate 16 algarismos
-  const DEFAULT_OPTIONS = ['Sim', 'Não'];
+  const DEFAULT_OPTIONS = [codigo('mesa.enquete.sim'), codigo('mesa.enquete.nao')];
 
   function isObj(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -70,31 +72,31 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'edit': {
         const question = cleanText(action.question, MAX_QUESTION);
-        if (question === null) return 'Pergunta inválida';
-        if (!question) return 'A pergunta não pode ficar vazia';
-        if (question.length > MAX_QUESTION) return `Pergunta longa demais (máx. ${MAX_QUESTION})`;
-        if (!Array.isArray(action.options)) return 'Opções inválidas';
+        if (question === null) return codigo('mesa.enquete.perguntaInvalida');
+        if (!question) return codigo('mesa.enquete.perguntaVazia');
+        if (question.length > MAX_QUESTION) return codigo('mesa.enquete.perguntaLonga', { max: MAX_QUESTION });
+        if (!Array.isArray(action.options)) return codigo('mesa.enquete.opcoesInvalidas');
         if (action.options.length < MIN_OPTIONS || action.options.length > MAX_OPTIONS) {
-          return `De ${MIN_OPTIONS} a ${MAX_OPTIONS} opções`;
+          return codigo('mesa.enquete.entreOpcoes', { min: MIN_OPTIONS, max: MAX_OPTIONS });
         }
         const options = [];
         for (const raw of action.options) {
           const o = cleanText(raw, MAX_OPTION);
-          if (o === null) return 'Opção inválida';
-          if (!o) return 'Opção vazia';
-          if (o.length > MAX_OPTION) return `Opção longa demais (máx. ${MAX_OPTION})`;
+          if (o === null) return codigo('mesa.enquete.opcaoInvalida');
+          if (!o) return codigo('mesa.enquete.opcaoVazia');
+          if (o.length > MAX_OPTION) return codigo('mesa.enquete.opcaoLonga', { max: MAX_OPTION });
           options.push(o);
         }
         const lower = options.map((o) => o.toLowerCase());
-        if (new Set(lower).size !== lower.length) return 'Opções repetidas';
+        if (new Set(lower).size !== lower.length) return codigo('mesa.enquete.opcoesRepetidas');
         return { kind: 'edit', question, options };
       }
       case 'vote': {
-        if (!isInt(action.option, 0, MAX_OPTIONS - 1)) return 'Opção inválida';
+        if (!isInt(action.option, 0, MAX_OPTIONS - 1)) return codigo('mesa.enquete.opcaoInvalida');
         const a = { kind: 'vote', option: action.option };
         if (isPeerId(action.by)) a.by = action.by;
         return a;
@@ -106,7 +108,7 @@
       case 'reset':
         return { kind: 'reset' };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -127,29 +129,29 @@
     const from = ctx && isPeerId(ctx.from) ? ctx.from : null;
     switch (a.kind) {
       case 'edit':
-        if (!canManage(state, ctx)) return 'Só quem criou ou o líder';
-        if (state.closed) return 'A enquete foi encerrada';
-        if (state.votes.length > 0) return 'Já tem voto; zere para editar';
+        if (!canManage(state, ctx)) return codigo('mesa.enquete.soQuemCriouOuLider');
+        if (state.closed) return codigo('mesa.enquete.encerrada');
+        if (state.votes.length > 0) return codigo('mesa.enquete.jaTemVoto');
         return true;
       case 'vote': {
-        if (state.closed) return 'A enquete foi encerrada';
-        if (!state.question) return 'A enquete ainda não tem pergunta';
-        if (a.option >= state.options.length) return 'Opção inválida';
+        if (state.closed) return codigo('mesa.enquete.encerrada');
+        if (!state.question) return codigo('mesa.enquete.semPergunta');
+        if (a.option >= state.options.length) return codigo('mesa.enquete.opcaoInvalida');
         const mine = from === null ? null : voteOf(state, from);
-        if (mine === a.option) return 'Você já votou nessa opção';
-        if (mine === null && state.votes.length >= MAX_VOTERS) return 'Votos demais';
+        if (mine === a.option) return codigo('mesa.enquete.jaVotouNessa');
+        if (mine === null && state.votes.length >= MAX_VOTERS) return codigo('mesa.enquete.votosDemais');
         return true;
       }
       case 'unvote':
-        if (state.closed) return 'A enquete foi encerrada';
-        if (from !== null && voteOf(state, from) === null) return 'Você não votou';
+        if (state.closed) return codigo('mesa.enquete.encerrada');
+        if (from !== null && voteOf(state, from) === null) return codigo('mesa.enquete.naoVotou');
         return true;
       case 'close':
-        if (!canManage(state, ctx)) return 'Só quem criou ou o líder';
-        if (state.closed) return 'A enquete já foi encerrada';
+        if (!canManage(state, ctx)) return codigo('mesa.enquete.soQuemCriouOuLider');
+        if (state.closed) return codigo('mesa.enquete.jaEncerrada');
         return true;
       case 'reset':
-        if (!canManage(state, ctx)) return 'Só quem criou ou o líder';
+        if (!canManage(state, ctx)) return codigo('mesa.enquete.soQuemCriouOuLider');
         return true;
       default:
         return true;

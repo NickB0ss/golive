@@ -12,6 +12,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'lista';
 
   function mod() {
@@ -23,7 +24,7 @@
   function contagem(state) {
     const total = state.items.length;
     const feitos = state.items.filter((it) => it.done).length;
-    const texto = total === 0 ? 'Lista vazia' : `${feitos} de ${total} ${total === 1 ? 'feito' : 'feitos'}`;
+    const texto = total === 0 ? t('mesa.lista.vazia') : t('mesa.lista.feitos', { feitos, n: total });
     return { feitos, total, texto };
   }
 
@@ -54,30 +55,41 @@
 
     const titulo = el('input', {
       class: 'mj-lista-titulo mj-sec',
-      attrs: { type: 'text', maxlength: String(m.MAX_TITLE), placeholder: 'Título da lista', 'aria-label': 'Título da lista', spellcheck: 'false' },
+      attrs: {
+        type: 'text',
+        maxlength: String(m.MAX_TITLE), placeholder: t('mesa.lista.tituloLista'),
+        'aria-label': t('mesa.lista.tituloLista'),
+        spellcheck: 'false',
+      },
     });
     const campoTitulo = C.campoLocal(titulo, { confirmar: (v) => b.acao(b.raiz, { kind: 'title', text: v }) });
 
     const ul = el('ul', {
       class: 'mj-lista-itens mj-rola',
-      attrs: { 'aria-label': 'Itens', 'data-caber-rola': '' },
+      attrs: { 'aria-label': t('mesa.lista.itens'), 'data-caber-rola': '' },
     });
     const vazio = C.vazio({
       icone: 'check',
-      titulo: 'Lista vazia',
-      texto: 'Escreva o primeiro item abaixo.',
+      titulo: t('mesa.lista.vazia'),
+      texto: t('mesa.lista.vazioTexto'),
     });
     vazio.classList.add('mj-lista-vazio');
 
     const novo = el('input', {
       class: 'mj-campo',
-      attrs: { type: 'text', maxlength: String(m.MAX_TEXT), placeholder: 'Novo item', 'aria-label': 'Novo item', spellcheck: 'false' },
+      attrs: {
+        type: 'text',
+        maxlength: String(m.MAX_TEXT),
+        placeholder: t('mesa.lista.novoItem'),
+        'aria-label': t('mesa.lista.novoItem'),
+        spellcheck: 'false',
+      },
     });
-    const addBtn = C.botao({ icone: 'mais', class: 'mj-ic', label: 'Adicionar à lista' });
+    const addBtn = C.botao({ icone: 'mais', class: 'mj-ic', label: t('mesa.lista.adicionar') });
     const form = el('form', { class: 'mj-form' }, novo, addBtn);
 
     const conta = el('span', { class: 'mj-lista-conta' });
-    const apagar = C.botao({ text: 'Apagar marcados', class: 'mj-fantasma' });
+    const apagar = C.botao({ text: t('mesa.lista.apagarMarcados'), class: 'mj-fantasma' });
     const rodape = el('div', { class: 'mj-barra mj-lista-rodape' }, conta, el('span', { class: 'mj-mola' }), apagar);
 
     b.raiz.append(titulo, ul, vazio, form, rodape);
@@ -138,7 +150,12 @@
       if (linha.campo) return;
       const input = el('input', {
         class: 'mj-campo mj-item-campo',
-        attrs: { type: 'text', maxlength: String(m.MAX_TEXT), 'aria-label': `Editar ${linha.item.text}`, spellcheck: 'false' },
+        attrs: {
+          type: 'text',
+          maxlength: String(m.MAX_TEXT),
+          'aria-label': t('mesa.lista.editarItem', { texto: linha.item.text }),
+          spellcheck: 'false',
+        },
       });
       input.value = linha.item.text;
       linha.campo = input;
@@ -171,14 +188,14 @@
       if (linha.caixa.checked !== it.done) linha.caixa.checked = it.done;
       linha.li.classList.toggle('is-feito', it.done);
       linha.caixa.setAttribute('aria-label', it.text);
-      linha.editar.setAttribute('aria-label', `Editar ${it.text}`);
-      linha.subir.setAttribute('aria-label', `Subir ${it.text}`);
-      linha.descer.setAttribute('aria-label', `Descer ${it.text}`);
-      linha.tirar.setAttribute('aria-label', `Apagar ${it.text}`);
-      C.ligado(linha.editar, true, 'Editar');
-      C.ligado(linha.subir, i > 0 ? true : 'Já é o primeiro', 'Subir (Alt+↑)');
-      C.ligado(linha.descer, i < n - 1 ? true : 'Já é o último', 'Descer (Alt+↓)');
-      C.ligado(linha.tirar, true, 'Apagar');
+      linha.editar.setAttribute('aria-label', t('mesa.lista.editarItem', { texto: it.text }));
+      linha.subir.setAttribute('aria-label', t('mesa.lista.subirItem', { texto: it.text }));
+      linha.descer.setAttribute('aria-label', t('mesa.lista.descerItem', { texto: it.text }));
+      linha.tirar.setAttribute('aria-label', t('mesa.lista.apagarItem', { texto: it.text }));
+      C.ligado(linha.editar, true, t('mesa.lista.editar'));
+      C.ligado(linha.subir, i > 0 ? true : t('mesa.lista.jaPrimeiro'), t('mesa.lista.subir'));
+      C.ligado(linha.descer, i < n - 1 ? true : t('mesa.lista.jaUltimo'), t('mesa.lista.descer'));
+      C.ligado(linha.tirar, true, t('mesa.lista.apagar'));
     }
 
     function update(novoEstado) {
@@ -210,8 +227,8 @@
       conta.textContent = contagem(state).texto;
       // Vazia, o convite ja diz "Lista vazia": o rodape nao repete.
       rodape.hidden = n === 0;
-      C.ligado(apagar, C.podeFazer(api, { kind: 'clearDone' }), 'Apagar os itens marcados');
-      C.ligado(addBtn, C.podeFazer(api, { kind: 'add', text: 'x' }), 'Adicionar à lista');
+      C.ligado(apagar, C.podeFazer(api, { kind: 'clearDone' }), t('mesa.lista.apagarOsMarcados'));
+      C.ligado(addBtn, C.podeFazer(api, { kind: 'add', text: 'x' }), t('mesa.lista.adicionar'));
     }
 
     return { update, destroy: b.destruir, focus() { novo.focus(); } };

@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const i18n = require('../i18n');
 
 const janela = require('./stop');
 
@@ -360,6 +361,32 @@ test('cada categoria da escrita e uma linha de caderno com o nome ao lado do cam
   assert.equal(animal.parentNode.children[0].textContent, 'Animal');
   assert.equal(cidade.parentNode.children[0].textContent, 'Cidade');
   view.destruir();
+});
+
+test('categorias padrão em código aparecem traduzidas; só o que a pessoa mexeu vai como texto', () => {
+  const categories = ['mesa.stop.cat.nome', 'Animal'];
+  const view = montar(estado({ phase: 'setup', letter: '', deadline: null, me: { canManage: true }, categories }));
+  const [nome] = view.inputs();
+  assert.equal(nome.value, 'Nome');
+  view.botao('Começar rodada').dispatch('click');
+  assert.deepEqual(view.acoes[0], { kind: 'categories', categories });
+  view.destruir();
+
+  const outra = montar(estado({ phase: 'setup', letter: '', deadline: null, me: { canManage: true }, categories }));
+  outra.inputs()[0].value = 'Sobrenome';
+  outra.botao('Começar rodada').dispatch('click');
+  assert.deepEqual(outra.acoes[0], { kind: 'categories', categories: ['Sobrenome', 'Animal'] });
+  outra.destruir();
+});
+
+test('na escrita o rótulo da categoria padrão vem na língua ativa', () => {
+  i18n.definirIdioma('es');
+  try {
+    const view = montar(estado({ categories: ['mesa.stop.cat.nome', 'Animal'] }));
+    const [nome] = view.inputs();
+    assert.equal(nome.parentNode.children[0].textContent, 'Nombre');
+    view.destruir();
+  } finally { i18n.definirIdioma('pt-BR'); }
 });
 
 test('na preparacao nao sobra o "Stop" solto e Começar rodada e a acao principal do rodape', () => {

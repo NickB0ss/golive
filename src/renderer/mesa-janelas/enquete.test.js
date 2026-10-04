@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const i18n = require('../i18n');
 const m = require('../mesa-modules/enquete');
 require('./comum');
 const janela = require('./enquete');
@@ -54,4 +55,15 @@ test('bolinhas: ate o teto, o resto vira +N', () => {
   assert.deepEqual(janela.bolinhas(['1', '2'], 6), { mostrar: ['1', '2'], resto: 0 });
   const ids = ['1', '2', '3', '4', '5', '6', '7', '8'];
   assert.deepEqual(janela.bolinhas(ids, 6), { mostrar: ['1', '2', '3', '4', '5'], resto: 3 });
+});
+
+test('opções padrão (código no estado) aparecem traduzidas nas barras e no rótulo', () => {
+  const barras = janela.barras(m, m.init({}), '1');
+  assert.deepEqual(barras.map((x) => x.texto), ['Sim', 'Não']);
+  i18n.definirIdioma('es');
+  try {
+    const es = janela.barras(m, m.init({}), '1');
+    assert.deepEqual(es.map((x) => x.texto), ['Sí', 'No']);
+    assert.equal(janela.rotuloOpcao(es[0], false), 'Sí: 0 votos');
+  } finally { i18n.definirIdioma('pt-BR'); }
 });

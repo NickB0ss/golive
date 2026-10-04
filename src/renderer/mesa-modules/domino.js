@@ -10,6 +10,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const C = (root.GoLive && root.GoLive.mesaCadeiras)
     || (typeof module !== 'undefined' ? module.require('./cadeiras') : null);
   const P = (root.GoLive && root.GoLive.mesaPedras)
@@ -95,54 +97,54 @@
   function validarLugar(state, action, ctx) {
     const meu = meuLugar(state, ctx);
     if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= LUGARES) {
-      return 'Cadeira inválida';
+      return codigo('mesa.cadeiras.invalida');
     }
-    if (meu >= 0) return 'Você já está sentado';
-    if (ocupante(state, action.seat, ctx)) return 'Cadeira ocupada';
+    if (meu >= 0) return codigo('mesa.jogo.jaEstaSentado');
+    if (ocupante(state, action.seat, ctx)) return codigo('mesa.cadeiras.ocupada');
     return true;
   }
 
   function validarJogada(state, action, ctx) {
     const meu = meuLugar(state, ctx);
-    if (meu < 0) return 'Sente-se para jogar';
+    if (meu < 0) return codigo('mesa.jogo.senteSeParaJogar');
     if (state.phase === 'opening') {
-      if (meu !== state.turn) return 'Não é a sua vez';
-      if (action.kind !== 'open') return 'Escolha a pedra de abertura';
+      if (meu !== state.turn) return codigo('mesa.jogo.naoESuaVez');
+      if (action.kind !== 'open') return codigo('mesa.domino.escolhaAbertura');
       return Number.isInteger(action.stone) && state.hands[meu][action.stone]
-        ? true : 'Pedra inválida';
+        ? true : codigo('mesa.domino.pedraInvalida');
     }
-    if (state.phase !== 'play') return 'Comece uma nova mão';
-    if (meu !== state.turn) return 'Não é a sua vez';
+    if (state.phase !== 'play') return codigo('mesa.domino.comeceNovaMao');
+    if (meu !== state.turn) return codigo('mesa.jogo.naoESuaVez');
     return action.kind === 'play' ? validarPedra(state, action, meu) : validarCompraOuPasse(state, action, meu);
   }
 
   function validarPedra(state, action, lugar) {
-    if (!Number.isInteger(action.stone) || action.stone < 0) return 'Pedra inválida';
-    if (!encaixa(state, state.hands[lugar][action.stone], action.end)) return 'Pedra não encaixa';
+    if (!Number.isInteger(action.stone) || action.stone < 0) return codigo('mesa.domino.pedraInvalida');
+    if (!encaixa(state, state.hands[lugar][action.stone], action.end)) return codigo('mesa.domino.naoEncaixa');
     return true;
   }
 
   function validarCompraOuPasse(state, action, lugar) {
-    if (action.kind === 'draw') return podeComprar(state, lugar) ? true : 'Você já pode jogar ou não há monte';
-    if (action.kind === 'pass') return podePassar(state, lugar) ? true : 'Ainda há jogada ou monte';
-    return 'Ação desconhecida';
+    if (action.kind === 'draw') return podeComprar(state, lugar) ? true : codigo('mesa.domino.jaPodeJogar');
+    if (action.kind === 'pass') return podePassar(state, lugar) ? true : codigo('mesa.domino.aindaHaJogada');
+    return codigo('mesa.jogo.acaoDesconhecida');
   }
 
   function validate(state, action, ctx) {
     return C.safe(() => {
-      if (!C.isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+      if (!C.isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
       if (action.kind === 'sit') return validarLugar(state, action, ctx);
-      if (action.kind === 'stand') return meuLugar(state, ctx) >= 0 ? true : 'Você não está sentado';
+      if (action.kind === 'stand') return meuLugar(state, ctx) >= 0 ? true : codigo('mesa.cadeiras.naoEstaSentado');
       if (action.kind === 'reset') return C.canReset(state, ctx);
       if (action.kind === 'start') {
         const sentados = lugaresOcupados(state);
         return meuLugar(state, ctx) >= 0 && sentados >= 2 && state.phase !== 'play'
           ? true
-          : 'São necessários 2 a 4 jogadores entre mãos';
+          : codigo('mesa.domino.precisaDeDois');
       }
-      if (action.kind === 'timeout') return state.phase === 'play' ? true : 'Nada correndo';
+      if (action.kind === 'timeout') return state.phase === 'play' ? true : codigo('mesa.domino.nadaCorrendo');
       return validarJogada(state, action, ctx);
-    }, 'Ação inválida');
+    }, codigo('mesa.jogo.acaoInvalida'));
   }
 
   function prepararNovaMao(state, ctx) {

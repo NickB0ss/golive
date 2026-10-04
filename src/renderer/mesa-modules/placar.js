@@ -13,6 +13,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'placar';
   const MIN_TEAMS = 2;
   const MAX_TEAMS = 4;
@@ -21,7 +23,10 @@
   // "Melhor de N": N impar, de 3 a 21. null = sem serie, so contagem.
   const MIN_BEST_OF = 3;
   const MAX_BEST_OF = 21;
-  const DEFAULT_NAMES = ['Azul', 'Vermelho', 'Verde', 'Amarelo'];
+  const DEFAULT_NAMES = [
+    codigo('mesa.placar.azul'), codigo('mesa.placar.vermelho'), codigo('mesa.placar.verde'),
+    codigo('mesa.placar.amarelo'),
+  ];
 
   function isObj(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -66,42 +71,42 @@
 
   /** Forma da acao, sem olhar o estado. Devolve a acao normalizada ou o motivo. */
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'score':
-        if (!isInt(action.team, 0, MAX_TEAMS - 1)) return 'Time inválido';
-        if (action.delta !== 1 && action.delta !== -1) return 'Só dá para somar 1 ou tirar 1';
+        if (!isInt(action.team, 0, MAX_TEAMS - 1)) return codigo('mesa.placar.timeInvalido');
+        if (action.delta !== 1 && action.delta !== -1) return codigo('mesa.placar.somarOuTirarUm');
         return { kind: 'score', team: action.team, delta: action.delta };
       case 'rename': {
-        if (!isInt(action.team, 0, MAX_TEAMS - 1)) return 'Time inválido';
+        if (!isInt(action.team, 0, MAX_TEAMS - 1)) return codigo('mesa.placar.timeInvalido');
         const name = cleanText(action.name, MAX_NAME);
-        if (name === null) return 'Nome inválido';
-        if (!name) return 'O nome não pode ficar vazio';
-        if (name.length > MAX_NAME) return `Nome longo demais (máx. ${MAX_NAME})`;
+        if (name === null) return codigo('mesa.placar.nomeInvalido');
+        if (!name) return codigo('mesa.placar.nomeVazio');
+        if (name.length > MAX_NAME) return codigo('mesa.placar.nomeLongo', { max: MAX_NAME });
         return { kind: 'rename', team: action.team, name };
       }
       case 'reset':
         return { kind: 'reset' };
       case 'teams':
-        if (!isInt(action.count, MIN_TEAMS, MAX_TEAMS)) return `De ${MIN_TEAMS} a ${MAX_TEAMS} times`;
+        if (!isInt(action.count, MIN_TEAMS, MAX_TEAMS)) return codigo('mesa.placar.entreTimes', { min: MIN_TEAMS, max: MAX_TEAMS });
         return { kind: 'teams', count: action.count };
       case 'bestOf':
-        if (!isBestOf(action.n)) return `Melhor de N: número ímpar de ${MIN_BEST_OF} a ${MAX_BEST_OF}`;
+        if (!isBestOf(action.n)) return codigo('mesa.placar.melhorDeImpar', { min: MIN_BEST_OF, max: MAX_BEST_OF });
         return { kind: 'bestOf', n: action.n };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
   function validate(state, action) {
     const a = parse(action);
     if (typeof a === 'string') return a;
-    if ((a.kind === 'score' || a.kind === 'rename') && a.team >= state.teams.length) return 'Time inválido';
+    if ((a.kind === 'score' || a.kind === 'rename') && a.team >= state.teams.length) return codigo('mesa.placar.timeInvalido');
     if (a.kind === 'score') {
       const score = state.teams[a.team].score;
-      if (a.delta < 0 && score <= 0) return 'O placar não fica negativo';
-      if (a.delta > 0 && score >= MAX_SCORE) return 'Placar no máximo';
-      if (a.delta > 0 && winner(state) !== -1) return 'A série acabou; zere para recomeçar';
+      if (a.delta < 0 && score <= 0) return codigo('mesa.placar.naoNegativo');
+      if (a.delta > 0 && score >= MAX_SCORE) return codigo('mesa.placar.maximo');
+      if (a.delta > 0 && winner(state) !== -1) return codigo('mesa.placar.serieAcabou');
     }
     return true;
   }

@@ -17,6 +17,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'sorteio';
   const MAX_ENTRIES = 40;
   const MAX_NAME = 40; // mesmo teto do nome de pessoa no servidor
@@ -94,36 +96,36 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'add': {
         const name = cleanText(action.name, MAX_NAME);
-        if (name === null) return 'Nome inválido';
-        if (!name) return 'O nome não pode ficar vazio';
-        if (name.length > MAX_NAME) return `Nome longo demais (máx. ${MAX_NAME})`;
+        if (name === null) return codigo('mesa.sorteio.nomeInvalido');
+        if (!name) return codigo('mesa.sorteio.nomeVazio');
+        if (name.length > MAX_NAME) return codigo('mesa.sorteio.nomeLongo', { max: MAX_NAME });
         return { kind: 'add', name };
       }
       case 'addPeers': {
         // `peers` so existe depois do prepare; antes, a acao e so o pedido.
         if (action.peers === undefined) return { kind: 'addPeers' };
         const peers = peersToEntries(action.peers);
-        if (peers === null) return 'Lista de pessoas inválida';
+        if (peers === null) return codigo('mesa.sorteio.listaPessoasInvalida');
         return { kind: 'addPeers', peers: peers.map((e) => ({ id: e.peerId, name: e.name })) };
       }
       case 'remove':
-        if (!isInt(action.index, 0, MAX_ENTRIES - 1)) return 'Nome inválido';
+        if (!isInt(action.index, 0, MAX_ENTRIES - 1)) return codigo('mesa.sorteio.nomeInvalido');
         return { kind: 'remove', index: action.index };
       case 'clear':
         return { kind: 'clear' };
       case 'teams':
-        if (!isInt(action.count, MIN_TEAMS, MAX_TEAMS)) return `De ${MIN_TEAMS} a ${MAX_TEAMS} times`;
+        if (!isInt(action.count, MIN_TEAMS, MAX_TEAMS)) return codigo('mesa.sorteio.entreTimes', { min: MIN_TEAMS, max: MAX_TEAMS });
         return { kind: 'teams', count: action.count };
       case 'draw':
         if (action.order === undefined) return { kind: 'draw' };
-        if (!Array.isArray(action.order) || action.order.length > MAX_ENTRIES) return 'Sorteio inválido';
+        if (!Array.isArray(action.order) || action.order.length > MAX_ENTRIES) return codigo('mesa.sorteio.sorteioInvalido');
         return { kind: 'draw', order: action.order.slice() };
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -146,7 +148,7 @@
     if (typeof a === 'string') return a;
     switch (a.kind) {
       case 'add':
-        if (state.entries.length >= MAX_ENTRIES) return `A lista está cheia (máx. ${MAX_ENTRIES})`;
+        if (state.entries.length >= MAX_ENTRIES) return codigo('mesa.sorteio.listaCheia', { max: MAX_ENTRIES });
         return true;
       case 'addPeers': {
         // No servidor olha a sala de agora; no cliente, so a forma.
@@ -154,16 +156,16 @@
           ? a.peers.map((p) => ({ name: p.name, peerId: p.id }))
           : peersToEntries(ctx && ctx.peers);
         if (peers === null) return true;
-        if (newcomers(state, peers).length === 0) return 'Todo mundo da sala já está na lista';
-        if (state.entries.length >= MAX_ENTRIES) return `A lista está cheia (máx. ${MAX_ENTRIES})`;
+        if (newcomers(state, peers).length === 0) return codigo('mesa.sorteio.todosNaLista');
+        if (state.entries.length >= MAX_ENTRIES) return codigo('mesa.sorteio.listaCheia', { max: MAX_ENTRIES });
         return true;
       }
       case 'remove':
-        return a.index < state.entries.length ? true : 'Nome inválido';
+        return a.index < state.entries.length ? true : codigo('mesa.sorteio.nomeInvalido');
       case 'draw':
-        if (state.entries.length < 2) return 'Ponha pelo menos 2 nomes';
-        if (state.entries.length < state.teamCount) return `Poucos nomes para ${state.teamCount} times`;
-        if (a.order !== undefined && !isPermutation(a.order, state.entries.length)) return 'Sorteio inválido';
+        if (state.entries.length < 2) return codigo('mesa.sorteio.minimoDois');
+        if (state.entries.length < state.teamCount) return codigo('mesa.sorteio.poucosParaTimes', { n: state.teamCount });
+        if (a.order !== undefined && !isPermutation(a.order, state.entries.length)) return codigo('mesa.sorteio.sorteioInvalido');
         return true;
       default:
         return true;

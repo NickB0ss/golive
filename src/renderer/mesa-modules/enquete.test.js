@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const i18n = require('../i18n');
 const enquete = require('./enquete');
 
 function deepFreeze(v) {
@@ -68,7 +69,7 @@ const MALFORMADAS = [
 
 test('init guarda quem criou e vem sem pergunta', () => {
   const s = enquete.init({ by: '7', now: 1, random: () => 0 });
-  assert.deepEqual(s, { question: '', options: ['Sim', 'Não'], votes: [], closed: false, createdBy: '7' });
+  assert.deepEqual(s, { question: '', options: ['mesa.enquete.sim', 'mesa.enquete.nao'], votes: [], closed: false, createdBy: '7' });
   assert.equal(enquete.summary(s), 'Enquete sem pergunta');
   assert.equal(enquete.init({}).createdBy, null);
 });
@@ -81,7 +82,7 @@ test('metadados seguem o contrato', () => {
 
 test('sem pergunta ninguem vota', () => {
   const s = enquete.init({ by: '1' });
-  assert.equal(enquete.validate(s, { kind: 'vote', option: 0 }, { from: '2' }), 'A enquete ainda não tem pergunta');
+  assert.equal(enquete.validate(s, { kind: 'vote', option: 0 }, { from: '2' }), 'mesa.enquete.semPergunta');
   assert.equal(enquete.reduce(deepFreeze(s), { kind: 'vote', option: 0, by: '2' }), s);
 });
 
@@ -98,8 +99,8 @@ test('um voto por pessoa; trocar e tirar o voto', () => {
   assert.equal(enquete.voteOf(state, '2'), 2);
   assert.equal(enquete.voteOf(state, '3'), null);
   assert.equal(enquete.summary(state), 'Pizza ou hambúrguer? Pizza 1 · Hambúrguer 0 · Os dois 1');
-  assert.equal(enquete.validate(state, { kind: 'vote', option: 0 }, { from: '1' }), 'Você já votou nessa opção');
-  assert.equal(enquete.validate(state, { kind: 'unvote' }, { from: '3' }), 'Você não votou');
+  assert.equal(enquete.validate(state, { kind: 'vote', option: 0 }, { from: '1' }), 'mesa.enquete.jaVotouNessa');
+  assert.equal(enquete.validate(state, { kind: 'unvote' }, { from: '3' }), 'mesa.enquete.naoVotou');
 });
 
 test('prepare grava quem mandou e ignora o by do cliente', () => {
@@ -121,11 +122,11 @@ test('sem by na acao, reduce usa ctx.from; sem nenhum dos dois, nada muda', () =
 
 test('editar: so quem criou ou o lider, e so sem votos', () => {
   const s = enquete.init({ by: '1' });
-  assert.equal(enquete.validate(s, EDIT, { from: '2' }), 'Só quem criou ou o líder');
+  assert.equal(enquete.validate(s, EDIT, { from: '2' }), 'mesa.enquete.soQuemCriouOuLider');
   assert.equal(enquete.validate(s, EDIT, { from: '2', isLeader: true }), true);
-  assert.equal(enquete.validate(s, EDIT), 'Só quem criou ou o líder');
+  assert.equal(enquete.validate(s, EDIT), 'mesa.enquete.soQuemCriouOuLider');
   const votada = roda(aberta(), [[{ kind: 'vote', option: 0 }, '2']]).state;
-  assert.equal(enquete.validate(votada, EDIT, { from: '1' }), 'Já tem voto; zere para editar');
+  assert.equal(enquete.validate(votada, EDIT, { from: '1' }), 'mesa.enquete.jaTemVoto');
   assert.equal(enquete.reduce(deepFreeze(votada), EDIT), votada);
   // Janela sem dono conhecido: qualquer um edita.
   assert.equal(enquete.validate(enquete.init({}), EDIT, { from: '2' }), true);
@@ -139,19 +140,19 @@ test('edit limpa texto e recusa opcoes repetidas', () => {
   assert.deepEqual(state.options, ['Dust', 'Mirage']);
   assert.equal(
     enquete.validate(state, { kind: 'edit', question: 'Q', options: ['Dust', 'dust'] }, { from: '1' }),
-    'Opções repetidas',
+    'mesa.enquete.opcoesRepetidas',
   );
 });
 
 test('encerrar: quem criou ou o lider; depois ninguem vota', () => {
   const s = roda(aberta(), [[{ kind: 'vote', option: 1 }, '2']]).state;
-  assert.equal(enquete.validate(s, { kind: 'close' }, { from: '2' }), 'Só quem criou ou o líder');
+  assert.equal(enquete.validate(s, { kind: 'close' }, { from: '2' }), 'mesa.enquete.soQuemCriouOuLider');
   const fechada = roda(s, [[{ kind: 'close' }, '3', true]]).state;
   assert.equal(fechada.closed, true);
   assert.equal(enquete.summary(fechada), 'Pizza ou hambúrguer? Pizza 0 · Hambúrguer 1 · Os dois 0 (encerrada)');
-  assert.equal(enquete.validate(fechada, { kind: 'vote', option: 0 }, { from: '4' }), 'A enquete foi encerrada');
-  assert.equal(enquete.validate(fechada, { kind: 'unvote' }, { from: '2' }), 'A enquete foi encerrada');
-  assert.equal(enquete.validate(fechada, { kind: 'close' }, { from: '1' }), 'A enquete já foi encerrada');
+  assert.equal(enquete.validate(fechada, { kind: 'vote', option: 0 }, { from: '4' }), 'mesa.enquete.encerrada');
+  assert.equal(enquete.validate(fechada, { kind: 'unvote' }, { from: '2' }), 'mesa.enquete.encerrada');
+  assert.equal(enquete.validate(fechada, { kind: 'close' }, { from: '1' }), 'mesa.enquete.jaEncerrada');
   assert.equal(enquete.reduce(deepFreeze(fechada), { kind: 'vote', option: 0, by: '4' }), fechada);
   const zerada = roda(fechada, [[{ kind: 'reset' }, '1']]).state;
   assert.deepEqual([zerada.closed, zerada.votes], [false, []]);
@@ -162,7 +163,7 @@ test('teto de votantes', () => {
   for (let i = 1; i <= enquete.MAX_VOTERS; i++) s = enquete.reduce(s, { kind: 'vote', option: 0, by: String(i) });
   assert.equal(s.votes.length, enquete.MAX_VOTERS);
   const extra = { kind: 'vote', option: 0 };
-  assert.equal(enquete.validate(s, extra, { from: '9999' }), 'Votos demais');
+  assert.equal(enquete.validate(s, extra, { from: '9999' }), 'mesa.enquete.votosDemais');
   assert.equal(enquete.reduce(deepFreeze(s), { ...extra, by: '9999' }), s);
   // Quem ja votou ainda troca.
   assert.equal(enquete.validate(s, { kind: 'vote', option: 1 }, { from: '1' }), true);
@@ -203,4 +204,16 @@ test('estado no pior caso cabe em maxStateBytes', () => {
     createdBy: id,
   };
   assert.ok(Buffer.byteLength(JSON.stringify(s)) <= enquete.maxStateBytes);
+});
+
+test('opções padrão viajam como código e aparecem traduzidas', () => {
+  const s = enquete.init({ by: '1' });
+  assert.deepEqual(s.options, ['mesa.enquete.sim', 'mesa.enquete.nao']);
+  assert.ok(s.options.every((o) => i18n.existe(o)));
+  assert.equal(i18n.traduzirCodigo(s.options[0]), 'Sim');
+  i18n.definirIdioma('es');
+  try {
+    assert.equal(i18n.traduzirCodigo(s.options[0]), 'Sí');
+    assert.equal(i18n.traduzirCodigo(s.options[1]), 'No');
+  } finally { i18n.definirIdioma('pt-BR'); }
 });

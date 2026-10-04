@@ -17,6 +17,8 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
   const TYPE = 'lista';
   const MAX_ITEMS = 40;
   const MAX_TEXT = 80;
@@ -41,9 +43,9 @@
 
   function itemText(raw) {
     const t = cleanText(raw, MAX_TEXT);
-    if (t === null) return { err: 'Texto inválido' };
-    if (!t) return { err: 'O item não pode ficar vazio' };
-    if (t.length > MAX_TEXT) return { err: `Item longo demais (máx. ${MAX_TEXT})` };
+    if (t === null) return { err: codigo('mesa.lista.textoInvalido') };
+    if (!t) return { err: codigo('mesa.lista.itemVazio') };
+    if (t.length > MAX_TEXT) return { err: codigo('mesa.lista.itemLongo', { max: MAX_TEXT }) };
     return { text: t };
   }
 
@@ -56,38 +58,38 @@
   }
 
   function parse(action) {
-    if (!isObj(action) || typeof action.kind !== 'string') return 'Ação inválida';
+    if (!isObj(action) || typeof action.kind !== 'string') return codigo('mesa.jogo.acaoInvalida');
     switch (action.kind) {
       case 'add': {
         const t = itemText(action.text);
         return t.err || { kind: 'add', text: t.text };
       }
       case 'check':
-        if (!isId(action.id)) return 'Item inválido';
-        if (typeof action.done !== 'boolean') return 'Marcação inválida';
+        if (!isId(action.id)) return codigo('mesa.lista.itemInvalido');
+        if (typeof action.done !== 'boolean') return codigo('mesa.lista.marcacaoInvalida');
         return { kind: 'check', id: action.id, done: action.done };
       case 'edit': {
-        if (!isId(action.id)) return 'Item inválido';
+        if (!isId(action.id)) return codigo('mesa.lista.itemInvalido');
         const t = itemText(action.text);
         return t.err || { kind: 'edit', id: action.id, text: t.text };
       }
       case 'remove':
-        if (!isId(action.id)) return 'Item inválido';
+        if (!isId(action.id)) return codigo('mesa.lista.itemInvalido');
         return { kind: 'remove', id: action.id };
       case 'move':
-        if (!isId(action.id)) return 'Item inválido';
-        if (!isInt(action.to, 0, MAX_ITEMS - 1)) return 'Posição inválida';
+        if (!isId(action.id)) return codigo('mesa.lista.itemInvalido');
+        if (!isInt(action.to, 0, MAX_ITEMS - 1)) return codigo('mesa.lista.posicaoInvalida');
         return { kind: 'move', id: action.id, to: action.to };
       case 'clearDone':
         return { kind: 'clearDone' };
       case 'title': {
         const text = cleanText(action.text, MAX_TITLE);
-        if (text === null) return 'Título inválido';
-        if (text.length > MAX_TITLE) return `Título longo demais (máx. ${MAX_TITLE})`;
+        if (text === null) return codigo('mesa.lista.tituloInvalido');
+        if (text.length > MAX_TITLE) return codigo('mesa.lista.tituloLongo', { max: MAX_TITLE });
         return { kind: 'title', text };
       }
       default:
-        return 'Ação desconhecida';
+        return codigo('mesa.jogo.acaoDesconhecida');
     }
   }
 
@@ -96,16 +98,16 @@
     if (typeof a === 'string') return a;
     switch (a.kind) {
       case 'add':
-        return state.items.length >= MAX_ITEMS ? `A lista está cheia (máx. ${MAX_ITEMS})` : true;
+        return state.items.length >= MAX_ITEMS ? codigo('mesa.lista.cheia', { max: MAX_ITEMS }) : true;
       case 'check':
       case 'edit':
       case 'remove':
-        return indexOf(state, a.id) === -1 ? 'Esse item não existe mais' : true;
+        return indexOf(state, a.id) === -1 ? codigo('mesa.lista.itemNaoExiste') : true;
       case 'move':
-        if (indexOf(state, a.id) === -1) return 'Esse item não existe mais';
-        return a.to < state.items.length ? true : 'Posição inválida';
+        if (indexOf(state, a.id) === -1) return codigo('mesa.lista.itemNaoExiste');
+        return a.to < state.items.length ? true : codigo('mesa.lista.posicaoInvalida');
       case 'clearDone':
-        return state.items.some((it) => it.done) ? true : 'Nenhum item marcado';
+        return state.items.some((it) => it.done) ? true : codigo('mesa.lista.nenhumMarcado');
       default:
         return true;
     }
