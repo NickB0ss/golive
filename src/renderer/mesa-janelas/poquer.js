@@ -413,7 +413,9 @@
           else if (st === 'allin') est = t('mesa.poquer.allInCurto');
         } else if (!livre && h && !h.result && h.ids[seat] !== id) est = t('mesa.poquer.proxima');
         if (!livre && v.stacks[seat] === 0 && !(h && !h.result && (st === 'allin'))) est = t('mesa.poquer.estadoSemFichas');
-        if (h && h.result && h.result.hands && h.result.hands[seat]) est = h.result.hands[seat].category;
+        if (h && h.result && h.result.hands && h.result.hands[seat]) {
+          est = t(`mesa.poquer.cat.${h.result.hands[seat].cat}`);
+        }
         L.estado.textContent = est;
         L.estado.hidden = !est;
         // Cartas: as viradas dos outros; as reveladas no showdown; as minhas
@@ -497,10 +499,11 @@
       cartasEm(minhas, minhasCartas.length ? minhasCartas : [], { tamanho: 'g', vira: true });
       eu.hidden = !minhasCartas.length;
       let jogo = '';
-      if (h && h.result && h.result.hands && h.result.hands[m.seat]) jogo = h.result.hands[m.seat].name;
+      const minhaMao = h && h.result && h.result.hands ? h.result.hands[m.seat] : null;
+      if (minhaMao && Maos) jogo = Maos.nomeDoJogo(minhaMao.cat, minhaMao.score, t);
       else if (Maos && minhasCartas.length === 2 && h.board.length >= 3) {
         const r = Maos.best(minhasCartas.concat(h.board));
-        if (r) jogo = r.name;
+        if (r) jogo = Maos.nomeDoJogo(r.cat, r.score, t);
       }
       if (h && !h.result && m.seat >= 0 && h.status[m.seat] === 'folded') jogo = t('mesa.poquer.voceDesistiu');
       meuJogo.textContent = jogo;

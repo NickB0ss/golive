@@ -247,4 +247,6 @@
 @container mj (max-height: 380px) {
   .mj-quiz-placar { display: none; }
   .mj-quiz-pergunta { min-height: 36px; }
+  /* A etiqueta do tema (idiomas) somou uma linha: os cartoes encolhem para caber no minimo (320). */
+  .mj .mj-quiz-opcao { min-height: 36px; }
 }
