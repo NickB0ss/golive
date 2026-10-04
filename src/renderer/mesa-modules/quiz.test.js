@@ -317,3 +317,10 @@ test('pergunta em espanhol que termina em ? abre com ¿', () => {
   const sem = banco.perguntas.filter((p) => p.es[0].endsWith('?') && !p.es[0].includes('¿')).map((p) => p.id);
   assert.deepEqual(sem, []);
 });
+
+test('perguntas em pt sem palavra que so existe com acento (texto de tela acentuado)', () => {
+  // Palavras que em pt-BR correto sempre tem acento: se aparecem sem, o texto saiu sem acento.
+  const SEM_ACENTO = /\b(nao|voce|tambem|entao|informacao|eletrica|eletronico|numero|musica|unico|ultimo|premio)\b/i;
+  const ruins = banco.perguntas.filter((p) => SEM_ACENTO.test(`${p.pt[0]} ${p.pt[1].join(' ')}`)).map((p) => p.id);
+  assert.deepEqual(ruins, []);
+});
