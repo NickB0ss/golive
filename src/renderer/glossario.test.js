@@ -247,6 +247,11 @@ test('cada regex novo encontra o termo proibido sem pegar a palavra legitima par
   assert.doesNotMatch('hosting', PROIBIDOS.es[2][0], 'host nao pode pegar hosting em espanhol');
 });
 
+// Botao de maximizar da barra de titulo: e a janela do APP no Windows, nao a
+// "Tela cheia" de uma janela da Mesa (o que o glossario proibe). Maximizar e
+// o nome do sistema para isso nas tres linguas.
+const CONTROLE_DO_SISTEMA = new Set(['pagina.maximizar']);
+
 test('dicionarios respeitam o glossario de cada lingua', () => {
   const violations = [];
   for (const [idioma, lista] of Object.entries(PROIBIDOS)) {
@@ -255,6 +260,7 @@ test('dicionarios respeitam o glossario de cada lingua', () => {
       const texts = typeof value === 'string' ? [value] : Object.values(value);
       for (const text of texts) {
         for (const [re, hint] of lista) {
+          if (CONTROLE_DO_SISTEMA.has(key) && /maximi/.test(re.source)) continue;
           if (re.test(text)) violations.push(`${idioma} ${key}: "${text}" -- ${hint}`);
         }
       }

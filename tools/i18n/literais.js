@@ -132,6 +132,8 @@ const FORMA_CHAVE = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+(\?.*)?$/;
 
 const EXCECOES = new Set([
   'GoLive LAN', // marca
+  'GoLive', // marca
+  'Esc', // nome da tecla de atalho
   'Português', // nome da lingua na propria lingua (spec 2.2)
   'English', // nome da lingua na propria lingua (spec 2.2)
   'Español', // nome da lingua na propria lingua (spec 2.2)
@@ -158,24 +160,32 @@ function ehTextoVisivel(fragmento) {
   return ACENTO.test(texto) || DUAS_PALAVRAS.test(texto);
 }
 
+function ehTextoVisivelNoHtml(fragmento) {
+  const texto = String(fragmento).trim();
+  const letras = texto.match(/[A-Za-zÀ-ÿ]/g) || [];
+  return letras.length >= 2 && !EXCECOES.has(texto);
+}
+
 function literaisDoHtml(html) {
   const out = [];
   const linhaDe = (posicao) => html.slice(0, posicao).split('\n').length;
-  const semScripts = html.replace(/<(script|style)\b[\s\S]*?<\/\1>/g, (trecho) => trecho.replace(/[^\n]/g, ' '));
-  for (const resultado of semScripts.matchAll(/<([a-zA-Z][\w-]*)([^>]*)>([^<]+)/g)) {
+  const semScriptsEComentarios = html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/g, (trecho) => trecho.replace(/[^\n]/g, ' '))
+    .replace(/<!--[\s\S]*?-->/g, (trecho) => trecho.replace(/[^\n]/g, ' '));
+  for (const resultado of semScriptsEComentarios.matchAll(/<([a-zA-Z][\w-]*)([^>]*)>([^<]+)/g)) {
     if (/\bdata-i18n="/.test(resultado[2])) continue;
-    if (ehTextoVisivel(resultado[3])) {
+    if (ehTextoVisivelNoHtml(resultado[3])) {
       out.push({ texto: resultado[3].trim(), linha: linhaDe(resultado.index) });
     }
   }
-  for (const resultado of semScripts.matchAll(/<[a-zA-Z][\w-]*([^>]*)>/g)) {
+  for (const resultado of semScriptsEComentarios.matchAll(/<[a-zA-Z][\w-]*([^>]*)>/g)) {
     const atributoI18n = resultado[1].match(/data-i18n-attr="([^"]*)"/);
     const valorI18n = atributoI18n ? atributoI18n[1] : '';
     const traduzidos = valorI18n
       .split(';')
       .map((par) => par.split(':')[0].trim());
     for (const atributo of resultado[1].matchAll(/\b(title|aria-label|placeholder|alt)="([^"]*)"/g)) {
-      if (!traduzidos.includes(atributo[1]) && ehTextoVisivel(atributo[2])) {
+      if (!traduzidos.includes(atributo[1]) && ehTextoVisivelNoHtml(atributo[2])) {
         out.push({ texto: atributo[2], linha: linhaDe(resultado.index) });
       }
     }

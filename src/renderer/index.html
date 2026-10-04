@@ -120,7 +120,7 @@
       </button>
       <span id="stage-room-pin" class="tag hidden"></span>
       <span id="stage-status-dot" hidden></span><span id="stage-status-badge" hidden></span>
-      <span id="stage-member-count" class="sr-only">0 pessoas</span>
+      <span id="stage-member-count" class="sr-only" data-i18n="pagina.zeroPessoas">0 pessoas</span>
       <span id="copy-address-status" class="sr-only" aria-live="polite"></span>
       <div id="room-more" class="pop room-menu hidden" role="menu" aria-label="Menu da sala"
            data-i18n-attr="aria-label:pagina.menuSala">
@@ -130,7 +130,7 @@
         <button class="menu__item" type="button" role="menuitem" data-room-action="diagnostics"><svg class="i"><use href="#i-info" /></svg>Diagnóstico</button>
         <button class="menu__item" type="button" role="menuitem" data-room-action="theater"><svg class="i"><use href="#i-tv-minimal" /></svg>Modo teatro<span class="menu__hint">T</span></button>
         <div id="room-more-mesa-sep" class="menu__sep" role="separator"></div>
-        <p id="room-more-mesa-label" class="menu__label">Mesa</p>
+        <p id="room-more-mesa-label" class="menu__label" data-i18n="pagina.mesa">Mesa</p>
         <label id="opt-mesa-cursors-row" class="menu__item" role="menuitemcheckbox" aria-checked="true" tabindex="-1"><input id="opt-mesa-cursors" class="sr-only" type="checkbox" checked /><span data-i18n="pagina.mostrarPonteiros">Mostrar ponteiros das pessoas</span></label>
         <label id="opt-mesa-leader-only-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-leader-only" class="sr-only" type="checkbox" /><span data-i18n="pagina.soLiderMoveJanelas">Só o líder mexe nas janelas</span></label>
         <label id="opt-mesa-lock-size-row" class="menu__item hidden" role="menuitemcheckbox" aria-checked="false" tabindex="-1"><input id="opt-mesa-lock-size" class="sr-only" type="checkbox" /><span data-i18n="pagina.travarTamanhoJanelas">Travar o tamanho das janelas</span></label>
@@ -141,12 +141,13 @@
   <div class="head__group head__group--end">
     <div id="warn-center-wrap" class="warn-center-wrap">
       <button id="warn-center" class="btn btn--quiet btn--sm" type="button" hidden aria-label="0 avisos"
-              aria-expanded="false" aria-controls="warn-center-panel">
+              aria-expanded="false" aria-controls="warn-center-panel" data-i18n-attr="aria-label:pagina.zeroAvisos">
         <span id="warn-center-icon" aria-hidden="true"></span>
         <span id="warn-center-count" class="tx-data" hidden></span>
         <span id="warn-center-label" class="sr-only" hidden></span>
       </button>
-      <div id="warn-center-panel" class="pop" role="dialog" aria-label="Avisos" hidden></div>
+      <div id="warn-center-panel" class="pop" role="dialog" aria-label="Avisos" hidden
+           data-i18n-attr="aria-label:pagina.avisos"></div>
       <span id="warn-center-live" class="sr-only" aria-live="polite"></span>
     </div>
     <span class="head__lobby-only">
@@ -164,10 +165,16 @@
     <span class="head__room-actions" hidden>
       <button id="btn-room-presence" class="btn btn--quiet btn--sm" type="button" aria-haspopup="dialog"
               aria-expanded="false" aria-controls="presence-pop" aria-label="Pessoas: 0"
-              title="Pessoas"><svg class="i i--sm"><use href="#i-users" /></svg><span id="room-people-count"
-              class="tx-data">0</span></button>
-      <div id="presence-pop" class="pop presence hidden" role="dialog" aria-label="Pessoas">
-        <div class="pop__head"><span class="tx-tag">Pessoas · <span id="presence-count">0</span></span></div>
+              title="Pessoas" data-i18n-attr="aria-label:pagina.pessoasZero;title:pagina.pessoas">
+        <svg class="i i--sm"><use href="#i-users" /></svg>
+        <span id="room-people-count" class="tx-data">0</span>
+      </button>
+      <div id="presence-pop" class="pop presence hidden" role="dialog" aria-label="Pessoas"
+           data-i18n-attr="aria-label:pagina.pessoas">
+        <div class="pop__head">
+          <span class="tx-tag"><span data-i18n="pagina.pessoasPonto">Pessoas ·</span>
+            <span id="presence-count">0</span></span>
+        </div>
         <ul id="peer-list" class="presence__list"></ul>
         <section id="banned-section" class="presence__banned hidden"><div class="menu__sep" role="separator"></div><button class="menu__item banned-toggle" type="button" aria-expanded="false" aria-controls="banned-list"><svg class="i i--sm"><use href="#i-lock" /></svg>Banidos<svg class="i i--sm menu__hint"><use href="#i-chevron-down" /></svg></button><ul id="banned-list" class="presence__list" hidden></ul></section>
       </div>
@@ -176,17 +183,20 @@
       <span class="head__sep" role="presentation"></span>
       <button id="btn-disconnect" class="btn btn--danger btn--sm" type="button" title="Sair da sala" data-i18n-attr="title:pagina.sairSala"><svg
               class="i i--sm"><use href="#i-log-out" /></svg><span class="sair__cheio" data-i18n="pagina.sairSala">Sair da sala</span><span
-              class="sair__curto">Sair</span></button>
+              class="sair__curto" data-i18n="pagina.sair">Sair</span></button>
     </span>
     <div id="titlebar" class="winctl" hidden>
-      <button id="tb-min" class="winctl__btn" type="button" aria-label="Minimizar">
+      <button id="tb-min" class="winctl__btn" type="button" aria-label="Minimizar"
+              data-i18n-attr="aria-label:pagina.minimizar">
         <svg class="i"><use href="#i-minus" /></svg>
       </button>
-      <button id="tb-max" class="winctl__btn" type="button" aria-label="Maximizar">
+      <button id="tb-max" class="winctl__btn" type="button" aria-label="Maximizar"
+              data-i18n-attr="aria-label:pagina.maximizar">
         <svg class="i winctl__max"><use href="#i-square" /></svg>
         <svg class="i winctl__restore"><use href="#i-copy" /></svg>
       </button>
-      <button id="tb-close" class="winctl__btn winctl__btn--close" type="button" aria-label="Fechar">
+      <button id="tb-close" class="winctl__btn winctl__btn--close" type="button" aria-label="Fechar"
+              data-i18n-attr="aria-label:pagina.fechar">
         <svg class="i"><use href="#i-x" /></svg>
       </button>
     </div>
@@ -238,7 +248,7 @@
         <label class="sr-only" for="join-address" data-i18n="pagina.enderecoSala">Endereço da sala</label>
         <input id="join-address" class="input input--lg input--mono" placeholder="Entrar por endereço — 26.0.0.5:47800" data-i18n-attr="placeholder:pagina.entrarEndereco"
                spellcheck="false" autocomplete="off" aria-describedby="lobby-error" />
-        <button class="btn btn--secondary btn--lg" type="submit">Entrar</button>
+        <button class="btn btn--secondary btn--lg" type="submit" data-i18n="pagina.entrar">Entrar</button>
       </form>
     </div>
     <p id="lobby-error" class="field__error lobby__error" role="alert"></p>
@@ -321,10 +331,12 @@
       <p id="create-room-error" class="field__error" role="alert"></p>
     </div>
     <div class="dlg__foot">
-      <button id="btn-create-room-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+      <button id="btn-create-room-cancel" class="btn btn--quiet" type="button" data-i18n="pagina.cancelar">
+        Cancelar
+      </button>
       <button id="btn-create-room-confirm" class="btn btn--primary" type="button">
         <span class="spinner btn-spinner hidden" aria-hidden="true"></span>
-        <span class="btn-label">Criar</span>
+        <span class="btn-label" data-i18n="pagina.criar">Criar</span>
       </button>
     </div>
   </div>
@@ -348,10 +360,12 @@
       <p id="setup-error" class="field__error" role="alert"></p>
     </div>
     <div class="dlg__foot">
-      <button id="btn-join-room-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+      <button id="btn-join-room-cancel" class="btn btn--quiet" type="button" data-i18n="pagina.cancelar">
+        Cancelar
+      </button>
       <button id="btn-connect" class="btn btn--primary" type="button">
         <span class="spinner btn-spinner hidden" aria-hidden="true"></span>
-        <span class="btn-label">Entrar</span>
+        <span class="btn-label" data-i18n="pagina.entrar">Entrar</span>
       </button>
     </div>
   </div>
@@ -389,14 +403,18 @@
           <img id="chat-attachment-img" alt="" />
           <span id="chat-attachment-info" class="tx-meta"></span>
           <button id="chat-attachment-remove" class="btn btn--quiet btn--icon btn--sm" type="button"
-                  aria-label="Tirar a imagem"><svg class="i i--sm"><use href="#i-x" /></svg></button>
+                  aria-label="Tirar a imagem" data-i18n-attr="aria-label:pagina.tirarImagem">
+            <svg class="i i--sm"><use href="#i-x" /></svg>
+          </button>
         </div>
         <label class="sr-only" for="chat-input" data-i18n="pagina.mensagemSala">Mensagem para a sala</label>
         <div class="compose__box">
           <textarea id="chat-input" class="compose__input" rows="1" placeholder="Mensagem para a sala" data-i18n-attr="placeholder:pagina.mensagemSala" maxlength="500"
                     aria-describedby="chat-input-hint"></textarea>
           <button id="btn-chat-emoji" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Emoji"
-                  title="Emoji"><svg class="i i--sm"><use href="#i-smile" /></svg></button>
+                  title="Emoji" data-i18n-attr="aria-label:pagina.emoji;title:pagina.emoji">
+            <svg class="i i--sm"><use href="#i-smile" /></svg>
+          </button>
           <button id="btn-chat-attach" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Enviar imagem"
                   title="Enviar imagem" data-i18n-attr="aria-label:pagina.enviarImagem;title:pagina.enviarImagem"><svg class="i i--sm"><use href="#i-image" /></svg></button>
           <button id="btn-chat-send" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Enviar mensagem"
@@ -450,8 +468,11 @@
     <span class="bus__sep"></span>
     <div class="bus__end">
       <button id="btn-conv-toggle" class="btn btn--quiet" type="button" aria-pressed="false"
-              aria-label="Conversa"><svg class="i"><use href="#i-message-square" /></svg><span
-              class="btn__label">Conversa</span><span id="chat-unread-dot" class="count hidden"></span></button>
+              aria-label="Conversa" data-i18n-attr="aria-label:pagina.conversa">
+        <svg class="i"><use href="#i-message-square" /></svg>
+        <span class="btn__label" data-i18n="pagina.conversa">Conversa</span>
+        <span id="chat-unread-dot" class="count hidden"></span>
+      </button>
     </div>
   </footer>
 </div>
@@ -522,7 +543,8 @@
     </div>
     <span id="settings-live-tally" class="tag tag--live hidden" data-i18n="pagina.aoVivo">Ao vivo</span>
     <button id="btn-close-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Fechar configurações"
-            data-i18n-attr="aria-label:pagina.fecharConfiguracoes" title="Fechar (Esc)"><svg class="i"><use href="#i-x" /></svg></button>
+            data-i18n-attr="aria-label:pagina.fecharConfiguracoes;title:pagina.fecharComEsc"
+            title="Fechar (Esc)"><svg class="i"><use href="#i-x" /></svg></button>
   </header>
   <nav class="settings__nav" aria-label="Seções das configurações" data-i18n-attr="aria-label:pagina.secoesConfiguracoes" role="tablist">
     <div class="seg">
@@ -576,7 +598,7 @@
           <span class="tx-tag" data-i18n="pagina.som">Som</span>
           <label class="picker__switch"><input type="checkbox" id="share-sound" class="switch" checked /><span data-i18n="pagina.somPc">Som do PC</span></label>
           <label class="picker__switch hidden" id="share-discord-row"><input type="checkbox" id="share-discord"
-                 class="switch" />Incluir o Discord</label>
+                 class="switch" /><span data-i18n="pagina.incluirDiscord">Incluir o Discord</span></label>
         </div>
         <div class="picker__opt picker__permissions">
           <span class="tx-tag" data-i18n="pagina.naSuaTela">Na sua tela</span>
@@ -589,9 +611,9 @@
       </div>
       <div class="picker__actions">
         <span id="picker-go-live-hint" class="tx-meta" data-i18n="pagina.escolherFonte">Escolha uma tela ou janela</span>
-        <button id="picker-cancel" class="btn btn--quiet" type="button">Cancelar</button>
+        <button id="picker-cancel" class="btn btn--quiet" type="button" data-i18n="pagina.cancelar">Cancelar</button>
         <button id="btn-go-live" class="btn btn--primary btn--lg" type="button" disabled
-                aria-describedby="picker-go-live-hint">Transmitir</button>
+                aria-describedby="picker-go-live-hint" data-i18n="pagina.transmitir">Transmitir</button>
       </div>
     </div>
   </div>

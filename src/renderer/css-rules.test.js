@@ -300,7 +300,11 @@ test('Pessoas e Sair da sala na cabeca usam os componentes do Sinal', () => {
   assert.match(pessoas, /title="Pessoas"/);
   assert.ok(!/Pessoas na sala|'NA SALA'/.test(html + lerRenderer('ui.js')), 'so "Pessoas", sem "na sala"');
   assert.ok(!html.includes('presence-nodes'), 'sem o aglomerado de bolinhas');
-  assert.ok(html.includes('<span class="tx-tag">Pessoas · '), 'cabecalho do popover sem repetir "Na sala"');
+  assert.match(
+    html,
+    /<span class="tx-tag"><span data-i18n="pagina\.pessoasPonto">Pessoas ·<\/span>\s+<span id="presence-count">/,
+    'cabecalho do popover traduz o rotulo sem apagar a contagem',
+  );
   const sair = html.match(/<button id="btn-disconnect"[\s\S]*?<\/button>/)[0];
   assert.match(sair, /class="btn btn--danger btn--sm"/);
   assert.match(sair, /href="#i-log-out"/);
