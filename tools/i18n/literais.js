@@ -198,6 +198,13 @@ const EXCECOES = new Set([
   'Qualidade desconhecida:', 'A função de bloqueio é obrigatória.', 'A função de aviso é obrigatória.', // Error de uso
   '(repasse de #', 'videoId invalido', // linha de diagnostico de encode e Error de argumento
   'warn-center-icon warn-center-icon-', 'warn-center-item warn-center-item-', // classes CSS montadas por template
+  // Sobras da migracao: classes CSS e valores de CSS montados por template, nunca texto de tela
+  'radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)',
+  'radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)',
+  'class="mesa-menu-row menu__item', 'mj mj-', 'class="menu__item tile-menu-watch" role="menuitem"',
+  // SHIP_NAMES (mesa-modules/batalha.js) esta exportada mas nao e usada em lugar nenhum: a Batalha mostra
+  // so a frota por tamanho, nunca o nome do navio
+  'Porta-aviões', 'Encouraçado', 'Destróier',
 ]);
 
 // Codigo que o main injeta em paginas (executeJavaScript) ou manda ao PowerShell: nunca e texto de tela.

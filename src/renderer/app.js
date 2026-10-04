@@ -1011,7 +1011,7 @@
       },
       getRecentSounds: () => sound.getRecent(),
       onTestSounds: async (onProgress) => {
-        const names = ['entrou', 'saiu', 'chat', t('sala.aoVivo'), 'parou', 'interrompido', 'removido'];
+        const names = ['entrou', 'saiu', 'chat', 'ao vivo', 'parou', 'interrompido', 'removido'];
         onProgress(names[0]);
         const sequence = await sound.playSequence(names, { ignoreChatFocus: true });
         names.slice(1).forEach((name, index) => {
@@ -3010,7 +3010,7 @@
     if (next === 'pinned') {
       naoLidas = 0;
       $('chat-unread-dot').classList.add('hidden');
-      $('btn-conv-toggle').setAttribute('aria-label', 'Conversa');
+      $('btn-conv-toggle').setAttribute('aria-label', t('pagina.conversa'));
     }
     // Fixada ou fechada: o que estava espiando some junto.
     if (next !== 'peek') $('chat-peek').replaceChildren();

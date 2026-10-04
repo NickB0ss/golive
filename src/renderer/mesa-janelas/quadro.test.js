@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { t } = require('../i18n');
 
 // O conteudo desta janela e todo DOM (canvas, pointer events): o que da
 // pra testar sem navegador e que o arquivo carrega em Node sem tocar em
@@ -23,10 +24,11 @@ test('visibilidade do Quadro: botao so aparece para quem criou e os outros receb
   const dona = J.visibilidadeQuadro({ owner: '7', hidden: true }, '7', nome);
   const outra = J.visibilidadeQuadro({ owner: '7', hidden: true }, '9', nome);
   assert.equal(dona.mostraBotao, true);
-  assert.equal(dona.textoBotao, 'Mostrar a todos');
+  assert.equal(dona.textoBotao, t('mesa.quadro.mostrar'));
   assert.equal(dona.semAcesso, false);
   assert.equal(outra.mostraBotao, false);
   assert.equal(outra.semAcesso, true);
+  assert.equal(outra.aviso, t('mesa.quadro.escondeu', { nome: 'Ana' }));
   assert.equal(outra.aviso, 'Ana escondeu o quadro');
 });
 

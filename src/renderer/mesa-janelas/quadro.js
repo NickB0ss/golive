@@ -26,6 +26,7 @@
  */
 
 (function (root) {
+  const { t } = root.GoLive.i18n;
   const TYPE = 'quadro';
   // Chave do deposito local: nunca e um id de pessoa (ids de conexao sao só
   // digitos -- CONNECTION_ID_RE no servidor), entao a regra de dono da
@@ -38,7 +39,7 @@
     const dono = String(state && state.owner) === String(me);
     const escondido = state && state.hidden === true;
     const semAcesso = escondido && !dono;
-    let nome = 'Alguém';
+    let nome = t('ui.pessoa.alguem');
     try {
       nome = nameOf(state && state.owner) || nome;
     } catch {
@@ -49,8 +50,8 @@
       escondido,
       semAcesso,
       mostraBotao: dono,
-      textoBotao: escondido ? 'Mostrar a todos' : 'Esconder dos outros',
-      aviso: semAcesso ? `${nome} escondeu o quadro` : '',
+      textoBotao: escondido ? t('mesa.quadro.mostrar') : t('mesa.quadro.esconder'),
+      aviso: semAcesso ? t('mesa.quadro.escondeu', { nome }) : '',
     };
   }
 
@@ -94,13 +95,13 @@
 
     // ---------- barra de ferramentas ----------
 
-    const btCaneta = C.botao({ text: 'Caneta', class: 'mj-qd-ferr' });
-    const btTexto = C.botao({ text: 'Texto', class: 'mj-qd-ferr' });
-    const paleta = el('div', { class: 'mj-qd-paleta', attrs: { role: 'group', 'aria-label': 'Cor do traço' } });
+    const btCaneta = C.botao({ text: t('ui.rabisco.caneta'), class: 'mj-qd-ferr' });
+    const btTexto = C.botao({ text: t('mesa.quadro.texto'), class: 'mj-qd-ferr' });
+    const paleta = el('div', { class: 'mj-qd-paleta', attrs: { role: 'group', 'aria-label': t('mesa.quadro.corTraco') } });
     const swatches = A.PALETTE.map((cor) => {
       const sw = el('button', {
         class: 'mj-qd-cor',
-        attrs: { type: 'button', 'aria-label': `Usar a cor ${cor}`, title: 'Cor' },
+        attrs: { type: 'button', 'aria-label': t('mesa.quadro.usarCor', { cor }), title: t('mesa.quadro.cor') },
       });
       sw.style.setProperty('--mj-cor', cor);
       sw.addEventListener('click', () => {
@@ -110,14 +111,14 @@
       paleta.append(sw);
       return { cor, el: sw };
     });
-    const btDesfazer = C.botao({ text: 'Desfazer', class: 'mj-qd-acao' });
-    const btLimpar = C.botao({ text: 'Limpar', class: 'mj-qd-acao' });
+    const btDesfazer = C.botao({ text: t('mesa.quadro.desfazer'), class: 'mj-qd-acao' });
+    const btLimpar = C.botao({ text: t('mesa.quadro.limpar'), class: 'mj-qd-acao' });
     const btVisibilidade = C.botao({
-      text: 'Esconder dos outros',
+      text: t('mesa.quadro.esconder'),
       class: 'mj-qd-acao mj-qd-visibilidade',
       attrs: { 'aria-pressed': 'false' },
     });
-    const selo = el('span', { class: 'mj-qd-selo', text: 'Só você vê', attrs: { hidden: '' } });
+    const selo = el('span', { class: 'mj-qd-selo', text: t('mesa.quadro.soVoceVe'), attrs: { hidden: '' } });
     const barra = el(
       'div',
       { class: 'mj-qd-barra' },
@@ -146,7 +147,7 @@
     b.clique(btDesfazer, barra, () => aplicarLocal({ op: 'undo' }));
     b.clique(btLimpar, barra, () => {
       if (!podeLimpar()) {
-        b.aviso.mostrar('Só quem pôs o quadro ou o líder da sala limpa', barra);
+        b.aviso.mostrar(t('mesa.quadro.soQuemLimpa'), barra);
         return;
       }
       // O servidor nunca ecoa pra quem mandou (mesma regra do rabisco sobre
@@ -166,8 +167,8 @@
       btVisibilidade.setAttribute('aria-pressed', String(visibilidade.escondido));
       selo.hidden = !visibilidade.escondido || !visibilidade.dono;
       barra.classList.toggle('is-escondido', visibilidade.semAcesso);
-      C.ligado(btDesfazer, store.hasFrom(LOCAL, api.me()) ? true : 'Nada seu pra desfazer');
-      C.ligado(btLimpar, podeLimpar() ? true : 'Só quem pôs o quadro ou o líder da sala limpa');
+      C.ligado(btDesfazer, store.hasFrom(LOCAL, api.me()) ? true : t('mesa.quadro.nadaSeu'));
+      C.ligado(btLimpar, podeLimpar() ? true : t('mesa.quadro.soQuemLimpa'));
     }
 
     // ---------- tela de desenho ----------
@@ -329,7 +330,7 @@
       const escala = canvas.offsetWidth ? box.width / canvas.offsetWidth : 1;
       const input = el('input', {
         class: 'mj-qd-texto-input',
-        attrs: { type: 'text', maxlength: String(A.MAX_TEXT), placeholder: 'escreva e dê Enter' },
+        attrs: { type: 'text', maxlength: String(A.MAX_TEXT), placeholder: t('mesa.quadro.escreva') },
       });
       input.style.left = `${(e.clientX - box.left) / escala}px`;
       input.style.top = `${(e.clientY - box.top) / escala}px`;

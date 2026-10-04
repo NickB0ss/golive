@@ -23,16 +23,19 @@
  */
 
 (function (root) {
+  const { codigo } = (root.GoLive && root.GoLive.i18n)
+    || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
+
   function init(ctx) {
     return { owner: ctx && ctx.by != null ? String(ctx.by) : null, hidden: false };
   }
 
   function validate(state, action, ctx) {
     if (!action || action.kind !== 'visibility' || typeof action.hidden !== 'boolean') {
-      return 'Visibilidade inválida';
+      return codigo('mesa.quadro.visibilidadeInvalida');
     }
     const owner = state && state.owner;
-    if (!ctx || ctx.from !== owner) return 'Só quem criou o quadro pode escondê-lo';
+    if (!ctx || ctx.from !== owner) return codigo('mesa.quadro.soQuemCriouEsconde');
     return true;
   }
 

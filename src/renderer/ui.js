@@ -730,15 +730,15 @@
         });
         tile.appendChild(gate);
       }
-      const nome = opts.name || 'Alguém';
+      const nome = opts.name || t('ui.pessoa.alguem');
       const ehCamera = opts.kind === 'camera';
       // O mesmo estado do no no barramento: tela pausada nao diz "ao vivo".
       const pausada = !ehCamera && tilePaused.get(tileId)?.paused === true;
       const titulo = ehCamera ? escapeHtml(nome)
-        : `${escapeHtml(nome)} ${pausada ? 'pausou a tela' : 'está ao vivo'}`;
+        : t(pausada ? 'sala.pausouTela' : 'ui.tile.estaAoVivo', { nome: escapeHtml(nome) });
       const sub = ehCamera
-        ? 'A câmera só chega quando você pede.'
-        : 'A tela só chega quando você pede, e quem transmite economiza enquanto ninguém assiste.';
+        ? t('ui.tile.cameraSoChega')
+        : t('ui.tile.telaSoChega');
       const pessoaId = String(tileId).replace(/^cam-/, '');
       gate.innerHTML = `
         <span class="node" data-size="56" data-state="${pausada ? 'paused' : 'live'}" style="--who:${avatarColorFor(pessoaId)}">${avatarInnerHtml(pessoaId, nome, opts.avatar || null)}</span>
@@ -2258,7 +2258,7 @@
     menu.style.top = `${rect.top}px`;
 
     if (!candidates.length) {
-      menu.innerHTML = '<div class="pip-picker-empty">Todo mundo já está junto.</div>';
+      menu.innerHTML = `<div class="pip-picker-empty">${t('ui.pip.todosJuntos')}</div>`;
     } else {
       for (const [id, entry] of candidates) {
         const item = document.createElement('button');
@@ -4689,6 +4689,23 @@
       deps.onLiveNotifyChange($('settings-live-notify').checked);
     });
 
+    // Nomes, estados e motivos do historico de sons chegam como codigos tecnicos (sound.js e
+    // soundevents.js, que nao mudam): a traducao acontece so aqui, na exibicao. O que nao esta no
+    // mapa (mensagem de erro do AudioContext, "contexto=...") aparece como veio.
+    const SOM_CHAVES = {
+      entrou: 'ui.config.som.entrou', saiu: 'ui.config.som.saiu', chat: 'ui.config.som.chat',
+      'ao vivo': 'ui.config.som.aoVivo', parou: 'ui.config.som.parou',
+      interrompido: 'ui.config.som.interrompido', removido: 'ui.config.som.removido',
+    };
+    const SOM_ESTADOS = {
+      tocou: 'ui.config.status.tocou', pulado: 'ui.config.status.pulado', 'NAO tocou': 'ui.config.naoTocou',
+    };
+    const SOM_MOTIVOS = {
+      'sons desligados': 'ui.config.motivo.desligados', 'janela em foco': 'ui.config.motivo.emFoco',
+      'intervalo mínimo de chat': 'ui.config.motivo.intervaloChat', pronto: 'ui.config.motivo.pronto',
+      running: 'ui.config.motivo.pronto', 'som desconhecido': 'ui.config.motivo.desconhecido',
+    };
+    const traduzSom = (mapa, valor) => (Object.hasOwn(mapa, valor) ? t(mapa[valor]) : valor);
     const renderRecentSounds = () => {
       const list = $('sound-recent');
       const entries = deps.getRecentSounds ? deps.getRecentSounds() : [];
@@ -4697,9 +4714,9 @@
         return;
       }
       list.innerHTML = entries.slice().reverse().map((entry) => {
-        const status = entry.status === 'NAO tocou' ? t('ui.config.naoTocou') : entry.status;
+        const status = traduzSom(SOM_ESTADOS, entry.status);
         const hour = formatarHora(entry.at, { segundos: true });
-        return `<li><time>${hour}</time><span>${entry.name}</span><b class="sound-${entry.status === 'tocou' ? 'played' : 'skipped'}">${status}</b><em>${entry.reason}</em></li>`;
+        return `<li><time>${hour}</time><span>${traduzSom(SOM_CHAVES, entry.name)}</span><b class="sound-${entry.status === 'tocou' ? 'played' : 'skipped'}">${status}</b><em>${traduzSom(SOM_MOTIVOS, entry.reason)}</em></li>`;
       }).join('');
     };
     renderRecentSounds();
@@ -4708,7 +4725,7 @@
       button.disabled = true;
       try {
         await deps.onTestSounds((name) => {
-          $('sound-test-current').textContent = t('ui.config.tocando', { nome: name });
+          $('sound-test-current').textContent = t('ui.config.tocando', { nome: traduzSom(SOM_CHAVES, name) });
           renderRecentSounds();
         });
         $('sound-test-current').textContent = t('ui.config.testeConcluido');

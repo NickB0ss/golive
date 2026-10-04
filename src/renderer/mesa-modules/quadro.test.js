@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { traduzirResumo: R } = require('../i18n');
 const quadro = require('./quadro');
+const { codigo } = require('../i18n');
 const { jsonBytes } = require('../mesa');
 
 test('init carimba quem criou a janela (ctx.by), sem ele fica null', () => {
@@ -14,12 +15,18 @@ test('init carimba quem criou a janela (ctx.by), sem ele fica null', () => {
 test('visibility: so quem criou valida a forma certa; lider e forma invalida nao passam', () => {
   const s = quadro.init({ by: '7' });
   assert.equal(quadro.validate(s, { kind: 'visibility', hidden: true }, { from: '7' }), true);
-  assert.equal(typeof quadro.validate(s, { kind: 'visibility', hidden: true }, { from: '9' }), 'string');
+  assert.equal(
+    quadro.validate(s, { kind: 'visibility', hidden: true }, { from: '9' }),
+    codigo('mesa.quadro.soQuemCriouEsconde'),
+  );
   assert.equal(
     typeof quadro.validate(s, { kind: 'visibility', hidden: true }, { from: '9', isLeader: true }),
     'string',
   );
-  assert.equal(typeof quadro.validate(s, { kind: 'visibility', hidden: 'sim' }, { from: '7' }), 'string');
+  assert.equal(
+    quadro.validate(s, { kind: 'visibility', hidden: 'sim' }, { from: '7' }),
+    codigo('mesa.quadro.visibilidadeInvalida'),
+  );
   assert.equal(typeof quadro.validate(s, { kind: 'qualquer' }, { from: '7' }), 'string');
 });
 

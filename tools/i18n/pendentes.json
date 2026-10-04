@@ -1,7 +1,4 @@
 {
-  "src/renderer/mesa-janelas/comum.js": [
-    "mj mj-"
-  ],
   "src/renderer/mesa-janelas/desenha.js": [
     "A palavra era \"",
     "Alguém",
@@ -27,17 +24,6 @@
     "na rodada",
     "seu palpite..."
   ],
-  "src/renderer/mesa-janelas/quadro.js": [
-    "Alguém",
-    "Cor do traço",
-    "Esconder dos outros",
-    "Esconder dos outros",
-    "Nada seu pra desfazer",
-    "Só quem pôs o quadro ou o líder da sala limpa",
-    "Só quem pôs o quadro ou o líder da sala limpa",
-    "Só você vê",
-    "escreva e dê Enter"
-  ],
   "src/renderer/mesa-janelas/quiz.js": [
     "A resposta certa da pergunta anterior foi",
     "Escolha uma alternativa.",
@@ -48,11 +34,6 @@
     "Resposta enviada",
     "Resposta registrada",
     "Resposta registrada. Aguarde a revelacao."
-  ],
-  "src/renderer/mesa-modules/batalha.js": [
-    "Destróier",
-    "Encouraçado",
-    "Porta-aviões"
   ],
   "src/renderer/mesa-modules/desenha.js": [
     "A rodada está cheia",
@@ -115,10 +96,6 @@
     "águia",
     "óculos",
     "ônibus"
-  ],
-  "src/renderer/mesa-modules/quadro.js": [
-    "Só quem criou o quadro pode escondê-lo",
-    "Visibilidade inválida"
   ],
   "src/renderer/mesa-modules/quiz-perguntas.js": [
     "0 graus Celsius",
@@ -447,19 +424,5 @@
     "So o lider pode reiniciar",
     "Voce entrou depois da partida",
     "Voce ja respondeu"
-  ],
-  "src/renderer/mesa-view.js": [
-    "class=\"mesa-menu-row menu__item"
-  ],
-  "src/renderer/mesa-vista.js": [
-    "radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)",
-    "radial-gradient(circle at 1.25px 1.25px, var(--grid2) 1.75px, transparent 2px)"
-  ],
-  "src/renderer/ui.js": [
-    "A câmera só chega quando você pede.",
-    "A tela só chega quando você pede, e quem transmite economiza enquanto ninguém assiste.",
-    "Alguém",
-    "Todo mundo já está junto.",
-    "class=\"menu__item tile-menu-watch\" role=\"menuitem\""
   ]
 }
