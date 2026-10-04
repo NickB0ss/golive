@@ -21,7 +21,7 @@
 
   const imagem = {
     type: TYPE,
-    title: 'Imagem',
+    title: 'mesa.titulo.imagem',
     group: 'ferramentas',
     size: { w: 480, h: 360, minW: 160, minH: 160, aspect: null },
     maxStateBytes: 256,
@@ -42,7 +42,7 @@
     },
 
     summary(state) {
-      return state && state.msgId ? 'Imagem do chat' : 'Nenhuma imagem';
+      return { chave: state && state.msgId ? 'mesa.resumo.imagemChat' : 'mesa.imagem.nenhuma' };
     },
   };
 

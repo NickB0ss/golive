@@ -214,15 +214,19 @@
   function summary(state) {
     if (state.teams) {
       const line = state.teams.map((t) => t.map((e) => e.name).join(', ')).join(' × ');
-      return line.length > MAX_SUMMARY ? `${line.slice(0, MAX_SUMMARY - 1)}…` : line;
+      const linha = line.length > MAX_SUMMARY ? `${line.slice(0, MAX_SUMMARY - 1)}…` : line;
+      return { chave: 'mesa.resumo.linha', valores: { linha } };
     }
     const n = state.entries.length;
-    return `${n} ${n === 1 ? 'nome' : 'nomes'}, ${state.teamCount} times`;
+    const times = state.teamCount;
+    // O plural do pt-BR trata o zero como singular: o zero tem chave propria.
+    if (n === 0) return { chave: 'mesa.resumo.sorteioSemNomes', valores: { times } };
+    return { chave: 'mesa.resumo.sorteioNomes', valores: { n, times } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Sorteio de times',
+    title: 'mesa.titulo.sorteio',
     group: 'noite',
     size: { w: 480, h: 420, minW: 340, minH: 300, aspect: null },
     maxStateBytes: 16384,

@@ -192,14 +192,16 @@
   }
 
   function summary(state) {
-    if (state.last !== null) return `Roleta: ${state.last}`;
+    if (state.last !== null) return { chave: 'mesa.resumo.roletaSorteou', valores: { opcao: state.last } };
     const n = state.options.length;
-    return `${n} ${n === 1 ? 'opção' : 'opções'}, ainda não girou`;
+    // O plural do pt-BR trata o zero como singular: o zero tem chave propria.
+    if (n === 0) return { chave: 'mesa.resumo.roletaSemOpcoes' };
+    return { chave: 'mesa.resumo.roletaOpcoes', valores: { n } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Roleta',
+    title: 'mesa.titulo.roleta',
     group: 'noite',
     size: { w: 640, h: 440, minW: 360, minH: 420, aspect: null },
     maxStateBytes: 3072,

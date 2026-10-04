@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const sons = require('./sons');
 const { jsonBytes } = require('../mesa');
 
@@ -26,7 +27,7 @@ test('nasce vazio; de 8 a 12 sons, todos com nome', () => {
   assert.ok(sons.SOUNDS.length >= 8 && sons.SOUNDS.length <= 12);
   for (const s of sons.SOUNDS) assert.equal(typeof sons.SOUND_NAMES[s], 'string');
   assert.ok(Object.isFrozen(sons.SOUNDS) && Object.isFrozen(sons.SOUND_NAMES));
-  assert.equal(sons.summary(sons.init({})), 'Nenhum som ainda');
+  assert.equal(R(sons.summary(sons.init({}))), 'Nenhum som ainda');
 });
 
 test('prepare poe a hora e quem tocou do servidor (e ignora as do cliente)', () => {
@@ -34,7 +35,7 @@ test('prepare poe a hora e quem tocou do servidor (e ignora as do cliente)', () 
   const r = servidor(s0, { kind: 'play', sound: 'buzina', at: 1, by: '9' }, '2', 50_000);
   assert.deepEqual(r.pronta, { kind: 'play', sound: 'buzina', at: 50_000, by: '2' });
   assert.deepEqual(r.state, { n: 1, last: { n: 1, sound: 'buzina', at: 50_000, by: '2' }, recent: { 2: 50_000 } });
-  assert.equal(sons.summary(r.state), 'Último som: Buzina');
+  assert.equal(R(sons.summary(r.state)), 'Último som: Buzina');
 });
 
 test('um som por pessoa a cada 3 s, pela hora do servidor', () => {
@@ -111,7 +112,7 @@ test('esta no registro, no grupo noite', () => {
   const reg = require('./index');
   assert.ok(reg.MODULE_NAMES.includes('sons'));
   assert.equal(reg.get('sons').group, 'noite');
-  assert.equal(reg.get('sons').title, 'Sons');
+  assert.equal(tx(reg.get('sons').title), 'Sons');
   assert.equal(sons.soundName('badumtss'), 'mesa.sons.som.badumtss');
   assert.equal(sons.soundName('constructor'), 'mesa.sons.som.generico');
 });

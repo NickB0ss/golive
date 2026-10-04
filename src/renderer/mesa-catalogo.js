@@ -3,46 +3,51 @@
 /* Metadados puros do seletor de janelas da Mesa. */
 
 (function (root) {
+  // i18n/index.js carrega antes (index.html); nos testes, o teste o carrega primeiro.
+  const { traduzirCodigo } = root.GoLive.i18n;
+
+  // Os grupos e as descricoes sao CHAVES de traducao; o nome de cada janela e o
+  // `title` do modulo (tambem uma chave). Quem mostra passa por t().
   const GRUPOS = Object.freeze({
-    assistir: 'Assistir e ouvir',
-    jogos: 'Jogos',
-    noite: 'Noite de jogo',
-    ferramentas: 'Ferramentas',
+    assistir: 'mesa.catalogo.grupo.assistir',
+    jogos: 'mesa.catalogo.grupo.jogos',
+    noite: 'mesa.catalogo.grupo.noite',
+    ferramentas: 'mesa.catalogo.grupo.ferramentas',
   });
 
   // A descricao diz o que a janela faz, sem repetir o titulo que ja esta em cima dela no cartao.
-  const item = (icone, desc, ...chaves) => Object.freeze({ icone, desc, chaves });
+  const item = (icone, descricao, ...chaves) => Object.freeze({ icone, descricao, chaves });
   const itens = Object.freeze({
-    youtube: item('i-play', 'Assistam juntos, no mesmo ponto', 'video', 'filme', 'canal'),
-    radio: item('i-volume-2', 'Fila de músicas que a sala monta', 'musica', 'audio', 'estacao'),
-    aovivo: item('i-tv-minimal', 'Uma live da Twitch aberta na Mesa', 'live', 'stream'),
-    jam: item('i-volume-2', 'Ouçam o Spotify juntos', 'musica', 'audio'),
-    nota: item('i-type', 'Recado rápido para a sala', 'texto', 'escrever', 'post-it', 'anotacao'),
-    lista: item('i-check', 'Itens para a sala ir marcando', 'tarefas', 'checklist'),
-    enquete: item('i-bar-chart-3', 'Votação com resultado ao vivo', 'voto', 'votacao', 'pesquisa'),
-    imagem: item('i-image', 'Uma imagem para todos verem', 'foto', 'figura'),
-    galeria: item('i-gallery-horizontal-end', 'Várias imagens, uma de cada vez', 'fotos', 'album', 'imagens'),
-    quadro: item('i-pen-line', 'Lousa para desenhar junto', 'desenho', 'lousa', 'rabisco'),
-    link: item('i-link', 'Um endereço para a sala abrir', 'url', 'site', 'pagina'),
-    placar: item('i-layout-grid', 'Pontos de cada time ou pessoa', 'pontos', 'resultado', 'score'),
-    cronometro: item('i-timer', 'Marque o tempo da rodada', 'tempo', 'relogio', 'timer'),
-    sorteio: item('i-sparkles', 'Divide a sala em times na sorte', 'sortear', 'aleatorio', 'times'),
-    dados: item('i-dices', 'Role dados ou jogue uma moeda', 'dado', 'rolar', 'rpg', 'moeda'),
-    roleta: item('i-circle-dot', 'Gire e deixe a sorte escolher', 'girar', 'sorteio', 'aleatorio'),
-    stop: item('i-type', 'Adedonha: uma palavra por categoria', 'adedonha', 'palavras', 'letras'),
-    sons: item('i-volume-2', 'Botões de efeito sonoro', 'audio', 'efeitos', 'soundboard'),
-    velha: item('i-grid-3x3', 'Três em linha, para duas pessoas', 'tic tac toe', 'jogo'),
-    lig4: item('i-circle-dot', 'Alinhe quatro peças antes do outro', 'conecta 4', 'tabuleiro', 'jogo'),
-    damas: item('i-circle-dot', 'Tabuleiro clássico, para duas pessoas', 'tabuleiro', 'pecas', 'jogo'),
-    xadrez: item('i-crown', 'Uma partida, para duas pessoas', 'chess', 'tabuleiro', 'pecas'),
-    batalha: item('i-grid-3x3', 'Afunde a frota do outro lado', 'naval', 'barcos', 'tabuleiro'),
-    poquer: item('i-spade', 'Cartas, fichas e apostas', 'poker', 'cartas', 'baralho'),
-    blackjack: item('i-spade', 'Chegue a 21 sem estourar', '21', 'vinte e um', 'cartas', 'baralho'),
-    truco: item('i-spade', 'Cartas, blefe e manilha', 'cartas', 'baralho'),
-    oito: item('i-circle-dot', 'Descarte pelo naipe ou pelo número', 'cartas', 'baralho', 'uno'),
-    domino: item('i-dices', 'Encaixe as pedras pelas pontas', 'pedras', 'pecas', 'jogo'),
-    desenha: item('i-pen-line', 'Uma pessoa desenha, a sala adivinha', 'desenho', 'adivinha', 'pictionary'),
-    quiz: item('i-circle-help', 'Perguntas valendo ponto', 'perguntas', 'trivia', 'conhecimento'),
+    youtube: item('i-play', 'mesa.catalogo.youtube.descricao', 'video', 'filme', 'canal'),
+    radio: item('i-volume-2', 'mesa.catalogo.radio.descricao', 'musica', 'audio', 'estacao'),
+    aovivo: item('i-tv-minimal', 'mesa.catalogo.aovivo.descricao', 'live', 'stream'),
+    jam: item('i-volume-2', 'mesa.catalogo.jam.descricao', 'musica', 'audio'),
+    nota: item('i-type', 'mesa.catalogo.nota.descricao', 'texto', 'escrever', 'post-it', 'anotacao'),
+    lista: item('i-check', 'mesa.catalogo.lista.descricao', 'tarefas', 'checklist'),
+    enquete: item('i-bar-chart-3', 'mesa.catalogo.enquete.descricao', 'voto', 'votacao', 'pesquisa'),
+    imagem: item('i-image', 'mesa.catalogo.imagem.descricao', 'foto', 'figura'),
+    galeria: item('i-gallery-horizontal-end', 'mesa.catalogo.galeria.descricao', 'fotos', 'album', 'imagens'),
+    quadro: item('i-pen-line', 'mesa.catalogo.quadro.descricao', 'desenho', 'lousa', 'rabisco'),
+    link: item('i-link', 'mesa.catalogo.link.descricao', 'url', 'site', 'pagina'),
+    placar: item('i-layout-grid', 'mesa.catalogo.placar.descricao', 'pontos', 'resultado', 'score'),
+    cronometro: item('i-timer', 'mesa.catalogo.cronometro.descricao', 'tempo', 'relogio', 'timer'),
+    sorteio: item('i-sparkles', 'mesa.catalogo.sorteio.descricao', 'sortear', 'aleatorio', 'times'),
+    dados: item('i-dices', 'mesa.catalogo.dados.descricao', 'dado', 'rolar', 'rpg', 'moeda'),
+    roleta: item('i-circle-dot', 'mesa.catalogo.roleta.descricao', 'girar', 'sorteio', 'aleatorio'),
+    stop: item('i-type', 'mesa.catalogo.stop.descricao', 'adedonha', 'palavras', 'letras'),
+    sons: item('i-volume-2', 'mesa.catalogo.sons.descricao', 'audio', 'efeitos', 'soundboard'),
+    velha: item('i-grid-3x3', 'mesa.catalogo.velha.descricao', 'tic tac toe', 'jogo'),
+    lig4: item('i-circle-dot', 'mesa.catalogo.lig4.descricao', 'conecta 4', 'tabuleiro', 'jogo'),
+    damas: item('i-circle-dot', 'mesa.catalogo.damas.descricao', 'tabuleiro', 'pecas', 'jogo'),
+    xadrez: item('i-crown', 'mesa.catalogo.xadrez.descricao', 'chess', 'tabuleiro', 'pecas'),
+    batalha: item('i-grid-3x3', 'mesa.catalogo.batalha.descricao', 'naval', 'barcos', 'tabuleiro'),
+    poquer: item('i-spade', 'mesa.catalogo.poquer.descricao', 'poker', 'cartas', 'baralho'),
+    blackjack: item('i-spade', 'mesa.catalogo.blackjack.descricao', '21', 'vinte e um', 'cartas', 'baralho'),
+    truco: item('i-spade', 'mesa.catalogo.truco.descricao', 'cartas', 'baralho'),
+    oito: item('i-circle-dot', 'mesa.catalogo.oito.descricao', 'cartas', 'baralho', 'uno'),
+    domino: item('i-dices', 'mesa.catalogo.domino.descricao', 'pedras', 'pecas', 'jogo'),
+    desenha: item('i-pen-line', 'mesa.catalogo.desenha.descricao', 'desenho', 'adivinha', 'pictionary'),
+    quiz: item('i-circle-help', 'mesa.catalogo.quiz.descricao', 'perguntas', 'trivia', 'conhecimento'),
   });
 
   function filtrar(mods, termo, grupo) {
@@ -51,7 +56,7 @@
       if (grupo && grupo !== 'tudo' && mod.group !== grupo) return false;
       if (!busca) return true;
       const item = itens[mod.type] || {};
-      const texto = [mod.title, GRUPOS[mod.group], ...(item.chaves || [])].join(' ');
+      const texto = [traduzirCodigo(mod.title), traduzirCodigo(GRUPOS[mod.group]), ...(item.chaves || [])].join(' ');
       return normalizar(texto).includes(busca);
     });
   }
@@ -66,7 +71,7 @@
   }
 
   function normalizar(texto) {
-    return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   }
 
   const api = { GRUPOS, itens, filtrar, lembrarRecente, deveRedirecionarParaBusca };

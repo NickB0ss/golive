@@ -74,6 +74,7 @@
       if (!m || m.media) return false;
       const opened = deps.view.isOpen();
       const rect = (opened && deps.view.spot(type)) || centered(m.size, WORLD.w / 2, WORLD.h / 2);
+      // `title` do modulo e uma chave de traducao: so vira texto na hora de avisar.
       pending = { type, action, title: m.title, tries: 0, at: now() };
       if (!sendAdd(rect)) {
         pending = null;
@@ -89,7 +90,7 @@
       if (!p || typeof id !== 'string' || !id) return;
       if (p.action) deps.send({ type: 'mesa', op: 'act', id, action: p.action });
       lastAct = { id, title: p.title, at: now() };
-      if (!deps.view.isOpen()) deps.toast(t('mesa.por.foiParaMesa', { janela: p.title }));
+      if (!deps.view.isOpen()) deps.toast(t('mesa.por.foiParaMesa', { janela: traduzirCodigo(p.title) }));
     }
 
     /** Uma mensagem da sinalizacao. `true` quando ela era so deste modulo
@@ -123,7 +124,7 @@
         // Na Mesa o conteudo da janela mostra a recusa; na Transmissao, aviso.
         const detail = typeof msg.detail === 'string' && msg.detail ? msg.detail : null;
         deps.toast(detail
-          ? t('mesa.por.recusaDe', { janela: lastAct.title, motivo: traduzirCodigo(detail) })
+          ? t('mesa.por.recusaDe', { janela: traduzirCodigo(lastAct.title), motivo: traduzirCodigo(detail) })
           : t(DENIED[msg.reason] || 'mesa.por.erro'));
         lastAct = null;
         return true;

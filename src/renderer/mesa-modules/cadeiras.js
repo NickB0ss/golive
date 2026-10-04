@@ -148,15 +148,18 @@
     return saved || labels[seat];
   }
 
-  /** Resumo de partida em andamento: quem esta sentado e de quem e a vez. */
+  /** Resumo de partida em andamento: quem esta sentado e de quem e a vez.
+   * Devolve `{ chave, valores }`; `labels` sao codigos de traducao. */
   function describePlaying(state, turnSeat, labels, peers) {
     const a = state.seats[0] !== null;
     const b = state.seats[1] !== null;
-    if (!a && !b) return 'Cadeiras livres';
-    if (a !== b) return `${nameOf(state, a ? 0 : 1, labels, peers)} espera adversário`;
+    if (!a && !b) return { chave: 'mesa.resumo.cadeirasLivres' };
+    if (a !== b) {
+      return { chave: 'mesa.resumo.esperaAdversario', valores: { nome: nameOf(state, a ? 0 : 1, labels, peers) } };
+    }
     const n0 = nameOf(state, 0, labels, peers);
     const n1 = nameOf(state, 1, labels, peers);
-    return `${n0} × ${n1} — vez de ${turnSeat === 0 ? n0 : n1}`;
+    return { chave: 'mesa.resumo.vezDe', valores: { a: n0, b: n1, vez: turnSeat === 0 ? n0 : n1 } };
   }
 
   /** Roda `fn` e troca qualquer excecao por `fallback`: estado ou mensagem

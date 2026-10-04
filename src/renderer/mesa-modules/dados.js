@@ -147,12 +147,18 @@
 
   function summary(state) {
     const last = state.history[state.history.length - 1];
-    return last ? describe(last) : 'Nenhuma rolagem ainda';
+    if (!last) return { chave: 'mesa.resumo.dadosNenhuma' };
+    if (last.kind === 'coin') return { chave: last.value === 'cara' ? 'mesa.dados.moedaCara' : 'mesa.dados.moedaCoroa' };
+    const qtd = last.values.length;
+    const base = { qtd, lados: last.sides };
+    if (qtd === 1) return { chave: 'mesa.resumo.dadosUm', valores: { ...base, valor: last.values[0] } };
+    const valores = { ...base, valores: last.values.join(' + '), total: total(last) };
+    return { chave: 'mesa.resumo.dadosVarios', valores };
   }
 
   const api = {
     type: TYPE,
-    title: 'Dados e moeda',
+    title: 'mesa.titulo.dados',
     group: 'noite',
     size: { w: 400, h: 320, minW: 300, minH: 240, aspect: null },
     maxStateBytes: 2048,

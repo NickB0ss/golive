@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -11,7 +12,7 @@ const registry = require('./index');
 
 test('descritor segue o contrato (secao 9: blackjack, jogos, secreto)', () => {
   assert.equal(bj.type, 'blackjack');
-  assert.equal(bj.title, 'Blackjack');
+  assert.equal(tx(bj.title), 'Blackjack');
   assert.equal(bj.group, 'jogos');
   assert.equal(bj.secret, true);
   assert.equal(bj.size.w, 680);
@@ -828,14 +829,14 @@ test('acao ruim nunca lanca e nao muda o estado', () => {
   assert.notEqual(bj.validate(s, { kind: 'rebuy' }, {}), true);
   assert.notEqual(bj.validate(s, { kind: 'bet', amount: 10 }, { from: 'zeca' }), true);
   assert.equal(bj.view(null, 'bia').me.seat, -1);
-  assert.equal(bj.summary(null), 'Blackjack');
+  assert.equal(R(bj.summary(null)), 'Blackjack');
   assert.equal(bj.dropPeer(null, 'bia'), null);
 });
 
 test('summary em portugues', () => {
-  assert.equal(bj.summary(table([], [])), 'Blackjack — lugares livres');
+  assert.equal(R(bj.summary(table([], []))), 'Blackjack — lugares livres');
   let s = table(['bia', 'leo'], ['8s', '9h', '6c', '8d', '9d', 'Td']);
-  assert.equal(bj.summary(s), 'Blackjack — 2 na mesa, apostas abertas');
+  assert.equal(R(bj.summary(s)), 'Blackjack — 2 na mesa, apostas abertas');
   s = betAll(s, ['bia', 'leo']);
-  assert.equal(bj.summary(s, PEERS), 'Blackjack — vez de Bia');
+  assert.equal(R(bj.summary(s, PEERS)), 'Blackjack — vez de Bia');
 });

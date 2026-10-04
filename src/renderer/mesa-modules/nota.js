@@ -17,7 +17,7 @@
 
   const nota = {
     type: 'nota',
-    title: 'Nota',
+    title: 'mesa.titulo.nota',
     group: 'ferramentas',
     size: { w: 320, h: 240, minW: 160, minH: 120, aspect: null },
     // 1 000 caracteres de ate 4 bytes, ou de escape JSON (\u0000 = 6), mais

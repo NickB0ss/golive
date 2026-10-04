@@ -60,7 +60,7 @@
   const BUILTIN = [
     {
       type: 'tela',
-      title: 'Tela',
+      title: 'mesa.titulo.tela',
       group: null,
       media: true,
       size: { w: 640, h: 360, minW: 160, minH: 90, aspect: 16 / 9 },
@@ -71,7 +71,7 @@
     },
     {
       type: 'camera',
-      title: 'Câmera',
+      title: 'mesa.titulo.camera',
       group: null,
       media: true,
       size: { w: 320, h: 240, minW: 120, minH: 90, aspect: 4 / 3 },

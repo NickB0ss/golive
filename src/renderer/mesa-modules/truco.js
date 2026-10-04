@@ -507,7 +507,7 @@
 
   const modulo = {
     type: 'truco',
-    title: 'Truco',
+    title: 'mesa.titulo.truco',
     group: 'jogos',
     size: { w: 720, h: 460, minW: 520, minH: 330, aspect: null },
     maxStateBytes: 12288,
@@ -520,7 +520,7 @@
     migrate: migrar,
     dropPeer: (estado, id) => removerPessoa(estado, id),
     timeoutAt: (estado) => estado.hand && estado.hand.deadline,
-    summary: (estado) => `Truco ${estado.scores[0]} a ${estado.scores[1]}`,
+    summary: (estado) => ({ chave: 'mesa.resumo.truco', valores: { a: estado.scores[0], b: estado.scores[1] } }),
     RANKS: ORDEM,
     SUITS: NAIPES,
     TURN_MS: TEMPO_DA_VEZ,

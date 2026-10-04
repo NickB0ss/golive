@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -52,7 +53,7 @@ function playUci(s, list) {
 
 test('descritor segue o contrato', () => {
   assert.equal(xadrez.type, 'xadrez');
-  assert.equal(xadrez.title, 'Xadrez');
+  assert.equal(tx(xadrez.title), 'Xadrez');
   assert.equal(xadrez.group, 'jogos');
   assert.equal(xadrez.size.aspect, 1);
 });
@@ -83,8 +84,8 @@ test('init: posicao inicial, brancas (cadeira 0) comecam', () => {
   const s = xadrez.init({});
   assert.equal(s.turn, 0);
   assert.deepEqual(s.seats, [null, null]);
-  assert.equal(xadrez.summary(s), 'Cadeiras livres');
-  assert.equal(xadrez.summary(seated()), 'Bia × Leo — vez de Bia');
+  assert.equal(R(xadrez.summary(s)), 'Cadeiras livres');
+  assert.equal(R(xadrez.summary(seated())), 'Bia × Leo — vez de Bia');
 });
 
 test('lance legal atualiza fen, san, vez e ultimo lance', () => {
@@ -93,7 +94,7 @@ test('lance legal atualiza fen, san, vez e ultimo lance', () => {
   assert.deepEqual(s.san, ['e4']);
   assert.equal(s.turn, 1);
   assert.deepEqual(s.last, { from: 'e2', to: 'e4' });
-  assert.equal(xadrez.summary(s), 'Bia × Leo — vez de Leo');
+  assert.equal(R(xadrez.summary(s)), 'Bia × Leo — vez de Leo');
 });
 
 test('lance de peao zera as marcas de posicao; lance reversivel acrescenta', () => {
@@ -120,20 +121,20 @@ test('xeque-mate encerra com vitoria de quem deu o mate', () => {
   const s = playUci(seated(), ['f2f3', 'e7e5', 'g2g4', 'd8h4']);
   assert.deepEqual(s.result, { winner: 1, reason: 'mate' });
   assert.equal(s.check, false);
-  assert.equal(xadrez.summary(s), 'Xeque-mate, Leo venceu');
+  assert.equal(R(xadrez.summary(s)), 'Xeque-mate, Leo venceu');
   assert.equal(xadrez.validate(s, { kind: 'move', from: 'a2', to: 'a3' }, ctx('bia')), 'mesa.cadeiras.partidaAcabou');
 });
 
 test('afogamento empata', () => {
   const s = playUci(fromFen('k7/8/2Q5/8/8/8/8/7K w - - 0 1'), ['c6b6']);
   assert.deepEqual(s.result, { winner: null, reason: 'afogamento' });
-  assert.equal(xadrez.summary(s), 'Afogamento, empate');
+  assert.equal(R(xadrez.summary(s)), 'Afogamento, empate');
 });
 
 test('material insuficiente empata', () => {
   const s = playUci(fromFen('k7/8/8/8/8/8/1p6/K7 w - - 0 1'), ['a1b2']);
   assert.deepEqual(s.result, { winner: null, reason: 'material' });
-  assert.equal(xadrez.summary(s), 'Empate por material insuficiente');
+  assert.equal(R(xadrez.summary(s)), 'Empate por material insuficiente');
 });
 
 test('repeticao tripla empata', () => {
@@ -144,13 +145,13 @@ test('repeticao tripla empata', () => {
   assert.equal(s.result, null);
   s = playUci(s, dance.slice(3));
   assert.deepEqual(s.result, { winner: null, reason: 'repeticao' });
-  assert.equal(xadrez.summary(s), 'Empate por repetição');
+  assert.equal(R(xadrez.summary(s)), 'Empate por repetição');
 });
 
 test('regra dos 50 lances empata', () => {
   const s = playUci(fromFen('k7/8/8/8/8/8/8/K6R w - - 99 80'), ['h1h2']);
   assert.deepEqual(s.result, { winner: null, reason: 'cinquenta' });
-  assert.equal(xadrez.summary(s), 'Empate pela regra dos 50 lances');
+  assert.equal(R(xadrez.summary(s)), 'Empate pela regra dos 50 lances');
 });
 
 test('promocao exige a peca escolhida e da xeque', () => {
@@ -162,7 +163,7 @@ test('promocao exige a peca escolhida e da xeque', () => {
   assert.equal(t.fen.split(' ')[0], 'k3Q3/8/8/8/8/8/8/K7');
   assert.deepEqual(t.san, ['e8=Q+']);
   assert.equal(t.check, true);
-  assert.equal(xadrez.summary(t), 'Bia × Leo — vez de Leo (xeque)');
+  assert.equal(R(xadrez.summary(t)), 'Bia × Leo — vez de Leo (xeque)');
   const n = act(s, { kind: 'move', from: 'e7', to: 'e8', promotion: 'n' }, 'bia');
   assert.equal(n.fen.split(' ')[0], 'k3N3/8/8/8/8/8/8/K7');
 });
@@ -184,7 +185,7 @@ test('desistir, recomecar e sair da sala', () => {
   assert.equal(xadrez.validate(s, { kind: 'resign' }, ctx('ana')), 'mesa.cadeiras.soSentadoDesiste');
   s = act(s, { kind: 'resign' }, 'bia');
   assert.deepEqual(s.result, { winner: 1, reason: 'abandono' });
-  assert.equal(xadrez.summary(s), 'Bia desistiu, Leo venceu');
+  assert.equal(R(xadrez.summary(s)), 'Bia desistiu, Leo venceu');
   assert.equal(xadrez.validate(s, { kind: 'reset' }, ctx('ana')), 'mesa.cadeiras.soSentadoOuLiderRecomeca');
   s = act(s, { kind: 'reset' }, 'leo');
   assert.deepEqual(s.seats, ['bia', 'leo']);
@@ -192,10 +193,10 @@ test('desistir, recomecar e sair da sala', () => {
   assert.deepEqual(s.san, []);
   s = deepFreeze(xadrez.dropPeer(s, 'bia'));
   assert.deepEqual(s.seats, [null, 'leo']);
-  assert.equal(xadrez.summary(s), 'Leo espera adversário');
+  assert.equal(R(xadrez.summary(s)), 'Leo espera adversário');
   s = act(s, { kind: 'sit', seat: 0 }, 'ana');
   s = act(s, { kind: 'move', from: 'd2', to: 'd4' }, 'ana');
-  assert.equal(xadrez.summary(s, PEERS), 'Ana × Leo — vez de Leo');
+  assert.equal(R(xadrez.summary(s, PEERS)), 'Ana × Leo — vez de Leo');
 });
 
 test('partida longa: san curto e estado no teto', () => {
@@ -247,7 +248,7 @@ test('mensagem malformada nunca lanca e nao muda o estado', () => {
   const broken = deepFreeze(Object.assign({}, s, { fen: 'isso nao e fen' }));
   assert.equal(xadrez.validate(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), 'mesa.jogo.acaoInvalida');
   assert.equal(xadrez.reduce(broken, { kind: 'move', from: 'e2', to: 'e4' }, ctx('bia')), broken);
-  assert.equal(typeof xadrez.summary(undefined), 'string');
+  assert.equal(typeof R(xadrez.summary(undefined)), 'string');
 });
 
 test('legalMoves lista os destinos de uma casa e aguenta entrada ruim', () => {

@@ -41,7 +41,8 @@
     || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
 
   const N = 8;
-  const LABELS = ['Claras', 'Escuras'];
+  // Rotulos de cor do resumo: codigos, a vista traduz.
+  const LABELS = ['mesa.damas.claras', 'mesa.damas.escuras'];
   const KINGS = ['C', 'E'];
   const FORWARD = [-1, 1];
   const PROMOTE_ROW = [0, N - 1];
@@ -268,13 +269,16 @@
     return C.safe(() => {
       const r = state.result;
       if (r) {
-        if (r.reason === 'damas') return `Empate, ${KING_ONLY_DRAW} lances só de damas`;
+        if (r.reason === 'damas') return { chave: 'mesa.resumo.damasEmpate', valores: { n: KING_ONLY_DRAW } };
         const winner = C.nameOf(state, r.winner, LABELS, peers);
-        if (r.reason === 'abandono') return `${C.nameOf(state, 1 - r.winner, LABELS, peers)} desistiu, ${winner} venceu`;
-        return `${winner} venceu`;
+        if (r.reason === 'abandono') {
+          const perdedor = C.nameOf(state, 1 - r.winner, LABELS, peers);
+          return { chave: 'mesa.resumo.desistiuVenceu', valores: { perdedor, vencedor: winner } };
+        }
+        return { chave: 'mesa.tabuleiro.venceu', valores: { nome: winner } };
       }
       return C.describePlaying(state, state.turn, LABELS, peers);
-    }, 'Damas');
+    }, { chave: 'mesa.titulo.damas' });
   }
 
   /** So no servidor: o nome de quem senta vai na acao `sit`. */
@@ -284,7 +288,7 @@
 
   const mod = {
     type: 'damas',
-    title: 'Damas',
+    title: 'mesa.titulo.damas',
     group: 'jogos',
     size: { w: 480, h: 480, minW: 240, minH: 240, aspect: 1 },
     maxStateBytes: 2048,

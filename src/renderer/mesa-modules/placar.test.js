@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const placar = require('./placar');
 
 function deepFreeze(v) {
@@ -58,7 +59,7 @@ test('init comeca com dois times zerados e sem serie', () => {
 
 test('metadados seguem o contrato', () => {
   assert.equal(placar.type, 'placar');
-  assert.equal(placar.title, 'Placar');
+  assert.equal(tx(placar.title), 'Placar');
   assert.equal(placar.group, 'noite');
   assert.ok(placar.size.w >= placar.size.minW && placar.size.h >= placar.size.minH);
   assert.equal(typeof placar.maxStateBytes, 'number');
@@ -73,7 +74,12 @@ test('+1 e -1 mexem no time certo e o resumo mostra o placar', () => {
     { kind: 'score', team: 0, delta: -1 },
   ]);
   assert.deepEqual(s.teams.map((t) => t.score), [2, 1]);
-  assert.equal(placar.summary(s), 'mesa.placar.azul 2 × 1 mesa.placar.vermelho');
+  assert.equal(R(placar.summary(s)), 'Azul 2 × 1 Vermelho');
+  // O modulo devolve chave e valores (nomes ainda como codigo); a vista traduz.
+  assert.deepEqual(placar.summary(s), {
+    chave: 'mesa.resumo.placarDois',
+    valores: { a: 'mesa.placar.azul', pa: 2, pb: 1, b: 'mesa.placar.vermelho', nome: undefined, n: null },
+  });
 });
 
 test('placar nunca fica negativo', () => {
@@ -117,7 +123,7 @@ test('zerar mantem os nomes', () => {
 test('ate quatro times; tirar time corta os ultimos', () => {
   let s = aplica(placar.init({}), [{ kind: 'teams', count: 4 }, { kind: 'score', team: 3, delta: 1 }]);
   assert.deepEqual(s.teams.map((t) => t.name), ['mesa.placar.azul', 'mesa.placar.vermelho', 'mesa.placar.verde', 'mesa.placar.amarelo']);
-  assert.equal(placar.summary(s), 'mesa.placar.azul 0 · mesa.placar.vermelho 0 · mesa.placar.verde 0 · mesa.placar.amarelo 1');
+  assert.equal(R(placar.summary(s)), 'Azul 0 · Vermelho 0 · Verde 0 · Amarelo 1');
   s = aplica(s, [{ kind: 'teams', count: 3 }]);
   assert.equal(s.teams.length, 3);
   assert.equal(placar.validate(s, { kind: 'score', team: 3, delta: 1 }), 'mesa.placar.timeInvalido');
@@ -130,10 +136,10 @@ test('melhor de 3 fecha em 2 vitorias e trava o +1', () => {
     { kind: 'score', team: 1, delta: 1 },
     { kind: 'score', team: 0, delta: 1 },
   ]);
-  assert.equal(placar.summary(s), 'mesa.placar.azul 1 × 1 mesa.placar.vermelho (melhor de 3)');
+  assert.equal(R(placar.summary(s)), 'Azul 1 × 1 Vermelho (melhor de 3)');
   const fim = aplica(s, [{ kind: 'score', team: 1, delta: 1 }]);
   assert.equal(placar.winner(fim), 1);
-  assert.equal(placar.summary(fim), 'mesa.placar.azul 1 × 2 mesa.placar.vermelho — mesa.placar.vermelho venceu');
+  assert.equal(R(placar.summary(fim)), 'Azul 1 × 2 Vermelho — Vermelho venceu');
   assert.equal(placar.validate(fim, { kind: 'score', team: 0, delta: 1 }), 'mesa.placar.serieAcabou');
   assert.equal(placar.reduce(deepFreeze(fim), { kind: 'score', team: 0, delta: 1 }), fim);
   // -1 continua valendo (corrigir engano) e zerar recomeca.

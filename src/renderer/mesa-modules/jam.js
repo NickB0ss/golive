@@ -141,14 +141,14 @@
   }
 
   function summary(state) {
-    if (!state.link) return 'Nenhum Jam ainda';
+    if (!state.link) return { chave: 'mesa.resumo.jamNenhum' };
     const n = state.joined.length;
-    return n === 0 ? 'Jam aberto' : `Jam aberto · ${n} ${n === 1 ? 'pessoa entrou' : 'pessoas entraram'}`;
+    return n === 0 ? { chave: 'mesa.resumo.jamAberto' } : { chave: 'mesa.resumo.jamEntraram', valores: { n } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Spotify Jam',
+    title: 'mesa.titulo.jam',
     group: 'assistir',
     size: { w: 360, h: 280, minW: 260, minH: 200, aspect: null },
     // link (~90) + 24 ids de 16 + envelope: 1 KB sobra.

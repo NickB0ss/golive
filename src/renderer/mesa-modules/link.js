@@ -105,13 +105,14 @@
   }
 
   function summary(state) {
-    if (!state.url) return 'Nenhum link ainda';
-    return state.title ? `${state.title} (${state.host})` : state.host;
+    if (!state.url) return { chave: 'mesa.resumo.linkNenhum' };
+    if (state.title) return { chave: 'mesa.resumo.linkTitulo', valores: { titulo: state.title, dominio: state.host } };
+    return { chave: 'mesa.resumo.linha', valores: { linha: state.host } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Link',
+    title: 'mesa.titulo.link',
     group: 'ferramentas',
     size: { w: 360, h: 200, minW: 240, minH: 150, aspect: null },
     // 2 048 do endereco (ja em %XX, ASCII) + 80 caracteres de titulo (ate 6

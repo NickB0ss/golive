@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const dados = require('./dados');
 
 function deepFreeze(v) {
@@ -64,12 +65,12 @@ const MALFORMADAS = [
 test('init: 2d6 e historico vazio', () => {
   const s = dados.init({ now: 1, random: () => 0 });
   assert.deepEqual(s, { count: 2, sides: 6, history: [], rolls: 0 });
-  assert.equal(dados.summary(s), 'Nenhuma rolagem ainda');
+  assert.equal(R(dados.summary(s)), 'Nenhuma rolagem ainda');
 });
 
 test('metadados seguem o contrato', () => {
   assert.equal(dados.type, 'dados');
-  assert.equal(dados.title, 'Dados e moeda');
+  assert.equal(tx(dados.title), 'Dados e moeda');
   assert.equal(dados.group, 'noite');
 });
 
@@ -92,7 +93,7 @@ test('prepare sorteia com a sorte do servidor e ignora o resultado do cliente', 
 test('rolar guarda no historico e o resumo mostra a soma', () => {
   const { state } = roda(dados.init({}), [[{ kind: 'roll' }, '1']], sequencia(0.4, 0.7));
   assert.deepEqual(state.history, [{ n: 1, kind: 'dice', by: '1', sides: 6, values: [3, 5] }]);
-  assert.equal(dados.summary(state), '2d6: 3 + 5 = 8');
+  assert.equal(R(dados.summary(state)), '2d6: 3 + 5 = 8');
   assert.equal(dados.total(state.history[0]), 8);
 });
 
@@ -101,7 +102,7 @@ test('configurar dados e lados; um dado so mostra o valor', () => {
     [{ kind: 'config', count: 1, sides: 20 }, '1'],
     [{ kind: 'roll' }, '2'],
   ], sequencia(0.8));
-  assert.equal(dados.summary(state), '1d20: 17');
+  assert.equal(R(dados.summary(state)), '1d20: 17');
   for (const sides of dados.SIDES) {
     for (const count of [dados.MIN_DICE, dados.MAX_DICE]) {
       const s = roda(dados.init({}), [[{ kind: 'config', count, sides }, '1'], [{ kind: 'roll' }, '1']],
@@ -116,7 +117,7 @@ test('configurar dados e lados; um dado so mostra o valor', () => {
 test('moeda: cara ou coroa', () => {
   const { state } = roda(dados.init({}), [[{ kind: 'coin' }, '1'], [{ kind: 'coin' }, '2']], sequencia(0.1, 0.9));
   assert.deepEqual(state.history.map((h) => h.value), ['cara', 'coroa']);
-  assert.equal(dados.summary(state), 'Moeda: coroa');
+  assert.equal(R(dados.summary(state)), 'Moeda: coroa');
 });
 
 test('sorte fora de [0, 1) nao da valor fora do dado', () => {

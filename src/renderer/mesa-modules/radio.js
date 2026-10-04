@@ -269,17 +269,25 @@
     }
   }
 
+  const CHAVES_TOCANDO = { sozinho: 'mesa.resumo.radioTocando', fila: 'mesa.resumo.radioTocandoFila' };
+  const CHAVES_PAUSADO = { sozinho: 'mesa.resumo.radioPausado', fila: 'mesa.resumo.radioPausadoFila' };
+
   function summary(state, serverNow) {
-    if (!state || !state.current) return state && state.queue.length ? `${state.queue.length} na fila` : 'Fila vazia';
-    const name = state.current.title || state.current.videoId;
+    if (!state || !state.current) {
+      return state && state.queue.length
+        ? { chave: 'mesa.resumo.radioNaFila', valores: { n: state.queue.length } }
+        : { chave: 'mesa.resumo.radioVazia' };
+    }
+    const nome = state.current.title || state.current.videoId;
     const pos = L.formatPos(L.positionAt(state, serverNow));
-    const fila = state.queue.length ? ` · +${state.queue.length} na fila` : '';
-    return `${state.playing ? 'Tocando' : 'Pausado'}: ${name} · ${pos}${fila}`;
+    const n = state.queue.length;
+    const chaves = state.playing ? CHAVES_TOCANDO : CHAVES_PAUSADO;
+    return { chave: n ? chaves.fila : chaves.sozinho, valores: { nome, pos, n } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Rádio da sala',
+    title: 'mesa.titulo.radio',
     group: 'assistir',
     size: { w: 360, h: 480, minW: 280, minH: 320, aspect: null },
     maxStateBytes: 16 * 1024,

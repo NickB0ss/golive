@@ -26,7 +26,8 @@
   const COLS = 7;
   const ROWS = 6;
   const MARKS = ['V', 'A'];
-  const LABELS = ['Vermelhas', 'Amarelas'];
+  // Rotulos de cor do resumo: codigos, a vista traduz.
+  const LABELS = ['mesa.lig4.vermelhas', 'mesa.lig4.amarelas'];
   const DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]];
 
   function freshGame() {
@@ -114,11 +115,11 @@
     return C.safe(() => {
       const r = state.result;
       if (r) {
-        if (r.winner === null) return 'Empate, tabuleiro cheio';
-        return `${C.nameOf(state, r.winner, LABELS, peers)} venceu`;
+        if (r.winner === null) return { chave: 'mesa.lig4.empate' };
+        return { chave: 'mesa.tabuleiro.venceu', valores: { nome: C.nameOf(state, r.winner, LABELS, peers) } };
       }
       return C.describePlaying(state, state.turn, LABELS, peers);
-    }, 'Lig 4');
+    }, { chave: 'mesa.titulo.lig4' });
   }
 
   /** So no servidor: o nome de quem senta vai na acao `sit`. */
@@ -128,7 +129,7 @@
 
   const mod = {
     type: 'lig4',
-    title: 'Lig 4',
+    title: 'mesa.titulo.lig4',
     group: 'jogos',
     size: { w: 420, h: 360, minW: 210, minH: 180, aspect: COLS / ROWS },
     maxStateBytes: 1024,

@@ -1,12 +1,13 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const aovivo = require('./aovivo');
 const registry = require('./index');
 
 test('metadados e estado inicial', () => {
   assert.equal(aovivo.type, 'aovivo');
-  assert.equal(aovivo.title, 'Twitch');
+  assert.equal(tx(aovivo.title), 'Twitch');
   assert.equal(aovivo.group, 'assistir');
   assert.equal(aovivo.prepare, undefined, 'ao vivo nao tem relogio');
   assert.equal(registry.checkModule(aovivo).ok, true);
@@ -37,6 +38,6 @@ test('recusa canal invalido e acao malformada', () => {
 test('playerUrl leva o parent e escapa o que precisa', () => {
   assert.equal(aovivo.playerUrl('gaules', 'localhost'), 'https://player.twitch.tv/?channel=gaules&parent=localhost&autoplay=true&muted=false');
   assert.match(aovivo.playerUrl('gaules', 'a b'), /parent=localhost/);
-  assert.equal(aovivo.summary({ channel: 'x_y' }), 'twitch.tv/x_y');
-  assert.equal(aovivo.summary({ channel: null }), 'Nenhum canal');
+  assert.equal(R(aovivo.summary({ channel: 'x_y' })), 'twitch.tv/x_y');
+  assert.equal(R(aovivo.summary({ channel: null })), 'Nenhum canal');
 });

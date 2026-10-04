@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const P = require('./poquer');
 const B = require('./baralho');
 const registry = require('./index');
@@ -100,7 +101,7 @@ const play = (s, action, opts) => act(s, action, turn(s), opts);
 test('registro: pôquer entra nos jogos, secreto, com view/migrate/timeoutAt', () => {
   const m = registry.get('poquer');
   assert.ok(m, JSON.stringify(registry.loadErrors));
-  assert.equal(m.title, 'Pôquer');
+  assert.equal(tx(m.title), 'Pôquer');
   assert.equal(m.group, 'jogos');
   assert.equal(m.secret, true);
   for (const f of ['init', 'prepare', 'validate', 'reduce', 'view', 'migrate', 'timeoutAt', 'dropPeer', 'summary']) {
@@ -569,7 +570,7 @@ test('estado congelado: reduce nao muta o anterior (Object.freeze profundo) e ca
   assert.equal(P.reduce(s, { kind: 'raise', to: 'x' }, { from: turn(s) }), s);
   assert.equal(typeof P.validate(null, { kind: 'deal' }, { from: 'ana' }), 'string');
   assert.equal(P.view(null, 'ana'), null);
-  assert.equal(P.summary(null), 'Pôquer');
+  assert.equal(R(P.summary(null)), 'Pôquer');
 });
 
 // ---------- View: informacao escondida ----------
@@ -688,9 +689,9 @@ test('ev: o ultimo acontecimento, para o anuncio', () => {
 
 test('summary', () => {
   let s = P.init({});
-  assert.equal(P.summary(s), 'Pôquer — cadeiras livres');
+  assert.equal(R(P.summary(s)), 'Pôquer — cadeiras livres');
   s = table({ 0: 'ana', 1: 'bia' });
-  assert.equal(P.summary(s), 'Pôquer 10/20 — 2 na mesa');
+  assert.equal(R(P.summary(s)), 'Pôquer 10/20 — 2 na mesa');
   s = act(s, { kind: 'deal' }, 'ana');
-  assert.equal(P.summary(s), 'Pôquer 10/20 — 2 na mesa, mão 1, vez de Ana');
+  assert.equal(R(P.summary(s)), 'Pôquer 10/20 — 2 na mesa, mão 1, vez de Ana');
 });

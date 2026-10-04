@@ -57,7 +57,8 @@
   }
 
   function summary(state) {
-    return state && state.channel ? `twitch.tv/${state.channel}` : 'Nenhum canal';
+    if (state && state.channel) return { chave: 'mesa.resumo.aovivoCanal', valores: { canal: state.channel } };
+    return { chave: 'mesa.aovivo.nenhumCanal' };
   }
 
   /** Endereco do player da Twitch para um canal, com o `parent` da pagina. */
@@ -68,7 +69,7 @@
 
   const api = {
     type: TYPE,
-    title: 'Twitch',
+    title: 'mesa.titulo.aovivo',
     group: 'assistir',
     size: { w: 640, h: 360, minW: 320, minH: 180, aspect: 16 / 9 },
     maxStateBytes: 128,

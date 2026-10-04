@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const cron = require('./cronometro');
 
 function deepFreeze(v) {
@@ -59,12 +60,12 @@ test('init: regressivo de 5 min, parado', () => {
     mode: 'down', duration: 300000, elapsed: 0, running: false, startedAt: null, label: '',
   });
   assert.equal(cron.remaining(s, 999999), 300000);
-  assert.equal(cron.summary(s), '05:00 (parado)');
+  assert.equal(R(cron.summary(s)), '05:00 (parado)');
 });
 
 test('metadados seguem o contrato', () => {
   assert.equal(cron.type, 'cronometro');
-  assert.equal(cron.title, 'Cronômetro');
+  assert.equal(tx(cron.title), 'Cronômetro');
   assert.equal(cron.group, 'noite');
   assert.equal(typeof cron.prepare, 'function');
 });
@@ -88,14 +89,14 @@ test('regressivo: cada cliente calcula o que falta pelo relogio da sala', () => 
   assert.equal(state.startedAt, 10000);
   assert.equal(cron.remaining(state, 10000), 300000);
   assert.equal(cron.remaining(state, 70000), 240000);
-  assert.equal(cron.summary(state, 70000), '04:00');
-  assert.equal(cron.summary(state), 'regressivo correndo');
+  assert.equal(R(cron.summary(state, 70000)), '04:00');
+  assert.equal(R(cron.summary(state)), 'regressivo correndo');
   // Relogio do cliente um pouco atras do servidor nao da tempo a mais.
   assert.equal(cron.remaining(state, 9000), 300000);
   // Passou do fim: zero, nunca negativo.
   assert.equal(cron.remaining(state, 10000 + 400000), 0);
   assert.equal(cron.isFinished(state, 10000 + 400000), true);
-  assert.equal(cron.summary(state, 10000 + 400000), 'tempo esgotado');
+  assert.equal(R(cron.summary(state, 10000 + 400000)), 'tempo esgotado');
 });
 
 test('pausar acumula o corrido; retomar continua de onde parou', () => {
@@ -106,7 +107,7 @@ test('pausar acumula o corrido; retomar continua de onde parou', () => {
   assert.equal(state.elapsed, 30000);
   assert.equal(state.running, false);
   assert.equal(cron.remaining(state, 999999), 270000);
-  assert.equal(cron.summary(state), '04:30 (pausado)');
+  assert.equal(R(cron.summary(state)), '04:30 (pausado)');
   const r = roda(state, [[{ kind: 'start' }, 100000]]).state;
   assert.equal(cron.remaining(r, 110000), 260000);
 });
@@ -164,7 +165,7 @@ test('progressivo: conta para cima; ajuste correndo vale sobre o total', () => {
   ]);
   assert.equal(cron.remaining(state, 5000), null);
   assert.equal(cron.displayMs(state, 5000), 4000);
-  assert.equal(cron.summary(state, 61000), '01:00');
+  assert.equal(R(cron.summary(state, 61000)), '01:00');
   state = roda(state, [[{ kind: 'adjust', delta: -10000 }, 21000]]).state; // corrido 20 s -> 10 s
   assert.equal(state.startedAt, 21000);
   assert.equal(cron.elapsedAt(state, 21000), 10000);
@@ -189,7 +190,7 @@ test('set troca o modo e a duracao e zera o corrido', () => {
 test('rotulo aparece no resumo e tem teto', () => {
   const { state } = roda(cron.init({}), [[{ kind: 'label', text: ' Pausa\tdo lanche ' }, 0]]);
   assert.equal(state.label, 'Pausa do lanche');
-  assert.equal(cron.summary(state), 'Pausa do lanche · 05:00 (parado)');
+  assert.equal(R(cron.summary(state)), 'Pausa do lanche · 05:00 (parado)');
   assert.equal(cron.validate(state, { kind: 'label', text: 'x'.repeat(cron.MAX_LABEL) }), true);
 });
 

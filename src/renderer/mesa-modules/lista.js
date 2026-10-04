@@ -155,15 +155,15 @@
   /** "Quem traz o quê: 3 de 7 feitos" ou "Lista: vazia". */
   function summary(state) {
     const n = state.items.length;
-    const head = state.title || 'Lista';
-    if (n === 0) return `${head}: vazia`;
-    const done = state.items.filter((it) => it.done).length;
-    return `${head}: ${done} de ${n} ${n === 1 ? 'feito' : 'feitos'}`;
+    const titulo = state.title || codigo('mesa.titulo.lista');
+    if (n === 0) return { chave: 'mesa.resumo.listaVazia', valores: { titulo } };
+    const feitos = state.items.filter((it) => it.done).length;
+    return { chave: 'mesa.resumo.listaFeitos', valores: { titulo, feitos, n } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Lista',
+    title: 'mesa.titulo.lista',
     group: 'ferramentas',
     size: { w: 360, h: 440, minW: 260, minH: 240, aspect: null },
     maxStateBytes: 12288,

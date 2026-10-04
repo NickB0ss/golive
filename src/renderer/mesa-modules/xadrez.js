@@ -38,7 +38,8 @@
   const chessjs = (root.GoLive && root.GoLive.chessjs)
     || (typeof module !== 'undefined' && typeof module.require === 'function' ? module.require('../vendor/chess.js') : null);
 
-  const LABELS = ['Brancas', 'Pretas'];
+  // Rotulos de cor do resumo: codigos, a vista traduz.
+  const LABELS = ['mesa.xadrez.brancas', 'mesa.xadrez.pretas'];
   const SAN_MAX = 40;
   const SQUARE = /^[a-h][1-8]$/;
   const PROMOTIONS = ['q', 'r', 'b', 'n'];
@@ -167,25 +168,29 @@
   }
 
   const DRAWS = {
-    afogamento: 'Afogamento, empate',
-    material: 'Empate por material insuficiente',
-    repeticao: 'Empate por repetição',
-    cinquenta: 'Empate pela regra dos 50 lances',
+    afogamento: 'mesa.xadrez.empateAfogamento',
+    material: 'mesa.xadrez.empateMaterial',
+    repeticao: 'mesa.xadrez.empateRepeticao',
+    cinquenta: 'mesa.xadrez.empateCinquenta',
   };
 
-  /** Resumo curto em portugues. `peers` e opcional (nomes atuais). */
+  /** Resumo curto como `{ chave, valores }`. `peers` e opcional (nomes atuais). */
   function summary(state, peers) {
     return C.safe(() => {
       const r = state.result;
       if (r) {
-        if (DRAWS[r.reason]) return DRAWS[r.reason];
+        if (DRAWS[r.reason]) return { chave: DRAWS[r.reason] };
         const winner = C.nameOf(state, r.winner, LABELS, peers);
-        if (r.reason === 'mate') return `Xeque-mate, ${winner} venceu`;
-        return `${C.nameOf(state, 1 - r.winner, LABELS, peers)} desistiu, ${winner} venceu`;
+        if (r.reason === 'mate') return { chave: 'mesa.resumo.xequeMate', valores: { nome: winner } };
+        const perdedor = C.nameOf(state, 1 - r.winner, LABELS, peers);
+        return { chave: 'mesa.resumo.desistiuVenceu', valores: { perdedor, vencedor: winner } };
       }
       const text = C.describePlaying(state, state.turn, LABELS, peers);
-      return state.check && state.seats[0] && state.seats[1] ? `${text} (xeque)` : text;
-    }, 'Xadrez');
+      if (state.check && state.seats[0] && state.seats[1]) {
+        return { chave: 'mesa.resumo.vezDeXeque', valores: text.valores };
+      }
+      return text;
+    }, { chave: 'mesa.titulo.xadrez' });
   }
 
   /** So no servidor: o nome de quem senta vai na acao `sit`. */
@@ -195,7 +200,7 @@
 
   const mod = {
     type: 'xadrez',
-    title: 'Xadrez',
+    title: 'mesa.titulo.xadrez',
     group: 'jogos',
     size: { w: 480, h: 480, minW: 240, minH: 240, aspect: 1 },
     maxStateBytes: 4096,

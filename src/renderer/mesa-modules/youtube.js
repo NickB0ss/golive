@@ -123,14 +123,14 @@
   }
 
   function summary(state, serverNow) {
-    if (!state || !state.videoId) return 'Nenhum vídeo';
+    if (!state || !state.videoId) return { chave: 'mesa.youtube.nenhumVideo' };
     const pos = L.formatPos(L.positionAt(state, serverNow));
-    return state.playing ? `Tocando · ${pos}` : `Pausado · ${pos}`;
+    return { chave: state.playing ? 'mesa.resumo.youtubeTocando' : 'mesa.resumo.youtubePausado', valores: { pos } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Vídeo do YouTube',
+    title: 'mesa.titulo.youtube',
     group: 'assistir',
     size: { w: 640, h: 360, minW: 320, minH: 180, aspect: 16 / 9 },
     maxStateBytes: 256,

@@ -362,14 +362,14 @@
   }
 
   function summary(state) {
-    if (state.phase === 'writing') return `Letra ${state.letter} · respostas escondidas`;
-    if (state.phase === 'review') return `Letra ${state.letter} · corrigindo`;
-    return state.categories.length ? 'Pronto para a próxima rodada' : 'Stop';
+    if (state.phase === 'writing') return { chave: 'mesa.resumo.stopEscrevendo', valores: { letra: state.letter } };
+    if (state.phase === 'review') return { chave: 'mesa.resumo.stopCorrigindo', valores: { letra: state.letter } };
+    return { chave: state.categories.length ? 'mesa.resumo.stopProxima' : 'mesa.titulo.stop' };
   }
 
   const api = {
     type: TYPE,
-    title: 'Stop',
+    title: 'mesa.titulo.stop',
     group: 'noite',
     size: { w: 720, h: 460, minW: 520, minH: 340, aspect: null },
     maxStateBytes: 16 * 1024,

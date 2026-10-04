@@ -70,12 +70,12 @@
   }
 
   function summary(state) {
-    return estaEscondido(state) ? 'Quadro escondido' : 'Rabisco em grupo';
+    return { chave: estaEscondido(state) ? 'mesa.resumo.quadroEscondido' : 'mesa.resumo.quadroGrupo' };
   }
 
   const mod = {
     type: 'quadro',
-    title: 'Quadro',
+    title: 'mesa.titulo.quadro',
     group: 'ferramentas',
     size: { w: 640, h: 480, minW: 320, minH: 240, aspect: null },
     maxStateBytes: 256,

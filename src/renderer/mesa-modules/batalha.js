@@ -40,7 +40,8 @@
   const FLEET = Object.freeze([5, 4, 3, 3, 2]);
   const SHIP_NAMES = Object.freeze(['Porta-aviões', 'Encouraçado', 'Cruzador', 'Submarino', 'Destróier']);
   const TOTAL = FLEET.reduce((a, b) => a + b, 0);
-  const LABELS = ['Frota 1', 'Frota 2'];
+  // Rotulos de cor do resumo: codigos, a vista traduz.
+  const LABELS = ['mesa.batalha.frota1', 'mesa.batalha.frota2'];
   // Tempo de cada tiro. Estourou, o tiro sai sozinho numa casa sorteada.
   const TURN_MS = 60 * 1000;
 
@@ -442,18 +443,19 @@
   function summary(state, peers) {
     return C.safe(() => {
       const r = state.result;
-      if (r) return `${C.nameOf(state, r.winner, LABELS, peers)} venceu`;
+      if (r) return { chave: 'mesa.tabuleiro.venceu', valores: { nome: C.nameOf(state, r.winner, LABELS, peers) } };
       if (state.phase === 'setup') {
         const sentados = state.seats.filter((x) => x !== null).length;
-        return sentados === 2 ? 'Posicionando as frotas' : C.describePlaying(state, state.turn, LABELS, peers);
+        if (sentados === 2) return { chave: 'mesa.batalha.posicionando' };
+        return C.describePlaying(state, state.turn, LABELS, peers);
       }
       return C.describePlaying(state, state.turn, LABELS, peers);
-    }, 'Batalha naval');
+    }, { chave: 'mesa.titulo.batalha' });
   }
 
   const mod = {
     type: 'batalha',
-    title: 'Batalha naval',
+    title: 'mesa.titulo.batalha',
     group: 'jogos',
     size: { w: 720, h: 460, minW: 420, minH: 300, aspect: null },
     maxStateBytes: 4096,

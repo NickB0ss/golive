@@ -382,50 +382,7 @@
     "xadrez peao",
     "xingando palavrao raiva"
   ],
-  "src/renderer/mesa-catalogo.js": [
-    "Adedonha: uma palavra por categoria",
-    "Afunde a frota do outro lado",
-    "Alinhe quatro peças antes do outro",
-    "Assistam juntos, no mesmo ponto",
-    "Botões de efeito sonoro",
-    "Chegue a 21 sem estourar",
-    "Descarte pelo naipe ou pelo número",
-    "Divide a sala em times na sorte",
-    "Encaixe as pedras pelas pontas",
-    "Fila de músicas que a sala monta",
-    "Gire e deixe a sorte escolher",
-    "Itens para a sala ir marcando",
-    "Lousa para desenhar junto",
-    "Marque o tempo da rodada",
-    "Noite de jogo",
-    "Ouçam o Spotify juntos",
-    "Perguntas valendo ponto",
-    "Pontos de cada time ou pessoa",
-    "Recado rápido para a sala",
-    "Role dados ou jogue uma moeda",
-    "Tabuleiro clássico, para duas pessoas",
-    "Três em linha, para duas pessoas",
-    "Um endereço para a sala abrir",
-    "Uma imagem para todos verem",
-    "Uma live da Twitch aberta na Mesa",
-    "Uma partida, para duas pessoas",
-    "Uma pessoa desenha, a sala adivinha",
-    "Votação com resultado ao vivo",
-    "Várias imagens, uma de cada vez",
-    "tic tac toe"
-  ],
   "src/renderer/mesa-janelas/comum.js": [
-    "Alguém",
-    "Alguém",
-    "Alguém",
-    "Alguém",
-    "Indisponível",
-    "Indisponível",
-    "Indisponível",
-    "Indisponível",
-    "Lugares à mesa",
-    "Peça",
-    "Você",
     "mj mj-"
   ],
   "src/renderer/mesa-janelas/desenha.js": [
@@ -475,39 +432,10 @@
     "Resposta registrada",
     "Resposta registrada. Aguarde a revelacao."
   ],
-  "src/renderer/mesa-modules/aovivo.js": [
-    "Nenhum canal"
-  ],
   "src/renderer/mesa-modules/batalha.js": [
-    "Batalha naval",
-    "Batalha naval",
     "Destróier",
     "Encouraçado",
-    "Porta-aviões",
-    "Posicionando as frotas"
-  ],
-  "src/renderer/mesa-modules/blackjack.js": [
-    ", apostas abertas",
-    ", vez da banca",
-    "1 na mesa",
-    "Blackjack — lugares livres",
-    "Blackjack — vez de",
-    "na mesa"
-  ],
-  "src/renderer/mesa-modules/cadeiras.js": [
-    "Cadeiras livres",
-    "espera adversário",
-    "— vez de"
-  ],
-  "src/renderer/mesa-modules/cronometro.js": [
-    "Cronômetro",
-    "tempo esgotado"
-  ],
-  "src/renderer/mesa-modules/dados.js": [
-    "Nenhuma rolagem ainda"
-  ],
-  "src/renderer/mesa-modules/damas.js": [
-    "lances só de damas"
+    "Porta-aviões"
   ],
   "src/renderer/mesa-modules/desenha.js": [
     "A rodada está cheia",
@@ -571,59 +499,7 @@
     "óculos",
     "ônibus"
   ],
-  "src/renderer/mesa-modules/domino.js": [
-    "Aguardando jogadores",
-    "Dominó",
-    "Mão encerrada",
-    "Mão trancada",
-    "Partida em andamento"
-  ],
-  "src/renderer/mesa-modules/enquete.js": [
-    "Enquete sem pergunta"
-  ],
-  "src/renderer/mesa-modules/galeria.js": [
-    "Imagens do chat"
-  ],
-  "src/renderer/mesa-modules/imagem.js": [
-    "Imagem do chat",
-    "Nenhuma imagem"
-  ],
-  "src/renderer/mesa-modules/index.js": [
-    "Câmera"
-  ],
-  "src/renderer/mesa-modules/jam.js": [
-    "Jam aberto",
-    "Jam aberto ·",
-    "Nenhum Jam ainda",
-    "Spotify Jam"
-  ],
-  "src/renderer/mesa-modules/lig4.js": [
-    "Empate, tabuleiro cheio"
-  ],
-  "src/renderer/mesa-modules/link.js": [
-    "Nenhum link ainda"
-  ],
-  "src/renderer/mesa-modules/oito.js": [
-    "Oito maluco",
-    "Oito maluco —",
-    "Oito maluco — lugares livres"
-  ],
-  "src/renderer/mesa-modules/placar.js": [
-    "(melhor de"
-  ],
-  "src/renderer/mesa-modules/poquer.js": [
-    ", mão",
-    "1 na mesa",
-    "Pôquer",
-    "Pôquer",
-    "Pôquer",
-    "Pôquer",
-    "Pôquer — cadeiras livres",
-    "na mesa"
-  ],
   "src/renderer/mesa-modules/quadro.js": [
-    "Quadro escondido",
-    "Rabisco em grupo",
     "Só quem criou o quadro pode escondê-lo",
     "Visibilidade inválida"
   ],
@@ -955,143 +831,8 @@
     "Voce entrou depois da partida",
     "Voce ja respondeu"
   ],
-  "src/renderer/mesa-modules/radio.js": [
-    "Fila vazia",
-    "Rádio da sala",
-    "na fila",
-    "na fila"
-  ],
-  "src/renderer/mesa-modules/roleta.js": [
-    ", ainda não girou"
-  ],
-  "src/renderer/mesa-modules/sons.js": [
-    "Ba dum tss",
-    "Nenhum som ainda",
-    "Último som:"
-  ],
-  "src/renderer/mesa-modules/sorteio.js": [
-    "Sorteio de times"
-  ],
-  "src/renderer/mesa-modules/stop.js": [
-    "Pronto para a próxima rodada",
-    "· respostas escondidas"
-  ],
-  "src/renderer/mesa-modules/velha.js": [
-    "Deu velha",
-    "Jogo da velha",
-    "Jogo da velha"
-  ],
-  "src/renderer/mesa-modules/xadrez.js": [
-    "Empate pela regra dos 50 lances",
-    "Empate por material insuficiente",
-    "Empate por repetição"
-  ],
-  "src/renderer/mesa-modules/youtube.js": [
-    "Nenhum vídeo",
-    "Vídeo do YouTube"
-  ],
   "src/renderer/mesa-view.js": [
-    ", posta por",
-    "A Mesa está liberada para todo mundo mexer",
-    "A Mesa já tem 32 janelas.",
-    "A Mesa já tem 32 janelas.",
-    "A Mesa já tem 32 janelas.",
-    "A janela ficaria grande demais.",
-    "A janela ficaria pequena demais.",
-    "A janela ficou cheia demais.",
-    "AO VIVO",
-    "Abrir mapa",
-    "Adicionar janela",
-    "Adicionar janela",
-    "Adicionar janela",
-    "Aproximação",
-    "Arraste o fundo ou use as setas para andar. Roda do mouse, + e - aproximam; 0 mostra tudo. Botão direito, tecla de menu ou Shift+F10 abrem o menu para adicionar uma janela. Numa janela: setas movem, Alt+setas mudam o tamanho, F põe em tela cheia, Delete tira da mesa as janelas que não são tela nem câmera.",
-    "Buscar janelas",
-    "Buscar janelas",
-    "Calma: muitas mudanças de uma vez.",
-    "Centralizar na vista",
-    "Clique duplo: tela cheia · botão direito: mais ações",
-    "Câmera de",
-    "Encostou em outra janela.",
-    "Esperando a câmera chegar…",
-    "Esperando a tela chegar…",
-    "Esta janela não tem ação.",
-    "Esta sala não conhece este tipo de janela.",
-    "Fechar mapa",
-    "Grupo de janela",
-    "Indisponivel agora.",
-    "Indisponível agora.",
-    "Ir até",
-    "Mais ações (Shift+F10)",
-    "Mais ações da janela",
-    "Mapa da Mesa",
-    "Mesa da sala",
-    "Nenhuma janela disponível",
-    "Noite de jogo",
-    "Não coube ali: a janela voltou para onde estava.",
-    "Não deu para fazer isso agora.",
-    "Não deu para fazer isso agora.",
-    "Não deu para fazer isso agora.",
-    "Não deu para fazer isso agora.",
-    "Não deu para pôr a janela ali.",
-    "Não dá para mexer nesta janela agora.",
-    "Não dá para mudar o tamanho agora.",
-    "Não há lugar livre ali.",
-    "Não há lugar livre na Mesa para esta janela.",
-    "Não há lugar livre na Mesa para esta janela.",
-    "O líder travou o tamanho das janelas.",
-    "O líder travou o tamanho das janelas.",
-    "Outra pessoa está movendo esta janela",
-    "Pôs na Mesa:",
-    "Quem está na Mesa",
-    "Sair da tela cheia",
-    "Sair da tela cheia (F)",
-    "Sua vez",
-    "Sua vez:",
-    "Só o líder da sala muda isso.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Só o líder mexe na Mesa agora.",
-    "Tela cheia",
-    "Tela cheia",
-    "Tela cheia",
-    "Tela cheia (F)",
-    "Tela cheia (F)",
-    "Tela de",
-    "Telas e câmeras entram na Mesa sozinhas.",
-    "Tem outra janela ali.",
-    "Tirar da Mesa",
-    "Tirar da Mesa",
-    "Tirar da Mesa (Delete)",
-    "Ver tudo",
-    "Ver tudo",
-    "Ver tudo",
-    "Ver tudo (0)",
-    "a câmera de",
-    "a tela de",
-    "ainda não mexeu o ponteiro na Mesa.",
-    "class=\"mesa-menu-row menu__item",
-    "da Mesa",
-    "entrou na Mesa",
-    "está movendo",
-    "está movendo esta janela",
-    "está movendo esta janela",
-    "está movendo esta janela",
-    "está movendo esta janela",
-    "está movendo esta janela",
-    "na Mesa",
-    "não está na Mesa.",
-    "pôs",
-    "saiu da Mesa",
-    "travou a Mesa: só o líder mexe",
-    "uma janela",
-    "uma janela"
+    "class=\"mesa-menu-row menu__item"
   ],
   "src/renderer/mesa-vista.js": [
     "radial-gradient(circle at 1.25px 1.25px, var(--grid) 1.25px, transparent 1.5px)",

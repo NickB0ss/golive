@@ -19,6 +19,7 @@
     || (typeof module !== 'undefined' ? require('../i18n') : { codigo: (chave) => chave });
 
   const MARKS = ['X', 'O'];
+  // Rotulo da cor no resumo (X e O valem em qualquer lingua).
   const LABELS = ['X', 'O'];
   const EMPTY_BOARD = '.........';
   const LINES = [
@@ -91,11 +92,11 @@
     return C.safe(() => {
       const r = state.result;
       if (r) {
-        if (r.winner === null) return 'Deu velha';
-        return `${C.nameOf(state, r.winner, LABELS, peers)} venceu`;
+        if (r.winner === null) return { chave: 'mesa.velha.empate' };
+        return { chave: 'mesa.tabuleiro.venceu', valores: { nome: C.nameOf(state, r.winner, LABELS, peers) } };
       }
       return C.describePlaying(state, state.turn, LABELS, peers);
-    }, 'Jogo da velha');
+    }, { chave: 'mesa.titulo.velha' });
   }
 
   /** So no servidor: o nome de quem senta vai na acao `sit`. */
@@ -105,7 +106,7 @@
 
   const mod = {
     type: 'velha',
-    title: 'Jogo da velha',
+    title: 'mesa.titulo.velha',
     group: 'jogos',
     size: { w: 360, h: 360, minW: 180, minH: 180, aspect: 1 },
     maxStateBytes: 1024,

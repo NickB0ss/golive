@@ -71,9 +71,13 @@ test('canPlay exige cadeira, adversario, vez e partida em andamento', () => {
 
 test('describePlaying cobre cadeiras vazias, meia e cheia', () => {
   const L = ['X', 'O'];
-  assert.equal(C.describePlaying({ seats: [null, null], names: [null, null] }, 0, L), 'Cadeiras livres');
-  assert.equal(C.describePlaying({ seats: [null, 'leo'], names: [null, 'Leo'] }, 0, L), 'Leo espera adversário');
-  assert.equal(C.describePlaying({ seats: ['bia', 'leo'], names: ['Bia', 'Leo'] }, 1, L), 'Bia × Leo — vez de Leo');
+  assert.deepEqual(C.describePlaying({ seats: [null, null], names: [null, null] }, 0, L), { chave: 'mesa.resumo.cadeirasLivres' });
+  assert.deepEqual(C.describePlaying({ seats: [null, 'leo'], names: [null, 'Leo'] }, 0, L), {
+    chave: 'mesa.resumo.esperaAdversario', valores: { nome: 'Leo' },
+  });
+  assert.deepEqual(C.describePlaying({ seats: ['bia', 'leo'], names: ['Bia', 'Leo'] }, 1, L), {
+    chave: 'mesa.resumo.vezDe', valores: { a: 'Bia', b: 'Leo', vez: 'Leo' },
+  });
 });
 
 test('nameOf prefere o nome atual da sala quando a lista vem', () => {

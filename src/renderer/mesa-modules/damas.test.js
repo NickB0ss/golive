@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const damas = require('./damas');
 
 const PEERS = [{ id: 'bia', name: 'Bia' }, { id: 'leo', name: 'Leo' }, { id: 'ana', name: 'Ana' }];
@@ -48,7 +49,7 @@ const paths = (s) => damas.legalMoves(s).map((m) => JSON.stringify(m.path)).sort
 
 test('descritor segue o contrato', () => {
   assert.equal(damas.type, 'damas');
-  assert.equal(damas.title, 'Damas');
+  assert.equal(tx(damas.title), 'Damas');
   assert.equal(damas.group, 'jogos');
   assert.equal(damas.size.aspect, 1);
   assert.equal(typeof damas.legalMoves, 'function');
@@ -70,7 +71,7 @@ test('abertura: 7 lances simples das claras, so para a frente', () => {
   const moves = damas.legalMoves(s);
   assert.equal(moves.length, 7);
   assert.ok(moves.every((m) => m.path[0][0] === 5 && m.path[1][0] === 4 && m.captures.length === 0));
-  assert.equal(damas.summary(s), 'Bia × Leo — vez de Bia');
+  assert.equal(R(damas.summary(s)), 'Bia × Leo — vez de Bia');
 });
 
 test('lance simples move a pedra e passa a vez', () => {
@@ -186,7 +187,7 @@ test('vence quem deixa o adversario sem pecas', () => {
   const s = position({ '5,2': 'c', '4,3': 'e' });
   const t = act(s, { kind: 'move', path: [[5, 2], [3, 4]] }, 'bia');
   assert.deepEqual(t.result, { winner: 0, reason: 'sem-lances' });
-  assert.equal(damas.summary(t), 'Bia venceu');
+  assert.equal(R(damas.summary(t)), 'Bia venceu');
   assert.deepEqual(damas.legalMoves(t), []);
 });
 
@@ -211,7 +212,7 @@ test('empate depois de 20 lances seguidos so de damas sem captura', () => {
   }
   assert.equal(s.kingMoves, 20);
   assert.deepEqual(s.result, { winner: null, reason: 'damas' });
-  assert.equal(damas.summary(s), 'Empate, 20 lances só de damas');
+  assert.equal(R(damas.summary(s)), 'Empate, 20 lances só de damas');
 });
 
 test('lance de pedra zera a contagem de lances so de damas', () => {
@@ -225,7 +226,7 @@ test('desistir da a vitoria ao outro e so vale para quem esta sentado', () => {
   assert.equal(damas.validate(s, { kind: 'resign' }, ctx('ana')), 'mesa.cadeiras.soSentadoDesiste');
   const t = act(s, { kind: 'resign' }, 'leo');
   assert.deepEqual(t.result, { winner: 0, reason: 'abandono' });
-  assert.equal(damas.summary(t), 'Leo desistiu, Bia venceu');
+  assert.equal(R(damas.summary(t)), 'Leo desistiu, Bia venceu');
   assert.equal(damas.validate(t, { kind: 'resign' }, ctx('bia')), 'mesa.cadeiras.partidaAcabou');
 });
 
@@ -261,7 +262,7 @@ test('caminho malformado e mensagem estranha nunca lancam', () => {
   }
   for (const st of [null, {}, { board: 5, turn: 0 }]) {
     assert.deepEqual(damas.legalMoves(st), []);
-    assert.equal(typeof damas.summary(st), 'string');
+    assert.equal(typeof R(damas.summary(st)), 'string');
   }
 });
 

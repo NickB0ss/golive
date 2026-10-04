@@ -98,29 +98,24 @@
     return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   }
 
-  /** "1 voto", "3 votos". */
-  function plural(n, um, varios) {
-    return `${n} ${n === 1 ? um : varios}`;
-  }
-
   /** O `validate` da api sem deixar um modulo que lanca derrubar a janela. */
   function podeFazer(api, action) {
     try {
       const r = api.validate(action);
       if (r === true) return true;
-      return typeof r === 'string' && r ? primeiraMaiuscula(traduzirCodigo(r)) : 'Indisponível';
+      return typeof r === 'string' && r ? primeiraMaiuscula(traduzirCodigo(r)) : t('mesa.tabuleiro.indisponivel');
     } catch {
-      return 'Indisponível';
+      return t('mesa.tabuleiro.indisponivel');
     }
   }
 
   function nomeDe(api, peerId) {
-    if (peerId === null || peerId === undefined) return 'Alguém';
+    if (peerId === null || peerId === undefined) return t('sala.alguem');
     try {
       const n = api.nameOf(peerId);
-      return typeof n === 'string' && n.trim() ? n : 'Alguém';
+      return typeof n === 'string' && n.trim() ? n : t('sala.alguem');
     } catch {
-      return 'Alguém';
+      return t('sala.alguem');
     }
   }
 
@@ -218,7 +213,7 @@
 
   function cadeiras(opcoes) {
     const opts = opcoes || {};
-    const node = el('div', { class: 'mj-cadeiras', attrs: { 'aria-label': opts.rotulo || 'Lugares à mesa' } });
+    const node = el('div', { class: 'mj-cadeiras', attrs: { 'aria-label': opts.rotulo || t('mesa.vista.lugaresAMesa') } });
     const lugares = [];
 
     function criarLugar() {
@@ -227,7 +222,7 @@
       botaoLugar.addEventListener('click', () => {
         if (estaDesligado(botaoLugar)) {
           // Como o `clique` da base: desligado mostra o motivo em vez de ficar mudo.
-          opts.aoRecusar?.(botaoLugar.title || 'Indisponível', item);
+          opts.aoRecusar?.(botaoLugar.title || t('mesa.tabuleiro.indisponivel'), item);
           return;
         }
         if (botaoLugar.dataset.ocupado === '1') opts.aoLevantar?.(botaoLugar.indice);
@@ -239,7 +234,7 @@
 
     function atualizarLugar(registro, lugar, indice) {
       const ocupado = lugar.peer !== null && lugar.peer !== undefined;
-      const nome = lugar.eu ? 'Você' : (lugar.nome || 'Alguém');
+      const nome = lugar.eu ? t('mesa.tabuleiro.voce') : (lugar.nome || t('sala.alguem'));
       const { item, botao: botaoLugar } = registro;
       botaoLugar.indice = indice;
       botaoLugar.dataset.ocupado = ocupado ? '1' : '0';
@@ -248,8 +243,8 @@
 
       if (!ocupado) {
         botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-livre';
-        botaoLugar.replaceChildren(icone('mais'), el('span', { text: 'Sentar' }));
-        ligado(botaoLugar, lugar.motivoSentar ?? true, 'Sentar');
+        botaoLugar.replaceChildren(icone('mais'), el('span', { text: t('mesa.cartas.sentar') }));
+        ligado(botaoLugar, lugar.motivoSentar ?? true, t('mesa.cartas.sentar'));
         item.removeAttribute('title');
         return;
       }
@@ -260,13 +255,13 @@
       const peca = lugar.peca && lugar.peca.texto
         ? el('span', { class: 'mj-cadeira-peca', text: lugar.peca.texto })
         : lugar.peca && lugar.peca.cor
-          ? bolinha(lugar.peca.cor, 'Peça')
+          ? bolinha(lugar.peca.cor, t('mesa.vista.peca'))
           : null;
       if (peca) peca.classList.add('mj-cadeira-peca');
       botaoLugar.className = 'mj-btn mj-cadeira-botao mj-cadeira-ocupada';
       botaoLugar.replaceChildren(avatar, nomeNode);
       if (peca) botaoLugar.append(peca);
-      ligado(botaoLugar, lugar.motivoLevantar ?? true, `Levantar ${nome}`);
+      ligado(botaoLugar, lugar.motivoLevantar ?? true, t('mesa.vista.levantarNome', { nome }));
       item.setAttribute('title', nome);
     }
 
@@ -383,7 +378,7 @@
       btn.addEventListener('click', (e) => {
         if (estaDesligado(btn)) {
           e.preventDefault();
-          aviso.mostrar(btn.title || 'Indisponível', zona);
+          aviso.mostrar(btn.title || t('mesa.tabuleiro.indisponivel'), zona);
           return;
         }
         fazer(e);
@@ -548,7 +543,6 @@
     SUPERFICIES,
     motivoRecusa,
     milhar,
-    plural,
     primeiraMaiuscula,
     podeFazer,
     nomeDe,

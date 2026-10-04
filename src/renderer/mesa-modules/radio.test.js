@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const radio = require('./radio');
 const registry = require('./index');
 const { jsonBytes } = require('../mesa');
@@ -44,7 +45,7 @@ function roda(state, passos) {
 
 test('metadados, registro e estado inicial', () => {
   assert.equal(radio.type, 'radio');
-  assert.equal(radio.title, 'Rádio da sala');
+  assert.equal(tx(radio.title), 'Rádio da sala');
   assert.equal(radio.group, 'assistir');
   assert.equal(registry.checkModule(radio).ok, true);
   assert.deepEqual(radio.init({}), { current: null, queue: [], playing: false, pos: 0, at: null, rate: 1, votes: [], failed: [], seq: 0 });
@@ -190,7 +191,7 @@ test('malformadas: validate recusa e reduce nao mexe', () => {
 });
 
 test('summary', () => {
-  assert.equal(radio.summary(radio.init({})), 'Fila vazia');
+  assert.equal(R(radio.summary(radio.init({}))), 'Fila vazia');
   let s = roda(radio.init({}), [[{ kind: 'add', url: A }, { now: 0 }], [{ kind: 'add', url: B }], [{ kind: 'title', id: 'r1', title: 'Hino' }]]);
-  assert.equal(radio.summary(s, 65000), 'Tocando: Hino · 1:05 · +1 na fila');
+  assert.equal(R(radio.summary(s, 65000)), 'Tocando: Hino · 1:05 · +1 na fila');
 });

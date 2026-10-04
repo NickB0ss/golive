@@ -19,6 +19,8 @@ const PREFIXOS_DINAMICOS = {
   'mesa.sons.tocarTodos.': () => require('../mesa-modules/sons').SOUNDS,
   'mesa.sons.tocou.': () => require('../mesa-modules/sons').SOUNDS,
   'mesa.sons.tocouSom.': () => require('../mesa-modules/sons').SOUNDS,
+  // O titulo de cada tipo do registro (inclusive tela e camera) e uma chave; 'janela' e o titulo de reserva.
+  'mesa.titulo.': () => [...require('../mesa-modules').list().map((modulo) => modulo.type), 'janela'],
 };
 
 function marcadores(valor) {

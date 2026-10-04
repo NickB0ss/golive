@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const yt = require('./youtube');
 const registry = require('./index');
 
@@ -38,11 +39,11 @@ function servidor(state, action, now) {
 
 test('metadados seguem o contrato e o registro aceita', () => {
   assert.equal(yt.type, 'youtube');
-  assert.equal(yt.title, 'Vídeo do YouTube');
+  assert.equal(tx(yt.title), 'Vídeo do YouTube');
   assert.equal(yt.group, 'assistir');
   assert.equal(yt.size.aspect, 16 / 9);
   assert.equal(registry.checkModule(yt).ok, true);
-  assert.equal(registry.get('youtube').title, 'Vídeo do YouTube');
+  assert.equal(tx(registry.get('youtube').title), 'Vídeo do YouTube');
   assert.deepEqual(yt.init({ now: 5 }), { videoId: null, playing: false, pos: 0, at: null, rate: 1 });
 });
 
@@ -140,8 +141,8 @@ test('dois clientes aplicando o mesmo eco chegam ao mesmo estado', () => {
 });
 
 test('summary', () => {
-  assert.equal(yt.summary(yt.init({})), 'Nenhum vídeo');
+  assert.equal(R(yt.summary(yt.init({}))), 'Nenhum vídeo');
   const s = { videoId: ID, playing: true, pos: 60, at: 0, rate: 1 };
-  assert.equal(yt.summary(s, 5000), 'Tocando · 1:05');
-  assert.equal(yt.summary({ ...s, playing: false }, 5000), 'Pausado · 1:00');
+  assert.equal(R(yt.summary(s, 5000)), 'Tocando · 1:05');
+  assert.equal(R(yt.summary({ ...s, playing: false }, 5000)), 'Pausado · 1:00');
 });

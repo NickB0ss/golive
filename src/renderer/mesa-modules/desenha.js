@@ -460,7 +460,7 @@
 
   const mod = {
     type: 'desenha',
-    title: 'Desenha e adivinha',
+    title: 'mesa.titulo.desenha',
     group: 'jogos',
     size: { w: 720, h: 560, minW: 460, minH: 400, aspect: null },
     maxStateBytes: 8192,

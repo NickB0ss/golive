@@ -427,13 +427,15 @@
   }
 
   function summary(state) {
-    if (state.result) return state.result.winner === null ? 'Mão trancada' : 'Mão encerrada';
-    return state.phase === 'play' ? 'Partida em andamento' : 'Aguardando jogadores';
+    if (state.result) {
+      return { chave: state.result.winner === null ? 'mesa.resumo.dominoTrancada' : 'mesa.resumo.dominoEncerrada' };
+    }
+    return { chave: state.phase === 'play' ? 'mesa.resumo.dominoAndamento' : 'mesa.resumo.dominoAguardando' };
   }
 
   const mod = {
     type: 'domino',
-    title: 'Dominó',
+    title: 'mesa.titulo.domino',
     group: 'jogos',
     size: { w: 720, h: 480, minW: 420, minH: 300, aspect: null },
     maxStateBytes: 8192,

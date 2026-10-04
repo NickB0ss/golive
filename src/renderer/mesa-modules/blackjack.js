@@ -784,25 +784,24 @@
 
   function nameAt(state, seat, peers) {
     const id = state.seats[seat];
-    return (id && peerName({ peers }, id)) || state.names[seat] || `Lugar ${seat + 1}`;
+    return (id && peerName({ peers }, id)) || state.names[seat] || codigo('mesa.cartas.lugar', { n: seat + 1 });
   }
 
   function summary(state, peers) {
     return safe(() => {
       const n = state.seats.filter((x) => x !== null).length;
-      if (!n) return 'Blackjack — lugares livres';
-      const mesa = n === 1 ? '1 na mesa' : `${n} na mesa`;
-      if (state.phase === 'bets') return `Blackjack — ${mesa}, apostas abertas`;
-      if (state.phase === 'insurance') return `Blackjack — ${mesa}, seguro`;
+      if (!n) return { chave: 'mesa.resumo.blackjackLivres' };
+      if (state.phase === 'bets') return { chave: 'mesa.resumo.blackjackApostas', valores: { n } };
+      if (state.phase === 'insurance') return { chave: 'mesa.resumo.blackjackSeguro', valores: { n } };
       const h = currentHand(state);
-      if (h) return `Blackjack — vez de ${nameAt(state, h.seat, peers)}`;
-      return `Blackjack — ${mesa}, vez da banca`;
-    }, 'Blackjack');
+      if (h) return { chave: 'mesa.resumo.blackjackVezDe', valores: { nome: nameAt(state, h.seat, peers) } };
+      return { chave: 'mesa.resumo.blackjackBanca', valores: { n } };
+    }, { chave: 'mesa.titulo.blackjack' });
   }
 
   const mod = {
     type: 'blackjack',
-    title: 'Blackjack',
+    title: 'mesa.titulo.blackjack',
     group: 'jogos',
     secret: true,
     size: { w: 680, h: 440, minW: 420, minH: 320, aspect: null },

@@ -204,7 +204,7 @@
   }
 
   const api = {
-    type: 'quiz', title: 'Quiz', group: 'jogos',
+    type: 'quiz', title: 'mesa.titulo.quiz', group: 'jogos',
     size: { w: 560, h: 460, minW: 360, minH: 320, aspect: null },
     maxStateBytes: 16384, secret: true, init, prepare, validate, reduce, view,
     migrate, timeoutAt, dropPeer, summary, RODADAS, TEMPO_MS,

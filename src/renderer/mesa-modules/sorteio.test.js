@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const sorteio = require('./sorteio');
 
 function deepFreeze(v) {
@@ -79,7 +80,7 @@ test('init traz as pessoas da sala com o id de cada uma', () => {
     ],
     teamCount: 2, teams: null, round: 0,
   });
-  assert.equal(sorteio.summary(s), '3 nomes, 2 times');
+  assert.equal(R(sorteio.summary(s)), '3 nomes, 2 times');
   assert.deepEqual(sorteio.init({}).entries, []);
 });
 
@@ -92,7 +93,7 @@ test('init pula pessoa malformada e repetida', () => {
 
 test('metadados seguem o contrato', () => {
   assert.equal(sorteio.type, 'sorteio');
-  assert.equal(sorteio.title, 'Sorteio de times');
+  assert.equal(tx(sorteio.title), 'Sorteio de times');
   assert.equal(sorteio.group, 'noite');
 });
 
@@ -129,7 +130,7 @@ test('sorteio: prepare grava a permutacao e reduce reparte em rodizio', () => {
     [{ name: 'Bia', peerId: '2' }, { name: 'Caio', peerId: '3' }],
   ]);
   assert.equal(r.round, 1);
-  assert.equal(sorteio.summary(r), 'Duda, Ana × Bia, Caio');
+  assert.equal(R(sorteio.summary(r)), 'Duda, Ana × Bia, Caio');
 });
 
 test('sortear de novo usa sorte nova e conta a rodada', () => {
@@ -188,7 +189,7 @@ test('limpar tira nomes e resultado', () => {
   const { state } = roda(sorteio.init({ peers: SALA }), [{ kind: 'draw' }, { kind: 'clear' }]);
   assert.deepEqual(state.entries, []);
   assert.equal(state.teams, null);
-  assert.equal(sorteio.summary(state), '0 nomes, 2 times');
+  assert.equal(R(sorteio.summary(state)), '0 nomes, 2 times');
 });
 
 test('acao malformada e recusada com motivo e nunca lanca', () => {

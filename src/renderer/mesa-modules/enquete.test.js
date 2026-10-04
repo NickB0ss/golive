@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const i18n = require('../i18n');
 const enquete = require('./enquete');
 
@@ -70,13 +71,13 @@ const MALFORMADAS = [
 test('init guarda quem criou e vem sem pergunta', () => {
   const s = enquete.init({ by: '7', now: 1, random: () => 0 });
   assert.deepEqual(s, { question: '', options: ['mesa.enquete.sim', 'mesa.enquete.nao'], votes: [], closed: false, createdBy: '7' });
-  assert.equal(enquete.summary(s), 'Enquete sem pergunta');
+  assert.equal(R(enquete.summary(s)), 'Enquete sem pergunta');
   assert.equal(enquete.init({}).createdBy, null);
 });
 
 test('metadados seguem o contrato', () => {
   assert.equal(enquete.type, 'enquete');
-  assert.equal(enquete.title, 'Enquete');
+  assert.equal(tx(enquete.title), 'Enquete');
   assert.equal(enquete.group, 'noite');
 });
 
@@ -98,7 +99,7 @@ test('um voto por pessoa; trocar e tirar o voto', () => {
   assert.deepEqual(enquete.tally(state), [1, 0, 1]);
   assert.equal(enquete.voteOf(state, '2'), 2);
   assert.equal(enquete.voteOf(state, '3'), null);
-  assert.equal(enquete.summary(state), 'Pizza ou hambúrguer? Pizza 1 · Hambúrguer 0 · Os dois 1');
+  assert.equal(R(enquete.summary(state)), 'Pizza ou hambúrguer? Pizza 1 · Hambúrguer 0 · Os dois 1');
   assert.equal(enquete.validate(state, { kind: 'vote', option: 0 }, { from: '1' }), 'mesa.enquete.jaVotouNessa');
   assert.equal(enquete.validate(state, { kind: 'unvote' }, { from: '3' }), 'mesa.enquete.naoVotou');
 });
@@ -149,7 +150,7 @@ test('encerrar: quem criou ou o lider; depois ninguem vota', () => {
   assert.equal(enquete.validate(s, { kind: 'close' }, { from: '2' }), 'mesa.enquete.soQuemCriouOuLider');
   const fechada = roda(s, [[{ kind: 'close' }, '3', true]]).state;
   assert.equal(fechada.closed, true);
-  assert.equal(enquete.summary(fechada), 'Pizza ou hambúrguer? Pizza 0 · Hambúrguer 1 · Os dois 0 (encerrada)');
+  assert.equal(R(enquete.summary(fechada)), 'Pizza ou hambúrguer? Pizza 0 · Hambúrguer 1 · Os dois 0 (encerrada)');
   assert.equal(enquete.validate(fechada, { kind: 'vote', option: 0 }, { from: '4' }), 'mesa.enquete.encerrada');
   assert.equal(enquete.validate(fechada, { kind: 'unvote' }, { from: '2' }), 'mesa.enquete.encerrada');
   assert.equal(enquete.validate(fechada, { kind: 'close' }, { from: '1' }), 'mesa.enquete.jaEncerrada');

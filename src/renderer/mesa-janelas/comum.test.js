@@ -139,12 +139,13 @@ test('motivoRecusa, podeFazer e ligado traduzem codigos no idioma ativo', () => 
   }
 });
 
-test('milhar e plural', () => {
+test('milhar; o plural agora e chave { one, other } do dicionario', () => {
   assert.equal(C.milhar(1000), '1 000');
   assert.equal(C.milhar(999), '999');
   assert.equal(C.milhar(1234567), '1 234 567');
-  assert.equal(C.plural(1, 'voto', 'votos'), '1 voto');
-  assert.equal(C.plural(0, 'voto', 'votos'), '0 votos');
+  assert.equal(C.plural, undefined);
+  assert.equal(i18n.t('mesa.galeria.imagens', { n: 1 }), '1 imagem');
+  assert.equal(i18n.t('mesa.galeria.imagens', { n: 3 }), '3 imagens');
 });
 
 test('podeFazer: true passa; motivo vem com maiuscula; validate que lanca desliga', () => {

@@ -42,11 +42,6 @@
     boing: 'mesa.sons.som.boing',
     apito: 'mesa.sons.som.apito',
   });
-  // So para o `summary` (ainda texto puro, ate a fatia que o troca por chave).
-  const SUMMARY_NOMES = Object.freeze({
-    buzina: 'Buzina', palmas: 'Palmas', badumtss: 'Ba dum tss', rufar: 'Rufar', sino: 'Sino',
-    acertou: 'Acertou', errou: 'Errou', suspense: 'Suspense', boing: 'Boing', apito: 'Apito',
-  });
 
   function isObj(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -137,12 +132,13 @@
   }
 
   function summary(state) {
-    return state.last ? `Último som: ${SUMMARY_NOMES[state.last.sound] || 'Som'}` : 'Nenhum som ainda';
+    if (!state.last) return { chave: 'mesa.resumo.somNenhum' };
+    return { chave: 'mesa.resumo.somUltimo', valores: { som: soundName(state.last.sound) } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Sons',
+    title: 'mesa.titulo.sons',
     group: 'noite',
     size: { w: 400, h: 300, minW: 260, minH: 220, aspect: null },
     // 32 pessoas em `recent` (id de 16 + hora de 13 algarismos) + o ultimo.

@@ -89,6 +89,28 @@
     return t(chave, valores);
   }
 
+  function valorDeResumo(valor) {
+    if (typeof valor === 'string') return traduzirCodigo(valor);
+    if (Array.isArray(valor)) return valor.map(valorDeResumo).join(' · ');
+    if (valor && typeof valor === 'object') return traduzirResumo(valor);
+    return valor;
+  }
+
+  /** Texto de um resumo de janela da Mesa. O modulo devolve `{ chave, valores }`
+   * (nunca texto); aqui cada valor-codigo (opcao de enquete, nome de time padrao)
+   * e traduzido ANTES de entrar na frase. Valor lista vira itens separados por
+   * " · " e valor `{ chave, valores }` e um resumo aninhado; `max` corta o texto
+   * pronto do no. Texto puro (modulo ainda nao migrado) passa como esta. */
+  function traduzirResumo(resumo) {
+    if (typeof resumo === 'string') return resumo;
+    if (!resumo || typeof resumo.chave !== 'string') return '';
+    const valores = {};
+    for (const [nome, valor] of Object.entries(resumo.valores || {})) valores[nome] = valorDeResumo(valor);
+    const texto = t(resumo.chave, valores);
+    const max = Number(resumo.max);
+    return max > 0 && texto.length > max ? `${texto.slice(0, max - 1)}…` : texto;
+  }
+
   function formatarHora(ts, opcoes) {
     const segundos = opcoes && opcoes.segundos ? { second: '2-digit' } : {};
     return new Date(ts).toLocaleTimeString(ativo, {
@@ -137,6 +159,7 @@
     t,
     codigo,
     traduzirCodigo,
+    traduzirResumo,
     existe,
     formatarHora,
     formatarData,

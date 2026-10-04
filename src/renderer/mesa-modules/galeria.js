@@ -16,7 +16,7 @@
 
   const galeria = {
     type: TYPE,
-    title: 'Galeria',
+    title: 'mesa.titulo.galeria',
     group: 'ferramentas',
     size: { w: 480, h: 360, minW: 240, minH: 180, aspect: null },
     maxStateBytes: 64,
@@ -34,7 +34,7 @@
     },
 
     summary() {
-      return 'Imagens do chat';
+      return { chave: 'mesa.galeria.titulo' };
     },
   };
 

@@ -26,14 +26,14 @@ test('a moldura da janela usa os componentes Sinal para vez e identidade', () =>
 });
 
 test('o menu da janela de video oferece o volume do tile', () => {
-  assert.match(vista, /Volume e silenciar/);
+  assert.match(vista, /mesa.vista.volumeSilenciar/);
   assert.match(vista, /deps\.openTileMenu\(/);
 });
 
 test('janela de tela ou camera nao fecha: sem botao, sem menu e sem Delete', () => {
   assert.match(vista, /function canRemove\(win\) \{[^}]*return !isMedia\(win\);/, 'ninguem remove midia');
   assert.match(vista, /if \(isMedia\(win\)\) return;\s*if \(!canRemove\(win\)\)/, 'Delete e menu nao pedem');
-  assert.match(vista, /isMedia\(win\) \? '' : row\('Tirar da Mesa'/, 'o menu nao oferece Tirar da Mesa');
+  assert.match(vista, /isMedia\(win\) \? '' : row\(t\('mesa\.vista\.tirarDaMesa'\)/, 'o menu nao oferece Tirar da Mesa');
   assert.match(vista, /if \(reason === 'media'\) return;/, 'recusa media fica sem aviso');
   assert.ok(!/not-yours/.test(vista), 'o motivo antigo saiu');
 });

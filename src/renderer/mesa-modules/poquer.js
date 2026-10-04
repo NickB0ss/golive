@@ -711,21 +711,21 @@
   function summary(state) {
     return safe(() => {
       const n = state.seats.filter((x) => x !== null).length;
-      if (!n) return 'Pôquer — cadeiras livres';
+      if (!n) return { chave: 'mesa.resumo.poquerLivres' };
       const [sb, bb] = LEVELS[state.level];
-      const gente = n === 1 ? '1 na mesa' : `${n} na mesa`;
       const h = state.hand;
       if (active(h)) {
         const who = h.toAct >= 0 ? state.names[h.toAct] : null;
-        return `Pôquer ${sb}/${bb} — ${gente}, mão ${h.no}${who ? `, vez de ${who}` : ''}`;
+        if (who) return { chave: 'mesa.resumo.poquerMaoVez', valores: { n, sb, bb, mao: h.no, nome: who } };
+        return { chave: 'mesa.resumo.poquerMao', valores: { n, sb, bb, mao: h.no } };
       }
-      return `Pôquer ${sb}/${bb} — ${gente}`;
-    }, 'Pôquer');
+      return { chave: 'mesa.resumo.poquerNaMesa', valores: { n, sb, bb } };
+    }, { chave: 'mesa.titulo.poquer' });
   }
 
   const mod = {
     type: 'poquer',
-    title: 'Pôquer',
+    title: 'mesa.titulo.poquer',
     group: 'jogos',
     secret: true,
     size: { w: 720, h: 460, minW: 540, minH: 345, aspect: 720 / 460 },

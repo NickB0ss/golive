@@ -143,20 +143,35 @@
     }
   }
 
+  const CHAVES_DOIS = {
+    simples: 'mesa.resumo.placarDois',
+    venceu: 'mesa.resumo.placarDoisVenceu',
+    melhorDe: 'mesa.resumo.placarDoisMelhorDe',
+  };
+  const CHAVES_LISTA = {
+    simples: 'mesa.resumo.placarLista',
+    venceu: 'mesa.resumo.placarListaVenceu',
+    melhorDe: 'mesa.resumo.placarListaMelhorDe',
+  };
+
   /** "Azul 2 × 1 Vermelho"; com 3 ou 4 times, "Azul 2 · Vermelho 1 · Verde 0". */
   function summary(state) {
     const t = state.teams;
-    const line = t.length === 2
-      ? `${t[0].name} ${t[0].score} × ${t[1].score} ${t[1].name}`
-      : t.map((x) => `${x.name} ${x.score}`).join(' · ');
     const w = winner(state);
-    if (w !== -1) return `${line} — ${t[w].name} venceu`;
-    return state.bestOf === null ? line : `${line} (melhor de ${state.bestOf})`;
+    const fim = w !== -1 ? 'venceu' : state.bestOf === null ? 'simples' : 'melhorDe';
+    const extra = { nome: w !== -1 ? t[w].name : undefined, n: state.bestOf };
+    // Nomes de time podem ser codigos (Azul, Vermelho): a vista traduz cada valor.
+    if (t.length === 2) {
+      const dois = { a: t[0].name, pa: t[0].score, pb: t[1].score, b: t[1].name };
+      return { chave: CHAVES_DOIS[fim], valores: { ...dois, ...extra } };
+    }
+    const times = t.map((x) => ({ chave: 'mesa.resumo.placarTime', valores: { nome: x.name, pontos: x.score } }));
+    return { chave: CHAVES_LISTA[fim], valores: { times, ...extra } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Placar',
+    title: 'mesa.titulo.placar',
     group: 'noite',
     size: { w: 420, h: 240, minW: 300, minH: 180, aspect: null },
     maxStateBytes: 1024,

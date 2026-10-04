@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R } = require('../i18n');
 const quadro = require('./quadro');
 const { jsonBytes } = require('../mesa');
 
@@ -69,6 +70,6 @@ test('o estado (so o dono) cabe folgado no teto declarado', () => {
 });
 
 test('summary indica quando o quadro esta escondido', () => {
-  assert.equal(quadro.summary({ owner: '7', hidden: true }), 'Quadro escondido');
-  assert.equal(typeof quadro.summary(quadro.init({})), 'string');
+  assert.equal(R(quadro.summary({ owner: '7', hidden: true })), 'Quadro escondido');
+  assert.equal(typeof R(quadro.summary(quadro.init({}))), 'string');
 });

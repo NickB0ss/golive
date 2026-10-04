@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const link = require('./link');
 const { jsonBytes } = require('../mesa');
 const { linkDaMesa, dominioPublico } = require('../../main/linksexternos');
@@ -50,13 +51,13 @@ test('o modulo e o processo principal concordam', () => {
 
 test('colar, trocar o titulo, tirar: sem mutar o anterior', () => {
   const s0 = gelar(link.init({}));
-  assert.equal(link.summary(s0), 'Nenhum link ainda');
+  assert.equal(R(link.summary(s0)), 'Nenhum link ainda');
   const s1 = gelar(link.reduce(s0, gelar({ kind: 'set', url: 'https://example.com/a', title: '  Regras\n do  jogo ' }), { from: '2' }));
   assert.deepEqual(s1, { url: 'https://example.com/a', host: 'example.com', title: 'Regras do jogo', by: '2', rev: 1 });
-  assert.equal(link.summary(s1), 'Regras do jogo (example.com)');
+  assert.equal(R(link.summary(s1)), 'Regras do jogo (example.com)');
   const s2 = gelar(link.reduce(s1, { kind: 'set', url: 'https://example.com/a', title: '' }, { from: '1' }));
   assert.equal(s2.title, null);
-  assert.equal(link.summary(s2), 'example.com');
+  assert.equal(R(link.summary(s2)), 'example.com');
   const s3 = link.reduce(s2, { kind: 'clear' }, { from: '1' });
   assert.deepEqual(s3, { url: null, host: null, title: null, by: null, rev: 3 });
 });
@@ -94,5 +95,5 @@ test('deterministico e no registro, no grupo ferramentas', () => {
   const reg = require('./index');
   assert.ok(reg.MODULE_NAMES.includes('link'));
   assert.equal(reg.get('link').group, 'ferramentas');
-  assert.equal(reg.get('link').title, 'Link');
+  assert.equal(tx(reg.get('link').title), 'Link');
 });

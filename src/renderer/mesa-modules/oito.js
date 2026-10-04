@@ -326,12 +326,12 @@
   }
   function summary(s) {
     const n = s && s.seats ? s.seats.filter(Boolean).length : 0;
-    return n ? `Oito maluco — ${n} jogando` : 'Oito maluco — lugares livres';
+    return n ? { chave: 'mesa.resumo.oitoJogando', valores: { n } } : { chave: 'mesa.resumo.oitoLivres' };
   }
 
   const mod = {
     type: 'oito',
-    title: 'Oito maluco',
+    title: 'mesa.titulo.oito',
     group: 'jogos',
     size: { w: 640, h: 400, minW: 420, minH: 280, aspect: 1.6 },
     maxStateBytes: 8192,

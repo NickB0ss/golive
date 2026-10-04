@@ -194,20 +194,23 @@
 
   /** "Pausa · 04:32 (pausado)". Sem `serverNow`, correndo diz so "correndo". */
   function summary(state, serverNow) {
-    const prefix = state.label ? `${state.label} · ` : '';
+    // O rotulo e dado da pessoa; o separador nao e texto traduzido.
+    const prefixo = state.label ? `${state.label} · ` : '';
     const down = state.mode === 'down';
     if (state.running && !isTime(serverNow)) {
-      return `${prefix}${down ? 'regressivo' : 'progressivo'} correndo`;
+      const chave = down ? 'mesa.resumo.cronoRegressivoCorrendo' : 'mesa.resumo.cronoProgressivoCorrendo';
+      return { chave, valores: { prefixo } };
     }
-    if (isFinished(state, serverNow)) return `${prefix}tempo esgotado`;
-    const shown = formatMs(displayMs(state, serverNow), down);
-    if (state.running) return `${prefix}${shown}`;
-    return `${prefix}${shown} (${state.elapsed > 0 ? 'pausado' : 'parado'})`;
+    if (isFinished(state, serverNow)) return { chave: 'mesa.resumo.cronoEsgotado', valores: { prefixo } };
+    const tempo = formatMs(displayMs(state, serverNow), down);
+    if (state.running) return { chave: 'mesa.resumo.cronoTempo', valores: { prefixo, tempo } };
+    const chave = state.elapsed > 0 ? 'mesa.resumo.cronoPausado' : 'mesa.resumo.cronoParado';
+    return { chave, valores: { prefixo, tempo } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Cronômetro',
+    title: 'mesa.titulo.cronometro',
     group: 'noite',
     size: { w: 360, h: 300, minW: 260, minH: 160, aspect: null },
     maxStateBytes: 512,

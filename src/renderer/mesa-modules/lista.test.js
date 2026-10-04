@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const lista = require('./lista');
 
 function deepFreeze(v) {
@@ -57,12 +58,12 @@ const MALFORMADAS = [
 test('init: lista vazia', () => {
   const s = lista.init({ now: 1, random: () => 0 });
   assert.deepEqual(s, { title: '', items: [], nextId: 1 });
-  assert.equal(lista.summary(s), 'Lista: vazia');
+  assert.equal(R(lista.summary(s)), 'Lista: vazia');
 });
 
 test('metadados seguem o contrato', () => {
   assert.equal(lista.type, 'lista');
-  assert.equal(lista.title, 'Lista');
+  assert.equal(tx(lista.title), 'Lista');
   assert.equal(lista.group, 'ferramentas');
 });
 
@@ -75,7 +76,7 @@ test('adicionar da ids em sequencia; marcar leva o valor', () => {
     { kind: 'title', text: ' Quem traz o quê ' },
   ]);
   assert.deepEqual(s.items[1], { id: 2, text: 'Pizza', done: true });
-  assert.equal(lista.summary(s), 'Quem traz o quê: 1 de 3 feitos');
+  assert.equal(R(lista.summary(s)), 'Quem traz o quê: 1 de 3 feitos');
   s = aplica(s, [{ kind: 'check', id: 2, done: false }]);
   assert.equal(s.items[1].done, false);
 });

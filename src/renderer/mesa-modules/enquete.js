@@ -192,17 +192,17 @@
 
   /** "Pizza ou hambúrguer? Pizza 3 · Hambúrguer 1 (encerrada)". */
   function summary(state) {
-    if (!state.question) return 'Enquete sem pergunta';
+    if (!state.question) return { chave: 'mesa.resumo.enqueteSemPergunta' };
     const counts = tally(state);
-    const parts = state.options.map((o, i) => `${o} ${counts[i]}`).join(' · ');
-    let line = `${state.question} ${parts}`;
-    if (line.length > MAX_SUMMARY) line = `${line.slice(0, MAX_SUMMARY - 1)}…`;
-    return state.closed ? `${line} (encerrada)` : line;
+    // Opcao pode ser codigo (Sim, Nao): a vista traduz cada uma antes de montar a linha.
+    const opcoes = state.options.map((o, i) => ({ chave: 'mesa.resumo.enqueteOpcao', valores: { opcao: o, n: counts[i] } }));
+    const linha = { chave: 'mesa.resumo.enqueteLinha', valores: { pergunta: state.question, opcoes }, max: MAX_SUMMARY };
+    return { chave: state.closed ? 'mesa.resumo.enqueteEncerrada' : 'mesa.resumo.linha', valores: { linha } };
   }
 
   const api = {
     type: TYPE,
-    title: 'Enquete',
+    title: 'mesa.titulo.enquete',
     group: 'noite',
     size: { w: 420, h: 400, minW: 320, minH: 280, aspect: null },
     maxStateBytes: 4096,

@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const batalha = require('./batalha');
 const registry = require('./index');
 
@@ -59,7 +60,7 @@ function aguas(s, i) {
 
 test('descritor segue o contrato e passa no registro como secret', () => {
   assert.equal(batalha.type, 'batalha');
-  assert.equal(batalha.title, 'Batalha naval');
+  assert.equal(tx(batalha.title), 'Batalha naval');
   assert.equal(batalha.group, 'jogos');
   assert.equal(batalha.secret, true);
   const res = registry.checkModule(batalha);
@@ -179,7 +180,7 @@ test('afundar os 5 navios vence; navio afundado aparece inteiro para todos', () 
   const v = batalha.view(s, 'ana', { peers: PEERS });
   assert.equal(v.boards[0].ships.length, 5);
   assert.equal(v.boards[1].ships.length, 5);
-  assert.equal(batalha.summary(s), 'Bia venceu');
+  assert.equal(R(batalha.summary(s)), 'Bia venceu');
 });
 
 test('view: o dono ve os proprios navios; o adversario e quem assiste, so tiros e afundados', () => {
@@ -320,5 +321,5 @@ test('acao estranha nunca lanca', () => {
     assert.doesNotThrow(() => batalha.reduce(s, a, { from: 'bia' }));
   }
   assert.equal(batalha.view(null, 'bia'), null);
-  assert.equal(batalha.summary(null), 'Batalha naval');
+  assert.equal(R(batalha.summary(null)), 'Batalha naval');
 });

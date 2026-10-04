@@ -1,6 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { traduzirResumo: R, traduzirCodigo: tx } = require('../i18n');
 const roleta = require('./roleta');
 
 function deepFreeze(v) {
@@ -67,12 +68,12 @@ const MALFORMADAS = [
 test('init: sem opcoes e sem giro', () => {
   const s = roleta.init({ now: 1, random: () => 0 });
   assert.deepEqual(s, { options: [], spin: null, spins: 0, last: null });
-  assert.equal(roleta.summary(s), '0 opções, ainda não girou');
+  assert.equal(R(roleta.summary(s)), '0 opções, ainda não girou');
 });
 
 test('metadados seguem o contrato', () => {
   assert.equal(roleta.type, 'roleta');
-  assert.equal(roleta.title, 'Roleta');
+  assert.equal(tx(roleta.title), 'Roleta');
   assert.equal(roleta.group, 'noite');
 });
 
@@ -84,7 +85,7 @@ test('adicionar, editar, remover e trocar a lista limpam o texto', () => {
   assert.deepEqual(state.options, ['Sushi', 'Açaí']);
   const t = roda(state, [OPCOES]).state;
   assert.deepEqual(t.options, OPCOES.options);
-  assert.equal(roleta.summary(t), '4 opções, ainda não girou');
+  assert.equal(R(roleta.summary(t)), '4 opções, ainda não girou');
 });
 
 test('girar: prepare decide fatia, voltas, ponto de parada, hora e autor', () => {
@@ -96,7 +97,7 @@ test('girar: prepare decide fatia, voltas, ponto de parada, hora e autor', () =>
   const r = roleta.reduce(deepFreeze(s), pronta, ctxCliente);
   assert.deepEqual(r.spin, { n: 1, index: 2, turns: 5, offset: 0.15, at: 5000, by: '2' });
   assert.equal(r.last, 'Hambúrguer');
-  assert.equal(roleta.summary(r), 'Roleta: Hambúrguer');
+  assert.equal(R(roleta.summary(r)), 'Roleta: Hambúrguer');
 });
 
 test('spinAngle poe o ponto sorteado sob o ponteiro', () => {
