@@ -1874,7 +1874,7 @@
     'diag.colPerdaRede': 'pérdida de red',
     'diag.colPerdidos': 'perdidos',
     'config.tema.sinal': 'Sinal',
-    'config.tema.sinalClaro': 'Señal clara',
+    'config.tema.sinalClaro': 'Sinal claro',
     'config.tema.marca': 'GoLive',
     'config.tema.superficieSinal': 'Superficie y señal',
     'config.tema.meiaNoite': 'Medianoche',

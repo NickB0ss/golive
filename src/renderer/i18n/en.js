@@ -1873,7 +1873,7 @@
     'diag.colPerdaRede': 'network loss',
     'diag.colPerdidos': 'dropped',
     'config.tema.sinal': 'Sinal',
-    'config.tema.sinalClaro': 'Light signal',
+    'config.tema.sinalClaro': 'Sinal light',
     'config.tema.marca': 'GoLive',
     'config.tema.superficieSinal': 'Surface and signal',
     'config.tema.meiaNoite': 'Midnight',
