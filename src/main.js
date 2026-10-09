@@ -15,6 +15,17 @@ const { pathToFileURL } = require('url');
 const { clampBounds, parseStoredBounds } = require('./main/spywin');
 const { normalizarConsoleMessage } = require('./main/consolelog');
 const { aplicarFlagsChromium } = require('./main/chromiumflags');
+const { runtimeInfo } = require('./main/runtime-info');
+const smoke = require('./main/smoke');
+
+// Smoke de abertura (scripts/smoke-app.js): ramo ANTES do lock e de qualquer
+// efeito colateral deste arquivo. Abre a pagina real numa janela escondida com
+// perfil temporario e sai; nao sobe sala, descoberta, firewall nem atualizador.
+// Ver o cabecalho de src/main/smoke.js para o que ele valida e o que nao.
+if (process.argv.includes(smoke.FLAG)) {
+  smoke.run({ electron: { app, BrowserWindow, ipcMain, session, net }, argv: process.argv, rootDir: __dirname });
+  return;
+}
 
 // So pode existir UM GoLive rodando por maquina: dois processos tentando abrir
 // o mesmo servidor de sinalizacao/porta, escutar a mesma descoberta UDP e
@@ -299,6 +310,7 @@ function logCrashDumpsLocais() {
 
 logCrashDumpsLocais();
 logger.log(`GoLive iniciando -- versao ${app.getVersion()}, log em ${logger.path}`);
+logger.log('runtime:', JSON.stringify(runtimeInfo({ appVersion: app.getVersion(), packaged: app.isPackaged })));
 if (audioAddonLoadError) {
   logger.error(
     'addon de audio nativo indisponivel -- "incluir o som do Discord" e a exclusao do audio do proprio GoLive vao ficar fora do ar:',
@@ -1484,19 +1496,14 @@ ipcMain.handle('logs:openFolder', () => {
 
 // --- Audio por processo (WASAPI Process Loopback) -----------------------
 //
-// So funciona no Windows 10 2004+ com o addon nativo compilado (ver
-// binding.gyp / native/src). Onde nao estiver disponivel, todo handler
-// abaixo devolve um "vazio" sensato (0 / indisponivel) em vez de derrubar
-// o processo principal -- quem chama trata isso caindo pro loopback de
-// sistema normal do Electron.
+// A API de captura por processo exige Windows build 20348+ e addon compilado.
+// Carregar o addon nao comprova ativacao: startCapture confirma o resultado.
+// Enumeracao valida vazia e falha de API sao resultados diferentes; nenhum
+// deles autoriza ampliar uma captura de janela para o sistema inteiro.
 
 ipcMain.handle('audio:findDiscordPid', () => {
   if (!audioAddon) return 0;
-  try {
-    return audioAddon.findDiscordRootPid();
-  } catch {
-    return 0;
-  }
+  return audioAddon.findDiscordRootPid();
 });
 
 ipcMain.handle('audio:getOwnPid', () => {
@@ -1508,11 +1515,11 @@ ipcMain.handle('audio:getOwnPid', () => {
 // padrao -- base do modo "lista de inclusao" usado quando a pessoa
 // compartilha a tela SEM incluir o Discord (ver startShare em app.js).
 ipcMain.handle('audio:listRenderPids', () => {
-  if (!audioAddon) return [];
+  if (!audioAddon) return { ok: false, error: 'indisponivel' };
   try {
-    return audioAddon.listAudioRenderPids();
-  } catch {
-    return [];
+    return { ok: true, items: audioAddon.listAudioRenderPids() };
+  } catch (error) {
+    return { ok: false, error: error.message };
   }
 });
 
@@ -1520,11 +1527,11 @@ ipcMain.handle('audio:listRenderPids', () => {
 // proprio GoLive a partir dos PIDs "raiz" -- usado junto com
 // audio:listRenderPids pra saber quais PIDs excluir da lista de inclusao.
 ipcMain.handle('audio:listProcessNames', () => {
-  if (!audioAddon) return [];
+  if (!audioAddon) return { ok: false, error: 'indisponivel' };
   try {
-    return audioAddon.listProcessNames();
-  } catch {
-    return [];
+    return { ok: true, items: audioAddon.listProcessNames() };
+  } catch (error) {
+    return { ok: false, error: error.message };
   }
 });
 
@@ -1549,14 +1556,22 @@ ipcMain.handle('audio:startCapture', (event, { pid, exclude } = {}) => {
     let settled = false;
 
     const onData = (samples, channels, sampleRate, droppedFrames = 0) => {
-      if (sender.isDestroyed()) return;
+      if (sender.isDestroyed() || !activeCaptures.has(captureId)) return;
       // Descartar o passado e preferivel a deixar a conversa inteira atrasar.
       // Vem da fila nativa limitada ao mesmo horizonte do buffer WASAPI.
       if (droppedFrames) console.warn(`[som] captura nativa atrasou; descartou ${droppedFrames} frame(s) antigos`);
       sender.send('audio:chunk', captureId, samples, channels, sampleRate);
     };
     const onReady = (ok, message) => {
-      if (settled) return;
+      if (settled) {
+        if (ok) return;
+        const capture = activeCaptures.get(captureId);
+        if (!capture) return; // parada deliberada ou evento terminal duplicado
+        activeCaptures.delete(captureId);
+        try { capture.stop(); } catch { /* thread ja encerrada */ }
+        if (!sender.isDestroyed()) sender.send('audio:ended', captureId, message);
+        return;
+      }
       settled = true;
       if (ok) {
         resolve({ ok: true, captureId });

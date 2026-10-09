@@ -21,8 +21,11 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   entrar-por-acidente numa rede compartilhada. Não é cripto.
 - Liberação de porta no firewall do Windows automática, com botão
   "Permitir acesso à rede" quando a elevação falha.
-- Áudio de sistema por loopback; áudio por processo (incluir só o Discord)
-  quando o addon nativo está compilado.
+- Áudio de sistema por loopback e captura por processo/filhos para janela
+  com addon nativo (a API de captura por processo é documentada pela Microsoft
+  a partir do build 20348; o app não bloqueia por build, tenta ativar e avisa
+  se falhar). Sem addon, o monitor usa o loopback do Chromium. Discord pode ser
+  acrescentado à seleção. Falha nativa é avisada; vídeo pode continuar sem áudio.
 - Árvore de retransmissão **sempre ligada** (origem → relay → folha,
   fanout 2/2, profundidade 2). Dois relays a partir da sala de 5: a sala de 6
   custa 2 encoders na origem em vez de 3, e a de 7 cabe sem ninguém direto.
@@ -30,13 +33,20 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   reais).
 - Qualidade escolhida em **dois eixos** no diálogo de compartilhar
   (Resolução × Fluidez, um controle segmentado cada, em vez dos seis chips
-  numa grade de três colunas): os presets são uma matriz 3×2 sem célula
+  numa grade de três colunas): os presets atuais são uma matriz 2×2 sem célula
   morta, e o controle passou a ter a forma dos dados. A linha embaixo diz o
   custo exato da combinação escolhida. O que se escolhe ali é
-  só um **teto**: o app desce sozinho pelo tamanho da sala **e** pela
-  telemetria de encode (tempo por quadro, encoder em software), degradando a própria captura
+  só um **teto**: o app desce sozinho pelo custo de envios locais ativos ou
+  planejados **e** pela telemetria de encode (tempo por quadro/FPS alvo e
+  limitação reportada), degradando a própria captura
   via `applyConstraints`, não só o teto do encode — e volta a subir quando
   sobra folga. Um degrau extra quando cai pra malha.
+- Telemetria TX/RX extraída: deltas por PeerConnection e kind completo,
+  ausência explícita e reset na reconexão. Buffer de jitter é recente;
+  RTT não mede latência da imagem. BWE e saúde de cada origem ficam isoladas.
+- Sucessão canônica em `src/shared/succession.js`, usada pelo servidor e
+  renderer. A origem HTTP libera somente `/shared/succession.js` fora da
+  raiz renderer. Ver `docs/arquitetura-atual.md` para fronteiras e próximos passos.
 - Áudio negociado em **estéreo** (Opus, bitrate declarado no SDP dos dois
   lados).
 - Pausar a transmissão a qualquer momento, com atalho global `Ctrl+Alt+P`

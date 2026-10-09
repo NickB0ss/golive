@@ -34,10 +34,19 @@ test('decideAudioStrategy nunca amplia janela sem PID para o audio do sistema', 
   assert.deepEqual(decideAudioStrategy({ shareSound: false }), { mode: 'none' });
   assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: true, windowPid: 0 }), { mode: 'none', audioUnavailable: true });
   assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: false, ownPid: 0 }), { mode: 'none', audioUnavailable: true });
-  assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: false, ownPid: 0, allowSystemLoopback: true }), { mode: 'system-loopback' });
+  assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: false, ownPid: 0, includeDiscord: true, allowSystemLoopback: true }), { mode: 'system-loopback' });
   assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: true, windowPid: 12 }), { mode: 'process', basePid: 12, baseExclude: false });
   assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: false, ownPid: 34, includeDiscord: true }), { mode: 'process', basePid: 34, baseExclude: true });
   assert.deepEqual(decideAudioStrategy({ shareSound: true, isWindowSource: false, ownPid: 34, includeDiscord: false }), { mode: 'include-list' });
+});
+
+test('monitor sem addon usa o loopback do Chromium mesmo sem o Discord marcado; janela nunca', () => {
+  assert.deepEqual(decideAudioStrategy({
+    shareSound: true, isWindowSource: false, ownPid: 0, includeDiscord: false, allowSystemLoopback: true,
+  }), { mode: 'system-loopback' });
+  assert.deepEqual(decideAudioStrategy({
+    shareSound: true, isWindowSource: true, windowPid: 0, includeDiscord: true, allowSystemLoopback: true,
+  }), { mode: 'none', audioUnavailable: true });
 });
 
 test('shouldPauseNewScreenSender preserva pausa em cada sender de tela novo', () => {

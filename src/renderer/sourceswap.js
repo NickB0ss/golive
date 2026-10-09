@@ -5,7 +5,10 @@
     if (!shareSound) return { mode: 'none' };
     // Falha da captura por processo nao pode vazar para o sistema inteiro.
     if ((isWindowSource && !windowPid) || (!isWindowSource && !ownPid)) {
-      return allowSystemLoopback && !isWindowSource ? { mode: 'system-loopback' } : { mode: 'none', audioUnavailable: true };
+      // Monitor sem addon: nao ha como expressar a exclusao do GoLive, entao o
+      // loopback do Chromium (como na 0.25.0) vale mesmo sem a caixa do Discord.
+      return allowSystemLoopback && !isWindowSource
+        ? { mode: 'system-loopback' } : { mode: 'none', audioUnavailable: true };
     }
     if (isWindowSource) return { mode: 'process', basePid: windowPid, baseExclude: false };
     if (includeDiscord) return { mode: 'process', basePid: ownPid, baseExclude: true };

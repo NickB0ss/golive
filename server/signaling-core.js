@@ -9,7 +9,7 @@
 
 const { WebSocketServer } = require('ws');
 const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
-const { chooseSuccessor, chooseNewOwner } = require('../src/renderer/succession.js');
+const { chooseSuccessor, chooseNewOwner } = require('../src/shared/succession.js');
 // Mesa (spec 2026-09-24, contrato em
 // docs/superpowers/plans/2026-09-24-mesa-contrato.md): o MESMO modelo puro e
 // os MESMOS modulos de janela que o renderer carrega. O servidor valida,

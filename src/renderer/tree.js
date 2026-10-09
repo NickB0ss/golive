@@ -22,8 +22,7 @@
   // quadro inteiro codificando o pouco que ele proprio manda nao vai dar
   // conta desse acrescimo -- entao vira PENALIDADE (nao veto). Derivado do
   // alvo de 60 fps: 1000/60 ~= 16.6 ms. A 30 fps sobra folga, entao o teto
-  // de 60 e o pior caso e serve de referencia unica. Mesmo numero do painel
-  // de estatisticas em app.js (renderStats).
+  // de 60 serve apenas de fallback para clientes antigos sem alvo informado.
   const ORCAMENTO_MS_POR_QUADRO = 1000 / 60;
 
   // encodeHealth ausente/null e NEUTRO: quem nunca reportou nada nao e
@@ -39,8 +38,13 @@
   // pura, onde a origem paga um encoder por espectador.
   function penalidadeEncode(c) {
     const h = c.encodeHealth;
-    if (!h || h.msPerFrame == null) return 0;
-    return h.msPerFrame > ORCAMENTO_MS_POR_QUADRO ? 1 : 0;
+    if (!h) return 0;
+    if (typeof h.load === 'number' && Number.isFinite(h.load) && h.load >= 0) return h.load > 1 ? 1 : 0;
+    if (typeof h.msPerFrame !== 'number' || !Number.isFinite(h.msPerFrame) || h.msPerFrame < 0) return 0;
+    const valido = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+    const budget = valido(h.budgetMs) ? h.budgetMs
+      : valido(h.fps) ? 1000 / h.fps : ORCAMENTO_MS_POR_QUADRO;
+    return h.msPerFrame > budget ? 1 : 0;
   }
 
   // Topologia degenerada: todo mundo recebe oferta direta da origem. E o

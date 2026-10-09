@@ -20,6 +20,16 @@ const CTX = {
   steps: { global: 2, peer: 0 },
 };
 
+test('encoder generico nao prova hardware; eficiencia e taxa ausentes nao inventam dados', () => {
+  const s = line({ ...ROW, encoder: 'ExternalEncoder', powerEfficient: null, mbps: null },
+    { ...CTX, software: false });
+  assert.match(s, /enc=ExternalEncoder desconhecido/);
+  assert.match(s, /efic=\?/);
+  assert.match(s, /realKbps=\?/);
+  assert.equal(require('./encodehealth').encoderType('NvCodecH264Encoder'), 'hardware');
+  assert.equal(require('./encodehealth').encoderType('ExternalEncoder'), 'unknown');
+});
+
 test('signature ignora numeros, reage a campos categoricos', () => {
   const base = signature(ROW, CTX);
   assert.equal(signature({ ...ROW, fps: 59, mbps: 9.9, msPerFrame: 4 }, CTX), base); // numeros nao contam

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; media-src blob: mediastream:" />
+<title>GoLive media-bench</title>
+<style>body{margin:8px;font:13px monospace;background:#111;color:#ddd}#viewers video{margin:2px;background:#000}</style>
+</head>
+<body>
+<div id="status">iniciando...</div>
+<div id="viewers"></div>
+<!-- Modulos de PRODUCAO reaproveitados (mesma fonte do app): -->
+<script src="../../../src/renderer/txstats.js"></script>
+<script src="../../../src/renderer/rxstats.js"></script>
+<script src="../../../src/renderer/screenrelay.js"></script>
+<!-- Modulos da bancada (UMD, os mesmos que o node:test carrega): -->
+<script src="../shared/scene-math.js"></script>
+<script src="../shared/metrics.js"></script>
+<script src="scene.js"></script>
+<script src="source.js"></script>
+<script src="topology.js"></script>
+<script src="sampler.js"></script>
+<script src="scenario.js"></script>
+<script src="boot.js"></script>
+</body>
+</html>

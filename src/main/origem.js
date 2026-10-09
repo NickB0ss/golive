@@ -159,8 +159,15 @@ async function responder({ raiz, metodo, url, fsp = fs.promises }) {
     return erro(400, 'url invalida');
   }
   if (u.origin !== ORIGEM_LOCAL) return erro(404, 'nao encontrado');
-  const abs = resolverCaminho(raiz, u.pathname);
-  if (!abs || !(await dentroDaRaiz(raiz, abs, fsp))) return erro(404, 'nao encontrado');
+  // Excecao unica para o dominio canonico. Nao serve src/, shared/ em geral
+  // nem usa o caminho pedido para resolver arquivos fora do renderer.
+  const shared = u.pathname === '/shared/succession.js';
+  const caminhoCru = String(url).match(/^http:\/\/[^/]+(\/[^?#]*)/)?.[1];
+  if (shared && caminhoCru !== '/shared/succession.js') return erro(404, 'nao encontrado');
+  const raizPermitida = shared ? path.resolve(raiz, '..', 'shared') : raiz;
+  const abs = shared ? path.join(raizPermitida, 'succession.js') : resolverCaminho(raiz, u.pathname);
+  if (u.pathname.startsWith('/shared/') && !shared) return erro(404, 'nao encontrado');
+  if (!abs || !(await dentroDaRaiz(raizPermitida, abs, fsp))) return erro(404, 'nao encontrado');
   const corpo = metodo === 'HEAD' ? null : await fsp.readFile(abs);
   return { status: 200, headers: cabecalhos(abs), corpo };
 }

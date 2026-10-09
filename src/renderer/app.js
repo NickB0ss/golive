@@ -4,10 +4,10 @@
 (function () {
   const {
     config, theme, signaling, mesh: meshModule, ui, sound, soundevents, livenotify, tree, queue, status,
-    autoquality, rxstats, conndiag, peerquality, tetoRecebido, encodehealth, version, emoji, chatmedia,
+    autoquality, txstats, rxstats, conndiag, peerquality, tetoRecebido, encodehealth, version, emoji, chatmedia,
     annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession,
     migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
-    health, audiometer, viewhold, warnings: warningsModule, reactionsPermission,
+    health, audiometer, viewhold, warnings: warningsModule, reactionsPermission, qualitypolicy, audioCapture,
   } = window.GoLive;
   const { t } = window.GoLive.i18n;
   const warningRegistry = warningsModule.create();
@@ -210,6 +210,7 @@
   // origem nova numa sala nova, cujo contador comeca em 1 -- este no nunca
   // mais aprenderia seu papel, ate reiniciar o app.
   function resetTreeState() {
+    plannedScreenOffers.clear();
     relayRetry.clear();
     pendingTrees.clear();
     for (const kind of KINDS) {
@@ -277,7 +278,6 @@
   let currentSourceId = null;
   let currentShareSound = false;
   let currentIncludeDiscord = false;
-  let currentAudioMode = 'none';
   let cameraStream = null;
   let cameraStarting = false; // in-flight latch: true while startCamera() is mid-flight
   // Sobe a cada teardown de midia. startCamera guarda o valor de quando
@@ -301,6 +301,8 @@
   // -- ver startShare/stopShare. Vazio quando nao ha nenhuma rodando (sem
   // "compartilhar som", ou addon nativo indisponivel nesta maquina).
   let stopNativeAudioFns = [];
+  let shareAudioCapture = null;
+  const pendingShareAudioCaptures = new Set();
   let hostInfo = null;
   let activeRoomAddress = null;
   let statsTimer = null;
@@ -310,7 +312,7 @@
   // framesEncoded. Sem a amostra anterior so daria pra ver a media desde o
   // inicio da conexao, que esconde exatamente o momento em que o encoder
   // comeca a sofrer.
-  const statsPrev = new Map();
+  const statsPrev = txstats.createTracker();
   // Aviso derivado das estatisticas (encoder em software). Fica separado do
   // aviso de host porque cada fonte ocupa seu proprio item na central.
   let encoderWarning = '';
@@ -340,14 +342,11 @@
   // enquanto nao estivermos codificando nada -- reportar valor inventado e
   // pior que reportar ausencia.
   let myEncodeHealth = null;
-  // Menor availableOutgoingBitrate visto entre os nossos senders, em bits/s
-  // (null enquanto nao ha amostra). E o orcamento de UPLINK deste no --
-  // usado pra limitar o preset de repasse (config.qualityForRelay).
-  let myAvailableBps = null;
-  // receiveHealth mais recente que CADA peer reportou sobre o stream que
-  // mandamos pra ele. Chave 'peerId:kind'. Alimenta a escada por-peer
-  // (Task 5). Espelha o papel de peer.encodeHealth, mas por-conexao porque
-  // um peer pode receber tela e camera com saudes diferentes.
+  const myEncodeHealthByKind = new Map();
+  // Ofertas explicitas cobrem tambem reconexao temporaria de folha direta.
+  const plannedScreenOffers = new Map();
+  // Saude local de cada entrada, chave 'peerId:kind', com PC e peer que
+  // produziram a medida. Alimenta tiles e view-state sem herdar reconexao.
   const rxHealthByPeer = new Map();
   // P4 (auditoria 2026-09-18): ultimo `limit` que ESTE no anunciou no
   // proprio 'broadcast-state' -- guardado pra so reanunciar quando o valor
@@ -364,7 +363,7 @@
   // repassamos). So o nivel importa aqui -- o member row so mostra um chip
   // "travando", sem culpado (ver buildMemberRow).
   const senderHealth = new Map();
-  // Escada de degradacao POR CONEXAO. Chave 'peerId:baseKind'. Parte do
+  // Escada de degradacao POR CONEXAO. Chave 'peerId:kind completo'. Parte do
   // piso global (qualityFor) e desce mais para quem esta sofrendo sozinho.
   // Zerada ao parar de compartilhar: os degraus descrevem uma conexao, nao
   // a nossa maquina.
@@ -378,16 +377,29 @@
   const appliedScreenEncoding = new Map();
   // Amostra anterior de readReceiverReport por 'peerId:kind', pra derivar a
   // taxa da janela (freezeCount e cumulativo).
-  const rxPrevSample = new Map();
-  let rxPrevAtMs = 0;
+  const rxPrevSample = rxstats.createTracker();
   const RX_HEALTH_TTL_MS = 6000;
-  /** receiveHealth do peer pra um baseKind, ou null se velha demais -- um
+  // Saude local so pertence a PC que a produziu. Reconexao ou falta de
+  // medida valida nao podem renovar a amostra anterior no view-state.
+  function receiveHealthForInput(activeMesh, peerId, kind) {
+    const key = `${peerId}:${kind}`;
+    const entry = rxHealthByPeer.get(key);
+    const peer = activeMesh.peers.get(peerId);
+    const pc = peer?.inConns?.[kind];
+    if (!entry || !pc || entry.pc !== pc || entry.peerRef !== peer
+      || (pc.connectionState && pc.connectionState !== 'connected')) {
+      rxHealthByPeer.delete(key);
+      return null;
+    }
+    return entry.health;
+  }
+  /** receiveHealth do peer pra um kind completo, ou null se velha demais -- um
    * stream congelado para de reportar, e o valor velho faria a escada
    * "recuperar" um peer travado. */
-  function freshReceiveHealth(peer, baseKind) {
-    const e = peer?.receiveHealth?.[baseKind];
-    if (!e || Date.now() - e.atMs > RX_HEALTH_TTL_MS) return null;
-    const { atMs, ...rh } = e;
+  function freshReceiveHealth(peer, kind) {
+    const e = peer?.receiveHealth?.[kind];
+    if (!e || e.pc !== peer.outConns?.[kind] || Date.now() - e.atMs > RX_HEALTH_TTL_MS) return null;
+    const { atMs, pc, ...rh } = e;
     return rh;
   }
 
@@ -409,7 +421,7 @@
       seen.add(tileId);
       const ownerId = sourceId || peerId;
       const owner = activeMesh.peers.get(ownerId);
-      const rh = rxHealthByPeer.get(`${peerId}:${kind}`) || null;
+      const rh = receiveHealthForInput(activeMesh, peerId, kind);
       const prev = viewerHealth.get(tileId) || health.initialState();
       const st = health.next(prev, rh, owner?.limit ?? null, now);
       viewerHealth.set(tileId, st);
@@ -513,34 +525,31 @@
     return kind === `${baseKind}@${sourceId}` && session?.mesh.peers.has(sourceId);
   }
 
-  /** Quantas pessoas ha na sala alem de nos.
-   *
-   * E o tamanho da SALA, nao a contagem de out-conns: com a arvore de
-   * retransmissao ligada a origem tem so 1-2 out-conns por kind, entao
-   * contar conexoes faria a degradacao nunca disparar. O custo que importa
-   * e o total de encoders na sala -- os nossos mais os 2 de cada relay --
-   * e esse escala com o tamanho da sala, nao com os nossos vizinhos. */
-  function audienceSize() {
-    return currentSession?.mesh.peers.size ?? 0;
+  /** Snapshot independente de qualidade/stats: o custo e de quem codifica.
+   * A suspensao desejada ja e sincrona na mesh, inclusive durante resume. */
+  function localScreenLoad() {
+    return qualitypolicy.screenSenderLoad({
+      peers: currentSession?.mesh.peers,
+      localScreen: Boolean(localStream) && !sharePaused,
+      assignments: originTree.screen.assignments,
+      relays: myRole.screen,
+      offers: sharePaused ? [] : plannedScreenOffers.values(),
+    });
   }
 
   /** Qualidade de encode daquele kind. Usa o kind BASE, pra que uma
    * conexao de repasse ('camera@<origem>') nao caia no preset de tela.
    *
-   * A tela degrada com o tamanho da sala (H4): 1080p60 e o preset certo pra
-   * 1 espectador e o preset errado pra 3 -- a medicao do projeto mostrou 4
-   * espectadores a 1080p60 quebrando o NVENC sem jogo nenhum aberto.
-   * Ninguem escolhe nada, a sala so nao entra no regime onde quebra. O
-   * relay tambem re-codifica com esta funcao, entao os 2 encoders dele
-   * herdam o preset degradado de graca.
+   * A tela degrada com os encodes locais efetivos/planejados, incluindo
+   * repasses de outras origens. Cada relay paga seu proprio custo.
    *
    * A camera fica como esta: 720p30 a 2 Mbps ja e o piso, degradar nao
    * resolve nada. */
   function qualityFor(kind) {
     const baseKind = parseKind(kind).baseKind;
     if (baseKind === 'camera') return { ...cfg.camera, codec: 'video/VP8' };
-    const effective = config.qualityForAudience(cfg.quality.preset, audienceSize());
-    // Dois degraus somam sobre o que o tamanho da sala ja pediu:
+    const effective = config.qualityForLoad(cfg.quality.preset, localScreenLoad().total);
+    // Dois degraus somam sobre o que a carga local ja pediu:
     //  - malha degradada (H3): a origem paga N encoders em vez de 1;
     //  - escada automatica: a telemetria disse que nao esta dando conta.
     // degradePreset para no piso e nunca lanca, entao isto e seguro no
@@ -558,22 +567,24 @@
     const { baseKind, sourceId } = parseKind(kind);
     let floor = qualityFor(kind);
 
-    if (sourceId) {
-      // kind composto -> somos relay desta origem. Limita pelo uplink.
-      const state = myRole[baseKind].get(sourceId);
-      const filhos = state?.filhosIds.length || 1;
-      const relayCap = config.qualityForRelay(floor.preset, filhos, myAvailableBps);
+    if (sourceId && baseKind === 'screen') {
+      // Protecao estatica por filhos ativos/planejados. BWE independente
+      // permanece no screenResolution deste sender, nunca vira uplink global.
+      const filhos = localScreenLoad().byKind.get(kind) || 1;
+      const relayCap = config.qualityForRelay(floor.preset, filhos);
       // menor preset entre os dois (comparar pelo bitrate da cadeia)
       if (relayCap.bitrate < floor.bitrate) floor = relayCap;
     }
 
-    const st = peerQuality.get(`${peerId}:${baseKind}`);
+    const saved = peerQuality.get(`${peerId}:${kind}`);
+    const pc = currentSession?.mesh?.peers.get(peerId)?.outConns?.[kind];
+    const st = saved?.pc && saved.pc !== pc ? null : saved;
     const steps = st?.steps || 0;
     const degraded = steps ? config.degradePreset(floor.preset, steps) : floor.preset;
     // Mesa: a janela desta tela na vista de quem assiste tem N pixels de
     // largura -- nao ha por que codificar mais que isso (so a resolucao
     // desce; o fps fica).
-    const width = baseKind === 'screen' ? currentSession?.mesh?.peers.get(peerId)?.viewWidth?.screen ?? null : null;
+    const width = baseKind === 'screen' ? currentSession?.mesh?.peers.get(peerId)?.viewWidth?.[kind] ?? null : null;
     const capped = peerquality.capForWidth(degraded, width, config.QUALITY_PRESETS);
     if (capped === floor.preset) return floor;
     return config.qualityFromPreset(capped);
@@ -653,7 +664,9 @@
     const key = `${peerId}:${kind}`;
     const source = screenSourceSize(kind, floor);
     const maxHeight = quality.height;
-    const state = screenResolution.get(key) || screenres.initialState(maxHeight);
+    const saved = screenResolution.get(key);
+    const pc = currentSession?.mesh?.peers.get(peerId)?.outConns?.[kind];
+    const state = saved && (!saved.pc || saved.pc === pc) ? saved : screenres.initialState(maxHeight);
     const targetHeight = state.height || maxHeight;
     // P1 ainda e a rede de seguranca para a escada por espectador. O fator
     // novo so e aceito se tambem nao fica abaixo daquele degrau inteiro.
@@ -694,9 +707,10 @@
       const key = `${row.peerId}:${row.kind}`;
       const quality = qualityForPeer(row.peerId, row.kind);
       const maxHeight = quality.height;
-      const previous = screenResolution.get(key) || screenres.initialState(maxHeight);
+      const saved = screenResolution.get(key);
+      const previous = saved && (!saved.pc || saved.pc === row.pc) ? saved : screenres.initialState(maxHeight);
       const nextState = screenres.next(previous, row.availableBps, now, maxHeight);
-      screenResolution.set(key, nextState);
+      screenResolution.set(key, { ...nextState, pc: row.pc });
 
       const wanted = screenEncodingForPeer(row.peerId, row.kind, quality, floor);
       const applied = appliedScreenEncoding.get(key);
@@ -1052,7 +1066,7 @@
     }
     // A captura vai no preset que a pessoa escolheu, mas o encode passa por
     // qualityFor -- senao trocar de preset no meio de uma sala cheia
-    // escaparia da degradacao por tamanho da sala ate o proximo
+    // escaparia da degradacao por carga local ate o proximo
     // peer-joined/peer-left. Retune por-peer: nao orfana o scaleResolutionDownBy.
     reapplyAudienceQuality();
   }
@@ -1152,7 +1166,7 @@
   // pode ter subido DEPOIS do app (caso comum: abrir o app, ver "sem rede",
   // ligar a VPN).
   function refreshNetworkStatus() {
-    Promise.resolve(window.golive.getNetworkAddress?.())
+    return Promise.resolve(window.golive.getNetworkAddress?.())
       .then((info) => {
         ui.rooms.setNetworkStatus(info || null);
         renderTailscaleWarning(info || null);
@@ -1162,7 +1176,8 @@
         renderTailscaleWarning(null);
       });
   }
-  refreshNetworkStatus();
+  // Guardada para o marcador de fim do boot (o smoke espera a primeira resposta).
+  const primeiraRede = refreshNetworkStatus();
 
   // Assina a lista de salas descobertas ao vivo na LAN (main process manda
   // sempre que a lista muda: sala nova anunciada ou sala expirou).
@@ -1871,6 +1886,9 @@
   // desistencia do retry chamam isto.
   function teardownMedia() {
     shareEpoch += 1;
+    for (const capture of pendingShareAudioCaptures) capture.stop();
+    pendingShareAudioCaptures.clear();
+    shareAudioCapture = null;
     if (localStream) {
       stopCaptureWatch();
       screenRelay?.stop();
@@ -2009,7 +2027,7 @@
       for (const [sourceId, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
         for (const childId of state.filhosIds) {
-          if (peerQuality.get(`${childId}:screen`)?.steps > 0) {
+          if (peerQuality.get(`${childId}:${relayKindFor('screen', sourceId)}`)?.steps > 0) {
             tags.set(childId, qualityForPeer(childId, relayKindFor('screen', sourceId)).preset);
           }
         }
@@ -2018,7 +2036,7 @@
     // P4: peerId -> chip "travando" -- alimentado em updateStats
     // (senderHealth), so pra quem de fato esta sendo servido (nivel != ok).
     const healthTags = new Set();
-    for (const [peerId, st] of senderHealth) if (st.level !== 'ok') healthTags.add(peerId);
+    for (const [key, st] of senderHealth) if (st.level !== 'ok') healthTags.add(key.split(':')[0]);
     ui.members.render(session ? session.mesh.peers : new Map(), currentSelfInfo(), tags, {
       ownerId,
       myId: 'me',
@@ -3277,12 +3295,13 @@
     if (!pc || pc.connectionState === 'closed') return;
     stallTransportPending.add(key);
     pc.getStats().then((report) => {
-      if (currentSession !== session || !report) return;
+      if (currentSession !== session || session.mesh.peers.get(peerId)?.inConns[kind] !== pc || !report) return;
       if (pc.connectionState === 'connected') {
         const sample = rxstats.readReceiverReport(report);
         // Os dois sao acumulados por PC; se qualquer um avanca, ainda ha RTP
         // chegando mesmo que a pessoa esteja mostrando uma imagem sem mudanca.
-        stallTransportByInput.set(key, sample.bytesReceived + sample.framesReceived);
+        const observed = [sample.bytesReceived, sample.framesReceived].filter((v) => v != null);
+        if (observed.length) stallTransportByInput.set(key, observed.reduce((a, b) => a + b, 0));
       }
       const diag = conndiag.readStallSample(report, pc.connectionState);
       const history = stallDiagByInput.get(key) || [];
@@ -3672,7 +3691,7 @@
         if (localStream && sig.isOpen()) {
           sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
             reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
-            limit: myEncodeHealth?.limit ?? null });
+            limit: myEncodeHealthByKind.get('screen')?.limit ?? null });
         }
         // Historico do chat (ate 50 linhas) + lista de banidos (so pro dono).
         if (!plan.adopt) {
@@ -3775,9 +3794,8 @@
         renderMembersPanel();
         mesaView?.onPeersChange();
         playSoundEvent('join');
-        // A sala cresceu: as conexoes ja abertas precisam do teto novo, e a
-        // oferta abaixo ja sai com ele (qualityFor le o tamanho da sala,
-        // que o addPeer acima acabou de atualizar).
+        // O novo destino entra no plano antes da oferta. Reaplica o custo
+        // local aos senders existentes sem esperar stats do recem-chegado.
         reapplyAudienceQuality();
         if (localStream) {
           try {
@@ -3793,7 +3811,7 @@
           if (sig.isOpen()) sig.send({
             type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
             reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
-            limit: myEncodeHealth?.limit ?? null,
+            limit: myEncodeHealthByKind.get('screen')?.limit ?? null,
           });
           broadcastWatchers('screen'); // novo espectador -- entra "assistindo" por padrao
           recomputeTree('screen');
@@ -3849,7 +3867,7 @@
         if (localStream && sig.isOpen()) sig.send({
           type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
           reactions: shareReactions, bootstrap: session.bootstrapExistingShare,
-          limit: myEncodeHealth?.limit ?? null,
+          limit: myEncodeHealthByKind.get('screen')?.limit ?? null,
         });
         const kinds = await reofferForResumedPeer(session, msg.id);
         console.info(`[signaling] peer #${msg.id} retomou; re-ofertando: ${kinds.length ? kinds.join(',') : 'nada a re-ofertar'}`);
@@ -3864,7 +3882,6 @@
         pendingTrees.forgetOrigin(msg.id);
         mesh.removePeer(msg.id);
         for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
-        for (const k of rxPrevSample.keys()) if (k.startsWith(msg.id + ':')) rxPrevSample.delete(k);
         for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
         ui.annotations.setSurface(msg.id, { allowed: false });
         ui.annotations.setSurface(`cam-${msg.id}`, { allowed: false });
@@ -3920,6 +3937,7 @@
             recomputeTree(kind);
           }
         }
+        reapplyAudienceQuality(); // origens removidas tambem sairam do plano
         break;
       }
       case 'offer': {
@@ -3940,7 +3958,9 @@
         // "assistindo" por padrao, entao precisa ser corrigido na hora --
         // do contrario ele paga um encode que ninguem esta vendo ate a
         // proxima mudanca de visibilidade.
-        if (!isAppWatching()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false, encodeHealth: myEncodeHealth, receiveHealth: rxHealthByPeer.get(`${msg.from}:${msg.kind}`) || null, relayLoad: relayLoad() });
+        if (!isAppWatching()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false,
+          encodeHealth: encodeHealthForInput(msg.from, msg.kind),
+          receiveHealth: receiveHealthForInput(mesh, msg.from, msg.kind), relayLoad: relayLoad() });
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -4196,6 +4216,10 @@
         });
         ui.reactions.setSurface(msg.id, { allowed: Boolean(peer?.reactions) });
         if (!msg.live) {
+          // Encerramento definitivo invalida tambem filhos ainda planejados.
+          // Uma queda de entrada so fecha senders e preserva esse plano.
+          dropRelaysOf(session, 'screen', msg.id, { ended: true });
+          reapplyAudienceQuality();
           // So soa na transicao live -> parou (wasLive), nunca num
           // broadcast-state repetido nem no estado inicial de quem entra. O
           // alvo de uma acao de moderacao nao tem entrada propria em
@@ -4229,11 +4253,19 @@
       case 'view-state': {
         if (!isKnownKind(msg.kind)) break;
         // H2: guarda a saude de encode que o peer anexou (ausente ==> null,
-        // o caso neutro de tree.js). E por-peer, nao por-kind: e a maquina
-        // dele que codifica. recomputeTree le isto ao montar os candidatos.
+        // o caso neutro de tree.js). A eleicao de relay le o slot unico
+        // peer.encodeHealth, que so vale para a ENTRADA DIRETA de tela ('screen'):
+        // a saude de encode so mede tela (a camera repassada tambem e recodificada,
+        // mas fica fora desse resumo) e 'screen@origem' e a saude do peer como
+        // relay de OUTRA origem. Se qualquer kind gravasse ali, a ordem dos
+        // view-states decidiria a eleicao. A escada por peer usa encodeHealthByKind.
+        // Limite conhecido: sem view-state de tela (tela parada, camera ligada) o
+        // slot fica com o ultimo valor de tela ate a proxima mensagem 'screen'.
         const vsPeer = mesh.peers.get(msg.from);
         if (vsPeer) {
-          vsPeer.encodeHealth = normalizeEncodeHealth(msg.encodeHealth);
+          const vsHealth = normalizeEncodeHealth(msg.encodeHealth);
+          if (msg.kind === 'screen') vsPeer.encodeHealth = vsHealth;
+          (vsPeer.encodeHealthByKind ||= {})[msg.kind] = vsHealth;
           // Campo novo e opcional: cliente antigo e dado invalido valem carga
           // zero, o caso neutro da eleicao de relay.
           //
@@ -4256,8 +4288,7 @@
             for (const k of KINDS) recomputeTree(k);
           }
         }
-        // Slot por baseKind: um viewer que recebe tela E camera nao pode
-        // deixar a saude de um kind sobrescrever a do outro (last-write-wins).
+        // Slot por kind completo: cada origem conserva saude e largura.
         if (vsPeer) {
           // Mesa: largura da janela desta tela na vista dele. So reaplica o
           // encode quando o teto MUDA de preset (andar pela mesa nao pode
@@ -4265,7 +4296,7 @@
           const vsBaseKind = parseKind(msg.kind).baseKind;
           if (vsBaseKind === 'screen') {
             const antes = qualityForPeer(msg.from, msg.kind).preset;
-            (vsPeer.viewWidth ||= {}).screen = peerquality.normViewWidth(msg.maxWidth);
+            (vsPeer.viewWidth ||= {})[msg.kind] = peerquality.normViewWidth(msg.maxWidth);
             if (qualityForPeer(msg.from, msg.kind).preset !== antes) reapplyAudienceQuality();
           } else if (msg.kind === 'camera') {
             // A minha camera, direto para ele (repasse de camera fica com o
@@ -4277,8 +4308,8 @@
             }
           }
           const rh = normalizeReceiveHealth(msg.receiveHealth);
-          (vsPeer.receiveHealth ||= {})[parseKind(msg.kind).baseKind] =
-            rh ? { ...rh, atMs: Date.now() } : null;
+          (vsPeer.receiveHealth ||= {})[msg.kind] =
+            rh ? { ...rh, atMs: Date.now(), pc: vsPeer.outConns?.[msg.kind] } : null;
         }
         const track = trackForKind(msg.kind);
         // Pausa manual manda mais que a demanda do espectador: enquanto
@@ -4307,10 +4338,12 @@
           }
         }
         if (mesh.setPeerDemand(msg.from, msg.kind, wanted, track)) {
+          reapplyAudienceQuality(); // intencao sincrona, inclusive sem stats
           // O describeOut so conta a verdade DEPOIS que a troca chegou nos
           // senders -- ver demandApplied em mesh.js.
           await mesh.demandApplied(msg.from, msg.kind);
           if (currentSession !== session) return; // sessao caiu enquanto aplicava
+          reapplyAudienceQuality(); // sender retomado ja tem track para setParameters
           console.info(`[assistir] demanda de #${msg.from} kind=${msg.kind}: ${wanted ? 'religado' : 'suspenso'} (${mesh.describeOut(msg.from, msg.kind)})`);
           renderMembersPanel();
           if (KINDS.includes(vsBase)) broadcastWatchers(vsBase, vsOrigemId);
@@ -4421,6 +4454,7 @@
         // Virar (ou deixar de ser) relay muda se ha algo nosso codificando
         // -- o loop de estatisticas e quem mede isso.
         syncStatsLoop();
+        reapplyAudienceQuality(); // novo plano de repasse antes do primeiro sender
 
         // R2: a origem que nos usa como relay precisa saber da nova carga
         // sem esperar o tick de ate 5s (ou nenhum tick, se syncStatsLoop
@@ -4463,9 +4497,9 @@
   // Alternativa ao loopback de sistema padrao do Electron: em vez de pegar
   // TODO o audio da maquina, o addon nativo (src/main.js + native/) captura
   // (ou exclui) o audio de um processo especifico. So existe de verdade no
-  // Windows com o addon compilado -- em qualquer outra situacao
-  // startProcessAudioCapture devolve `{ ok: false }` e quem chamou cai pro
-  // loopback de sistema normal (ver startShare).
+  // Windows com ativacao aceita (documentada a partir do build 20348; nao ha
+  // bloqueio por build, o app tenta e avisa). Uma recusa nunca amplia
+  // a captura de uma janela para o sistema inteiro.
   //
   // O audio chega aqui como PCM float32 cru via IPC (main -> renderer), nao
   // como uma MediaStreamTrack pronta -- pcm-injector-worklet.js e a ponte
@@ -4508,82 +4542,32 @@
   // num MediaStreamAudioDestinationNode, sozinho ou junto de outro node
   // pra misturar), mais uma funcao `stop()`. Devolve null se indisponivel
   // ou a ativacao falhar (ex: processo sumiu entre escolher e confirmar).
-  async function startNativeProcessAudioNode(ctx, pid, exclude) {
-    const result = await window.golive.startProcessAudioCapture(pid, exclude);
-    if (!result.ok) return null;
-    const node = new AudioWorkletNode(ctx, 'pcm-injector', { outputChannelCount: [2] });
-    const pool = new window.GoLive.pcmPlanar.PcmPlanarPool();
-    // Atraso de playout e quadros cortados: os dois numeros que faltavam pra
-    // "o som saia atrasado" ser diagnosticavel pelo log em vez de hipotese.
-    // Um aviso a cada PCM_DROP_LOG_MS no maximo -- corte em rajada nao pode
-    // virar enxurrada de log.
-    let ultimoAvisoPcm = 0;
-    node.port.onmessage = (event) => {
-      const { backlogFrames, droppedFrames } = event.data || {};
-      if (typeof droppedFrames !== 'number') return;
-      const agora = Date.now();
-      if (agora - ultimoAvisoPcm < PCM_DROP_LOG_MS) return;
-      ultimoAvisoPcm = agora;
-      console.warn(`[diag] audio nativo: atraso ${Math.round((backlogFrames / 48000) * 1000)}ms, ${droppedFrames} quadros cortados no total (captura ${result.captureId})`);
-    };
-    pcmNodesByCapture.set(result.captureId, node);
-    pcmPoolsByCapture.set(result.captureId, pool);
-    return {
-      node,
-      stop: () => {
-        pcmNodesByCapture.delete(result.captureId);
-        pcmPoolsByCapture.delete(result.captureId);
-        try {
-          node.disconnect();
-        } catch {
-          /* ja desconectado */
-        }
-        window.golive.stopProcessAudioCapture(result.captureId).catch(() => {});
+  function startNativeProcessAudioNode(ctx, pid, exclude, signal) {
+    return audioCapture.startNativeNode({
+      api: window.golive, pid, exclude, signal,
+      createNode: () => new AudioWorkletNode(ctx, 'pcm-injector', { outputChannelCount: [2] }),
+      register(captureId, node) {
+        const pool = new window.GoLive.pcmPlanar.PcmPlanarPool();
+        let ultimoAvisoPcm = 0;
+        node.port.onmessage = (event) => {
+          const { backlogFrames, droppedFrames } = event.data || {};
+          if (typeof droppedFrames !== 'number') return;
+          const agora = Date.now();
+          if (agora - ultimoAvisoPcm < PCM_DROP_LOG_MS) return;
+          ultimoAvisoPcm = agora;
+          const atrasoMs = Math.round((backlogFrames / 48000) * 1000);
+          console.warn(`[diag] audio nativo: atraso ${atrasoMs}ms, ${droppedFrames} cortes (captura ${captureId})`);
+        };
+        pcmNodesByCapture.set(captureId, node);
+        pcmPoolsByCapture.set(captureId, pool);
       },
-    };
+      unregister(captureId) {
+        pcmNodesByCapture.delete(captureId);
+        pcmPoolsByCapture.delete(captureId);
+      },
+    });
   }
 
-  // Todo PID cuja arvore de processo tem `rootPid` como ancestral (inclusive
-  // ele mesmo) -- usado pra excluir a arvore do GoLive e a do Discord da
-  // lista de inclusao abaixo (o WASAPI Process Loopback so exclui UMA arvore
-  // por captura, entao pra excluir duas de uma vez a gente inclui manualmente
-  // todo o resto).
-  function pidTreeSet(rootPid, processes) {
-    const result = new Set();
-    if (!rootPid) return result;
-    const childrenOf = new Map();
-    for (const p of processes) {
-      if (!childrenOf.has(p.ppid)) childrenOf.set(p.ppid, []);
-      childrenOf.get(p.ppid).push(p.pid);
-    }
-    const queue = [rootPid];
-    result.add(rootPid);
-    while (queue.length) {
-      const pid = queue.shift();
-      for (const childPid of childrenOf.get(pid) || []) {
-        if (!result.has(childPid)) {
-          result.add(childPid);
-          queue.push(childPid);
-        }
-      }
-    }
-    return result;
-  }
-
-  // "Lista de inclusao": usada ao compartilhar a tela inteira com a
-  // checkbox "Incluir o som do Discord" DESMARCADA. Nao existe uma unica
-  // captura WASAPI que peça "tudo menos GoLive menos Discord" -- o
-  // Process Loopback so exclui UMA arvore por captura. Em vez disso,
-  // enumeramos quem esta tocando audio agora e subimos uma captura INCLUDE
-  // por processo, pulando as arvores do GoLive e do Discord. Reavalia a
-  // cada ciclo do poll enquanto a transmissao estiver no ar, pra pegar processos que
-  // comecam a tocar som depois (ex: abriu um video no meio da call).
-  //
-  // O intervalo era de 2s. O que este poll detecta e "um app comecou a tocar
-  // som" -- 5s de atraso pra um som novo entrar na mistura e imperceptivel
-  // num jogo, e cada ciclo custa varredura da tabela de processos do Windows
-  // no processo principal, disputando CPU com o jogo. Ver a spec de
-  // 2026-08-23, F1.5.
   const INCLUDE_LIST_POLL_MS = 5000;
 
   // O pid do proprio GoLive nao muda durante a execucao, e findDiscordPid()
@@ -4595,76 +4579,61 @@
     return ownPidCache;
   }
 
-  // O Discord reiniciar no meio de uma transmissao e raro, e se acontecer 30s
-  // de atraso pra notar o pid novo e aceitavel. Fora do poll (em startShare,
-  // que roda uma vez so) a chamada continua direta, sem cache: la o pid pode
-  // ter acabado de nascer e nao ha ciclo seguinte pra corrigir.
-  const DISCORD_PID_TTL_MS = 30_000;
-  let discordPidCache = { pid: 0, at: 0 };
-  async function getDiscordPidCached() {
-    const now = Date.now();
-    if (discordPidCache.at && now - discordPidCache.at < DISCORD_PID_TTL_MS) return discordPidCache.pid;
-    const pid = await window.golive.findDiscordPid();
-    discordPidCache = { pid, at: now };
-    return pid;
+  function showShareAudioState(state) {
+    if (state.status === 'partial' && state.issues.includes('discord-refused')) {
+      showToast(t('erro.capturarSomDiscord'));
+    }
+    else if (state.issues.includes('enumeration-failed')) showToast(t('erro.enumerarSomFonte'));
+    else if (state.status === 'unavailable' || state.status === 'partial') {
+      showToast(t('erro.capturarSomFonte'));
+    }
   }
 
-  function startIncludeListCapture(ctx, dest) {
-    const nodesByPid = new Map(); // pid -> { node, stop }
-    let stopped = false;
-
-    async function refresh() {
-      const [renderPids, processes, ownPid, discordPid] = await Promise.all([
-        window.golive.listAudioRenderPids(),
-        window.golive.listProcessNames(),
-        getOwnPidCached(),
-        getDiscordPidCached(),
-      ]);
-      if (stopped) return;
-      const excluded = new Set([...pidTreeSet(ownPid, processes), ...pidTreeSet(discordPid, processes)]);
-      const wanted = new Set(renderPids.filter((pid) => !excluded.has(pid)));
-
-      for (const pid of Array.from(nodesByPid.keys())) {
-        if (wanted.has(pid)) continue;
-        nodesByPid.get(pid).stop();
-        nodesByPid.delete(pid);
-      }
-      for (const pid of wanted) {
-        if (nodesByPid.has(pid)) continue;
-        const node = await startNativeProcessAudioNode(ctx, pid, false);
-        if (stopped) {
-          node?.stop();
-          continue;
-        }
-        if (node) {
-          node.node.connect(dest);
-          nodesByPid.set(pid, node);
-        }
-      }
-    }
-
-    refresh().catch((err) => console.error('[audio-incluir] varredura inicial falhou:', err));
-    const pollTimer = setInterval(
-      () => refresh().catch((err) => console.error('[audio-incluir] varredura falhou:', err)),
-      INCLUDE_LIST_POLL_MS
-    );
-
-    return {
-      stop: () => {
-        stopped = true;
-        clearInterval(pollTimer);
-        for (const { stop } of nodesByPid.values()) stop();
-        nodesByPid.clear();
+  // Inicio e troca usam o mesmo ciclo cancelavel; ele possui o destino mesmo
+  // enquanto worklet ou ativacao IPC ainda estao pendentes.
+  function createShareAudioCapture(strategy, stream, includeDiscord, isWindowSource, canContinue) {
+    let ctx;
+    let lifecycle;
+    let lastIssue = '';
+    lifecycle = audioCapture.create({
+      strategy, isCurrent: () => shareAudioCapture === lifecycle || canContinue(),
+      loopbackTrack: stream.getAudioTracks()[0], pollMs: INCLUDE_LIST_POLL_MS,
+      async prepareGraph() {
+        ctx = await ensurePcmWorklet();
+        const dest = ctx.createMediaStreamDestination();
+        return { track: dest.stream.getAudioTracks()[0],
+          connect: (capture) => capture.node.connect(dest),
+          stop() {
+            dest.stream.getTracks().forEach((track) => track.stop());
+            dest.disconnect();
+          },
+        };
       },
-    };
+      startProcess: (pid, exclude, signal) => startNativeProcessAudioNode(ctx, pid, exclude, signal),
+      resolveDiscordPid: isWindowSource && includeDiscord ? () => window.golive.findDiscordPid() : null,
+      async enumerate() {
+        const [render, processes, ownPid] = await Promise.all([
+          window.golive.listAudioRenderPids(), window.golive.listProcessNames(), getOwnPidCached(),
+        ]);
+        return { renderPids: audioCapture.unwrapEnumeration(render),
+          processes: audioCapture.unwrapEnumeration(processes), ownPid };
+      },
+      onState(state) {
+        if (!lifecycle || shareAudioCapture !== lifecycle || state.status === 'cancelled') return;
+        currentShareSound = Boolean(state.track) && ['active', 'partial', 'pending'].includes(state.status);
+        const issue = state.issues.join(',');
+        if (issue && issue !== lastIssue) showShareAudioState(state);
+        lastIssue = issue;
+      },
+    });
+    pendingShareAudioCaptures.add(lifecycle);
+    return lifecycle;
   }
 
   // ---------- Compartilhar tela ----------
 
-  // `getOwnPid()` devolve 0 quando o addon nativo de audio nao esta
-  // disponivel nesta maquina (so existe no Windows com o addon compilado)
-  // -- mesmo sinal que startShare ja usa pra decidir se cai pro loopback de
-  // sistema do Electron. Cacheado porque nao muda durante a execucao do app.
+  // Presenca do addon para o picker; o ciclo confirma ativacao real.
+  // PID diferente de zero nao comprova suporte da API.
   let nativeAudioAvailable = null;
   async function isNativeAudioAvailable() {
     if (nativeAudioAvailable === null) {
@@ -4698,65 +4667,28 @@
     sharing = true;
     const epoch = shareEpoch;
     const startedNativeStops = [];
+    let stream = null;
+    let audioLifecycle = null;
     const canContinue = () => currentSession === session && broadcastguards.isCurrentEpoch(epoch, shareEpoch);
     const discardPendingCapture = (stream) => {
       stream?.getTracks().forEach((track) => track.stop());
       startedNativeStops.forEach((stop) => stop());
+      pendingShareAudioCaptures.delete(audioLifecycle);
     };
     try {
-      // Estrategia de audio, decidida ANTES de chamar getDisplayMedia
-      // porque o modo passado pra sources:select determina se o Electron
-      // tenta anexar o loopback de sistema no video capturado:
-      //  - compartilhando so uma JANELA: audio-base = so o app dono dela
-      //    (captura nativa por processo, modo "incluir"). "Incluir o som
-      //    do Discord" soma uma segunda captura, so do Discord, por cima.
-      //  - compartilhando a TELA inteira, com "incluir o Discord" MARCADO:
-      //    audio-base = sistema inteiro EXCLUINDO o proprio GoLive (captura
-      //    nativa, modo "excluir"). Sem isso, o audio que o proprio GoLive
-      //    reproduz (voz e tela dos outros participantes) entraria na nossa
-      //    propria captura e voltaria pra eles -- quando duas pessoas
-      //    compartilham tela e se ouvem, isso cria um loop/eco que
-      //    amplifica a cada rodada.
-      //  - compartilhando a TELA inteira, com "incluir o Discord"
-      //    DESMARCADO: nao da pra excluir GoLive E Discord numa unica
-      //    captura (Process Loopback so exclui UMA arvore), entao usamos o
-      //    modo lista de inclusao (startIncludeListCapture, acima) em vez
-      //    de um basePid/baseExclude so.
-      // Sem o addon nativo nesta maquina, tudo isso cai pro loopback de
-      // sistema normal do Electron -- nesse caso nao ha como excluir o
-      // proprio processo nem o Discord, e o loop/vazamento pode acontecer
-      // (limitacao do loopback padrao).
       const isWindowSource = typeof sourceId === 'string' && sourceId.startsWith('window:');
-      const discordPid = shareSound && isWindowSource && includeDiscord ? await window.golive.findDiscordPid() : 0;
-
-      let useElectronLoopback = false;
-      let useIncludeListMode = false;
-      let basePid = 0;
-      let baseExclude = false;
-      if (shareSound) {
-        if (isWindowSource) {
-          basePid = await window.golive.pidForSource(sourceId);
-          // Nao achou o PID da janela (SO diferente do Windows, addon
-          // indisponivel, ou a janela sumiu entre escolher e confirmar) --
-          // melhor cair pro sistema inteiro do que nao ter audio nenhum.
-          if (!basePid) useElectronLoopback = true;
-        } else {
-          const ownPid = await getOwnPidCached();
-          if (!ownPid) {
-            useElectronLoopback = true; // addon indisponivel nesta maquina
-          } else if (includeDiscord) {
-            basePid = ownPid;
-            baseExclude = true;
-          } else {
-            useIncludeListMode = true;
-          }
-        }
-      }
+      const windowPid = shareSound && isWindowSource ? await window.golive.pidForSource(sourceId) : 0;
+      if (!canContinue()) return;
+      const ownPid = shareSound && !isWindowSource ? await getOwnPidCached() : 0;
+      if (!canContinue()) return;
+      const strategy = sourceswap.decideAudioStrategy({ shareSound, isWindowSource, includeDiscord,
+        windowPid, ownPid, allowSystemLoopback: true });
+      if (strategy.mode === 'include-list') strategy.probePid = ownPid;
+      const useElectronLoopback = strategy.mode === 'system-loopback';
 
       await window.golive.selectSource(sourceId, useElectronLoopback ? 'system' : 'none');
       if (!canContinue()) return; // sessão caiu ou compartilhamento foi parado antes de capturar qualquer coisa
 
-      let stream;
       try {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: config.videoConstraints(cfg.quality),
@@ -4777,52 +4709,32 @@
         return;
       }
 
-      // Captura nativa por processo (base e/ou lista de inclusao, mais
-      // Discord separado quando compartilhando uma janela), misturadas num
-      // unico MediaStreamAudioDestinationNode -- so entra aqui quando NAO
-      // estamos usando o loopback do Electron (os dois sao alternativas
-      // mutuamente exclusivas, nunca somados, senao duplicaria o audio do
-      // sistema).
-      if (basePid || useIncludeListMode) {
-        const ctx = await ensurePcmWorklet();
-        const dest = ctx.createMediaStreamDestination();
-
-        if (basePid) {
-          const base = await startNativeProcessAudioNode(ctx, basePid, baseExclude);
-          if (base) {
-            base.node.connect(dest);
-            startedNativeStops.push(base.stop);
-          }
-        }
-        if (useIncludeListMode) {
-          startedNativeStops.push(startIncludeListCapture(ctx, dest).stop);
-        }
-        // So faz sentido somar uma captura separada do Discord por cima
-        // quando a base ja e so o audio de UMA janela (isWindowSource) --
-        // nos outros dois modos o Discord ja esta incluido (baseExclude) ou
-        // deliberadamente de fora (useIncludeListMode).
-        if (isWindowSource && includeDiscord && discordPid && discordPid !== basePid) {
-          const discordNode = await startNativeProcessAudioNode(ctx, discordPid, false);
-          if (discordNode) {
-            discordNode.node.connect(dest);
-            startedNativeStops.push(discordNode.stop);
-          }
-        }
-
-        if (!canContinue()) {
-          discardPendingCapture(stream);
-          return;
-        }
-
-        const mixedTrack = dest.stream.getAudioTracks()[0];
-        if (mixedTrack) stream.addTrack(mixedTrack);
+      if (!sourceswap.canUseCapturedVideo(stream.getVideoTracks()[0])) {
+        discardPendingCapture(stream);
+        showToast(t('erro.capturarTelaJanela'));
+        return;
       }
+      audioLifecycle = createShareAudioCapture(strategy, stream, includeDiscord, isWindowSource, canContinue);
+      startedNativeStops.push(audioLifecycle.stop);
+      const audioState = await audioLifecycle.ready;
+      if (!canContinue()) {
+        discardPendingCapture(stream);
+        return;
+      }
+      if (!sourceswap.canUseCapturedVideo(stream.getVideoTracks()[0])) {
+        discardPendingCapture(stream);
+        showToast(t('erro.capturarTelaJanela'));
+        return;
+      }
+      if (audioState.track && strategy.mode !== 'system-loopback') stream.addTrack(audioState.track);
+      pendingShareAudioCaptures.delete(audioLifecycle);
+      shareAudioCapture = audioLifecycle;
+      showShareAudioState(audioState);
 
       localStream = stream;
       currentSourceId = sourceId;
-      currentShareSound = shareSound;
-      currentIncludeDiscord = shareSound && includeDiscord;
-      currentAudioMode = useElectronLoopback ? 'system-loopback' : (basePid ? 'process' : (useIncludeListMode ? 'include-list' : 'none'));
+      currentShareSound = Boolean(audioState.track);
+      currentIncludeDiscord = currentShareSound && includeDiscord;
       const captureConstraints = config.videoConstraints(cfg.quality);
       lastCaptureKey = `${captureConstraints.width.max}x${captureConstraints.height.max}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
@@ -4910,6 +4822,9 @@
       $('btn-swap-share').classList.remove('hidden');
       renderMembersPanel();
       startStatsLoop();
+    } catch (err) {
+      if (localStream !== stream) discardPendingCapture(stream);
+      showToast(t('erro.capturarTela', { erro: err.message }));
     } finally {
       sharing = false;
     }
@@ -4926,6 +4841,7 @@
     const startedNativeStops = [];
     let stream = null;
     let pendingAudioTrack = null;
+    let audioLifecycle = null;
     let capturePromoted = false;
     const canContinue = () => sourceswap.canContinueSwap({
       currentSession,
@@ -4940,6 +4856,7 @@
       pendingAudioTrack?.stop();
       stream?.getTracks().forEach((track) => track.stop());
       startedNativeStops.forEach((stop) => stop());
+      pendingShareAudioCaptures.delete(audioLifecycle);
     };
     try {
       const isWindowSource = newSourceId.startsWith('window:');
@@ -4959,13 +4876,9 @@
         includeDiscord,
         windowPid,
         ownPid,
-        allowSystemLoopback: currentAudioMode === 'system-loopback' && !isWindowSource,
+        allowSystemLoopback: true,
       });
-      const discordPid = shareSound && isWindowSource && includeDiscord ? await window.golive.findDiscordPid() : 0;
-      if (!canContinue()) {
-        stopNewCapture();
-        return;
-      }
+      if (strategy.mode === 'include-list') strategy.probePid = ownPid;
       await window.golive.selectSource(newSourceId, strategy.mode === 'system-loopback' ? 'system' : 'none');
       if (!canContinue()) {
         stopNewCapture();
@@ -5002,74 +4915,26 @@
         stopNewCapture();
         return;
       }
-      let audioUnavailable = false;
-      let commit = null;
+      let commit = captureCommit;
       if (shareSound) {
-        audioUnavailable = Boolean(strategy.audioUnavailable);
-        if (strategy.mode === 'system-loopback') {
-          pendingAudioTrack = stream.getAudioTracks()[0] || null;
-          audioUnavailable = !pendingAudioTrack;
-        }
-        if (!audioUnavailable && (strategy.mode === 'process' || strategy.mode === 'include-list')) {
-          try {
-            const ctx = await ensurePcmWorklet();
-            if (!canContinue()) {
-              stopNewCapture();
-              return;
-            }
-            const dest = ctx.createMediaStreamDestination();
-            if (strategy.mode === 'process') {
-              const base = await startNativeProcessAudioNode(ctx, strategy.basePid, strategy.baseExclude);
-              if (!canContinue()) {
-                base?.stop();
-                stopNewCapture();
-                return;
-              }
-              if (!base) {
-                audioUnavailable = true;
-              } else {
-                base.node.connect(dest);
-                startedNativeStops.push(base.stop);
-              }
-            } else {
-              startedNativeStops.push(startIncludeListCapture(ctx, dest).stop);
-            }
-            if (!audioUnavailable && sourceswap.wantsSeparateDiscordCapture({ isWindowSource, includeDiscord, discordPid, basePid: strategy.basePid })) {
-              const discord = await startNativeProcessAudioNode(ctx, discordPid, false);
-              if (!canContinue()) {
-                discord?.stop();
-                stopNewCapture();
-                return;
-              }
-              if (discord) {
-                discord.node.connect(dest);
-                startedNativeStops.push(discord.stop);
-              }
-            }
-            if (!audioUnavailable) {
-              // eslint-disable-next-line require-atomic-updates -- epoca foi validada apos cada await
-              pendingAudioTrack = dest.stream.getAudioTracks()[0] || null;
-              if (!pendingAudioTrack) audioUnavailable = true;
-            }
-          } catch (err) {
-            console.warn('[troca] captura de audio da nova fonte falhou:', err);
-            startedNativeStops.forEach((stop) => stop());
-            startedNativeStops.length = 0;
-            audioUnavailable = true;
-          }
-        }
+        audioLifecycle = createShareAudioCapture(strategy, stream, includeDiscord, isWindowSource, canContinue);
+        startedNativeStops.push(audioLifecycle.stop);
+        const audioState = await audioLifecycle.ready;
         if (!canContinue()) {
           stopNewCapture();
           return;
         }
-        commit = sourceswap.decideSwapCommit({
-          videoReady: true,
-          audioRequested: true,
-          audioReady: !audioUnavailable && Boolean(pendingAudioTrack),
-        });
+        pendingAudioTrack = audioState.track;
+        commit = sourceswap.decideSwapCommit({ videoReady: true, audioRequested: true,
+          audioReady: Boolean(pendingAudioTrack) });
       }
 
-      if (!commit) commit = captureCommit;
+      // A fonte pode fechar enquanto a ativacao de audio esta em andamento.
+      if (!sourceswap.canUseCapturedVideo(newCaptureTrack)) {
+        stopNewCapture();
+        showToast(t('erro.trocarFonteMantemAnterior'));
+        return;
+      }
       const oldCaptureTrack = captureTrack;
       const oldOutputTrack = localStream.getVideoTracks()[0];
       let relayAccepted = false;
@@ -5102,18 +4967,16 @@
         }
         session.mesh.replaceLocalTrack('screen', 'audio', commit.audio === 'replace' ? pendingAudioTrack : null);
         if (commit.discardOldAudio) oldAudioTrack?.stop();
+        shareAudioCapture = null;
         stopNativeAudioFns.forEach((stop) => stop());
+        pendingShareAudioCaptures.delete(audioLifecycle);
+        if (commit.audio === 'replace') shareAudioCapture = audioLifecycle;
         stopNativeAudioFns = commit.audio === 'replace' ? startedNativeStops : [];
         currentShareSound = commit.audio === 'replace';
         currentIncludeDiscord = commit.audio === 'replace' && includeDiscord;
-        // eslint-disable-next-line require-atomic-updates -- epoca protege a fonte da troca atual
-        currentAudioMode = commit.audio === 'replace' ? strategy.mode : 'none';
-        // eslint-disable-next-line require-atomic-updates -- track ja foi entregue ao stream local
         pendingAudioTrack = null;
 
-        if (commit.audio === 'disable') {
-          showToast(t('erro.capturarSomJanela'));
-        }
+        showShareAudioState(audioLifecycle.state);
       }
       // P7: a troca pode ter trocado, adicionado ou removido a track de
       // audio -- reconecta o medidor na track que sobreviveu (ou desliga,
@@ -5152,6 +5015,9 @@
   function stopShare() {
     shareEpoch += 1;
     swapEpoch += 1;
+    for (const capture of pendingShareAudioCaptures) capture.stop();
+    pendingShareAudioCaptures.clear();
+    shareAudioCapture = null;
     if (!localStream) return;
     // cancelAll() cancelava TAMBEM os retries de repasse de origens
     // alheias (ex.: B retransmitindo a tela de A pra C): B parar a PROPRIA
@@ -5196,6 +5062,7 @@
     // parar de codificar -- este no pode seguir sendo relay de outra pessoa.
     syncStatsLoop();
     resetShareState();
+    reapplyAudienceQuality(); // repasses restantes deixam de pagar a nossa tela
   }
 
   /** Estado da transmissao que tem de zerar em QUALQUER fim de captura --
@@ -5213,13 +5080,11 @@
     currentSourceId = null;
     currentShareSound = false;
     currentIncludeDiscord = false;
-    currentAudioMode = 'none';
     lastAnnouncedLimit = null;
     rxHealthByPeer.clear();
     rxPrevSample.clear();
     stallTransportByInput.clear();
     stallTransportPending.clear();
-    rxPrevAtMs = 0;
     peerQuality.clear();
     senderHealth.clear();
     // Os kinds compostos sao repasses que podem continuar vivos mesmo sem a
@@ -5380,12 +5245,23 @@
   }
 
   function offerOwnStreamTo(session, peerId, stream, quality, kind) {
+    const key = JSON.stringify([peerId, kind]);
+    const plan = { peerId, kind };
+    if (kind === 'screen') {
+      plannedScreenOffers.set(key, plan);
+      quality = qualityForPeer(peerId, kind);
+      reapplyAudienceQuality();
+    }
     const offer = session.mesh.offerTo(peerId, stream, quality, kind);
     // offerTo cria sender antes do primeiro await; pausa na mesma pilha.
     if (sourceswap.shouldPauseNewScreenSender({ kind, sharePaused, hasLocalStream: Boolean(localStream) })) {
       enforceSharePauseFor(session.mesh, peerId);
     }
-    return offer;
+    return offer.finally(() => {
+      if (kind !== 'screen') return;
+      if (plannedScreenOffers.get(key) === plan) plannedScreenOffers.delete(key);
+      if (currentSession === session) reapplyAudienceQuality();
+    });
   }
 
   function setSharePaused(paused) {
@@ -5398,9 +5274,15 @@
       // MESMOS senders que foram suspensos (ver setPeerDemand).
       session.mesh.setPeerDemand(peerId, 'screen', !paused, track);
     }
+    reapplyAudienceQuality();
+    if (session) {
+      Promise.all([...session.mesh.peers.keys()].map((id) => session.mesh.demandApplied(id, 'screen')))
+        .then(() => { if (currentSession === session) reapplyAudienceQuality(); })
+        .catch((err) => console.warn('[qualidade] reaplicar demanda da pausa falhou:', err));
+    }
     if (session?.sig?.isOpen()) {
       session.sig.send({ type: 'broadcast-state', live: true, paused, annotate: shareAnnotations,
-        reactions: shareReactions, limit: paused ? null : (myEncodeHealth?.limit ?? null) });
+        reactions: shareReactions, limit: paused ? null : (myEncodeHealthByKind.get('screen')?.limit ?? null) });
     }
     ui.grid.setPaused('me', paused, {
       title: paused ? t('sala.vocePausou') : '',
@@ -6184,11 +6066,20 @@
         watching,
         looking,
         maxWidth,
-        encodeHealth: myEncodeHealth,
-        receiveHealth: rxHealthByPeer.get(`${peerId}:${kind}`) || null,
+        encodeHealth: encodeHealthForInput(peerId, kind),
+        receiveHealth: receiveHealthForInput(session.mesh, peerId, kind),
         relayLoad: relayLoad(),
       });
     }
+  }
+
+  // Pressao de relay pertence aos filhos desta origem recebida. O resumo
+  // da maquina serve ao diagnostico, mas outra tela nao degrada este uplink.
+  // A saude de encode so mede tela: o view-state de camera leva a saude da TELA
+  // da mesma origem, como o par 0.25.0 (que le um slot unico) espera.
+  function encodeHealthForInput(peerId, kind) {
+    const { sourceId } = parseKind(kind);
+    return myEncodeHealthByKind.get(relayKindFor('screen', sourceId || peerId)) || null;
   }
 
   // O menu do video chama o modulo direto; a troca republica o view-state
@@ -6328,16 +6219,22 @@
   /** Fecha todo repasse do conteudo de `sourcePeerId` naquele kind e
    * esquece que ele existiu. Chamado quando a stream que alimentava esses
    * repasses acabou. */
-  function dropRelaysOf(session, kind, sourcePeerId) {
+  function dropRelaysOf(session, kind, sourcePeerId, { ended = false } = {}) {
     if (!KINDS.includes(kind)) return;
     const state = myRole[kind].get(sourcePeerId);
-    if (!state?.relayed.size) return;
+    if (!state) return;
     const childKind = relayKindFor(kind, sourcePeerId);
-    for (const childId of state.relayed) {
+    const children = new Set([...state.relayed, ...(ended ? state.filhosIds : [])]);
+    for (const childId of children) {
       session.mesh.closeOut(childId, childKind);
       relayRetry.cancel(relayRetryKey(childId, childKind));
     }
     state.relayed = new Set();
+    if (ended) {
+      // Conserva epoch para rejeitar tree antiga, mas nao ha mais demanda.
+      state.role = 'direct';
+      state.filhosIds = [];
+    }
   }
 
   // Tenta repassar (relayTo) pros filhos que ainda nao temos servindo.
@@ -6626,6 +6523,7 @@
       }
     }
 
+    reapplyAudienceQuality(); // custo reconciliado apos fechar folhas e planejar ofertas
     broadcastWatchers(kind);
   }
 
@@ -6638,11 +6536,7 @@
   // 'view-state' de cliente antigo nao traz encodeHealth: ausencia (ou lixo)
   // vira null -- o caso NEUTRO de tree.js -- nunca zero nem "saudavel".
   function normalizeEncodeHealth(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const ms = typeof raw.msPerFrame === 'number' && Number.isFinite(raw.msPerFrame) && raw.msPerFrame >= 0
-      ? raw.msPerFrame
-      : null;
-    return { softwareEncoder: raw.softwareEncoder === true, msPerFrame: ms };
+    return qualitypolicy.normalizeEncodeHealth(raw);
   }
 
   // 'broadcast-state' de cliente antigo (ou lixo de cliente hostil) nao traz
@@ -6659,7 +6553,8 @@
   // lixo) vira null -- o caso neutro da escada por-peer, nunca "saudavel".
   function normalizeReceiveHealth(raw) {
     if (!raw || typeof raw !== 'object') return null;
-    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+    if (num(raw.lossPct) == null || num(raw.freezeRate) == null) return null;
     return {
       lossPct: num(raw.lossPct),
       freezeRate: num(raw.freezeRate),
@@ -6685,7 +6580,7 @@
         bweBps: applied.bweBps,
         steps: {
           global: autoQuality.steps,
-          peer: peerQuality.get(`${r.peerId}:screen`)?.steps || 0,
+          peer: peerQuality.get(`${r.peerId}:${r.kind}`)?.steps || 0,
         },
         // kind composto ('screen@<origem>') so existe em linha de repasse
         // (F2) -- ver relayKindFor. null pra captura direta, o caso comum.
@@ -6711,7 +6606,6 @@
     stopStatsLoop();
     statsPrev.clear();
     diagPrev.clear();
-    rxPrevAtMs = 0;
     scheduleStatsLoop();
   }
 
@@ -6725,9 +6619,9 @@
     statsTimer = null;
     statsPrev.clear();
     myEncodeHealth = null; // paramos de medir: nao ha saude a reportar
-    // Mesmo motivo: uma estimativa de uplink de uma sessao anterior limitaria
-    // (ou afrouxaria) o teto de repasse da proxima sem ter medido nada dela.
-    myAvailableBps = null;
+    myEncodeHealthByKind.clear();
+    rxPrevSample.clear();
+    rxHealthByPeer.clear();
     if (encoderWarning) {
       encoderWarning = '';
       renderHostWarning();
@@ -6751,107 +6645,6 @@
     else if (!precisa && statsTimer) stopStatsLoop();
   }
 
-  // Le um relatorio de getStats de UM sender e devolve os campos que
-  // interessam pro diagnostico de encode. encoderImplementation e
-  // INFORMATIVO (aparece no painel e no log [diag]); o gatilho da escada e
-  // totalEncodeTime/framesEncoded -> msPerFrame. O Chromium cai pro encoder
-  // de software sem erro nenhum quando o NVENC afoga -- e nesse caso o
-  // msPerFrame estoura o orcamento, que e o que a escada le. Ver o log de
-  // 2026-08-29: OpenH264 a 1,7 ms numa RTX 3060 sem aceleracao de GPU nao
-  // e sofrimento, e degradar por causa dele so prendia a transmissao em
-  // 720p sem volta.
-  function readSenderReport(report) {
-    const sample = {
-      fps: 0,
-      captureFps: null,
-      bytesSent: 0,
-      width: 0,
-      height: 0,
-      codec: '',
-      limitation: '',
-      encoder: '',
-      powerEfficient: null,
-      totalEncodeTime: 0,
-      framesEncoded: 0,
-      framesSent: 0,
-      // null (nao 0) porque "nenhum candidate-pair reportou RTT" e
-      // "reportou 0 ms" sao coisas diferentes -- 0 ms acontece de verdade
-      // em loopback/mesma maquina, e trata-lo como ausente descartaria a
-      // medida e ainda faria a eleicao de relay cair no desempate por
-      // joinedAt em vez de usar o melhor RTT que existe.
-      rtt: null,
-      // "sem amostra" != "0 bits disponiveis" -- e o numero que separa
-      // gargalo de banda de gargalo de encode.
-      availableBps: null,
-      // Perda REAL da rede (remote-inbound-rtp), distinta dos quadros
-      // descartados no encode que a tabela ja mostra.
-      packetsLostNet: null,
-      fractionLost: null,
-    };
-
-    report.forEach((stat) => {
-      if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
-        sample.fps = Math.max(sample.fps, stat.framesPerSecond || 0);
-        sample.bytesSent += stat.bytesSent || 0;
-        sample.width = stat.frameWidth || sample.width;
-        sample.height = stat.frameHeight || sample.height;
-        sample.totalEncodeTime += stat.totalEncodeTime || 0;
-        sample.framesEncoded += stat.framesEncoded || 0;
-        sample.framesSent += stat.framesSent || 0;
-        if (stat.encoderImplementation) sample.encoder = stat.encoderImplementation;
-        if (stat.powerEfficientEncoder != null) sample.powerEfficient = stat.powerEfficientEncoder;
-        if (stat.qualityLimitationReason && stat.qualityLimitationReason !== 'none') {
-          sample.limitation = stat.qualityLimitationReason;
-        }
-      }
-      // fps que a CAPTURA entrega, distinto do que sai codificado. Os dois
-      // divergirem e o sinal de que o encoder nao esta dando conta.
-      if (stat.type === 'media-source' && stat.kind === 'video' && stat.framesPerSecond != null) {
-        sample.captureFps = stat.framesPerSecond;
-      }
-      if (stat.type === 'codec' && stat.mimeType?.startsWith('video/')) {
-        sample.codec = stat.mimeType.split('/')[1];
-      }
-      if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
-        sample.rtt = Math.max(sample.rtt ?? 0, stat.currentRoundTripTime * 1000);
-      }
-      if (stat.type === 'candidate-pair' && stat.nominated && stat.availableOutgoingBitrate != null) {
-        sample.availableBps = Math.max(sample.availableBps ?? 0, stat.availableOutgoingBitrate);
-      }
-      // remote-inbound-rtp e o eco RTCP do outro lado -- pode faltar num
-      // intervalo isolado sem significar "sem perda".
-      if (stat.type === 'remote-inbound-rtp' && stat.kind === 'video') {
-        if (stat.packetsLost != null) sample.packetsLostNet = stat.packetsLost;
-        if (stat.fractionLost != null) sample.fractionLost = stat.fractionLost;
-      }
-    });
-
-    return sample;
-  }
-
-  // Deriva as taxas do intervalo comparando com a amostra anterior daquele
-  // mesmo sender. Contador acumulado sozinho da a media desde o inicio da
-  // conexao, que e justamente onde o problema se esconde.
-  function deriveRates(key, sample, now) {
-    const prev = statsPrev.get(key);
-    statsPrev.set(key, {
-      bytesSent: sample.bytesSent,
-      totalEncodeTime: sample.totalEncodeTime,
-      framesEncoded: sample.framesEncoded,
-      at: now,
-    });
-    if (!prev || now <= prev.at) return { mbps: 0, msPerFrame: null };
-
-    const seconds = (now - prev.at) / 1000;
-    const mbps = ((sample.bytesSent - prev.bytesSent) * 8) / seconds / 1_000_000;
-
-    const frames = sample.framesEncoded - prev.framesEncoded;
-    const encodeMs = (sample.totalEncodeTime - prev.totalEncodeTime) * 1000;
-    const msPerFrame = frames > 0 ? encodeMs / frames : null;
-
-    return { mbps: Math.max(mbps, 0), msPerFrame };
-  }
-
   const LIMITATION_LABELS = {
     bandwidth: 'diag.limiteBanda',
     cpu: 'diag.limiteCpu',
@@ -6863,7 +6656,8 @@
     if (!session?.mesh) return;
     const activeMesh = session.mesh;
 
-    const rows = [];
+    let rows = [];
+    const senderObservations = [];
     const now = performance.now();
 
     // Uma linha por sender -- peer x kind. Agregar aqui (como antes) esconde
@@ -6872,16 +6666,17 @@
     for (const [peerId, peer] of activeMesh.peers) {
       for (const kind of ['screen', 'camera']) {
         if (currentSession !== session) return; // sessao encerrou enquanto aguardavamos as stats
+        const pc = peer.outConns?.[kind];
+        if (!pc) continue;
         const report = await activeMesh.statsFor(peerId, kind);
-        if (!report) continue;
-        const sample = readSenderReport(report);
-        logRouteChange('out', peerId, kind, conndiag.readSelectedPair(report));
-        // `??`, nao `||`: um RTT de 0 ms e uma medida valida (loopback /
-        // mesma maquina) e nao pode ser confundido com "sem amostra".
-        (peer.rtt ||= {})[kind] = sample.rtt ?? peer.rtt?.[kind] ?? null;
+        if (currentSession !== session) return;
+        if (activeMesh.peers.get(peerId) !== peer || peer.outConns?.[kind] !== pc || !report) continue;
+        const sample = txstats.readSenderReport(report);
+        senderObservations.push({ peerId, kind, pc, peerRef: peer, sample,
+          pair: conndiag.readSelectedPair(report) });
+        const rates = statsPrev.rates(`${peerId}:${kind}`, pc, sample, performance.now());
         if (!sample.framesEncoded && !sample.bytesSent) continue;
-        const rates = deriveRates(`${peerId}:${kind}`, sample, now);
-        rows.push({ peerId, kind, name: peer.name || `#${peerId}`, ...sample, ...rates });
+        rows.push({ peerId, kind, pc, peerRef: peer, name: peer.name || `#${peerId}`, ...sample, ...rates });
       }
     }
 
@@ -6896,16 +6691,79 @@
         const childKind = relayKindFor(kind, sourceId);
         for (const childId of state.filhosIds) {
           if (currentSession !== session) return;
+          const child = activeMesh.peers.get(childId);
+          const pc = child?.outConns?.[childKind];
+          if (!pc) continue;
           const report = await activeMesh.statsFor(childId, childKind);
-          if (!report) continue;
-          const sample = readSenderReport(report);
-          logRouteChange('out', childId, childKind, conndiag.readSelectedPair(report));
+          if (currentSession !== session) return;
+          if (activeMesh.peers.get(childId) !== child || child.outConns?.[childKind] !== pc || !report) continue;
+          const sample = txstats.readSenderReport(report);
+          senderObservations.push({ peerId: childId, kind: childKind, pc, peerRef: child, sample,
+            pair: conndiag.readSelectedPair(report) });
+          const rates = statsPrev.rates(`${childId}:${childKind}`, pc, sample, performance.now());
           if (!sample.framesEncoded && !sample.bytesSent) continue;
-          const rates = deriveRates(`${childId}:${childKind}`, sample, now);
           const childName = activeMesh.peers.get(childId)?.name || `#${childId}`;
-          rows.push({ peerId: childId, kind: childKind, name: childName, ...sample, ...rates });
+          rows.push({ peerId: childId, kind: childKind, pc, peerRef: child, name: childName, ...sample, ...rates });
         }
       }
+    }
+
+    // Do outro lado do fio: o que estamos RECEBENDO. receivingFrom ja
+    // enumera os pares (peerId, kind) das conexoes de entrada.
+    let rxRows = [];
+    for (const { peerId, kind } of activeMesh.receivingFrom()) {
+      if (currentSession !== session) return;
+      const rxKey = `${peerId}:${kind}`;
+      const peer = activeMesh.peers.get(peerId);
+      const pc = peer?.inConns?.[kind];
+      // A entrada so sai nos caminhos de falha: apagada antes do await, um
+      // view-state disparado durante o getStats anunciaria null para uma PC
+      // saudavel. Troca de PC no meio ja e barrada por receiveHealthForInput.
+      if (!pc) { rxHealthByPeer.delete(rxKey); continue; }
+      const report = await activeMesh.inStatsFor(peerId, kind);
+      if (currentSession !== session) return;
+      if (activeMesh.peers.get(peerId) !== peer || peer.inConns?.[kind] !== pc || !report) {
+        rxHealthByPeer.delete(rxKey);
+        continue;
+      }
+      const sample = rxstats.readReceiverReport(report);
+      const { health, bufferMs } = rxPrevSample.measure(rxKey, pc, sample, performance.now());
+      // Sem medida nesta janela (framesDelta <= 0: o stream congelou de vez)
+      // o valor VELHO tem de sair. Guardado, broadcastViewState o reenviaria
+      // a cada tick com carimbo novo -- e o freshReceiveHealth do outro lado,
+      // que so expira quando o view-state PARA de chegar, nunca veria nada
+      // vencer: a origem "recuperaria" um peer travado achando que ele vai
+      // bem. Ausencia e a informacao correta aqui.
+      if (health) rxHealthByPeer.set(rxKey, { health, pc, peerRef: peer });
+      else rxHealthByPeer.delete(rxKey);
+      rxRows.push({
+        peerId,
+        kind,
+        pc,
+        peerRef: peer,
+        name: activeMesh.peers.get(peerId)?.name || `#${peerId}`,
+        ...sample,
+        loss: rxstats.lossPercent(sample),
+        bufferMs,
+      });
+    }
+
+    if (currentSession !== session) return;
+    // Outra PC pode trocar enquanto aguardamos o restante do lote. Validar
+    // todas as identidades antes de resumo, politica, diagnostico ou UI.
+    const currentOut = (row) => activeMesh.peers.get(row.peerId) === row.peerRef
+      && row.peerRef.outConns?.[row.kind] === row.pc;
+    rows = rows.filter(currentOut);
+    rxRows = rxRows.filter((row) => activeMesh.peers.get(row.peerId) === row.peerRef
+      && row.peerRef.inConns?.[row.kind] === row.pc);
+    for (const key of rxHealthByPeer.keys()) {
+      const [peerId, kind] = key.split(':');
+      receiveHealthForInput(activeMesh, peerId, kind);
+    }
+    for (const observation of senderObservations.filter(currentOut)) {
+      const { peerId, kind, peerRef, sample, pair } = observation;
+      logRouteChange('out', peerId, kind, pair);
+      if (kind === 'screen' || kind === 'camera') (peerRef.rtt ||= {})[kind] = sample.rtt;
     }
 
     if (currentSession !== session) return; // sessao caiu enquanto aguardavamos as stats
@@ -6913,6 +6771,11 @@
     // H2: guarda o resumo pra proxima subida de 'view-state'. Fora do laco
     // acima porque some todos os senders num numero so.
     myEncodeHealth = summarizeScreenEncodeHealth(rows, (r) => qualityForPeer(r.peerId, r.kind).fps);
+    myEncodeHealthByKind.clear();
+    for (const kind of new Set(rows.map((r) => r.kind))) {
+      myEncodeHealthByKind.set(kind, summarizeScreenEncodeHealth(rows.filter((r) => r.kind === kind),
+        (r) => qualityForPeer(r.peerId, r.kind).fps));
+    }
 
     // P4: reanuncia o 'broadcast-state' SO quando o `limit` de fato mudou --
     // ele so viaja nas transicoes normais (startShare, peer entrando etc);
@@ -6921,7 +6784,7 @@
     // mudanca (nao um timer) pelo mesmo motivo de updateEncoderWarning
     // logo abaixo: comparar e mais barato que reenviar toda hora.
     if (localStream && session.sig.isOpen()) {
-      const nextLimit = myEncodeHealth?.limit ?? null;
+      const nextLimit = myEncodeHealthByKind.get('screen')?.limit ?? null;
       if (nextLimit !== lastAnnouncedLimit) {
         lastAnnouncedLimit = nextLimit;
         session.sig.send({ type: 'broadcast-state', live: true, paused: sharePaused, annotate: shareAnnotations,
@@ -6929,20 +6792,8 @@
       }
     }
 
-    // Menor availableBps entre os senders: todos dividem o mesmo uplink,
-    // entao a estimativa mais apertada e a que descreve o que sobra.
-    //
-    // Este caminho e OPORTUNISTA de proposito: ninguem chama
-    // reapplyAudienceQuality quando este numero muda, entao a metade "banda
-    // medida" do config.qualityForRelay so entra em vigor no proximo evento
-    // que ja provoca um reapply (escada mexeu, arvore mudou, novo filho).
-    // Quem de fato garante o orcamento e a regra DETERMINISTICA do
-    // qualityForRelay (bitrate do preset / nº de filhos), que nao depende de
-    // medida nenhuma; myAvailableBps so aperta mais o teto quando ha reapply.
-    // Reagir a cada variacao exigiria histerese propria (senao vira troca de
-    // preset a cada segundo) -- decisao de design, fora deste conserto.
-    const bws = rows.filter((r) => r.availableBps != null).map((r) => r.availableBps);
-    myAvailableBps = bws.length ? Math.min(...bws) : null;
+    // BWE pertence ao transporte da linha. Nunca inferimos upload global
+    // pelo minimo de estimativas de PeerConnections independentes.
     let needsQualityReapply = updateScreenResolution(rows, now);
 
     if (localStream && !sharePaused) {
@@ -6961,7 +6812,7 @@
       const before = autoQuality.steps;
       autoQuality = autoquality.next(autoQuality, {
         atMs: now,
-        health: autoquality.worstHealth([myEncodeHealth]),
+        health: autoquality.worstHealth([myEncodeHealthByKind.get('screen')]),
       }, {
         // Orcamento por quadro do ALVO que esta valendo agora, nao um 16,6
         // fixo: a 30fps ha 33,3ms entre quadros. Ver autoquality.budgetMsFor
@@ -7002,22 +6853,18 @@
       if (localStream) for (const [peerId, peer] of activeMesh.peers) {
         if (peer.outConns?.screen) targets.add(`${peerId}:screen`);
       }
-      // Filhos que servimos como RELAY. A chave do alvo e igual a do direto
-      // ('peerId:screen'), entao guardamos o conjunto pra distinguir os dois
-      // adiante -- pausar a NOSSA tela nao para o repasse.
-      const relayChildIds = new Set();
-      for (const [, state] of myRole.screen) {
+      // Cada origem tem a propria escada, mesmo quando o filho e o mesmo.
+      for (const [sourceId, state] of myRole.screen) {
         if (state.role !== 'relay') continue;
         for (const childId of state.filhosIds) {
-          targets.add(`${childId}:screen`);
-          relayChildIds.add(String(childId));
+          targets.add(`${childId}:${relayKindFor('screen', sourceId)}`);
         }
       }
 
       for (const key of targets) {
-        const [peerId] = key.split(':');
+        const [peerId, kind] = key.split(':');
         const peer = activeMesh.peers.get(peerId);
-        const isRelayChild = relayChildIds.has(peerId);
+        const isRelayChild = Boolean(parseKind(kind).sourceId);
         // Sem nenhuma linha de sender de TELA pra este peer nao ha encode
         // acontecendo, entao nao ha "folga observada" -- pular o tick
         // preserva o estado (nem sobe nem desce). So linhas de baseKind
@@ -7028,62 +6875,50 @@
         // interrompe o repasse (ver a carve-out no 'view-state'), entao o
         // filho de relay segue recebendo encode nosso e tem de continuar
         // adaptando.
-        const hasSenderRow = rows.some((r) => r.peerId === peerId && parseKind(r.kind).baseKind === 'screen');
+        const hasSenderRow = rows.some((r) => r.peerId === peerId && r.kind === kind);
         if ((sharePaused && !isRelayChild) || !hasSenderRow) continue;
-        const st = peerQuality.get(key) || peerquality.initialState();
+        const pc = peer?.outConns?.[kind];
+        const previous = peerQuality.get(key);
+        const samePc = previous?.pc === pc;
+        const st = samePc ? previous : peerquality.initialState();
         // Mesma amostra alimenta a escada por-peer (abaixo) e o chip de
         // saude do lado de quem transmite (P4, depois do peerQuality.set).
-        const rh = freshReceiveHealth(peer, 'screen');
+        const rh = freshReceiveHealth(peer, kind);
         const nextSt = peerquality.next(st, {
           atMs: now,
-          // O laco de repasses acima ja empurra linhas com kind composto
-          // ('screen@<origem>') pro `rows`, entao `limByPeer` tem tanto
-          // 'peerId:screen' (envio direto) quanto 'peerId:screen@x' (filho
-          // de relay). Olhamos os dois pra que o filho de relay tambem
-          // receba o sinal de banda, nao so a receiveHealth.
-          senderBandwidthLimited: limByPeer.get(`${peerId}:screen`) === 'bandwidth'
-            || [...limByPeer].some(([k, v]) => k.startsWith(`${peerId}:screen@`) && v === 'bandwidth'),
-          // receiveHealth agora e por baseKind; a chave do tick e sempre
-          // 'peerId:screen' (o composto 'screen@x' de filho de relay tambem
-          // tem baseKind 'screen'), entao le o sub-slot 'screen'.
+          // Banda so da linha desta origem, sem contaminar outro sender.
+          senderBandwidthLimited: limByPeer.get(key) === 'bandwidth',
           receiveHealth: rh,
           // Encoder do relay afogado: a saude de encode que ELE reportou no
           // 'view-state', na mesma escala do autoquality. null (nao
           // reportou) nao e ruim.
           //
-          // Vale SO pra quem e relay na NOSSA arvore. peer.encodeHealth e
-          // por-MAQUINA, nao por-conexao: um espectador comum com a webcam
-          // ligada ja reporta softwareEncoder (camera VP8 -> libvpx, que o
-          // resumo classifica como software), entao autoquality.isBad daria
-          // true pra sempre e a escada de tela dele desceria ate o piso sem
-          // nunca voltar. Encode saturado so e problema NOSSO quando aquele
-          // peer re-codifica o que mandamos pra ele.
-          // Mesmo orcamento por-fps do ramo global acima: o relay codifica a
-          // tela DESTA sala, entao o alvo de fps dele e o mesmo nosso.
-          // Cobrar 16,6ms de um alvo de 30fps marcava como "afogado" um
-          // relay que estava dando conta.
-          peerEncodeSaturated: originTree.screen.assignments.get(peerId)?.role === 'relay'
-            && autoquality.isBad(peer?.encodeHealth, autoquality.budgetMsFor(qualityFor('screen').fps)),
+          // So o relay da nossa arvore usa pressao de encode, e o slot
+          // recebido corresponde aos filhos desta origem, sem outras telas.
+          // O orcamento segue o FPS alvo desta conexao.
+          peerEncodeSaturated: kind === 'screen' && originTree.screen.assignments.get(peerId)?.role === 'relay'
+            && autoquality.isBad(peer?.encodeHealthByKind?.[kind],
+              autoquality.budgetMsFor(qualityFor(kind).fps)),
         });
         if (nextSt.steps !== st.steps) {
           anyPeerChanged = true;
           console.log(`[qualidade] escada de ${peer?.name || peerId}: ${st.steps} -> ${nextSt.steps} degraus`);
         }
-        peerQuality.set(key, nextSt);
+        peerQuality.set(key, { ...nextSt, pc });
         // P4: SEM culpado aqui de proposito -- `blame` so importa do lado
         // de quem assiste (updateViewerHealth abaixo); a lista de pessoas
         // so precisa saber QUEM esta recebendo mal, ver buildMemberRow.
-        const healthPrev = senderHealth.get(peerId) || health.initialState();
+        const healthPrev = samePc ? senderHealth.get(key) || health.initialState() : health.initialState();
         const healthNext = health.next(healthPrev, rh, null, now);
-        senderHealth.set(peerId, healthNext);
+        senderHealth.set(key, healthNext);
         if (healthNext.level !== healthPrev.level) anyHealthChanged = true;
       }
       // Quem saiu dos alvos (parou de assistir, deixamos de servir) nao
       // pode segurar um chip "travando" congelado pra sempre.
-      const targetPeerIds = new Set([...targets].map((t) => t.split(':')[0]));
-      for (const peerId of [...senderHealth.keys()]) {
-        if (!targetPeerIds.has(peerId)) { senderHealth.delete(peerId); anyHealthChanged = true; }
+      for (const key of [...senderHealth.keys()]) {
+        if (!targets.has(key)) { senderHealth.delete(key); anyHealthChanged = true; }
       }
+      for (const key of [...peerQuality.keys()]) if (!targets.has(key)) peerQuality.delete(key);
       if (anyPeerChanged) needsQualityReapply = true;
     } else if (senderHealth.size) {
       senderHealth.clear();
@@ -7093,38 +6928,6 @@
 
     if (needsQualityReapply) reapplyAudienceQuality();
 
-    // Do outro lado do fio: o que estamos RECEBENDO. receivingFrom ja
-    // enumera os pares (peerId, kind) das conexoes de entrada.
-    const rxRows = [];
-    for (const { peerId, kind } of activeMesh.receivingFrom()) {
-      if (currentSession !== session) return;
-      const report = await activeMesh.inStatsFor(peerId, kind);
-      if (!report) continue;
-      const sample = rxstats.readReceiverReport(report);
-      if (!sample.framesDecoded) continue;
-      const rxKey = `${peerId}:${kind}`;
-      const dt = rxPrevAtMs ? now - rxPrevAtMs : 0;
-      const health = rxstats.receiveHealth(sample, rxPrevSample.get(rxKey), dt);
-      rxPrevSample.set(rxKey, sample);
-      // Sem medida nesta janela (framesDelta <= 0: o stream congelou de vez)
-      // o valor VELHO tem de sair. Guardado, broadcastViewState o reenviaria
-      // a cada tick com carimbo novo -- e o freshReceiveHealth do outro lado,
-      // que so expira quando o view-state PARA de chegar, nunca veria nada
-      // vencer: a origem "recuperaria" um peer travado achando que ele vai
-      // bem. Ausencia e a informacao correta aqui.
-      if (health) rxHealthByPeer.set(rxKey, health);
-      else rxHealthByPeer.delete(rxKey);
-      rxRows.push({
-        peerId,
-        kind,
-        name: activeMesh.peers.get(peerId)?.name || `#${peerId}`,
-        ...sample,
-        loss: rxstats.lossPercent(sample),
-        bufferMs: rxstats.jitterBufferMs(sample),
-      });
-    }
-
-    rxPrevAtMs = now;
     updateViewerHealth(activeMesh, now);
     logEncodeDiag(rows, now);
     renderStats(rows, rxRows);
@@ -7155,10 +6958,10 @@
         ${rxRows.map((r) => `
           <tr>
             <td>${esc(r.name)}</td>
-            <td>${r.fps}</td>
-            <td>${r.width}x${r.height}</td>
+            <td>${r.fps ?? '-'}</td>
+            <td>${r.width != null && r.height != null ? `${r.width}x${r.height}` : '-'}</td>
             <td class="${r.loss != null && r.loss > 1 ? 'warn-text' : ''}">${r.loss != null ? `${r.loss.toFixed(2)}%` : '-'}</td>
-            <td class="${r.freezeCount > 0 ? 'warn-text' : ''}">${r.freezeCount}</td>
+            <td class="${r.freezeCount > 0 ? 'warn-text' : ''}">${r.freezeCount ?? '-'}</td>
             <td>${r.bufferMs != null ? `${r.bufferMs.toFixed(0)} ms` : '-'}</td>
           </tr>`).join('')}
       </table>`;
@@ -7170,11 +6973,12 @@
       return;
     }
 
-    const totalMbps = rows.reduce((sum, r) => sum + r.mbps, 0);
+    const totalMbps = rows.every((r) => r.mbps != null) ? rows.reduce((sum, r) => sum + r.mbps, 0) : null;
     const encodeMsRows = rows.filter((r) => r.msPerFrame != null);
     const totalEncodeMs = encodeMsRows.reduce((sum, r) => sum + r.msPerFrame, 0);
     const anySoftware = rows.some((r) => isSoftwareEncoder(r.encoder));
-    const budget = rows[0].fps >= 50 ? 16.6 : 33.3;
+    const allHardware = rows.every((r) => encodehealth.encoderType(r.encoder) === 'hardware');
+    const budget = autoquality.budgetMsFor(qualityFor(rows[0].kind).fps);
     const first = rows[0];
 
     const bwRows = rows.filter((r) => r.availableBps != null);
@@ -7183,26 +6987,33 @@
 
     const summary = `
       <div class="stat"><span>${t('diag.enviandoPra')}</span><b>${t('diag.senders', { n: rows.length })}</b></div>
-      <div class="stat"><span>${t('diag.resolucao')}</span><b>${first.width}x${first.height}</b></div>
-      <div class="stat"><span>${t('diag.saidaTotal')}</span><b>${totalMbps.toFixed(1)} Mbps</b></div>
+      <div class="stat"><span>${t('diag.resolucao')}</span><b>${
+        first.width != null && first.height != null ? `${first.width}x${first.height}` : '-'
+      }</b></div>
+      <div class="stat"><span>${t('diag.saidaTotal')}</span><b>${
+        totalMbps != null ? `${totalMbps.toFixed(1)} Mbps` : '-'
+      }</b></div>
       <div class="stat"><span>codec</span><b>${esc(first.codec || '-')}</b></div>
-      <div class="stat"><span>encoder</span><b class="${anySoftware ? 'warn-text' : 'good'}">${
-        t(anySoftware ? 'diag.encoderSoftwareCpu' : 'diag.encoderHardware')
+      <div class="stat"><span>encoder</span><b class="${anySoftware ? 'warn-text' : allHardware ? 'good' : ''}">${
+        t(anySoftware ? 'diag.encoderSoftwareCpu' : allHardware ? 'diag.encoderHardware' : 'diag.encoderDesconhecido')
       }</b></div>
       <div class="stat"><span>${t('diag.encodeSomado')}</span><b class="${
         encodeMsRows.length && totalEncodeMs > budget ? 'warn-text' : 'good'
-      }">${encodeMsRows.length ? `${totalEncodeMs.toFixed(1)} / ${budget} ms` : '-'}</b></div>
-      <div class="stat"><span>${t('diag.bandaDisponivel')}</span><b class="${
+      }">${encodeMsRows.length === rows.length ? `${totalEncodeMs.toFixed(1)} / ${budget.toFixed(1)} ms` : '-'}</b></div>
+      <div class="stat"><span>${t('diag.bandaMinimaConexao')}</span><b class="${
         minAvailableBps != null && minAvailableBps < targetBitrate ? 'warn-text' : ''
       }">${minAvailableBps != null ? `${(minAvailableBps / 1_000_000).toFixed(1)} Mbps` : '-'}</b></div>`;
 
     const body = rows
       .map((r) => {
         const software = isSoftwareEncoder(r.encoder);
-        const dropped = Math.max(r.framesEncoded - r.framesSent, 0);
+        const dropped = r.framesEncoded != null && r.framesSent != null
+          ? Math.max(r.framesEncoded - r.framesSent, 0) : null;
         return `<tr>
           <td>${esc(r.name)}<span class="stats-kind">${t(r.kind === 'camera' ? 'diag.kindCamera' : 'diag.kindTela')}</span></td>
-          <td class="${r.fps >= 50 ? 'good' : 'warn-text'}">${Math.round(r.fps)}${
+          <td class="${r.fps == null ? '' : r.fps >= 50 ? 'good' : 'warn-text'}">${
+            r.fps != null ? Math.round(r.fps) : '-'
+          }${
             r.captureFps != null ? `<span class="stats-kind">cap ${Math.round(r.captureFps)}</span>` : ''
           }</td>
           <td class="${r.msPerFrame != null && r.msPerFrame > budget ? 'warn-text' : ''}">${
@@ -7211,12 +7022,12 @@
           <td class="${software ? 'warn-text' : ''}">${esc(r.encoder || '-')}${
             r.powerEfficient === false ? `<span class="stats-kind">${t('diag.naoEficiente')}</span>` : ''
           }</td>
-          <td>${r.mbps.toFixed(1)}</td>
+          <td>${r.mbps != null ? r.mbps.toFixed(1) : '-'}</td>
           <td>${r.rtt != null ? `${Math.round(r.rtt)} ms` : '-'}</td>
           <td class="${r.fractionLost != null && r.fractionLost > 0.01 ? 'warn-text' : ''}">${
             r.fractionLost != null ? `${(r.fractionLost * 100).toFixed(2)}%` : '-'
           }</td>
-          <td class="${dropped ? 'warn-text' : ''}">${dropped || '-'}</td>
+          <td class="${dropped ? 'warn-text' : ''}">${dropped ?? '-'}</td>
         </tr>`;
       })
       .join('');
@@ -7254,4 +7065,10 @@
     encoderWarning = next;
     renderHostWarning();
   }
+
+  // Fim do boot do renderer: so chega aqui se todo o corpo acima executou sem
+  // lancar, a versao do app respondeu pelo IPC e a primeira consulta de rede
+  // terminou (a continuacao dela tambem e boot). O smoke de abertura
+  // (src/main/smoke.js) espera este marcador; nada no app le o atributo.
+  void Promise.all([appVersionReady, primeiraRede]).then(() => { document.documentElement.dataset.golivePronto = '1'; });
 })();
