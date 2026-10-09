@@ -576,7 +576,7 @@ lenta não derruba as outras. Captura de som que falha agora **avisa** em vez de
 do `app.js` (`txstats.js`/`rxstats.js`) e a sucessão de líder virou código compartilhado (`src/shared/`). Para quem
 desenvolve: `npm run env:check`, `npm run smoke:app` (boot real do app, também no CI), a bancada `tools/media-bench`
 e o experimento `tools/sfu-spike` (mediasoup, fora do instalador). O transporte e o protocolo não mudaram. Falta o
-teste em PCs reais com sala mista 0.25.0 + 0.26.0 e câmera ligada.
+teste em 2+ PCs reais com árvore de retransmissão ativa e câmera ligada junto da tela.
 
 ## Lançado na 0.25.0 (2026-10-04)
 
