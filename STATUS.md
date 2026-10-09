@@ -121,9 +121,9 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.25.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **2129 testes, 2129 passando, 0 falhando**. `npm run lint` → 0
-erros, 9 avisos
+`0.26.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **2411 testes, 2411 passando, 0 falhando**. `npm run lint` → 0
+erros, 8 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
 `npm audit --omit=dev` → **0**. `npm audit` completo → **0**. Branches
@@ -567,6 +567,16 @@ Pendências:
 - **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
   anterior a estas fases, contra a regra de não usar `filter`.
 - **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
+## Lançado na 0.26.0 (2026-10-09)
+
+Transmissão e arquitetura (PR #94, plano `docs/superpowers/plans/2026-10-05-transmissao-e-arquitetura.md`). A
+qualidade passa a cair pela **carga real de envios**, não pelo número de pessoas na sala, e a banda de uma conexão
+lenta não derruba as outras. Captura de som que falha agora **avisa** em vez de fingir que há áudio. A telemetria saiu
+do `app.js` (`txstats.js`/`rxstats.js`) e a sucessão de líder virou código compartilhado (`src/shared/`). Para quem
+desenvolve: `npm run env:check`, `npm run smoke:app` (boot real do app, também no CI), a bancada `tools/media-bench`
+e o experimento `tools/sfu-spike` (mediasoup, fora do instalador). O transporte e o protocolo não mudaram. Falta o
+teste em PCs reais com sala mista 0.25.0 + 0.26.0 e câmera ligada.
 
 ## Lançado na 0.25.0 (2026-10-04)
 
