@@ -13,11 +13,12 @@ Feito porque o Go Live do Discord foi suspenso no Brasil em agosto de 2026.
 Esta é a parte que decide se o projeto vai funcionar, e vem antes de instalar
 qualquer coisa.
 
-O app não tem servidor de mídia. Quem transmite manda uma cópia do vídeo pra
-cada espectador. Isso significa que o **upload de quem transmite** é o teto de
-tudo:
+O app não tem servidor de mídia. Cada conexão de envio ativa codifica e manda
+uma cópia do vídeo. Na árvore de retransmissão, a origem envia para relays ou
+espectadores diretos, e cada relay envia para seus filhos. O custo de upload e
+encode pertence a quem faz cada envio. Em malha direta, a conta da origem é:
 
-| Espectadores | Upload necessário (1080p60 a 12 Mbps) |
+| Envios ativos na origem | Upload necessário (1080p60 a 12 Mbps) |
 |---|---|
 | 1 | ~12 Mbps |
 | 2 | ~24 Mbps |
@@ -65,11 +66,39 @@ sala.
 
 **Usuários finais:** já está pronto na aba "Gerar o instalador pros amigos". Se você baixou o arquivo `.exe`, é só clicar para instalar — sem terminal, sem Node.
 
-**Desenvolvedores / CLI de sinalização:** para buildar do código ou rodar o servidor de sinalização em standalone (em `server/signaling.js`), precisa do [Node.js 18+](https://nodejs.org):
+**Desenvolvedores / CLI de sinalização:** para buildar do código ou rodar o servidor de sinalização em standalone (em `server/signaling.js`), precisa do [Node.js](https://nodejs.org) 22.13+ na linha 22, ou 24+. O CI testa as linhas 22 e 24; as dependências de desenvolvimento atuais exigem essas versões:
 
 ```bash
-npm install
+npm ci --ignore-scripts
+npm run env:check
 ```
+
+O lock fixa o Electron em 44.4.3. `env:check` compara o manifesto, o lock e os
+pacotes em `node_modules` desta pasta; dependências encontradas em uma pasta
+pai não contam como instalação local. O comando retorna erro se houver
+divergência, sem depender de bibliotecas transitivas para fazer a verificação.
+
+Para abrir o app em desenvolvimento ou executar o laboratório, instale o
+binário do Electron explicitamente e confira sua versão:
+
+```bash
+node node_modules/electron/install.js
+npm run env:check -- --binary
+```
+
+`--ignore-scripts` também evita o build implícito do addon de áudio. No Windows,
+com o toolchain MSVC e os demais requisitos do node-gyp disponíveis, compile
+explicitamente antes de testar o áudio nativo ou empacotar:
+
+```bash
+npm run build:native
+npm start
+```
+
+Os testes JS e o lint podem rodar após `npm ci --ignore-scripts`, sem baixar o
+binário do Electron nem compilar o addon. O log de inicialização registra as
+versões do app, Electron, Node e Chromium, a plataforma, arquitetura e se o
+app está empacotado, para ajudar a comparar ambientes.
 
 ## Idiomas
 
@@ -229,12 +258,17 @@ por espectador.
   de hardware da GPU (NVENC/AMF/QuickSync — a escolha final é do
   Chromium/Windows). Não há opção de VP9 nem AV1. A câmera usa VP8.
 - **Áudio** — no mesmo diálogo, a caixa "Compartilhar som" captura o som que
-  sai da placa (loopback do Windows, não o microfone). Quando o componente
-  nativo de áudio está presente, aparece também "Incluir o som do Discord
-  também". O Windows não oferece captura de áudio por aplicativo isolado, então
-  o loopback de sistema pega tudo que sai do dispositivo de saída padrão — o
-  Discord, o navegador, tudo. Pra isolar só o jogo, mande o Discord pra outra
-  saída pelo mixer de volume do Windows (ou um cabo de áudio virtual). O áudio
+  sai da placa, sem microfone. Com o componente nativo, uma janela captura o
+  áudio de seu processo e filhos pela API de captura por processo do Windows
+  (a Microsoft a documenta a partir do build 20348; o app não bloqueia por
+  build: tenta ativar e avisa se o Windows recusar). O monitor captura o
+  sistema excluindo o próprio GoLive quando "Incluir o som do Discord também"
+  está marcada; desmarcada, captura uma lista de inclusão sem GoLive nem
+  Discord. Essa opção também acrescenta o Discord à seleção da janela. Sem o
+  componente nativo, o monitor usa o loopback do Chromium (sistema inteiro) e
+  a caixa do Discord fica desabilitada; a seleção de áudio da janela não é
+  ampliada automaticamente para todo o sistema quando a captura nativa falha.
+  O app avisa e pode seguir com vídeo sem som. O áudio
   vai **em estéreo**: o SDP é reescrito nos dois lados pra declarar
   `stereo=1` e um bitrate Opus explícito, senão o WebRTC entrega mono por
   padrão.
@@ -244,10 +278,11 @@ projeto mostrou 4 espectadores a 1080p60 quebrando o NVENC sem jogo nenhum
 aberto. Por isso o app desce sozinho quando a sala ou a máquina não aguentam,
 e volta a subir quando sobra folga — um degrau de cada vez. Dois gatilhos:
 
-- **tamanho da sala** — o encode desce um degrau (1080p60 → 1080p30) assim que
-  a sala chega a **3 pessoas** e volta ao preset quando ela encolhe;
-- **telemetria de encode** — o laço fechado olha o tempo por quadro e se o
-  encoder caiu pra software; quando aperta, desce mais um degrau, baixando
+- **envios locais** — três envios de tela ativos ou planejados acionam a
+  proteção inicial (1080p60 → 1080p30). Membros ociosos e envios suspensos
+  não contam; repasses para filhos de relay têm custo real;
+- **telemetria de encode** — o laço fechado olha o tempo por quadro em relação
+  ao FPS alvo e a limitação reportada pelo Chromium; quando aperta, baixa
   também a **captura** (`applyConstraints`), não só o teto do bitrate.
 
 Ninguém escolhe nada e não há botão pra isso.
@@ -261,7 +296,9 @@ mais links e a malha se realimenta. Ao voltar a ter relay, o encode sobe
 sozinho, sem aviso.
 
 O painel de estatísticas (Configurações > **Estatísticas**) mostra fps real,
-resolução, banda e latência a cada segundo. O campo **Limitado por** é o mais
+resolução, banda por conexão e RTT a cada segundo. RTT mede ida e volta da
+rede; o buffer de recepção mede a espera recente entre amostras, e nenhum
+deles mede a latência ponta-a-ponta da imagem. O campo **Limitado por** é o mais
 útil pra diagnóstico: ele diz se quem está te segurando é a rede, a CPU ou o
 encoder. Nessa mesma aba fica o botão **Abrir pasta de logs** — um arquivo por
 sessão (os últimos 8 são mantidos), pra mandar pra quem for investigar um
@@ -328,13 +365,18 @@ que precisa atualizar.
 **Conecta, aparece o peer, mas o vídeo não vem** — é ICE não fechando. O
 Radmin às vezes bloqueia UDP entre peers; teste um `ping 26.x.x.x` primeiro.
 
-**fps travado em 30** — abra as estatísticas e veja o campo "Limitado por". Se
-for `CPU`, troque o codec pra H.264. Se for `banda`, baixe o bitrate ou a
-resolução.
+**fps travado em 30** — abra as estatísticas e veja o campo "Limitado por".
+Se for `CPU`, reduza a fluidez ou resolução no diálogo de compartilhar e
+confira a carga dos envios ativos. Se for `banda`, teste a rede e escolha um
+teto de resolução menor. A tela já usa H.264 e o bitrate acompanha o preset.
 
-**Sem áudio** — o loopback só funciona no Windows, e só captura o áudio da
-máquina inteira. Se você usa saída de áudio exclusiva (modo WASAPI exclusivo
+**Sem áudio** — confira o aviso de captura, o componente nativo e a versão do
+Windows. Janela usa seleção por processo quando suportada; monitor usa o
+sistema. Se você usa saída de áudio exclusiva (modo WASAPI exclusivo
 em alguns players/DACs), o loopback vem mudo.
+
+A arquitetura vigente e os limites da extração gradual estão em
+[docs/arquitetura-atual.md](docs/arquitetura-atual.md).
 
 ---
 

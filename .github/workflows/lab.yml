@@ -29,6 +29,9 @@ jobs:
       - name: binario do Electron
         run: node node_modules/electron/install.js
 
+      - name: ambiente e binario coerentes com o lock
+        run: npm run env:check -- --binary
+
       - name: Xvfb e bibliotecas do Electron
         run: |
           sudo apt-get update

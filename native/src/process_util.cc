@@ -5,11 +5,15 @@
 #include <algorithm>
 #include <cwctype>
 #include <unordered_set>
+#include <stdexcept>
+#include <string>
 
 std::vector<ProcessInfo> ListProcesses() {
   std::vector<ProcessInfo> out;
   HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (snap == INVALID_HANDLE_VALUE) return out;
+  if (snap == INVALID_HANDLE_VALUE) {
+    throw std::runtime_error("Snapshot de processos falhou: " + std::to_string(GetLastError()));
+  }
 
   PROCESSENTRY32W entry;
   entry.dwSize = sizeof(entry);
@@ -22,7 +26,11 @@ std::vector<ProcessInfo> ListProcesses() {
       out.push_back(std::move(info));
     } while (Process32NextW(snap, &entry));
   }
+  DWORD error = GetLastError();
   CloseHandle(snap);
+  if (error != ERROR_NO_MORE_FILES) {
+    throw std::runtime_error("Enumeracao de processos falhou: " + std::to_string(error));
+  }
   return out;
 }
 

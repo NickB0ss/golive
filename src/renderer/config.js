@@ -114,29 +114,29 @@
     return current;
   }
 
-  // Quantos degraus a sala custa. A medicao do proprio projeto (ver
-  // docs/2026-08-27-auditoria-de-fragilidade.md, H4) mostrou 4 espectadores
-  // a 1080p60 quebrando o NVENC SEM jogo aberto -- entao a partir de 3 a
-  // sala ja nao cabe no preset de topo. Um degrau so, de proposito: e o que
-  // a auditoria pede, e cada degrau a mais e uma piora que o usuario ve sem
-  // ter pedido nada.
-  function audienceSteps(viewers) {
-    return Number(viewers) >= 3 ? 1 : 0;
+  // Tres encodes de tela neste dispositivo pedem um degrau preventivo.
+  // Membros da sala e folhas servidas por outros relays nao entram aqui.
+  function senderLoadSteps(senders) {
+    return Number(senders) >= 3 ? 1 : 0;
   }
 
-  // Qualidade efetiva pra uma sala daquele tamanho. Devolve o mesmo formato
+  // Qualidade efetiva para a carga local. Devolve o mesmo formato
   // de qualityFromPreset, com `preset` sendo o preset EFETIVO (o degradado),
   // nao o que o usuario escolheu -- quem le esse campo quer saber o que esta
   // sendo codificado de verdade.
-  function qualityForAudience(preset, viewers) {
+  function qualityForLoad(preset, senders) {
     // Normaliza antes de degradar pra que um preset invalido caia no padrao
     // e degrade a partir DELE, em vez de escapar da degradacao.
     const base = qualityFromPreset(preset).preset;
-    return qualityFromPreset(degradePreset(base, audienceSteps(viewers)));
+    return qualityFromPreset(degradePreset(base, senderLoadSteps(senders)));
   }
 
-  // Folga sobre a banda medida. Mirar 100% do que o congestion control diz
-  // que cabe e pedir pra saturar: sobra zero pro audio, pro RTCP, pro
+  // Aliases de compatibilidade; o chamador deve passar encodes locais.
+  const audienceSteps = senderLoadSteps;
+  const qualityForAudience = qualityForLoad;
+
+  // Folga sobre um orcamento agregado fornecido explicitamente pelo chamador.
+  // Mirar 100% do upload disponivel deixa zero pro audio, pro RTCP, pro
   // trafego do resto da maquina e pra qualquer variacao do link -- e link
   // saturado vira fila, que vira atraso, que faz o proprio GCC desabar.
   const RELAY_BANDWIDTH_HEADROOM = 0.8;
@@ -144,23 +144,24 @@
   /** Qualidade que um RELAY deve usar pra re-codificar pra CADA filho.
    *
    * Duas regras, nesta ordem:
-   *  - com banda medida (availableBps, do availableOutgoingBitrate), o
-   *    orcamento por filho e a banda com folga dividida pelo numero de
-   *    filhos;
+   *  - com orcamento AGREGADO explicito, divide-o com folga pelos filhos.
+   *    BWE de uma PeerConnection independente nao mede upload agregado e
+   *    nunca deve ser usado aqui;
    *  - sem medida (primeiro repasse, antes de existir amostra), o orcamento
-   *    e o bitrate do proprio preset dividido pelos filhos: "ninguem na
-   *    arvore sobe, no total, mais do que a origem sobe".
+   *    e o bitrate do preset dividido pelos filhos. E uma protecao estatica
+   *    inicial, nao uma estimativa do uplink real deste dispositivo.
    *
    * Nunca devolve preset ACIMA do que a origem mandou, e para no piso da
    * cadeia mesmo quando nem o piso cabe (abaixo dele quem trata e o
    * congestion control). */
-  function qualityForRelay(preset, childCount, availableBps) {
+  function qualityForRelay(preset, childCount, aggregateBudgetBps) {
     const base = qualityFromPreset(preset);
     const filhos = Number(childCount) || 0;
     if (filhos <= 0) return base;
 
-    const medida = typeof availableBps === 'number' && Number.isFinite(availableBps) && availableBps > 0
-      ? availableBps * RELAY_BANDWIDTH_HEADROOM
+    const medida = typeof aggregateBudgetBps === 'number'
+      && Number.isFinite(aggregateBudgetBps) && aggregateBudgetBps > 0
+      ? aggregateBudgetBps * RELAY_BANDWIDTH_HEADROOM
       : null;
     const orcamento = (medida ?? base.bitrate) / filhos;
 
@@ -457,6 +458,8 @@
     degradePreset,
     audienceSteps,
     qualityForAudience,
+    senderLoadSteps,
+    qualityForLoad,
     qualityForRelay,
     load,
     serialize,

@@ -27,6 +27,18 @@ const {
 
 const RENDERER = path.join(__dirname, '..', 'renderer');
 
+test('shared serve apenas sucessao canonica e rejeita rotas vizinhas ou codificadas', async () => {
+  const good = await responder({ raiz: RENDERER, metodo: 'GET', url: 'http://localhost/shared/succession.js' });
+  assert.equal(good.status, 200);
+  assert.match(good.corpo.toString(), /function chooseSuccessor/);
+  for (const pathname of ['/shared/outro.js', '/shared/succession.test.js', '/shared%2fsuccession.js',
+    '/shared%5csuccession.js', '/shared/%73uccession.js', '/shared/../main.js', '/shared/../../package.json',
+    '/shared/../shared/succession.js', '/%73hared/succession.js', '/other/../shared/succession.js']) {
+    assert.equal((await responder({ raiz: RENDERER, metodo: 'GET',
+      url: `http://localhost${pathname}` })).status, 404, pathname);
+  }
+});
+
 /** Pasta temporaria com um "renderer" pequeno e, do lado de fora, um segredo. */
 function montarRaiz() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'golive-origem-'));
