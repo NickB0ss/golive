@@ -1,71 +1,47 @@
 'use strict';
 
 (function (root) {
+  const tx = typeof module !== 'undefined' ? module.require('./txstats') : root.GoLive.txstats;
   /** Le um relatorio de getStats de UMA conexao de ENTRADA e devolve os
    * campos que respondem a pergunta do espectador: "esta travando pra mim,
    * e a culpa e de quem?".
    *
-   * Espelha readSenderReport (app.js), do outro lado do fio. Aqui vive num
-   * modulo separado, e nao em app.js, porque app.js nao tem harness de
-   * teste -- ver a restricao 4 do plano. */
+   * Complementa txstats.js do outro lado do fio; ausencia de campo e null. */
   function readReceiverReport(report) {
-    const sample = {
-      fps: 0,
-      width: 0,
-      height: 0,
-      packetsReceived: 0,
-      packetsLost: 0,
-      // Estes acumulados distinguem imagem estatica de conexao morta no
-      // stallwatch: quadro exibido pode nao mudar por varios segundos.
-      bytesReceived: 0,
-      framesReceived: 0,
-      freezeCount: 0,
-      framesDecoded: 0,
-      // Acumulados desde o inicio da conexao: a RAZAO entre os dois e que
-      // tem significado (segundos de buffer por quadro emitido).
-      jitterBufferDelay: 0,
-      jitterBufferEmittedCount: 0,
-      decoder: '',
-      codec: '',
+    const stats = [];
+    report?.forEach((s) => stats.push(s));
+    const rtp = stats.filter((s) => s.type === 'inbound-rtp' && (s.kind || s.mediaType) === 'video');
+    const codec = tx.referenced(stats, rtp, 'codecId', (s) => s.type === 'codec' && tx.primaryCodec(s));
+    const sample = { fps: tx.aggregate(rtp, 'framesPerSecond', 'max'),
+      width: tx.aggregate(rtp, 'frameWidth', 'max'), height: tx.aggregate(rtp, 'frameHeight', 'max'),
+      codec: codec?.mimeType.split('/')[1] || null,
+      decoder: rtp.find((s) => s.decoderImplementation)?.decoderImplementation || null,
+      rtpIds: rtp.map((s) => s.id || s.ssrc || '').sort().join('|'),
     };
-
-    report.forEach((stat) => {
-      if (stat.type === 'inbound-rtp' && stat.kind === 'video') {
-        sample.fps = Math.max(sample.fps, stat.framesPerSecond || 0);
-        sample.width = stat.frameWidth || sample.width;
-        sample.height = stat.frameHeight || sample.height;
-        sample.packetsReceived += stat.packetsReceived || 0;
-        sample.packetsLost += stat.packetsLost || 0;
-        sample.bytesReceived += stat.bytesReceived || 0;
-        sample.framesReceived += stat.framesReceived || 0;
-        sample.freezeCount += stat.freezeCount || 0;
-        sample.framesDecoded += stat.framesDecoded || 0;
-        sample.jitterBufferDelay += stat.jitterBufferDelay || 0;
-        sample.jitterBufferEmittedCount += stat.jitterBufferEmittedCount || 0;
-        if (stat.decoderImplementation) sample.decoder = stat.decoderImplementation;
-      }
-      if (stat.type === 'codec' && stat.mimeType?.startsWith('video/')) {
-        sample.codec = stat.mimeType.split('/')[1];
-      }
-    });
-
+    for (const field of ['packetsReceived', 'packetsLost', 'bytesReceived', 'framesReceived',
+      'freezeCount', 'framesDecoded', 'jitterBufferDelay', 'jitterBufferEmittedCount']) {
+      sample[field] = tx.aggregate(rtp, field);
+    }
     return sample;
   }
 
   /** Perda sobre o total OFERECIDO (recebidos + perdidos). null quando nada
    * chegou: dizer "0% de perda" pra uma conexao muda seria mentira. */
   function lossPercent(sample) {
+    if (tx.numeric(sample?.packetsLost) == null || tx.numeric(sample?.packetsReceived) == null) return null;
     const lost = Math.max(0, sample?.packetsLost || 0);
     const offered = (sample?.packetsReceived || 0) + lost;
     if (!offered) return null;
     return (lost / offered) * 100;
   }
 
-  /** Quanto tempo o quadro medio esperou no buffer, em ms. E a latencia que
-   * o app pode reduzir sozinho -- ver jitterBufferTarget em mesh.js. */
-  function jitterBufferMs(sample) {
-    if (!sample?.jitterBufferEmittedCount) return null;
-    return (sample.jitterBufferDelay / sample.jitterBufferEmittedCount) * 1000;
+  /** Espera recente no buffer, em ms, entre amostras da mesma entrada.
+   * Nao mede latencia ponta-a-ponta e nao usa media desde o inicio. */
+  function jitterBufferMs(sample, prev) {
+    if (!prev || sample?.rtpIds !== prev.rtpIds) return null;
+    const delay = tx.delta(sample, prev, 'jitterBufferDelay');
+    const emitted = tx.delta(sample, prev, 'jitterBufferEmittedCount');
+    return delay != null && emitted > 0 ? delay * 1000 / emitted : null;
   }
 
   // Nomes de decoder de software que o Chromium reporta em
@@ -89,6 +65,11 @@
    * duplicata), entao todo delta e preso em >= 0. */
   function receiveHealth(cur, prev, dtMs) {
     if (!cur || !prev || !(Number(dtMs) > 0)) return null;
+    if (cur.rtpIds !== prev.rtpIds) return null;
+    if (tx.delta(cur, prev, 'framesDecoded') == null
+      || tx.delta(cur, prev, 'packetsReceived') == null
+      || tx.numeric(cur.packetsLost) == null || tx.numeric(prev.packetsLost) == null
+      || tx.numeric(cur.freezeCount) == null || tx.numeric(prev.freezeCount) == null) return null;
     const framesDelta = (cur.framesDecoded || 0) - (prev.framesDecoded || 0);
     if (framesDelta <= 0) return null;
 
@@ -103,7 +84,23 @@
     return { lossPct, freezeRate, softwareDecoder: isSoftwareDecoder(cur.decoder) };
   }
 
-  const api = { readReceiverReport, lossPercent, jitterBufferMs, receiveHealth };
+  function createTracker() {
+    let connections = new WeakMap();
+    return {
+      measure(key, pc, sample, atMs) {
+        if (!pc) return { health: null, bufferMs: null };
+        let kinds = connections.get(pc);
+        if (!kinds) connections.set(pc, kinds = new Map());
+        const prev = kinds.get(key);
+        kinds.set(key, { sample, atMs });
+        const dt = atMs - prev?.atMs;
+        return { health: receiveHealth(sample, prev?.sample, dt),
+          bufferMs: dt > 0 ? jitterBufferMs(sample, prev?.sample) : null };
+      },
+      clear() { connections = new WeakMap(); },
+    };
+  }
+  const api = { readReceiverReport, lossPercent, jitterBufferMs, receiveHealth, createTracker };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.rxstats = api;

@@ -100,8 +100,8 @@ struct AudioDispatchState {
 
 namespace {
 
-// Resultado da tentativa de ativar+iniciar a captura, entregue de volta pra
-// JS uma unica vez (sucesso ou erro) via tsfnReady_.
+// Resultado da ativacao e, depois de sucesso, eventual falha terminal.
+// Silencio e parada deliberada nunca geram falha via tsfnReady_.
 struct ReadyResult {
   bool ok;
   std::string message;
@@ -226,8 +226,10 @@ void LoopbackCapture::CaptureThreadMain() {
   bool comOwned = hrInit == S_OK || hrInit == S_FALSE;
 
   auto reportReady = [this](bool ok, const std::string& message) {
-    tsfnReady_.BlockingCall(new ReadyResult{ok, message}, DeliverReady);
-    tsfnReady_.Release();
+    auto result = new ReadyResult{ok, message};
+    if (tsfnReady_.BlockingCall(result, DeliverReady) != napi_ok) delete result;
+    // Sucesso conserva o canal ate erro terminal ou parada deliberada.
+    if (!ok) tsfnReady_.Release();
   };
 
   // ActivationHandler comeca com refCount_ = 1 -- essa e a referencia que
@@ -323,21 +325,27 @@ void LoopbackCapture::CaptureThreadMain() {
 
   const UINT32 channels = wfx.nChannels;
   const UINT32 sampleRate = wfx.nSamplesPerSec;
+  std::string terminalMessage;
 
   while (running_.load()) {
     UINT32 packetLength = 0;
-    if (FAILED(captureClient->GetNextPacketSize(&packetLength))) break;
+    hr = captureClient->GetNextPacketSize(&packetLength);
+    if (FAILED(hr)) {
+      terminalMessage = "GetNextPacketSize falhou: " + HResultToMessage(hr);
+      break;
+    }
     if (packetLength == 0) {
       Sleep(5);
       continue;
     }
 
-    while (packetLength != 0) {
+    while (packetLength != 0 && running_.load()) {
       BYTE* data = nullptr;
       UINT32 numFrames = 0;
       DWORD flags = 0;
       hr = captureClient->GetBuffer(&data, &numFrames, &flags, nullptr, nullptr);
       if (FAILED(hr)) {
+        terminalMessage = "GetBuffer falhou: " + HResultToMessage(hr);
         running_.store(false);
         break;
       }
@@ -352,7 +360,12 @@ void LoopbackCapture::CaptureThreadMain() {
       } else if (sampleCount > 0) {
         memcpy(chunk->samples.data(), data, sampleCount * sizeof(float));
       }
-      captureClient->ReleaseBuffer(numFrames);
+      hr = captureClient->ReleaseBuffer(numFrames);
+      if (FAILED(hr)) {
+        terminalMessage = "ReleaseBuffer falhou: " + HResultToMessage(hr);
+        running_.store(false);
+        break;
+      }
 
       if (audioDispatch_->Push(std::move(chunk))) {
         const auto dispatch = audioDispatch_;
@@ -364,7 +377,9 @@ void LoopbackCapture::CaptureThreadMain() {
         if (status != napi_ok) dispatch->CancelDelivery();
       }
 
-      if (FAILED(captureClient->GetNextPacketSize(&packetLength))) {
+      hr = captureClient->GetNextPacketSize(&packetLength);
+      if (FAILED(hr)) {
+        terminalMessage = "GetNextPacketSize falhou: " + HResultToMessage(hr);
         packetLength = 0;
         running_.store(false);
       }
@@ -372,6 +387,9 @@ void LoopbackCapture::CaptureThreadMain() {
   }
 
   client->Stop();
+  running_.store(false);
   tsfnData_.Release();
   if (comOwned) CoUninitialize();
+  if (!terminalMessage.empty()) reportReady(false, terminalMessage);
+  else tsfnReady_.Release();
 }

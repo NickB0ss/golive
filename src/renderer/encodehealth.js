@@ -1,9 +1,8 @@
 'use strict';
 
 (function (root) {
-  // Nomes que o Chromium usa quando quem codifica e a CPU. Qualquer outro
-  // valor ('ExternalEncoder', 'NvCodec...', 'MediaFoundationVideo...') e
-  // hardware. A comparacao e por substring porque com simulcast o nome vem
+  // Nomes que o Chromium usa quando quem codifica e a CPU.
+  // A comparacao e por substring porque com simulcast o nome vem
   // embrulhado: 'SimulcastEncoderAdapter (libvpx, libvpx)'.
   const SOFTWARE_ENCODERS = ['openh264', 'libvpx', 'libaom', 'ffmpeg', 'x264'];
 
@@ -11,6 +10,14 @@
     if (!impl) return false;
     const name = String(impl).toLowerCase();
     return SOFTWARE_ENCODERS.some((needle) => name.includes(needle));
+  }
+
+  // ExternalEncoder e nomes desconhecidos nao provam aceleracao. Somente
+  // identificacoes explicitas de implementacao de hardware entram aqui.
+  function encoderType(impl) {
+    if (isSoftwareEncoder(impl)) return 'software';
+    return /nvcodec|nvenc|qsv|vaapi|videotoolbox|mediacodec|d3d11|dxva|amf/i.test(String(impl || ''))
+      ? 'hardware' : 'unknown';
   }
 
   // baseKind de uma chave de sender ('screen', 'camera', ou o composto de
@@ -74,7 +81,7 @@
     };
   }
 
-  const api = { SOFTWARE_ENCODERS, isSoftwareEncoder, baseKindOf, summarizeScreenEncodeHealth };
+  const api = { SOFTWARE_ENCODERS, isSoftwareEncoder, encoderType, baseKindOf, summarizeScreenEncodeHealth };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.encodehealth = api;

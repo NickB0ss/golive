@@ -6,6 +6,7 @@
 // com o problema, entao o formato dela e testado e nao pode mudar por
 // acidente num refactor.
 (function (root) {
+  const encodehealth = typeof module !== 'undefined' ? module.require('./encodehealth') : root.GoLive.encodehealth;
   // Heartbeat: mesmo sem nada mudar, uma linha a cada 15s serve de "ainda
   // vivo, ainda assim". Sem isso um encode preso em SOFTWARE por 20min
   // deixaria so uma linha no log inteiro.
@@ -19,8 +20,8 @@
     const steps = ctx.steps || {};
     return [
       row.encoder || 'desconhecido',
-      !row.encoder ? 'unknown' : (ctx.software ? 'sw' : 'hw'),
-      row.powerEfficient === false ? 'ineff' : 'eff',
+      encodehealth.encoderType(row.encoder),
+      row.powerEfficient == null ? 'unknown' : row.powerEfficient === false ? 'ineff' : 'eff',
       row.limitation || 'none',
       `g${steps.global || 0}`,
       `p${steps.peer || 0}`,
@@ -40,7 +41,8 @@
     const steps = ctx.steps || {};
     const marca = ctx.changed ? 'MUDOU ' : '';
     const encoder = row.encoder || 'desconhecido';
-    const tipoEncoder = !row.encoder ? 'desconhecido' : (ctx.software ? 'SOFTWARE(CPU)' : 'hardware');
+    const type = encodehealth.encoderType(row.encoder);
+    const tipoEncoder = type === 'unknown' ? 'desconhecido' : type === 'software' ? 'SOFTWARE(CPU)' : 'hardware';
     // ctx.relayOf (sourceId de quem e a tela ORIGINAL) so vem preenchido
     // quando este sender e um repasse (F2), nao a captura direta. Sem isto
     // "tela->gg" nao dizia se gg via a nossa captura ou uma stream de
@@ -49,15 +51,15 @@
     // so pra descobrir que "screen" ali era "screen@4" por baixo.
     const repasse = ctx.relayOf != null ? ` (repasse de #${ctx.relayOf})` : '';
     return `[diag] ${marca}tela->${row.name}${repasse} enc=${encoder} ${tipoEncoder}`
-      + ` efic=${row.powerEfficient === false ? 'nao' : 'sim'}`
+      + ` efic=${row.powerEfficient == null ? '?' : row.powerEfficient === false ? 'nao' : 'sim'}`
       + ` cap=${row.captureFps != null ? Math.round(row.captureFps) : '?'}fps`
-      + ` out=${row.width || 0}x${row.height || 0}@${Math.round(row.fps || 0)}fps`
+      + ` out=${row.width ?? '?'}x${row.height ?? '?'}@${row.fps == null ? '?' : Math.round(row.fps)}fps`
       + ` limite=${row.limitation || 'nenhum'}`
       + ` alvoKbps=${Math.round((ctx.targetBitrate || 0) / 1000)}`
       + ` escala=${ctx.scaleDownBy || 1}`
       + ` res=${ctx.resolutionHeight || '?'}`
       + ` bwe=${ctx.bweBps != null ? Math.round(ctx.bweBps / 1000) : '?'}`
-      + ` realKbps=${Math.round((row.mbps || 0) * 1000)}`
+      + ` realKbps=${row.mbps == null ? '?' : Math.round(row.mbps * 1000)}`
       + ` msFrame=${row.msPerFrame != null ? row.msPerFrame.toFixed(1) : '-'}`
       + ` degraus=g${steps.global || 0}/p${steps.peer || 0}`;
   }

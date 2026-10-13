@@ -43,9 +43,13 @@ test('lossPercent: packetsLost negativo (reordem/duplicata) nao vira porcentagem
   assert.equal(lossPercent({ packetsReceived: 100, packetsLost: -5 }), 0);
 });
 
-test('buffer de jitter em ms por quadro emitido', () => {
-  // 6.4s / 3400 quadros = ~1.88ms
-  assert.ok(Math.abs(jitterBufferMs(readReceiverReport(REPORT)) - 1.882) < 0.01);
+test('buffer de jitter usa delta recente e nao media desde o inicio', () => {
+  const prev = { jitterBufferDelay: 20, jitterBufferEmittedCount: 1000 };
+  const cur = { jitterBufferDelay: 21, jitterBufferEmittedCount: 1010 };
+  assert.equal(jitterBufferMs(cur, prev), 100);
+  assert.equal(jitterBufferMs(cur), null);
+  assert.equal(jitterBufferMs({ jitterBufferDelay: 0, jitterBufferEmittedCount: 1 }, prev), null);
+  assert.equal(jitterBufferMs({ jitterBufferDelay: 20, jitterBufferEmittedCount: 1010 }, prev), 0);
 });
 
 test('buffer e null sem quadro emitido, nao zero', () => {
@@ -54,8 +58,32 @@ test('buffer e null sem quadro emitido, nao zero', () => {
 
 test('relatorio vazio nao lanca', () => {
   const s = readReceiverReport([]);
-  assert.equal(s.fps, 0);
-  assert.equal(s.freezeCount, 0);
+  assert.equal(s.fps, null);
+  assert.equal(s.freezeCount, null);
+});
+
+test('RX segue codecId e preserva ausencia em vez de escolher RTX', () => {
+  const s = readReceiverReport([
+    { id: 'in', type: 'inbound-rtp', kind: 'video', codecId: 'h', framesDecoded: 0 },
+    { id: 'h', type: 'codec', mimeType: 'video/H264' },
+    { id: 'r', type: 'codec', mimeType: 'video/rtx' },
+  ]);
+  assert.equal(s.codec, 'H264');
+  assert.equal(s.framesDecoded, 0);
+  assert.equal(s.packetsLost, null);
+  assert.equal(lossPercent({ packetsReceived: 100, packetsLost: null }), null);
+});
+
+test('tracker RX troca PC e kind sem herdar delta ou relogio', () => {
+  const tracker = require('./rxstats').createTracker();
+  const pc = {}, pc2 = {};
+  const prev = { framesDecoded: 10, packetsReceived: 100, packetsLost: 0, freezeCount: 0,
+    jitterBufferDelay: 1, jitterBufferEmittedCount: 10 };
+  const cur = { ...prev, framesDecoded: 20, freezeCount: 1, jitterBufferDelay: 2, jitterBufferEmittedCount: 20 };
+  assert.equal(tracker.measure('p:screen@a', pc, prev, 1000).bufferMs, null);
+  assert.equal(tracker.measure('p:screen@b', pc, cur, 1500).health, null);
+  assert.equal(tracker.measure('p:screen@a', pc, cur, 3000).health.freezeRate, 30);
+  assert.equal(tracker.measure('p:screen@a', pc2, cur, 4000).bufferMs, null);
 });
 
 // ---------- receiveHealth ----------

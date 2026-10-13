@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include <string>
+#include <stdexcept>
 
 #include "loopback_capture.h"
 #include "process_util.h"
@@ -10,8 +11,13 @@
 namespace {
 
 Napi::Value FindDiscordRootPidBinding(const Napi::CallbackInfo& info) {
-  DWORD pid = ::FindDiscordRootPid();
-  return Napi::Number::New(info.Env(), pid);
+  try {
+    DWORD pid = ::FindDiscordRootPid();
+    return Napi::Number::New(info.Env(), pid);
+  } catch (const std::exception& error) {
+    Napi::Error::New(info.Env(), error.what()).ThrowAsJavaScriptException();
+    return info.Env().Undefined();
+  }
 }
 
 Napi::Value PidForWindowHandleBinding(const Napi::CallbackInfo& info) {
@@ -27,7 +33,13 @@ Napi::Value PidForWindowHandleBinding(const Napi::CallbackInfo& info) {
 
 Napi::Value ListAudioRenderPidsBinding(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  auto pids = ListAudioRenderPids();
+  std::vector<DWORD> pids;
+  try {
+    pids = ListAudioRenderPids();
+  } catch (const std::exception& error) {
+    Napi::Error::New(env, error.what()).ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
   Napi::Array out = Napi::Array::New(env, pids.size());
   for (size_t i = 0; i < pids.size(); i++) out[i] = Napi::Number::New(env, pids[i]);
   return out;
@@ -35,7 +47,13 @@ Napi::Value ListAudioRenderPidsBinding(const Napi::CallbackInfo& info) {
 
 Napi::Value ListProcessNames(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  auto procs = ListProcesses();
+  std::vector<ProcessInfo> procs;
+  try {
+    procs = ListProcesses();
+  } catch (const std::exception& error) {
+    Napi::Error::New(env, error.what()).ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
   Napi::Array out = Napi::Array::New(env, procs.size());
   for (size_t i = 0; i < procs.size(); i++) {
     Napi::Object item = Napi::Object::New(env);

@@ -10,6 +10,6 @@
 // aceita excluir UMA arvore por captura), sobe uma captura INCLUDE por PID
 // desta lista, pulando a arvore do proprio GoLive e a do Discord.
 //
-// Devolve lista vazia (sem lancar excecao) se a enumeracao falhar em
-// qualquer etapa -- quem chama trata isso como "nada tocando agora".
+// Lista vazia significa enumeracao valida sem sessao ativa. Falha de API
+// lanca excecao e deve ser propagada ate o resultado estruturado do IPC.
 std::vector<DWORD> ListAudioRenderPids();

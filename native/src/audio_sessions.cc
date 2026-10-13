@@ -5,6 +5,8 @@
 #include <audiopolicy.h>
 
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 
 #include <wrl/client.h>
 
@@ -21,6 +23,9 @@ std::vector<DWORD> ListAudioRenderPids() {
   // o apartment (S_OK ou S_FALSE).
   HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   bool needsUninit = SUCCEEDED(hrInit);
+  if (FAILED(hrInit) && hrInit != RPC_E_CHANGED_MODE) {
+    throw std::runtime_error("CoInitializeEx falhou: " + std::to_string(hrInit));
+  }
 
   ComPtr<IMMDeviceEnumerator> enumerator;
   HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
@@ -35,21 +40,29 @@ std::vector<DWORD> ListAudioRenderPids() {
         hr = sessionManager->GetSessionEnumerator(&sessionEnum);
         if (SUCCEEDED(hr)) {
           int count = 0;
-          sessionEnum->GetCount(&count);
-          for (int i = 0; i < count; i++) {
+          hr = sessionEnum->GetCount(&count);
+          for (int i = 0; SUCCEEDED(hr) && i < count; i++) {
             ComPtr<IAudioSessionControl> control;
-            if (FAILED(sessionEnum->GetSession(i, &control)) || !control) continue;
+            hr = sessionEnum->GetSession(i, &control);
+            if (FAILED(hr)) break;
             ComPtr<IAudioSessionControl2> control2;
-            if (FAILED(control.As(&control2)) || !control2) continue;
+            hr = control.As(&control2);
+            if (FAILED(hr)) break;
             // Sessao de sons de sistema do proprio Windows (nao ligada a um
             // processo especifico do usuario) -- nao entra na lista.
-            if (control2->IsSystemSoundsSession() == S_OK) continue;
+            hr = control2->IsSystemSoundsSession();
+            if (FAILED(hr)) break;
+            if (hr == S_OK) continue;
             AudioSessionState state = AudioSessionStateInactive;
             // So sessoes ATIVAS (tocando som agora); uma sessao "Inactive"
             // existe mas nao esta produzindo audio nesse instante.
-            if (FAILED(control2->GetState(&state)) || state != AudioSessionStateActive) continue;
+            hr = control2->GetState(&state);
+            if (FAILED(hr)) break;
+            if (state != AudioSessionStateActive) continue;
             DWORD pid = 0;
-            if (FAILED(control2->GetProcessId(&pid)) || pid == 0) continue;
+            hr = control2->GetProcessId(&pid);
+            if (FAILED(hr)) break;
+            if (pid == 0) continue;
             pids.push_back(pid);
           }
         }
@@ -58,6 +71,7 @@ std::vector<DWORD> ListAudioRenderPids() {
   }
 
   if (needsUninit) CoUninitialize();
+  if (FAILED(hr)) throw std::runtime_error("Enumeracao WASAPI falhou: " + std::to_string(hr));
 
   std::sort(pids.begin(), pids.end());
   pids.erase(std::unique(pids.begin(), pids.end()), pids.end());

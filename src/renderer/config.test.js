@@ -181,7 +181,7 @@ test('degradePreset devolve a entrada com steps zero/negativo ou preset desconhe
   assert.equal(degradePreset(undefined, 1), undefined);
 });
 
-test('audienceSteps degrada so a partir de 3 espectadores', () => {
+test('alias audienceSteps degrada so a partir de 3 encodes locais', () => {
   assert.equal(audienceSteps(0), 0);
   assert.equal(audienceSteps(1), 0);
   assert.equal(audienceSteps(2), 0);
@@ -265,11 +265,21 @@ test('qualityForRelay: sem banda medida, divide o bitrate do preset pelos filhos
   assert.equal(qualityForRelay('1080p60', 3).preset, '720p30');
 });
 
-test('qualityForRelay: com banda medida, usa 80% dela dividida pelos filhos', () => {
+test('qualityForRelay: com orcamento agregado explicito, usa 80% dele dividido pelos filhos', () => {
   // 10 Mbps medidos * 0.8 = 8 Mbps; 2 filhos -> 4 Mbps/filho -> 720p30 (2.5 Mbps cabe, 1080p30 nao)
   assert.equal(qualityForRelay('1080p60', 2, 10_000_000).preset, '720p30');
   // banda de sobra: 100 Mbps, 2 filhos -> 40 Mbps/filho -> nao passa do preset da origem
   assert.equal(qualityForRelay('1080p60', 2, 100_000_000).preset, '1080p60');
+});
+
+test('qualityForLoad usa senders locais e preserva piso e preset invalido', () => {
+  const { senderLoadSteps, qualityForLoad } = require('./config');
+  assert.equal(senderLoadSteps(2), 0);
+  assert.equal(senderLoadSteps(3), 1);
+  assert.equal(qualityForLoad('1080p60', 1).preset, '1080p60');
+  assert.equal(qualityForLoad('1080p60', 3).preset, '1080p30');
+  assert.equal(qualityForLoad('720p30', 10).preset, '720p30');
+  assert.equal(qualityForLoad('invalid', 3).preset, '1080p30');
 });
 
 test('qualityForRelay: nunca sobe acima do preset da origem', () => {

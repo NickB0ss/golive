@@ -1,0 +1,15 @@
+{
+  "name": "golive-sfu-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prova de conceito de SFU local (mediasoup) para o GoLive. Fora do app e do instalador.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "prepare-worker": "node scripts/prepare.js",
+    "bundle": "node scripts/bundle.js"
+  },
+  "dependencies": {
+    "mediasoup": "3.28.0",
+    "mediasoup-client": "3.24.4"
+  }
+}

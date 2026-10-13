@@ -200,7 +200,7 @@ module.exports = [
     // src/renderer/vendor/ e codigo de terceiros copiado como veio (ver o
     // cabecalho de cada arquivo): nao e nosso para corrigir, e as diretivas
     // `eslint-disable` que ele traz de casa virariam erro de diretiva inutil.
-    ignores: ['build/**', 'dist/**', 'native/**', 'src/renderer/vendor/**'],
+    ignores: ['build/**', 'dist/**', 'native/**', 'src/renderer/vendor/**', '.worktrees/**', '.claude/**', '.superpowers/**', 'lab-out/**', 'coverage/**', '.cache/**', 'tools/sfu-spike/node_modules/**', 'tools/sfu-spike/renderer/mediasoup-client.bundle.js'],
   },
 
   {
@@ -228,6 +228,41 @@ module.exports = [
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
   },
 
+  // Bancada de midia (tools/media-bench): o preload e o main falam com Electron
+  // (CommonJS, ja cobertos acima); renderer/ e shared/ sao <script> classicas
+  // no navegador. shared/ e UMD -- o node:test carrega os mesmos arquivos --,
+  // por isso `module` e `require` entram como somente-leitura, como nos
+  // modulos de src/renderer.
+  {
+    files: ['tools/media-bench/preload.js'],
+    languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
+  },
+  {
+    files: ['tools/media-bench/renderer/*.js', 'tools/media-bench/shared/*.js'],
+    ignores: ['tools/media-bench/shared/*.test.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { ...globals.browser, module: 'readonly', global: 'readonly' },
+    },
+  },
+
+  // Prova de conceito de SFU (tools/sfu-spike): mesmo desenho da bancada de
+  // midia. O preload fala com Electron (CommonJS + globais de navegador);
+  // renderer/ e <script> classica (UMD, o node:test carrega metrics.js e
+  // flow.js). O bundle gerado do mediasoup-client fica fora (ignores acima).
+  {
+    files: ['tools/sfu-spike/preload.js'],
+    languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
+  },
+  {
+    files: ['tools/sfu-spike/renderer/*.js'],
+    ignores: ['tools/sfu-spike/renderer/*.test.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { ...globals.browser, module: 'readonly', global: 'readonly', require: 'readonly' },
+    },
+  },
+
   // A tela de carregamento da abertura (src/splash/) e uma pagina isolada
   // como a do overlay de rabisco: script classica com globais de
   // navegador, sem os globais de Node do renderer principal -- ela nao e
@@ -247,7 +282,7 @@ module.exports = [
   // como somente-leitura: qualquer outro nome de Node aqui e engano, e o
   // no-undef deve acusar.
   {
-    files: ['src/renderer/*.js', 'src/renderer/i18n/*.js', 'src/renderer/mesa-modules/*.js', 'src/renderer/mesa-modules/quiz-banco/*.js', 'src/renderer/mesa-janelas/*.js'],
+    files: ['src/renderer/*.js', 'src/renderer/i18n/*.js', 'src/renderer/mesa-modules/*.js', 'src/renderer/mesa-modules/quiz-banco/*.js', 'src/renderer/mesa-janelas/*.js', 'src/shared/*.js'],
     ignores: ['src/renderer/*.test.js', 'src/renderer/i18n/*.test.js', 'src/renderer/mesa-modules/*.test.js', 'src/renderer/mesa-janelas/*.test.js', 'src/renderer/pcm-injector-worklet.js'],
     languageOptions: {
       sourceType: 'script',

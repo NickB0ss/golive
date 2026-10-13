@@ -118,13 +118,13 @@ contextBridge.exposeInMainWorld('golive', {
   getOwnPid: () => ipcRenderer.invoke('audio:getOwnPid'),
 
   /** PIDs de todo processo com audio tocando agora no dispositivo de saida
-   * padrao. Devolve [] se o addon nativo nao estiver disponivel. Base do
+   * padrao. Devolve { ok, items/error }; [] em items e silencio valido. Base do
    * modo "lista de inclusao" usado ao compartilhar a tela SEM incluir o
    * Discord (ver startShare em app.js). */
   listAudioRenderPids: () => ipcRenderer.invoke('audio:listRenderPids'),
 
-  /** Snapshot de processos rodando agora: [{ pid, ppid, name }]. Devolve []
-   * se o addon nativo nao estiver disponivel. Usado junto com
+  /** Snapshot de processos: { ok: true, items: [{ pid, ppid, name }] }, ou
+   * { ok: false, error } se a API falhar. Usado junto com
    * listAudioRenderPids pra montar a arvore do Discord/GoLive e filtrar a
    * lista de inclusao. */
   listProcessNames: () => ipcRenderer.invoke('audio:listProcessNames'),
@@ -138,6 +138,14 @@ contextBridge.exposeInMainWorld('golive', {
 
   /** Para uma captura iniciada com startProcessAudioCapture. */
   stopProcessAudioCapture: (captureId) => ipcRenderer.invoke('audio:stopCapture', captureId),
+
+  /** Falha terminal posterior a ativacao: (captureId, error). Devolve funcao
+   * que remove a inscricao para nao deixar callbacks depois do teardown. */
+  onProcessAudioEnded: (callback) => {
+    const listener = (_event, captureId, error) => callback(captureId, error);
+    ipcRenderer.on('audio:ended', listener);
+    return () => ipcRenderer.removeListener('audio:ended', listener);
+  },
 
   /** PCM float32 entrelacado de uma captura ativa:
    * (captureId, samples: Float32Array, channels: number, sampleRate: number) => void. */

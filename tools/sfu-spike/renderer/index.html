@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; media-src blob: mediastream:; connect-src 'none'" />
+<title>GoLive sfu-spike</title>
+<style>body{margin:8px;font:13px monospace;background:#111;color:#ddd}#viewers video{margin:2px;background:#000;width:160px}</style>
+</head>
+<body>
+<div id="status">iniciando...</div>
+<div id="viewers"></div>
+<!-- Cena sintetica da bancada de midia (UMD, reaproveitada sem copia): -->
+<script src="../../media-bench/shared/scene-math.js"></script>
+<script src="../../media-bench/renderer/scene.js"></script>
+<!-- mediasoup-client empacotado localmente (npm run bundle; ignorado no git): -->
+<script src="mediasoup-client.bundle.js"></script>
+<script src="metrics.js"></script>
+<script src="flow.js"></script>
+<script src="boot.js"></script>
+</body>
+</html>

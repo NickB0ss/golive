@@ -13,7 +13,7 @@
 
 struct AudioDispatchState;
 
-// Captura, via WASAPI Process Loopback (Windows 10 2004+ / build 19041+), o
+// Captura, via WASAPI Process Loopback (Windows build 20348+), o
 // audio renderizado por um processo especifico (e sua arvore de filhos), ou
 // o audio do sistema inteiro EXCLUINDO esse processo. Ver
 // AUDIOCLIENT_ACTIVATION_PARAMS::ProcessLoopbackMode.

@@ -8,3 +8,7 @@ tools/iperf3/
 .superpowers/
 .claude/worktrees/
 lab-out/
+.cache/
+tools/sfu-spike/node_modules/
+tools/sfu-spike/lab-out/
+tools/sfu-spike/renderer/mediasoup-client.bundle.js

@@ -1,10 +1,32 @@
 'use strict';
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   computeTree, allDirect, isAllDirect, sameAssignments,
   FANOUT_ORIGEM, FANOUT_RELAY,
 } = require('./tree');
+
+test('eleicao normaliza 20ms pelo alvo 30/60FPS e prefere load reportado', () => {
+  for (const target of [{ fps: 30 }, { budgetMs: 1000 / 30 }, { fps: 60, load: 0.6 }]) {
+    const candidates = [
+      { id: 'folga', joinedAt: 2, rtt: 20, encodeHealth: { msPerFrame: 20, ...target } },
+      { id: 'lento', joinedAt: 1, rtt: 1, encodeHealth: { msPerFrame: 20, fps: 60 } },
+    ];
+    assert.equal(computeTree('origem', candidates).get('folga').role, 'relay');
+  }
+});
+
+test('alvo invalido e cliente antigo preservam fallback; load valido independe de ms', () => {
+  const candidates = [
+    { id: 'lento', joinedAt: 1, rtt: 1, encodeHealth: { msPerFrame: 20, fps: NaN, budgetMs: -1 } },
+    { id: 'folga', joinedAt: 2, rtt: 20, encodeHealth: { load: 0.6 } },
+  ];
+  assert.equal(computeTree('origem', candidates).get('folga').role, 'relay');
+  delete candidates[0].encodeHealth.fps;
+  delete candidates[0].encodeHealth.budgetMs;
+  assert.equal(computeTree('origem', candidates).get('folga').role, 'relay');
+});
 
 // Sala de `espectadores` pessoas alem da origem, todos elegiveis, RTT
 // crescente na ordem de chegada (p0 e o melhor candidato a relay).

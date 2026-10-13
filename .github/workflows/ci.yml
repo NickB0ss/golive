@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        node: ['22', '24']
     steps:
       # @v5: as @v4 rodam em Node 20, ja deprecado nos runners.
       - uses: actions/checkout@v5
@@ -26,6 +26,9 @@ jobs:
 
       # Sem scripts: os testes nao precisam do toolchain nativo nem do Electron instalado.
       - run: npm ci --ignore-scripts
+
+      # Confere manifesto, lock e pacotes locais sem exigir o binario do Electron.
+      - run: npm run env:check
 
       # Lint primeiro: separa erros de estilo dos erros de comportamento dos testes.
       - run: npm run lint
@@ -52,6 +55,8 @@ jobs:
 
       # Sem scripts: o audit so precisa da arvore de dependencias.
       - run: npm ci --ignore-scripts
+
+      - run: npm run env:check
 
       # Vulnerabilidades de producao sao portao: qualquer nivel baixo reprova o job.
       - name: producao sem vulnerabilidade
@@ -84,6 +89,8 @@ jobs:
       # o proprio Electron -- o binario de node_modules/electron nao e usado.
       - run: npm ci --ignore-scripts
 
+      - run: npm run env:check
+
       # Gera o .node antes do electron-builder e satisfaz o beforeBuild do package.json.
       - run: npm run build:native
 
@@ -97,3 +104,21 @@ jobs:
         run: |
           $p = 'dist/win-unpacked/resources/app.asar.unpacked/build/Release/golive_audio.node'
           if (!(Test-Path $p)) { throw "addon nativo ausente do pacote -- rode npm run build:native (auditoria 2026-09-18, P0-5)" }
+
+      # Abre o app EMPACOTADO de verdade (pagina real + preload + addon, janela
+      # escondida, perfil temporario) e falha se o boot do renderer der erro,
+      # travar ou cair. Nao valida rede, atualizador nem captura: ver
+      # src/main/smoke.js. O launcher nao usa o Electron de node_modules.
+      - name: smoke de abertura do app empacotado
+        run: node scripts/smoke-app.js --exe="dist/win-unpacked/GoLive LAN.exe" --timeout-ms=60000
+
+      # Se o smoke reprovou, o relatorio (falhas, avisos, runtime) fica so no
+      # runner; guarda para diagnostico.
+      - name: relatorio do smoke de abertura
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-abertura
+          path: lab-out/smoke/*.json
+          if-no-files-found: ignore
+          retention-days: 7
