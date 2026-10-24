@@ -1,0 +1,33 @@
+name: security-review
+
+# Revisao de seguranca por IA nos PRs (anthropics/claude-code-security-review).
+# Comenta no PR os achados de IPC, preload, atualizador e entrada de rede.
+
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write # para comentar no PR
+  contents: read
+
+jobs:
+  revisar:
+    # A action nao e protegida contra prompt injection: so roda em PR aberto
+    # de branch deste repositorio, nunca de fork (o repo e publico).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth 2: a action compara o PR com o commit anterior.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      # Sonnet e nao o padrao (Opus 4.1): custa menos por PR e o modelo padrao ja e antigo.
+      # Pastas de documentacao e pesquisa ficam de fora porque nao tem codigo.
+      - uses: anthropics/claude-code-security-review@main
+        with:
+          comment-pr: true
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+          claude-model: claude-sonnet-5-5
+          exclude-directories: docs,02-research,logs
