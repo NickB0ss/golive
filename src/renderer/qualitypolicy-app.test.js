@@ -219,3 +219,88 @@ test('fim da origem limpa plano apos dropRelaysOf real e reaplicador real restau
   assert.equal(state.filhosIds.length, 0);
   assert.equal(state.epoch, 1, 'encerra demanda sem apagar protecao contra tree antiga');
 });
+
+// ---------- Escada por congestao (plano 2026-10-25), Tarefa 2 ----------
+// updateScreenResolution de producao, com screenres real: quem conta como
+// enviando, o log da troca e o aquecimento da PC nova.
+function setupEscada() {
+  const base = setup();
+  const logs = [];
+  Object.assign(base.ctx, {
+    appliedScreenEncoding: new Map(),
+    console: { log: (s) => logs.push(String(s)), warn() {}, info() {} },
+  });
+  vm.runInContext(functionSource('updateScreenResolution'), base.ctx);
+  return { ...base, logs };
+}
+
+/** Uma linha de sender de tela com folga (uso 0,3) e 1000 pacotes no tick. */
+const linhaFolga = (peerId, kind, pc) => ({
+  peerId, kind, pc, name: peerId, availableBps: 1_500_000, mbps: 0.45, fps: 30,
+  sentDelta: 1000, lostDelta: 0, rtt: 30, limitation: null,
+});
+
+/** Estado ja aquecido em 540p, para a folga poder subir um degrau. */
+function semear(ctx, key, pc) {
+  ctx.screenResolution.set(key, { ...screenres.initialState(1080, -60_000), height: 540, bweBps: 1_500_000, pc });
+}
+
+function ticks(ctx, linha, segundos) {
+  for (let t = 0; t < segundos; t += 1) ctx.updateScreenResolution([linha], t * 1000);
+}
+
+test('escada: alvo direto com a tela pausada nao anda', () => {
+  const { ctx } = setupEscada();
+  const pc = {};
+  semear(ctx, 'a:screen', pc);
+  ctx.sharePaused = true;
+  ticks(ctx, linhaFolga('a', 'screen', pc), 20);
+  const st = ctx.screenResolution.get('a:screen');
+  assert.equal(st.height, 540);
+  assert.equal(st.folgaMs, 0);
+});
+
+test('escada: repasse segue adaptando com a propria tela pausada', () => {
+  const { ctx } = setupEscada();
+  const pc = {};
+  semear(ctx, 'a:screen@b', pc);
+  ctx.sharePaused = true;
+  ticks(ctx, linhaFolga('a', 'screen@b', pc), 16);
+  assert.equal(ctx.screenResolution.get('a:screen@b').height, 720);
+});
+
+test('escada: demanda suspensa nao anda', () => {
+  const { ctx, mesh } = setupEscada();
+  const pc = {};
+  semear(ctx, 'a:screen', pc);
+  mesh.peers.get('a').suspended = { screen: true };
+  ticks(ctx, linhaFolga('a', 'screen', pc), 20);
+  assert.equal(ctx.screenResolution.get('a:screen').height, 540);
+  assert.equal(ctx.screenResolution.get('a:screen').folgaMs, 0);
+});
+
+test('escada: a linha [qualidade] sai so no tick da troca, com o motivo', () => {
+  const { ctx, logs } = setupEscada();
+  const pc = {};
+  semear(ctx, 'a:screen', pc);
+  ticks(ctx, linhaFolga('a', 'screen', pc), 20);
+  const linhas = logs.filter((s) => s.startsWith('[qualidade] tela->'));
+  assert.deepEqual(linhas, ['[qualidade] tela->a: 540p -> 720p (tentativa: encoder usando 30% da bwe, 15s de folga)']);
+});
+
+test('escada: PC nova comeca em aquecimento', () => {
+  const { ctx } = setupEscada();
+  const velha = {};
+  semear(ctx, 'a:screen', velha);
+  const nova = {};
+  ctx.updateScreenResolution([linhaFolga('a', 'screen', nova)], 42_000);
+  const st = ctx.screenResolution.get('a:screen');
+  assert.equal(st.pc, nova);
+  assert.equal(st.desdeMs, 42_000);
+  assert.equal(st.height, 1080);
+});
+
+test('escada: a carencia do peerquality usa o estado da escada', () => {
+  // O bloco do peerquality vive dentro do updateStats; o contrato e a linha.
+  assert.match(app, /senderBandwidthLimited: limByPeer\.get\(key\) === 'bandwidth'\n\s+&& !screenres\.emCarencia\(screenResolution\.get\(key\), now\),/);
+});

@@ -708,8 +708,15 @@
       const quality = qualityForPeer(row.peerId, row.kind);
       const maxHeight = quality.height;
       const saved = screenResolution.get(key);
-      const previous = saved && (!saved.pc || saved.pc === row.pc) ? saved : screenres.initialState(maxHeight);
-      const nextState = screenres.next(previous, row.availableBps, now, maxHeight);
+      const previous = saved && (!saved.pc || saved.pc === row.pc) ? saved : screenres.initialState(maxHeight, now);
+      // Tela pausada so silencia o alvo DIRETO (o repasse segue), como no
+      // bloco do peerquality; demanda suspensa nao codifica para este peer.
+      const isRelayChild = Boolean(parseKind(row.kind).sourceId);
+      const ativo = !(sharePaused && !isRelayChild) && !currentSession.mesh.isPeerSuspended(row.peerId, row.kind);
+      const nextState = screenres.next(previous, screenres.observacao(row, { ativo }), now, maxHeight);
+      if (nextState.motivo) {
+        console.log(`[qualidade] tela->${row.name}: ${previous.height}p -> ${nextState.height}p (${nextState.motivo})`);
+      }
       screenResolution.set(key, { ...nextState, pc: row.pc });
 
       const wanted = screenEncodingForPeer(row.peerId, row.kind, quality, floor);
@@ -6887,7 +6894,11 @@
         const nextSt = peerquality.next(st, {
           atMs: now,
           // Banda so da linha desta origem, sem contaminar outro sender.
-          senderBandwidthLimited: limByPeer.get(key) === 'bandwidth',
+          // Logo depois de uma tentativa da escada de resolucao (e da descida
+          // que a desfaz), 'bandwidth' e a propria tentativa sendo testada:
+          // a escada resolve primeiro, sem somar um degrau de preset.
+          senderBandwidthLimited: limByPeer.get(key) === 'bandwidth'
+            && !screenres.emCarencia(screenResolution.get(key), now),
           receiveHealth: rh,
           // Encoder do relay afogado: a saude de encode que ELE reportou no
           // 'view-state', na mesma escala do autoquality. null (nao

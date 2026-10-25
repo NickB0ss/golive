@@ -43,12 +43,12 @@ test('ausencia e fallback ambiguo ficam null; candidato unico oferece fallback d
 test('taxas usam janela recente e invalidam reset, ausencia e zero frames', () => {
   const prev = { bytesSent: 1000, framesEncoded: 100, totalEncodeTime: 1 };
   assert.deepEqual(tx.deriveRates({ bytesSent: 126000, framesEncoded: 150, totalEncodeTime: 1.1 }, prev, 1000),
-    { mbps: 1, msPerFrame: 2.0000000000000018 });
+    { mbps: 1, msPerFrame: 2.0000000000000018, sentDelta: null, lostDelta: null });
   assert.deepEqual(tx.deriveRates({ bytesSent: 0, framesEncoded: 0, totalEncodeTime: 0 }, prev, 1000),
-    { mbps: null, msPerFrame: null });
-  assert.deepEqual(tx.deriveRates(prev, prev, 1000), { mbps: 0, msPerFrame: null });
-  assert.deepEqual(tx.deriveRates({}, prev, 1000), { mbps: null, msPerFrame: null });
-  assert.deepEqual(tx.deriveRates(prev, prev, Infinity), { mbps: null, msPerFrame: null });
+    { mbps: null, msPerFrame: null, sentDelta: null, lostDelta: null });
+  assert.deepEqual(tx.deriveRates(prev, prev, 1000), { mbps: 0, msPerFrame: null, sentDelta: null, lostDelta: null });
+  assert.deepEqual(tx.deriveRates({}, prev, 1000), { mbps: null, msPerFrame: null, sentDelta: null, lostDelta: null });
+  assert.deepEqual(tx.deriveRates(prev, prev, Infinity), { mbps: null, msPerFrame: null, sentDelta: null, lostDelta: null });
 });
 
 test('fallback prefere par explicitamente selecionado e referencia quebrada nao empresta ICE alheio', () => {
@@ -70,4 +70,33 @@ test('tracker isola kind completo, PC, troca de RTP e relogio por conexao', () =
   assert.equal(tracker.rates('p:screen@a', pc, { ...b, rtpIds: 'new' }, 4000).mbps, null);
   tracker.clear();
   assert.equal(tracker.rates('p:screen@a', pc, b, 5000).mbps, null);
+});
+
+// Escada por congestao (plano 2026-10-25), Tarefa 1b.
+function relatorio({ packetsSent, lost, rtt }) {
+  const m = new Map();
+  m.set('o', { id: 'o', type: 'outbound-rtp', kind: 'video', bytesSent: 1000, framesEncoded: 10, packetsSent, remoteId: 'r' });
+  m.set('r', { id: 'r', type: 'remote-inbound-rtp', kind: 'video', packetsLost: lost, fractionLost: 0.5, roundTripTime: rtt });
+  return m;
+}
+
+test('readSenderReport le pacotes enviados e o RTT do RTCP em ms', () => {
+  const s = tx.readSenderReport(relatorio({ packetsSent: 500, lost: 3, rtt: 0.042 }));
+  assert.equal(s.packetsSent, 500);
+  assert.equal(s.rttRtcp, 42);
+  assert.equal(tx.readSenderReport(relatorio({ packetsSent: 500, lost: 3, rtt: undefined })).rttRtcp, null);
+});
+
+test('deriveRates: pacotes enviados e perdidos no intervalo', () => {
+  const prev = { bytesSent: 0, framesEncoded: 0, totalEncodeTime: 0, packetsSent: 1000, packetsLostNet: 10, rtpIds: 'a' };
+  const cur = { bytesSent: 0, framesEncoded: 0, totalEncodeTime: 0, packetsSent: 1200, packetsLostNet: 14, rtpIds: 'a' };
+  const r = tx.deriveRates(cur, prev, 1000);
+  assert.equal(r.sentDelta, 200);
+  assert.equal(r.lostDelta, 4);
+  // Relatorio RTCP repetido entre ticks: perdidos nao andam.
+  assert.equal(tx.deriveRates({ ...cur, packetsLostNet: 10 }, prev, 1000).lostDelta, 0);
+  // Perdidos andando para tras (duplicata reportada) nao vira numero.
+  assert.equal(tx.deriveRates({ ...cur, packetsLostNet: 8 }, prev, 1000).lostDelta, null);
+  // Sem o campo, sem numero.
+  assert.equal(tx.deriveRates({ ...cur, packetsSent: undefined }, prev, 1000).sentDelta, null);
 });

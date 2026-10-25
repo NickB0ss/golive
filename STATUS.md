@@ -345,8 +345,16 @@ Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpow
     cenário novo `tela-parada`; **os dois ainda não rodaram** (sem Linux à mão).
   - *Planejado, para revisão:* a escada de resolução trata a BWE parada como
     capacidade e fica presa em 540p/360p com tela de pouco movimento. Plano
-    em `docs/superpowers/plans/2026-10-25-escada-de-resolucao-por-congestao.md`.
-    A hipótese de que o teto 1,2×BWE travava a subida foi refutada no spike.
+    em `docs/superpowers/plans/2026-10-25-escada-de-resolucao-por-congestao.md`
+    (versão 3, depois de duas revisões). **Tarefas 1, 1b e 2 implementadas**
+    (`screenres.js` com a regra nova, `txstats` com pacotes enviados/perdidos e
+    RTT do RTCP, `app.js` montando a observação e a carência no `peerquality`).
+    Faltam a Tarefa 3 (perda/RTT/uso/motivo no `[diag]`), a 4 (medir no Radmin
+    ou com limitador de banda) e a 5; nada disso rodou no app de verdade ainda.
+    O teto 1,2×BWE não travou a subida
+    **na faixa varrida pelo spike** (BWE de ~4,8 Mbps para cima, loopback sem
+    limite de banda). A faixa do log de 18/10 (BWE de 1,4 a 2 Mbps) não foi
+    testada; o plano a mede antes de concluir.
   - As bancadas `bancada-sala/rodar.js` e `teto-recebido.js` falham no Edge
     também com o `main` (seletores da interface antiga), sem relação com
     esta correção.

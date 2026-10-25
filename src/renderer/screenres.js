@@ -88,15 +88,6 @@
     return SCREEN_HEIGHTS.find((height) => height <= Number(maxHeight)) || null;
   }
 
-  function initialState(maxHeight) {
-    return {
-      height: highestAllowedHeight(maxHeight),
-      bweBps: null,
-      belowSinceMs: null,
-      aboveSinceMs: null,
-    };
-  }
-
   function lowerHeight(height, maxHeight) {
     return SCREEN_HEIGHTS.find((step) => step < height && step <= maxHeight) || height;
   }
@@ -106,40 +97,264 @@
     return candidates.length ? candidates[candidates.length - 1] : height;
   }
 
-  /** Uma amostra de BWE por sender. Sem BWE a escolha atual fica intacta:
-   * nesse intervalo o maxBitrate continua no preset e o GCC segue mandando. */
-  function next(state, availableBps, atMs, maxHeight) {
+  // ---------- Escada por congestao (plano 2026-10-25, v3) ----------
+  // A BWE so mede a rede quando o encoder a usa. Com folga, ela fica parada
+  // no valor que tinha (medido no spike de 2026-10-25) e quem decide subir e
+  // a tentativa com recuo. Descer exige o encoder pressionando a BWE.
+  const AQUECIMENTO_MS = 10000;
+  const USO_PRESSAO = 0.85;
+  const BWE_SUBINDO = 1.05;
+  const PERDA_LIVRE = 0.02;
+  // Perda numa janela, nao por tick: tela parada manda ~30-100 pacotes/s, e
+  // um pacote perdido num tick so ja passaria de 2 %.
+  const PERDA_JANELA_MS = 10000;
+  const PERDA_MIN_PACOTES = 200;
+  const RTT_INFLADO_MS = 150;
+  const RTT_JANELA_MS = 60000;
+  const RTT_BALDE_MS = 10000;
+  const PROVA_PRESSAO_MS = 10000;
+  const RECUO_INICIAL_MS = UP_HOLD_MS;
+  const RECUO_MAX_MS = 120000;
+  // Logo depois de uma tentativa (e da descida que a desfaz), a limitacao
+  // 'bandwidth' do WebRTC e a propria tentativa sendo testada: a escada
+  // resolve, e o peerquality nao deve somar um degrau de preset por cima.
+  const CARENCIA_TENTATIVA_MS = 10000;
+  // O tick e de 1 s (5 s com o app escondido). Mais que isso e linha que
+  // faltou (stats nulas, renderer travado): um tick so nao vale por minutos.
+  const DT_MAX_MS = 10000;
+  // Quanto um tick so pode somar ao tempo limitando: com o tick de 5 s do app
+  // escondido (o caso de quem transmite um jogo), uma amostra so nao derruba
+  // o degrau; sao duas, 10 s, como na escada antiga.
+  const LIMITE_POR_TICK_MS = DOWN_HOLD_MS / 2;
+  // Ate quando o motivo da ultima troca ainda explica uma linha [diag] MUDOU.
+  const MOTIVO_RECENTE_MS = 30000;
+
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const kbps = (bps) => Math.round(bps / 1000);
+  const pct = (f) => Math.round(f * 100);
+
+  function initialState(maxHeight, atMs = 0) {
+    return {
+      height: highestAllowedHeight(maxHeight),
+      bweBps: null,
+      aboveSinceMs: null,
+      desdeMs: Number(atMs) || 0,
+      ultimoMs: null,
+      paradoDesdeMs: null,
+      limiteMs: 0,
+      folgaMs: 0,
+      rttBaldes: [],
+      perdaJanela: [],
+      perda: null,
+      tentativa: null,
+      recuoMs: RECUO_INICIAL_MS,
+      carenciaAteMs: null,
+      motivo: null,
+      ultimoMotivo: null,
+      ultimoMotivoMs: null,
+    };
+  }
+
+  /** Minimo de RTT por balde de 10 s, so os ultimos 60 s: uma troca de rota
+   * no Radmin vira a base nova em ate um minuto, em vez de congestao eterna. */
+  function registrarRtt(baldes, rttMs, atMs) {
+    const vivos = (baldes || []).filter((b) => atMs - b.inicioMs < RTT_JANELA_MS);
+    if (!(rttMs > 0)) return vivos;
+    const ultimo = vivos[vivos.length - 1];
+    if (ultimo && atMs - ultimo.inicioMs < RTT_BALDE_MS) {
+      return [...vivos.slice(0, -1), { inicioMs: ultimo.inicioMs, min: Math.min(ultimo.min, rttMs) }];
+    }
+    return [...vivos, { inicioMs: atMs, min: rttMs }];
+  }
+
+  function rttBase(baldes, atMs) {
+    const vivos = (baldes || []).filter((b) => atMs - b.inicioMs < RTT_JANELA_MS);
+    return vivos.length ? Math.min(...vivos.map((b) => b.min)) : null;
+  }
+
+  function registrarPerda(janela, perdidos, enviados, atMs) {
+    const vivos = (janela || []).filter((p) => atMs - p.atMs < PERDA_JANELA_MS);
+    if (!(enviados > 0) || !(perdidos >= 0)) return vivos;
+    return [...vivos, { atMs, perdidos, enviados }];
+  }
+
+  /** Perdidos sobre enviados na janela; null com poucos pacotes para medir. */
+  function perdaDaJanela(janela) {
+    const enviados = janela.reduce((s, p) => s + p.enviados, 0);
+    if (enviados < PERDA_MIN_PACOTES) return null;
+    return Math.min(1, janela.reduce((s, p) => s + p.perdidos, 0) / enviados);
+  }
+
+  /** A escada acabou de subir por tentativa, ou de desfazer uma (ver
+   * CARENCIA_TENTATIVA_MS). */
+  function emCarencia(state, atMs) {
+    return state?.carenciaAteMs != null && Number(atMs) < state.carenciaAteMs;
+  }
+
+  /** Motivo da ultima troca, se ainda recente para explicar uma linha MUDOU. */
+  function motivoRecente(state, atMs) {
+    if (!state?.ultimoMotivo || state.ultimoMotivoMs == null) return null;
+    return Number(atMs) - state.ultimoMotivoMs <= MOTIVO_RECENTE_MS ? state.ultimoMotivo : null;
+  }
+
+  /** Observacao de um sender a partir da linha do updateStats. `ativo` e
+   * falso com a tela pausada (so no alvo direto) ou a demanda suspensa. */
+  function observacao(row, { ativo }) {
+    const fps = num(row?.fps);
+    const mbps = num(row?.mbps);
+    return {
+      availableBps: num(row?.availableBps),
+      realBps: mbps == null ? null : mbps * 1e6,
+      perdidos: num(row?.lostDelta),
+      enviados: num(row?.sentDelta),
+      rttMs: num(row?.rttRtcp) ?? num(row?.rtt),
+      limitacao: row?.limitation || null,
+      enviando: Boolean(ativo) && fps != null && fps > 0,
+    };
+  }
+
+  /** Uma amostra por sender. `motivo` sai preenchido so na amostra em que o
+   * degrau mudou; `ultimoMotivo` fica para a linha [diag] (motivoRecente). */
+  function next(state, obs, atMs, maxHeight) {
+    const now = Number(atMs) || 0;
     const ceiling = highestAllowedHeight(maxHeight);
-    if (!ceiling) return initialState(0);
-    const prev = state || initialState(ceiling);
-    let height = Math.min(prev.height || ceiling, ceiling);
-    const sample = Number(availableBps);
-    if (!(sample > 0) || !Number.isFinite(sample)) {
-      return { ...prev, height, belowSinceMs: null, aboveSinceMs: null };
+    if (!ceiling) return initialState(0, now);
+    const prev = state || initialState(ceiling, now);
+    const height = Math.min(prev.height || ceiling, ceiling);
+    const dt = prev.ultimoMs == null ? 0 : Math.min(DT_MAX_MS, Math.max(0, now - prev.ultimoMs));
+    const base = { ...prev, height, ultimoMs: now, motivo: null };
+
+    // Sem amostra de BWE ou sem quadros saindo (pausa, demanda suspensa):
+    // nada a medir, e nenhum relogio anda.
+    const amostra = num(obs?.availableBps);
+    if (!(amostra > 0) || !obs?.enviando) {
+      return { ...base, aboveSinceMs: null, limiteMs: 0, paradoDesdeMs: prev.paradoDesdeMs ?? now };
     }
 
-    const bweBps = prev.bweBps == null ? sample : prev.bweBps + BWE_EWMA_ALPHA * (sample - prev.bweBps);
-    const now = Number(atMs) || 0;
-    const threshold = BWE_BPS[height];
-    if (height > 360 && bweBps < threshold.down) {
-      const belowSinceMs = prev.belowSinceMs ?? now;
-      if (now - belowSinceMs >= DOWN_HOLD_MS) {
-        height = lowerHeight(height, ceiling);
-        return { height, bweBps, belowSinceMs: null, aboveSinceMs: null };
+    // Voltou a enviar depois de um aquecimento inteiro parado: o GCC pode ter
+    // de sondar de novo, e o aquecimento recomeca (estimado, nao medido).
+    const desdeMs = prev.paradoDesdeMs != null && now - prev.paradoDesdeMs >= AQUECIMENTO_MS ? now : prev.desdeMs;
+    const ativo = { ...base, desdeMs, paradoDesdeMs: null };
+
+    // Aquecimento: o GCC ainda esta sondando. A BWE segue a amostra crua
+    // (o teto do encoder acompanha a rampa) e nada e decidido.
+    if (now - (desdeMs ?? now) < AQUECIMENTO_MS) return { ...ativo, aboveSinceMs: null, limiteMs: 0, bweBps: amostra };
+
+    // Media por TEMPO, nao por amostra: com o app escondido o tick e de 5 s,
+    // e alpha fixo por amostra faria a media andar 5x mais devagar.
+    const alpha = 1 - Math.pow(1 - BWE_EWMA_ALPHA, Math.max(dt, 1000) / 1000);
+    const bweBps = prev.bweBps == null ? amostra : prev.bweBps + alpha * (amostra - prev.bweBps);
+    const real = num(obs.realBps);
+    const uso = real == null ? null : real / amostra;
+    const pressionando = uso != null && uso >= USO_PRESSAO;
+    const folga = uso != null && !pressionando;
+    const perdaJanela = registrarPerda(prev.perdaJanela, num(obs.perdidos), num(obs.enviados), now);
+    const perda = perdaDaJanela(perdaJanela);
+    const rtt = num(obs.rttMs);
+    const baseRtt = rttBase(prev.rttBaldes, now);
+    const rttInflado = rtt > 0 && baseRtt != null && rtt - baseRtt >= RTT_INFLADO_MS;
+    const livre = !rttInflado && (perda == null || perda < PERDA_LIVRE) && obs.limitacao !== 'cpu';
+    const limitando = height > 360 && pressionando && bweBps < BWE_BPS[height].down;
+
+    let tentativa = prev.tentativa;
+    let recuoMs = prev.recuoMs ?? RECUO_INICIAL_MS;
+    // A tentativa so se prova com o encoder USANDO o degrau novo sem a BWE
+    // limitar: pressionando a BWE, ou mandando ao menos o limiar de descida do
+    // degrau (conteudo que cabe folgado nao pressiona). Tela parada nao prova.
+    const usandoDegrau = pressionando || (real != null && real >= BWE_BPS[height].down);
+    if (tentativa && usandoDegrau && !limitando) {
+      const pressaoMs = tentativa.pressaoMs + dt;
+      if (pressaoMs >= PROVA_PRESSAO_MS) {
+        tentativa = null;
+        recuoMs = RECUO_INICIAL_MS;
+      } else {
+        tentativa = { ...tentativa, pressaoMs };
       }
-      return { height, bweBps, belowSinceMs, aboveSinceMs: null };
+    }
+
+    // Tempo limitando acumula e o tempo sem limitar desconta, em vez de zerar
+    // a cada tick fora: o serrote normal do GCC nao segura a descida. Com uma
+    // tentativa aberta, a BWE subindo (saindo do valor congelado) pausa a
+    // conta: ela ainda esta descobrindo a banda do degrau novo.
+    const subindo = tentativa != null && prev.bweBps != null && amostra > prev.bweBps * BWE_SUBINDO;
+    const anterior = prev.limiteMs || 0;
+    const limiteMs = !limitando ? Math.max(0, anterior - dt)
+      : subindo ? anterior : anterior + Math.min(dt, LIMITE_POR_TICK_MS);
+    const comum = {
+      ...ativo,
+      bweBps,
+      rttBaldes: registrarRtt(prev.rttBaldes, rtt, now),
+      perdaJanela,
+      perda,
+      tentativa,
+      recuoMs,
+      limiteMs,
+    };
+
+    if (limitando) {
+      if (limiteMs < DOWN_HOLD_MS) return { ...comum, aboveSinceMs: null, folgaMs: 0 };
+      const falhou = tentativa != null;
+      const proximoRecuo = falhou ? Math.min(recuoMs * 2, RECUO_MAX_MS) : recuoMs;
+      const motivo = `bwe ${kbps(bweBps)} kbps com o encoder usando ${pct(uso)}% dela`
+        + (falhou ? `; tentativa falhou, proxima em ${proximoRecuo / 1000}s` : '');
+      return {
+        ...comum,
+        height: lowerHeight(height, ceiling),
+        aboveSinceMs: null,
+        limiteMs: 0,
+        folgaMs: 0,
+        tentativa: null,
+        recuoMs: proximoRecuo,
+        carenciaAteMs: falhou ? now + CARENCIA_TENTATIVA_MS : comum.carenciaAteMs,
+        motivo,
+        ultimoMotivo: motivo,
+        ultimoMotivoMs: now,
+      };
     }
 
     const higher = higherHeight(height, ceiling);
-    if (higher !== height && bweBps >= BWE_BPS[height].up) {
-      const aboveSinceMs = prev.aboveSinceMs ?? now;
-      if (now - aboveSinceMs >= UP_HOLD_MS) {
-        height = higher;
-        return { height, bweBps, belowSinceMs: null, aboveSinceMs: null };
-      }
-      return { height, bweBps, belowSinceMs: null, aboveSinceMs };
+    if (higher === height || !livre) {
+      return { ...comum, aboveSinceMs: null, folgaMs: livre ? prev.folgaMs : 0 };
     }
-    return { height, bweBps, belowSinceMs: null, aboveSinceMs: null };
+
+    const comprovado = bweBps >= BWE_BPS[height].up;
+    const aboveSinceMs = comprovado ? (prev.aboveSinceMs ?? now) : null;
+    if (comprovado && now - aboveSinceMs >= UP_HOLD_MS) {
+      const motivo = `bwe ${kbps(bweBps)} kbps`;
+      return {
+        ...comum,
+        height: higher,
+        aboveSinceMs: null,
+        limiteMs: 0,
+        folgaMs: 0,
+        tentativa: null,
+        recuoMs: RECUO_INICIAL_MS,
+        motivo,
+        ultimoMotivo: motivo,
+        ultimoMotivoMs: now,
+      };
+    }
+
+    // Folga acumula; tick com o encoder pressionando pausa (nao zera) a conta.
+    // Com uma tentativa ainda sem prova, a proxima (empilhada) espera o dobro.
+    const folgaMs = folga ? (prev.folgaMs || 0) + dt : (prev.folgaMs || 0);
+    const espera = tentativa ? recuoMs * 2 : recuoMs;
+    if (folgaMs >= espera) {
+      const motivo = `tentativa: encoder usando ${pct(uso)}% da bwe, ${Math.round(folgaMs / 1000)}s de folga`;
+      return {
+        ...comum,
+        height: higher,
+        aboveSinceMs: null,
+        limiteMs: 0,
+        folgaMs: 0,
+        tentativa: { desdeMs: now, pressaoMs: 0 },
+        carenciaAteMs: now + CARENCIA_TENTATIVA_MS,
+        motivo,
+        ultimoMotivo: motivo,
+        ultimoMotivoMs: now,
+      };
+    }
+    return { ...comum, aboveSinceMs, folgaMs };
   }
 
   // K > 1 deixa o GCC continuar sondando acima da estimativa. Sem essa
@@ -163,6 +378,24 @@
     nearestAcceptableScale,
     initialState,
     next,
+    observacao,
+    emCarencia,
+    motivoRecente,
+    AQUECIMENTO_MS,
+    USO_PRESSAO,
+    BWE_SUBINDO,
+    PERDA_LIVRE,
+    PERDA_JANELA_MS,
+    PERDA_MIN_PACOTES,
+    RTT_INFLADO_MS,
+    RTT_JANELA_MS,
+    PROVA_PRESSAO_MS,
+    RECUO_INICIAL_MS,
+    RECUO_MAX_MS,
+    CARENCIA_TENTATIVA_MS,
+    DT_MAX_MS,
+    LIMITE_POR_TICK_MS,
+    MOTIVO_RECENTE_MS,
     bitrateCap,
   };
 
