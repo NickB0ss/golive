@@ -304,3 +304,54 @@ test('escada: a carencia do peerquality usa o estado da escada', () => {
   // O bloco do peerquality vive dentro do updateStats; o contrato e a linha.
   assert.match(app, /senderBandwidthLimited: limByPeer\.get\(key\) === 'bandwidth'\n\s+&& !screenres\.emCarencia\(screenResolution\.get\(key\), now\),/);
 });
+
+// ---------- Escada por congestao (plano 2026-10-25), Tarefa 3 ----------
+// logEncodeDiag de producao: perda (da janela da escada), rtt, uso e o
+// motivo recente da troca chegam na linha [diag].
+function setupDiag() {
+  const base = setup();
+  const linhas = [];
+  Object.assign(base.ctx, {
+    encodediag: require('./encodediag'),
+    isSoftwareEncoder: require('./encodehealth').isSoftwareEncoder,
+    appliedScreenEncoding: new Map(),
+    diagPrev: new Map(),
+    console: { log: (s) => linhas.push(String(s)), warn: (s) => linhas.push(String(s)), info() {} },
+  });
+  vm.runInContext(functionSource('logEncodeDiag'), base.ctx);
+  return { ...base, linhas };
+}
+
+const linhaDiag = (extra = {}) => ({
+  peerId: 'a', kind: 'screen', name: 'a', encoder: 'NvCodecH264Encoder', powerEfficient: true,
+  captureFps: 30, width: 1280, height: 720, fps: 30, mbps: 1.2, msPerFrame: 5,
+  availableBps: 1_500_000, rttRtcp: 41.6, rtt: 30, ...extra,
+});
+
+test('diag: perda da janela, rtt do RTCP e uso saem na linha', () => {
+  const { ctx, linhas } = setupDiag();
+  ctx.appliedScreenEncoding.set('a:screen', { maxBitrate: 1_800_000, scaleDownBy: 1.5, height: 720, bweBps: 1_500_000 });
+  ctx.screenResolution.set('a:screen', { ...screenres.initialState(1080, 0), perda: 0.012 });
+  ctx.logEncodeDiag([linhaDiag()], 1000);
+  assert.match(linhas[0], / perda=1\.2% rtt=42ms uso=80%$/);
+});
+
+test('diag: sem BWE nem estado da escada, os campos viram ?', () => {
+  const { ctx, linhas } = setupDiag();
+  ctx.appliedScreenEncoding.set('a:screen', { maxBitrate: 1_800_000, scaleDownBy: 1, height: 720, bweBps: null });
+  ctx.logEncodeDiag([linhaDiag({ availableBps: null, rttRtcp: null, rtt: null })], 1000);
+  assert.match(linhas[0], / perda=\?% rtt=\?ms uso=\?%$/);
+});
+
+test('diag: a linha MUDOU leva o motivo recente da troca de degrau', () => {
+  const { ctx, linhas } = setupDiag();
+  ctx.screenResolution.set('a:screen', {
+    ...screenres.initialState(1080, 0), ultimoMotivo: 'tentativa: encoder usando 30% da bwe, 15s de folga', ultimoMotivoMs: 900,
+  });
+  ctx.appliedScreenEncoding.set('a:screen', { maxBitrate: 1_800_000, scaleDownBy: 2, height: 540, bweBps: 1_500_000 });
+  ctx.logEncodeDiag([linhaDiag()], 1000);
+  ctx.appliedScreenEncoding.set('a:screen', { maxBitrate: 1_800_000, scaleDownBy: 1.5, height: 720, bweBps: 1_500_000 });
+  ctx.logEncodeDiag([linhaDiag()], 2000);
+  assert.doesNotMatch(linhas[0], /motivo=/, 'a primeira linha nao e MUDOU');
+  assert.match(linhas[1], /^\[diag\] MUDOU .* motivo="tentativa: encoder usando 30% da bwe, 15s de folga"$/);
+});

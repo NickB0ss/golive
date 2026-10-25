@@ -349,8 +349,13 @@ Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpow
     (versão 3, depois de duas revisões). **Tarefas 1, 1b e 2 implementadas**
     (`screenres.js` com a regra nova, `txstats` com pacotes enviados/perdidos e
     RTT do RTCP, `app.js` montando a observação e a carência no `peerquality`).
-    Faltam a Tarefa 3 (perda/RTT/uso/motivo no `[diag]`), a 4 (medir no Radmin
-    ou com limitador de banda) e a 5; nada disso rodou no app de verdade ainda.
+    **Tarefa 3 também:** a linha `[diag]` termina em `perda=… rtt=… uso=…`
+    (`?` quando falta) e, nas linhas `MUDOU`, `motivo="…"` da troca de degrau.
+    Faltam a 4 (medir no Radmin ou com limitador de banda) e a 5; nada disso
+    rodou no app de verdade ainda.
+  - `server/signaling-mesa-desenha-e2e.test.js` é instável na suíte inteira:
+    falhou duas vezes em 25/10, cada vez num caso diferente ("palpite certo"
+    e "quase"), e passou 12/12 rodando sozinho. Sem relação com a escada.
     O teto 1,2×BWE não travou a subida
     **na faixa varrida pelo spike** (BWE de ~4,8 Mbps para cima, loopback sem
     limite de banda). A faixa do log de 18/10 (BWE de 1,4 a 2 Mbps) não foi

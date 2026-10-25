@@ -6594,6 +6594,13 @@
         relayOf: parseKind(r.kind).sourceId,
       };
       const key = `${r.peerId}:${r.kind}`;
+      // Escada de resolucao: perda da janela dela, RTT (do RTCP, senao do par)
+      // e uso da BWE, e o motivo da ultima troca de degrau se ainda recente.
+      const escada = screenResolution.get(key);
+      ctx.perda = escada?.perda ?? null;
+      ctx.rttMs = r.rttRtcp ?? r.rtt ?? null;
+      ctx.uso = r.mbps != null && r.availableBps > 0 ? (r.mbps * 1e6) / r.availableBps : null;
+      ctx.motivo = screenres.motivoRecente(escada, nowMs);
       const sig = encodediag.signature(r, ctx);
       const prev = diagPrev.get(key);
       if (!encodediag.shouldLog(prev, sig, nowMs)) continue;
