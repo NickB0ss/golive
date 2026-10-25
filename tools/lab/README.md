@@ -47,12 +47,13 @@ mesmo com as verificações passando.
 | `sala-basica` | 4 PCs; a árvore monta um relay e todos seguem com a tela andando; C6, D1, D6 e as linhas `[rota]` |
 | `queda-curta` | 9 s sem UDP: quem transmite reinicia o ICE na mesma conexão (C5), a imagem volta e ninguém refaz a conexão |
 | `queda-longa` | 15 s sem UDP: diagnóstico "rede", "Sem contato com o PC de Ana" no tile, o vigia segura a reoferta e a mesma conexão volta pelo reinício de ICE |
-| `origem-parada` | a captura congela: diagnóstico "origem", "Ana parou de enviar imagem", e o aviso sai quando ela volta |
+| `origem-parada` | o app de quem transmite para de mandar quadros: diagnóstico "origem", "Ana parou de enviar imagem", e o aviso sai quando ela volta |
 | `perda-udp` | 3% de perda por 20 s: a imagem segue e ninguém refaz a conexão por engano |
 | `lider-cai` | o app de quem criou a sala morre (SIGKILL) e a porta recusa: os outros migram em poucos segundos (sem esperar a escada) e o vídeo entre eles continua |
 | `lider-some` | o PC de quem criou a sala some sem recusar nada (TCP da sala descartado, depois SIGKILL): pior caso, a migração espera a escada de reconexão inteira |
 | `lider-volta` | o PC de quem criou a sala some por 40 s (congelado, TCP descartado) e volta: todos reconectam nele e ninguém migra — a queda curta não parte a sala |
 | `sala-de-6` | 6 PCs: a origem manda pra 2 relays (2 encoders, não 3), cada um repassa, a topologia fica parada; um relay cai e as órfãs voltam sem mexer nas folhas do outro |
+| `tela-parada` | a imagem de quem transmite para de mudar por 20 s: o relay repete o último quadro, a imagem segue chegando e o vigia não diagnostica "origem" nem refaz a conexão |
 
 ## Escrever um cenário
 

@@ -178,13 +178,28 @@ function paresDeProcessos() {
 
 // Canvas animado no lugar da captura de tela: a captura X11 do Xvfb falha de
 // forma intermitente (tambem no codigo sem mudanca), e o que o laboratorio
-// quer medir e o caminho depois dela. `__lab.parar()` congela a origem.
+// quer medir e o caminho depois dela. Duas falhas diferentes:
+//   - `__lab.parar()`: a IMAGEM para de mudar (tela parada). O relay do app
+//     repete o ultimo quadro, entao o fio continua vivo;
+//   - `__lab.pararEnvio()`: o APP para de mandar quadros (encoder ou relay
+//     parado). Bloqueia o requestFrame das tracks de canvas -- o relay usa
+//     captureStream(0), que so emite por requestFrame -- e para a pintura.
 const CAPTURA_FALSA = `(() => {
   const c = document.createElement('canvas');
   c.width = 1280; c.height = 720;
   const g = c.getContext('2d');
   let t = 0;
   let timer = null;
+  let envioParado = false;
+  const capturarOriginal = HTMLCanvasElement.prototype.captureStream;
+  HTMLCanvasElement.prototype.captureStream = function (...args) {
+    const s = capturarOriginal.apply(this, args);
+    for (const tr of s.getVideoTracks()) {
+      const pedir = tr.requestFrame?.bind(tr);
+      if (pedir) tr.requestFrame = () => { if (!envioParado) pedir(); };
+    }
+    return s;
+  };
   const desenhar = () => {
     t += 1;
     g.fillStyle = 'hsl(' + (t * 3 % 360) + ',60%,35%)';
@@ -195,14 +210,16 @@ const CAPTURA_FALSA = `(() => {
   };
   const trilhas = [];
   window.__lab = {
-    retomar() { if (!timer) timer = setInterval(desenhar, 33); },
+    retomar() { envioParado = false; if (!timer) timer = setInterval(desenhar, 33); },
     parar() { clearInterval(timer); timer = null; },
+    pararEnvio() { envioParado = true; clearInterval(timer); timer = null; },
     // Pra falha dizer ONDE a imagem parou: o canvas ainda pinta? a track
     // da captura falsa ainda entrega quadro (stats, quando o Chromium tem)?
     estado() {
       return {
         pintados: t,
         pintando: Boolean(timer),
+        envioParado,
         trilhas: trilhas.map((tr) => ({
           estado: tr.readyState,
           muda: tr.muted,
@@ -389,7 +406,13 @@ class Instancia {
     return fontes;
   }
 
+  /** O app para de mandar quadros (encoder/relay parado). */
   pararOrigem() {
+    return this.js('window.__lab.pararEnvio()');
+  }
+
+  /** A imagem para de mudar; o app segue mandando (repete o ultimo quadro). */
+  pararImagem() {
     return this.js('window.__lab.parar()');
   }
 
