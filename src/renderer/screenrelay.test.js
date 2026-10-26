@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { isSupported, create } = require('./screenrelay');
+const { isSupported, create, REPETIR_MS } = require('./screenrelay');
 
 // Dubles das APIs de midia. Nao ha jsdom no projeto, entao o escopo e o
 // document entram por injecao (ver os opts de `create`).
@@ -370,4 +370,96 @@ test('depois de stop, um erro tardio do laco nao vira callback', async () => {
   for (let i = 0; i < 12; i += 1) await proximoTick();
 
   assert.equal(erros.length, 0, 'parar de proposito nao e falha');
+});
+
+// ---------- Repetidor de tela parada ----------
+//
+// A captura do Windows so entrega quadro quando a tela muda, e o canvas so
+// emite quando o laco desenha. Tela parada virava zero quadros no fio: o
+// vigia de quem assiste refazia a conexao achando que a origem travou, e o
+// ultimo quadro do movimento (QP 51 com banda curta) ficava na tela para
+// sempre. Medido no spike de 2026-10-25.
+
+/** Relogio falso: guarda o callback do setInterval pra o teste disparar. */
+function fakeTimer() {
+  const t = { fn: null, ms: null, limpo: false };
+  t.setInterval = (fn, ms) => { t.fn = fn; t.ms = ms; return 7; };
+  // Como o relogio de verdade: depois do clear, disparar nao faz nada.
+  t.clearInterval = (id) => { if (id === 7) { t.limpo = true; t.fn = () => {}; } };
+  return t;
+}
+
+const repeticoes = (canvas) => canvas.desenhos.filter((d) => d.frame === canvas).length;
+
+test('imagem parada: sem quadro novo no intervalo, o relay reemite o ultimo', async () => {
+  const canvas = fakeCanvas();
+  const timer = fakeTimer();
+  const fonte = { frames: [fakeFrame(1280, 720)], getSettings: () => ({ width: 1280, height: 720 }) };
+  const relay = create(fonte, { escopo: escopoPorTrack(), document: fakeDoc(canvas), ...timer });
+  await proximoTick();
+  assert.equal(canvas.pedidos, 1);
+
+  timer.fn(); // primeiro olhar: o quadro acabou de chegar, nada a repetir
+  assert.equal(canvas.pedidos, 1);
+  timer.fn();
+  timer.fn();
+  // requestFrame sozinho nao emite com o canvas inalterado (medido): a
+  // repeticao copia 1 pixel do canvas sobre ele mesmo antes de pedir.
+  assert.equal(repeticoes(canvas), 2);
+  assert.equal(canvas.pedidos, 3);
+  assert.equal(relay.repeticoes(), 2);
+  assert.equal(relay.quadros(), 1, 'repeticao nao conta como quadro da captura');
+  relay.stop();
+});
+
+test('quadros chegando: o repetidor nao se mete', async () => {
+  const canvas = fakeCanvas();
+  const timer = fakeTimer();
+  const fonte = { frames: [], getSettings: () => ({ width: 1280, height: 720 }) };
+  const relay = create(fonte, { escopo: escopoPorTrack(), document: fakeDoc(canvas), ...timer });
+  for (let i = 0; i < 3; i += 1) {
+    fonte.frames.push(fakeFrame(1280, 720));
+    relay.swapSource(fonte);
+    await proximoTick();
+    await proximoTick();
+    timer.fn();
+  }
+  assert.equal(repeticoes(canvas), 0);
+  relay.stop();
+});
+
+test('antes do primeiro quadro nao repete -- seria um quadro vazio', () => {
+  const canvas = fakeCanvas();
+  const timer = fakeTimer();
+  const fonte = { frames: [], getSettings: () => ({ width: 1280, height: 720 }) };
+  const relay = create(fonte, { escopo: escopoPorTrack(), document: fakeDoc(canvas), ...timer });
+  timer.fn();
+  timer.fn();
+  assert.equal(canvas.pedidos, 0);
+  relay.stop();
+});
+
+test('o intervalo do repetidor e o exportado, e stop o desliga', () => {
+  const canvas = fakeCanvas();
+  const timer = fakeTimer();
+  const relay = create(trackFalsa, { escopo: escopoPorTrack(), document: fakeDoc(canvas), ...timer });
+  assert.equal(timer.ms, REPETIR_MS);
+  relay.stop();
+  assert.equal(timer.limpo, true);
+});
+
+test('laco morto nao repete -- a falha tem de aparecer, nao virar imagem parada', async () => {
+  const canvas = fakeCanvas();
+  const timer = fakeTimer();
+  const relay = create(trackFalsa, {
+    escopo: montarEscopo([fakeFrame(1920, 1080)]),
+    document: fakeDoc(canvas),
+    ...timer,
+  });
+  for (let i = 0; i < 6; i += 1) await proximoTick();
+  timer.fn();
+  timer.fn();
+  assert.equal(repeticoes(canvas), 0);
+  assert.equal(timer.limpo, true, 'o fim do laco desliga o repetidor');
+  relay.stop();
 });

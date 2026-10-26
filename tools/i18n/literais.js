@@ -230,6 +230,8 @@ const EXCECOES = new Set([
   'quadros decodificados sem aparecer na tela', // relatorio para o desenvolvedor (spec 2.4)
   'sem estatistica suficiente', // relatorio para o desenvolvedor (spec 2.4)
   ', par ICE +', // relatorio para o desenvolvedor (spec 2.4)
+  // Motivo da troca de degrau da escada de resolucao (screenres.js), so no log (spec 2.4)
+  'kbps com o encoder usando', '; tentativa falhou, proxima em', 'tentativa: encoder usando', '% da bwe,', 's de folga',
   'respostas STUN', // relatorio para o desenvolvedor (spec 2.4)
   'load failed', // mensagem interna de Error, nunca chega a tela
   '×', // simbolo de multiplicacao entre largura e altura
