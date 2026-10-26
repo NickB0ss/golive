@@ -276,6 +276,87 @@ test('falha no laco vira callback, nao silencio', async () => {
   relay.stop();
 });
 
+/** Canvas cujo contexto 2D pode ser perdido de fora, como acontece quando o
+ * processo de GPU cai com a janela escondida (spike 2026-10-25, Electron 44):
+ * `isContextLost()` vira true na hora, o canvas para de emitir quadro e so
+ * se restaura quando a pagina volta a ficar visivel. */
+function fakeCanvasPerdivel() {
+  const c = fakeCanvas();
+  c.perdido = false;
+  const getContext = c.getContext;
+  c.getContext = () => ({ ...getContext(), isContextLost: () => c.perdido });
+  return c;
+}
+
+/** Document que entrega um canvas novo a cada createElement. */
+function docDeCanvases(canvases) {
+  let i = 0;
+  return { createElement: () => canvases[i++] };
+}
+
+test('contexto do canvas perdido: a saida e refeita num canvas novo e quem chama troca a track', async () => {
+  // O sala-de-6 do laboratorio: GPU caiu com a janela da Ana escondida, o
+  // canvas do relay parou de emitir e quem assistia ficou sem imagem ate a
+  // janela aparecer. Um canvas criado depois da queda funciona mesmo
+  // escondido (medido no spike), entao o relay se refaz sozinho.
+  const primeiro = fakeCanvasPerdivel();
+  const segundo = fakeCanvasPerdivel();
+  const fonte = { frames: [fakeFrame(1280, 720)], getSettings: () => ({ width: 1280, height: 720 }) };
+  const trocas = [];
+  const relay = create(fonte, {
+    escopo: escopoPorTrack(),
+    document: docDeCanvases([primeiro, segundo]),
+    onTrackChange: (nova, antiga) => trocas.push({ nova, antiga }),
+  });
+  const antiga = relay.track;
+  await proximoTick();
+  assert.equal(primeiro.desenhos.length, 1);
+
+  primeiro.perdido = true;
+  fonte.frames.push(fakeFrame(1280, 720));
+  relay.swapSource(fonte); // acorda o leitor falso com o quadro novo
+  for (let i = 0; i < 4; i += 1) await proximoTick();
+
+  assert.equal(trocas.length, 1, 'um aviso de troca');
+  assert.equal(trocas[0].antiga, antiga);
+  assert.equal(trocas[0].nova, relay.track);
+  assert.notEqual(relay.track, antiga);
+  assert.equal(relay.track.contentHint, 'motion', 'a saida nova tambem leva o hint');
+  assert.equal(segundo.fpsPedido, 0);
+  assert.equal(antiga.parada, true, 'a saida morta e encerrada');
+  assert.equal(primeiro.desenhos.length, 1, 'nada mais e desenhado no canvas perdido');
+  assert.deepEqual(segundo.desenhos.map((d) => `${d.w}x${d.h}`), ['1280x720'], 'o quadro que chegou vai pro canvas novo');
+  assert.equal(segundo.pedidos, 1);
+  relay.stop();
+  assert.equal(relay.track.parada, true, 'stop encerra a saida atual');
+});
+
+test('contexto perdido e canvas novo indisponivel: segue tentando no proximo quadro', async () => {
+  const primeiro = fakeCanvasPerdivel();
+  const semContexto = { ...fakeCanvas(), getContext: () => null };
+  const terceiro = fakeCanvasPerdivel();
+  const fonte = { frames: [], getSettings: () => ({ width: 640, height: 480 }) };
+  const trocas = [];
+  const relay = create(fonte, {
+    escopo: escopoPorTrack(),
+    document: docDeCanvases([primeiro, semContexto, terceiro]),
+    onTrackChange: (nova) => trocas.push(nova),
+  });
+  primeiro.perdido = true;
+
+  fonte.frames.push(fakeFrame(640, 480));
+  relay.swapSource(fonte);
+  for (let i = 0; i < 4; i += 1) await proximoTick();
+  assert.equal(trocas.length, 0, 'sem canvas novo, sem troca');
+
+  fonte.frames.push(fakeFrame(640, 480));
+  relay.swapSource(fonte);
+  for (let i = 0; i < 4; i += 1) await proximoTick();
+  assert.equal(trocas.length, 1);
+  assert.equal(terceiro.desenhos.length, 1);
+  relay.stop();
+});
+
 test('depois de stop, um erro tardio do laco nao vira callback', async () => {
   const canvas = fakeCanvas();
   const erros = [];

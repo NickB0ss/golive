@@ -44,6 +44,14 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 - Telemetria TX/RX extraída: deltas por PeerConnection e kind completo,
   ausência explícita e reset na reconexão. Buffer de jitter é recente;
   RTT não mede latência da imagem. BWE e saúde de cada origem ficam isoladas.
+- **Quando a GPU cai com a janela escondida, a tela não congela mais pra quem
+  assiste.** O canvas do relay de tela (`screenrelay.js`) perdia o contexto
+  e só voltava com a janela à vista, e quem transmite quase sempre está com o
+  jogo por cima. Agora o relay refaz o canvas e o app troca a track nos
+  senders (`[diag] relay de tela: contexto do canvas perdido`). Foi o que
+  derrubava o `sala-de-6` do laboratório desde 13/10. Medido num spike
+  (Electron 44, Windows, processo de GPU morto com a janela minimizada); não
+  visto num PC real.
 - Sucessão canônica em `src/shared/succession.js`, usada pelo servidor e
   renderer. A origem HTTP libera somente `/shared/succession.js` fora da
   raiz renderer. Ver `docs/arquitetura-atual.md` para fronteiras e próximos passos.

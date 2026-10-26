@@ -179,10 +179,14 @@ function paresDeProcessos() {
 // Canvas animado no lugar da captura de tela: a captura X11 do Xvfb falha de
 // forma intermitente (tambem no codigo sem mudanca), e o que o laboratorio
 // quer medir e o caminho depois dela. `__lab.parar()` congela a origem.
+// Canvas em software (`willReadFrequently`): um canvas acelerado perde o
+// contexto quando a GPU do Xvfb engasga (visto no sala-de-6, 2026-10-25:
+// `AllocateRingBuffer() failed`) e, com a janela escondida, nunca volta --
+// a captura falsa morreria sem nada que a captura real tenha a ver com isso.
 const CAPTURA_FALSA = `(() => {
   const c = document.createElement('canvas');
   c.width = 1280; c.height = 720;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true });
   let t = 0;
   let timer = null;
   const desenhar = () => {
@@ -203,6 +207,7 @@ const CAPTURA_FALSA = `(() => {
       return {
         pintados: t,
         pintando: Boolean(timer),
+        contextoPerdido: g.isContextLost?.() ?? null,
         trilhas: trilhas.map((tr) => ({
           estado: tr.readyState,
           muda: tr.muted,
