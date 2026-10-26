@@ -129,13 +129,13 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.26.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **2411 testes, 2411 passando, 0 falhando**. `npm run lint` → 0
+`0.27.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **2462 testes, 2462 passando, 0 falhando**. `npm run lint` → 0
 erros, 8 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
-após `await`). Laboratório: `npm run lab` → 9 cenários (ver abaixo).
+após `await`). Laboratório: `npm run lab` → 10 cenários (ver abaixo).
 `npm audit --omit=dev` → **0**. `npm audit` completo → **0**. Branches
-mescladas no remoto ainda não apagadas: **15**.
+mescladas no remoto ainda não apagadas: **31**.
 
 ### Frente 0 (auditoria 2026-09-18)
 
@@ -339,8 +339,8 @@ Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpow
 
 ## Próximos passos
 
-- **tela parada e escada de resolução (branch `fix/tela-parada`, sem
-  release).** Logs de 07/10 e 18/10 + spike de 25/10 no Electron 44 com
+- **tela parada e escada de resolução (PR #96, lançado na 0.27.0).** Logs de
+  07/10 e 18/10 + spike de 25/10 no Electron 44 com
   captura WGC real:
   - *Corrigido:* com a tela parada, o relay por canvas mandava zero quadros. O
     vigia de quem assiste diagnosticava "origem" e refazia a conexão em 8 s,
@@ -350,7 +350,7 @@ Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpow
     `tools/bancada-sala/tela-parada.js` (falhava antes, passa depois, e o
     controle com envio parado de verdade ainda dá "origem"). No laboratório
     Linux, `origem-parada` passou a parar o ENVIO (`__lab.pararEnvio`) e há o
-    cenário novo `tela-parada`; **os dois ainda não rodaram** (sem Linux à mão).
+    cenário novo `tela-parada`; os dois passaram no CI do PR #96.
   - *Planejado, para revisão:* a escada de resolução trata a BWE parada como
     capacidade e fica presa em 540p/360p com tela de pouco movimento. Plano
     em `docs/superpowers/plans/2026-10-25-escada-de-resolucao-por-congestao.md`
@@ -607,6 +607,17 @@ Pendências:
 - **`filter: blur(20px)` no último quadro da transmissão pausada (`style.css`)**:
   anterior a estas fases, contra a regra de não usar `filter`.
 - **O texto desenhado no canvas do quadro (`src/renderer/mesa-janelas/quadro.js`) ainda usa Work Sans escrita à mão**.
+
+## Lançado na 0.27.0 (2026-10-25)
+
+Tela que não congela (PR #96 e PR #97). Com a **tela parada**, o relay repete o último quadro em vez de mandar zero
+quadros: quem assiste não vê mais a conexão sendo refeita a cada 8 s e a imagem parada fica nítida. Quando a **GPU
+cai com a janela escondida**, o relay refaz o canvas e troca a track nos senders, em vez de deixar todo mundo sem
+imagem até a janela de quem transmite aparecer; era o que derrubava o `sala-de-6` do laboratório desde 13/10. A
+**escada de resolução** passa a decidir por congestão (perda e RTT), não pela BWE parada, e a linha `[diag]` ganha
+`perda=… rtt=… uso=…` e o motivo da troca de degrau. O laboratório roda 10 cenários (novo: `tela-parada`) e passou
+inteiro no CI. Falta medir a escada nova numa rede real (Radmin ou limitador de banda, tarefa 4 do plano de 25/10) e
+ver a recuperação de GPU num PC real. Como toda versão, a sala só aceita quem está na 0.27.0.
 
 ## Lançado na 0.26.0 (2026-10-09)
 
