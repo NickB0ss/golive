@@ -60,6 +60,16 @@
  *   - WebCodecs: nao alcanca o hardware a 1080p neste build, e em software
  *     e mais caro (18 ms/quadro) que o proprio OpenH264 do WebRTC.
  *
+ * CONTEXTO DE GPU PERDIDO (spike 2026-10-25, Electron 44, processo de GPU
+ * derrubado com a janela minimizada): o canvas 2D acelerado passa a
+ * responder `isContextLost() === true` na hora e para de emitir quadro,
+ * sem `contextlost` nem restauracao enquanto a pagina estiver escondida --
+ * e quem transmite quase sempre esta com o jogo por cima. Foi o que deixou
+ * o sala-de-6 do laboratorio sem imagem ate a janela da Ana aparecer. Um
+ * canvas criado DEPOIS da queda funciona mesmo escondido, entao o laco
+ * refaz a saida e avisa quem chamou (`onTrackChange`) para trocar a track
+ * nos senders.
+ *
  * TELA PARADA (medido em 2026-10-25, spike com captura WGC real de uma
  * janela, Electron 44 e NVENC): a captura so entrega quadro quando a tela
  * muda, e o laco so desenha quando chega quadro. Tela parada virava ZERO
@@ -103,6 +113,22 @@
     return Math.max(2, Math.floor(dimension / 2) * 2);
   }
 
+  /** Canvas, contexto e track de saida de um relay, ou `null` quando o
+   * navegador nao entrega algum dos tres. */
+  function montarSaida(doc, width, height) {
+    const canvas = doc.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    if (!ctx) return null;
+    const track = canvas.captureStream(0).getVideoTracks()[0];
+    if (!track) return null;
+    // O ponto de tudo isto: 'motion' vive na track do CANVAS, onde nao
+    // derruba o encoder de hardware.
+    track.contentHint = 'motion';
+    return { canvas, ctx, track };
+  }
+
   /** Envolve `sourceTrack` num relay por canvas e devolve
    * `{ track, stop }` -- ou `null` quando nao da pra montar (sem suporte,
    * ou track invalida). `stop()` para o laco e a track de saida; a track de
@@ -111,7 +137,11 @@
    *
    * `onFrameError` recebe o primeiro erro do laco, se houver: o laco morre
    * em silencio de outra forma, e uma tela que congela sem log foi
-   * exatamente o tipo de problema que originou esta investigacao. */
+   * exatamente o tipo de problema que originou esta investigacao.
+   *
+   * `onTrackChange(nova, antiga)` avisa que o contexto do canvas se perdeu e
+   * a saida foi refeita: `track` passa a ser `nova`, e quem chamou precisa
+   * troca-la nos senders. A antiga ja vem encerrada logo depois do aviso. */
   function create(sourceTrack, opts) {
     const o = opts || {};
     const doc = o.document || (typeof document !== 'undefined' ? document : null);
@@ -125,27 +155,26 @@
       return null; // track ja encerrada, ou tipo que o Processor recusa
     }
 
-    const canvas = doc.createElement('canvas');
     const settings = typeof sourceTrack.getSettings === 'function' ? sourceTrack.getSettings() : {};
     // Um tamanho inicial plausivel evita um primeiro quadro esticado; o
     // laco corrige no primeiro frame de qualquer jeito.
-    canvas.width = evenCanvasDimension(settings.width, 1920);
-    canvas.height = evenCanvasDimension(settings.height, 1080);
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-    if (!ctx) {
+    const primeira = montarSaida(doc, evenCanvasDimension(settings.width, 1920), evenCanvasDimension(settings.height, 1080));
+    if (!primeira) {
       try { leitor.cancel(); } catch { /* ja cancelado */ }
       return null;
     }
+    let { canvas, ctx, track } = primeira;
 
-    const saida = canvas.captureStream(0);
-    const track = saida.getVideoTracks()[0];
-    if (!track) {
-      try { leitor.cancel(); } catch { /* ja cancelado */ }
-      return null;
-    }
-    // O ponto de tudo isto: 'motion' vive na track do CANVAS, onde nao
-    // derruba o encoder de hardware.
-    track.contentHint = 'motion';
+    // Contexto perdido: troca canvas e track. Sem canvas novo agora, segue
+    // no perdido e tenta de novo no proximo quadro.
+    const refazerSaida = () => {
+      const nova = montarSaida(doc, canvas.width, canvas.height);
+      if (!nova) return;
+      const antiga = track;
+      ({ canvas, ctx, track } = nova);
+      try { o.onTrackChange?.(track, antiga); } catch { /* quem chamou nao derruba o laco */ }
+      try { antiga.stop(); } catch { /* ja parada */ }
+    };
 
     let vivo = true;
     let trocando = false;
@@ -205,6 +234,7 @@
         }
         const frame = r.value;
         try {
+          if (ctx.isContextLost?.()) refazerSaida();
           const w = evenCanvasDimension(frame.displayWidth, canvas.width);
           const h = evenCanvasDimension(frame.displayHeight, canvas.height);
           if (w && h && (canvas.width !== w || canvas.height !== h)) {
@@ -233,7 +263,7 @@
     })();
 
     return {
-      track,
+      get track() { return track; },
       quadros: () => quadros,
       repeticoes: () => repeticoes,
       swapSource(newTrack) {

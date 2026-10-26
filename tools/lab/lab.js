@@ -184,10 +184,14 @@ function paresDeProcessos() {
 //   - `__lab.pararEnvio()`: o APP para de mandar quadros (encoder ou relay
 //     parado). Bloqueia o requestFrame das tracks de canvas -- o relay usa
 //     captureStream(0), que so emite por requestFrame -- e para a pintura.
+// Canvas em software (`willReadFrequently`): um canvas acelerado perde o
+// contexto quando a GPU do Xvfb engasga (visto no sala-de-6, 2026-10-25:
+// `AllocateRingBuffer() failed`) e, com a janela escondida, nunca volta --
+// a captura falsa morreria sem nada que a captura real tenha a ver com isso.
 const CAPTURA_FALSA = `(() => {
   const c = document.createElement('canvas');
   c.width = 1280; c.height = 720;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true });
   let t = 0;
   let timer = null;
   let envioParado = false;
@@ -220,6 +224,7 @@ const CAPTURA_FALSA = `(() => {
         pintados: t,
         pintando: Boolean(timer),
         envioParado,
+        contextoPerdido: g.isContextLost?.() ?? null,
         trilhas: trilhas.map((tr) => ({
           estado: tr.readyState,
           muda: tr.muted,

@@ -182,5 +182,10 @@ module.exports = {
       throw err;
     }
     lab.verificar(true, 'os quatro que ficaram seguem com a tela andando');
+    // Com seis instancias a GPU do Xvfb ja engasgou no meio (2026-10-25) e o
+    // canvas do relay da Ana perdeu o contexto: a imagem so voltava quando a
+    // janela aparecia. Fica registrado quando o relay se refez sozinho.
+    const refeitos = ana.achar(/relay de tela: contexto do canvas perdido/).length;
+    if (refeitos) lab.passo(`relay da Ana refez a saida ${refeitos} vez(es) depois de perder o contexto do canvas`);
   },
 };

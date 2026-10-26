@@ -4767,6 +4767,18 @@
       // resgataria um sender que ja caiu em software.
       screenRelay = track ? screenrelay.create(track, {
         onFrameError: (err) => console.error('[diag] relay de tela falhou:', err?.message || err),
+        // GPU caiu (driver, jogo, memoria) e o canvas do relay perdeu o
+        // contexto: escondida, a janela nunca o restaura e quem assiste fica
+        // sem imagem. O relay ja refez a saida; falta ela chegar nos senders.
+        // Suspensos pela pausa ficam de fora (replaceLocalTrack) e voltam
+        // com a track do localStream ao religar.
+        onTrackChange: (nova, antiga) => {
+          console.warn('[diag] relay de tela: contexto do canvas perdido -- saida refeita');
+          if (!localStream?.getVideoTracks().includes(antiga)) return;
+          localStream.removeTrack(antiga);
+          localStream.addTrack(nova);
+          (currentSession || orphanSession)?.mesh.replaceLocalTrack('screen', 'video', nova);
+        },
       }) : null;
       if (screenRelay) {
         localStream.removeTrack(track);
