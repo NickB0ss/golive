@@ -61,7 +61,13 @@
       + ` bwe=${ctx.bweBps != null ? Math.round(ctx.bweBps / 1000) : '?'}`
       + ` realKbps=${row.mbps == null ? '?' : Math.round(row.mbps * 1000)}`
       + ` msFrame=${row.msPerFrame != null ? row.msPerFrame.toFixed(1) : '-'}`
-      + ` degraus=g${steps.global || 0}/p${steps.peer || 0}`;
+      + ` degraus=g${steps.global || 0}/p${steps.peer || 0}`
+      // Escada de resolucao (plano 2026-10-25): por que a BWE caiu e por que
+      // o degrau mudou. No fim da linha, para os trechos acima nao mudarem.
+      + ` perda=${ctx.perda != null ? (ctx.perda * 100).toFixed(1) : '?'}%`
+      + ` rtt=${ctx.rttMs != null ? Math.round(ctx.rttMs) : '?'}ms`
+      + ` uso=${ctx.uso != null ? Math.round(ctx.uso * 100) : '?'}%`
+      + (ctx.changed && ctx.motivo ? ` motivo="${ctx.motivo}"` : '');
   }
 
   const api = { signature, shouldLog, line, HEARTBEAT_MS };

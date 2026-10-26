@@ -60,6 +60,9 @@
       rtt: numeric(pair?.currentRoundTripTime) == null ? null : pair.currentRoundTripTime * 1000,
       availableBps: numeric(pair?.availableOutgoingBitrate),
       packetsLostNet: numeric(remote?.packetsLost), fractionLost: numeric(remote?.fractionLost),
+      packetsSent: aggregate(rtp, 'packetsSent'),
+      // RTT do RTCP: mede a fila da midia, ao contrario do par ICE (STUN).
+      rttRtcp: numeric(remote?.roundTripTime) == null ? null : remote.roundTripTime * 1000,
       rtpIds: rtp.map((s) => s.id || s.ssrc || '').sort().join('|'),
     };
   }
@@ -70,7 +73,7 @@
   }
 
   function deriveRates(cur, prev, dtMs) {
-    const empty = { mbps: null, msPerFrame: null };
+    const empty = { mbps: null, msPerFrame: null, sentDelta: null, lostDelta: null };
     if (!prev || !cur || !Number.isFinite(dtMs) || !(dtMs > 0) || cur.rtpIds !== prev.rtpIds) return empty;
     const fields = ['bytesSent', 'framesEncoded', 'totalEncodeTime'];
     if (fields.some((k) => numeric(cur[k]) != null && numeric(prev[k]) != null && cur[k] < prev[k])) return empty;
@@ -80,6 +83,10 @@
     return {
       mbps: bytes == null ? null : bytes * 8 / dtMs / 1000,
       msPerFrame: frames > 0 && time != null ? time * 1000 / frames : null,
+      // Pacotes enviados e perdidos (RTCP do outro lado) NO INTERVALO; a
+      // escada soma numa janela. O fractionLost cru e so o ultimo relatorio.
+      sentDelta: delta(cur, prev, 'packetsSent'),
+      lostDelta: delta(cur, prev, 'packetsLostNet'),
     };
   }
 
@@ -89,7 +96,7 @@
     let connections = new WeakMap();
     return {
       rates(key, pc, sample, atMs) {
-        if (!pc) return { mbps: null, msPerFrame: null };
+        if (!pc) return { mbps: null, msPerFrame: null, sentDelta: null, lostDelta: null };
         let kinds = connections.get(pc);
         if (!kinds) connections.set(pc, kinds = new Map());
         const prev = kinds.get(key);

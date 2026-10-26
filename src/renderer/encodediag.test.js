@@ -102,3 +102,21 @@ test('line: repasse marca de quem e a tela original', () => {
   const s = line(ROW, { ...CTX, relayOf: '4' });
   assert.match(s, /tela->Nubanho \(repasse de #4\)/);
 });
+
+// --- Escada por congestao (plano 2026-10-25, Tarefa 3): o log de 18/10 nao
+// dizia por que a BWE caiu nem por que o degrau mudou. Os campos novos vao
+// no FIM da linha, para nao mexer no que os trechos acima conferem.
+test('line: perda, rtt, uso e motivo no fim da linha', () => {
+  const s = line(ROW, { ...CTX, changed: true, perda: 0.012, rttMs: 41.6, uso: 0.9, motivo: 'bwe 1500 kbps' });
+  assert.match(s, /degraus=g2\/p0 perda=1\.2% rtt=42ms uso=90% motivo="bwe 1500 kbps"$/);
+});
+
+test('line: perda, rtt e uso ausentes viram ?, nunca NaN; sem MUDOU nao ha motivo', () => {
+  const s = line(ROW, { ...CTX, perda: null, rttMs: undefined, uso: null, motivo: 'velho' });
+  assert.match(s, /perda=\?% rtt=\?ms uso=\?%$/);
+  assert.doesNotMatch(s, /NaN|motivo/);
+});
+
+test('signature ignora perda, rtt, uso e motivo', () => {
+  assert.equal(signature(ROW, { ...CTX, perda: 0.5, rttMs: 900, uso: 1, motivo: 'x' }), signature(ROW, CTX));
+});

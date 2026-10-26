@@ -7,6 +7,7 @@ const path = require('node:path');
 const txstats = require('./txstats');
 const rxstats = require('./rxstats');
 const peerquality = require('./peerquality');
+const screenres = require('./screenres');
 const encodehealth = require('./encodehealth');
 const config = require('./config');
 require('./networktiming');
@@ -35,6 +36,8 @@ function setup() {
     isRelaying: () => false, conndiag: { readSelectedPair() {} }, logRouteChange() {},
     summarizeScreenEncodeHealth: encodehealth.summarizeScreenEncodeHealth,
     updateScreenResolution: () => false, qualityForPeer: () => ({ fps: 60 }),
+    // A carencia do peerquality le o estado da escada de resolucao.
+    screenres, screenResolution: new Map(),
     renderMembersPanel() {}, reapplyAudienceQuality() {}, updateViewerHealth() {}, logEncodeDiag() {},
     renderStats: (tx, rx) => output.push({ tx, rx }), broadcastViewState() {},
     updateEncoderWarning() {}, renderRoomStatus() {},

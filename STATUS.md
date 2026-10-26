@@ -331,6 +331,38 @@ Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpow
 
 ## Próximos passos
 
+- **tela parada e escada de resolução (branch `fix/tela-parada`, sem
+  release).** Logs de 07/10 e 18/10 + spike de 25/10 no Electron 44 com
+  captura WGC real:
+  - *Corrigido:* com a tela parada, o relay por canvas mandava zero quadros. O
+    vigia de quem assiste diagnosticava "origem" e refazia a conexão em 8 s,
+    e o último quadro do movimento (QP 51 com 500 kbps) ficava na tela para
+    sempre. O `screenrelay` agora repete o canvas a cada 200 ms sem quadro
+    novo (~5 quadros/s, ~100 B/s; QP 51 → 16 em ~8 s). Bancada nova
+    `tools/bancada-sala/tela-parada.js` (falhava antes, passa depois, e o
+    controle com envio parado de verdade ainda dá "origem"). No laboratório
+    Linux, `origem-parada` passou a parar o ENVIO (`__lab.pararEnvio`) e há o
+    cenário novo `tela-parada`; **os dois ainda não rodaram** (sem Linux à mão).
+  - *Planejado, para revisão:* a escada de resolução trata a BWE parada como
+    capacidade e fica presa em 540p/360p com tela de pouco movimento. Plano
+    em `docs/superpowers/plans/2026-10-25-escada-de-resolucao-por-congestao.md`
+    (versão 3, depois de duas revisões). **Tarefas 1, 1b e 2 implementadas**
+    (`screenres.js` com a regra nova, `txstats` com pacotes enviados/perdidos e
+    RTT do RTCP, `app.js` montando a observação e a carência no `peerquality`).
+    **Tarefa 3 também:** a linha `[diag]` termina em `perda=… rtt=… uso=…`
+    (`?` quando falta) e, nas linhas `MUDOU`, `motivo="…"` da troca de degrau.
+    Faltam a 4 (medir no Radmin ou com limitador de banda) e a 5; nada disso
+    rodou no app de verdade ainda.
+  - `server/signaling-mesa-desenha-e2e.test.js` é instável na suíte inteira:
+    falhou duas vezes em 25/10, cada vez num caso diferente ("palpite certo"
+    e "quase"), e passou 12/12 rodando sozinho. Sem relação com a escada.
+    O teto 1,2×BWE não travou a subida
+    **na faixa varrida pelo spike** (BWE de ~4,8 Mbps para cima, loopback sem
+    limite de banda). A faixa do log de 18/10 (BWE de 1,4 a 2 Mbps) não foi
+    testada; o plano a mede antes de concluir.
+  - As bancadas `bancada-sala/rodar.js` e `teto-recebido.js` falham no Edge
+    também com o `main` (seletores da interface antiga), sem relação com
+    esta correção.
 - **a Mesa está implementada, sem release** (PR #83 já está no `main`; este
   acabamento saiu de `origin/main` na branch `feat/mesa-acabamento`, ainda sem
   PR; ver "A Mesa" logo abaixo). A versão continua 0.21.0.

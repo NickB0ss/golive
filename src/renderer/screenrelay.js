@@ -60,10 +60,33 @@
  *   - WebCodecs: nao alcanca o hardware a 1080p neste build, e em software
  *     e mais caro (18 ms/quadro) que o proprio OpenH264 do WebRTC.
  *
+ * TELA PARADA (medido em 2026-10-25, spike com captura WGC real de uma
+ * janela, Electron 44 e NVENC): a captura so entrega quadro quando a tela
+ * muda, e o laco so desenha quando chega quadro. Tela parada virava ZERO
+ * quadros no fio, e isso tinha dois efeitos:
+ *
+ *   - o vigia de quem assiste via "RTP +0, caminho vivo", diagnosticava
+ *     "origem parou de enviar video" e refazia a conexao 8 s depois;
+ *   - o ultimo quadro do movimento ficava na tela para sempre. Com 500 kbps
+ *     ele sai com QP 51 (o pior); sem quadros seguintes o encoder nunca o
+ *     refina.
+ *
+ * Por isso o relay REPETE o canvas quando a captura fica quieta por
+ * `REPETIR_MS`. Medido com o mesmo cenario: ~4 quadros/s e ~100 B/s com a
+ * tela parada, o vigia nao dispara e o QP desce 45 -> 36 -> 28 -> 19 -> 16
+ * em ~8 s. Detalhe que o spike pegou: `requestFrame()` com o canvas
+ * inalterado NAO emite quadro nenhum; e preciso copiar 1 pixel do canvas
+ * sobre ele mesmo antes, o que o marca como alterado sem mudar a imagem.
+ *
  * Ver a nota de investigacao completa na memoria do projeto.
  */
 
 (function (root) {
+  // Sem quadro novo da captura por este tempo, o canvas e reemitido. 200 ms
+  // da ~5 quadros/s de tela parada: o bastante para o encoder refinar a
+  // imagem e o vigia (6 s) ver o fio vivo, e barato (~100 B/s medidos).
+  const REPETIR_MS = 200;
+
   /** As duas APIs de que o relay depende. Faltando qualquer uma, quem chama
    * segue com a track de captura crua -- pior encoder, mas funciona. */
   function isSupported(escopo) {
@@ -127,6 +150,38 @@
     let vivo = true;
     let trocando = false;
     let quadros = 0;
+    let repeticoes = 0;
+    // `desenhou`: ja ha imagem no canvas (antes disso, repetir mandaria um
+    // quadro vazio). `chegouQuadro`: a captura entregou quadro desde o
+    // ultimo olhar do repetidor.
+    let desenhou = false;
+    let chegouQuadro = false;
+
+    // Os relogios entram por opts nos testes. O padrao chama pelo escopo:
+    // setInterval solto, sem `this`, lanca "Illegal invocation" no browser.
+    const agendar = o.setInterval || ((fn, ms) => root.setInterval(fn, ms));
+    const desagendar = o.clearInterval || ((id) => root.clearInterval(id));
+    let repetidor = agendar(() => {
+      if (!vivo) return;
+      if (chegouQuadro || !desenhou) {
+        chegouQuadro = false;
+        return;
+      }
+      try {
+        ctx.drawImage(canvas, 0, 0, 1, 1, 0, 0, 1, 1);
+        track.requestFrame?.();
+        repeticoes += 1;
+      } catch {
+        /* canvas indisponivel neste olhar; o proximo tenta de novo */
+      }
+    }, REPETIR_MS);
+    // Node (testes): o intervalo nao segura o processo vivo.
+    if (repetidor && typeof repetidor === 'object') repetidor.unref?.();
+    const pararRepetidor = () => {
+      if (repetidor == null) return;
+      desagendar(repetidor);
+      repetidor = null;
+    };
 
     (async () => {
       while (vivo) {
@@ -161,6 +216,8 @@
           // sem ele o captureStream(0) nao emite nada.
           track.requestFrame?.();
           quadros += 1;
+          desenhou = true;
+          chegouQuadro = true;
         } catch (err) {
           if (vivo) o.onFrameError?.(err);
           try { frame.close(); } catch { /* ja fechado */ }
@@ -170,11 +227,15 @@
         // vez sem derrubar o laco.
         try { frame.close(); } catch { /* ja fechado */ }
       }
+      // Laco morto (fonte encerrada ou erro) nao vira imagem parada: repetir
+      // o ultimo quadro esconderia a falha de quem assiste.
+      pararRepetidor();
     })();
 
     return {
       track,
       quadros: () => quadros,
+      repeticoes: () => repeticoes,
       swapSource(newTrack) {
         let novoLeitor;
         try {
@@ -190,13 +251,14 @@
       },
       stop() {
         vivo = false;
+        pararRepetidor();
         try { leitor.cancel(); } catch { /* ja cancelado */ }
         try { track.stop(); } catch { /* ja parada */ }
       },
     };
   }
 
-  const api = { isSupported, create };
+  const api = { isSupported, create, REPETIR_MS };
 
   root.GoLive = root.GoLive || {};
   root.GoLive.screenrelay = api;
