@@ -4,6 +4,83 @@
 
 (function (root) {
   const textos = {
+    'comunidade.titulo': "Help & support",
+    'comunidade.fechar': "Close help & support",
+    'comunidade.comecar': "Get to know the app",
+    'comunidade.tourDescricao': "A quick tour of rooms, streams and the Table.",
+    'comunidade.rever': "Replay the app tour",
+    'comunidade.sugestoes': "What could we improve?",
+    'comunidade.sugestoesDescricao': "Suggest features or tell us what went wrong using the GoLive form.",
+    'comunidade.abrirForms': "Send a suggestion or report a problem",
+    'comunidade.doar': "Support GoLive",
+    'comunidade.doacaoDescricao': "GoLive is free. Donations are optional, for any amount, with no exclusive benefits.",
+    'comunidade.pix': "Pix · random key · Brazilian accounts only",
+    'comunidade.copiar': "Copy Pix key",
+    'comunidade.paypal': "Donate with PayPal",
+    'comunidade.navegador': "The form and PayPal open in your default browser.",
+    'comunidade.copiado': "Pix key copied. Paste it into your banking app.",
+    'comunidade.erroCopiar': "Could not copy. Select the key above and copy it manually.",
+    'comunidade.aberto': "Link opened in your browser.",
+    'comunidade.erroAbrir': "Could not open the browser. Wait a moment and try again.",
+    'tour.titulo': "Get to know GoLive",
+    'tour.progresso': "Step {atual} of {total}",
+    'tour.pular': "Skip tour",
+    'tour.voltar': "Back",
+    'tour.proximo': "Next",
+    'tour.concluir': "Start using GoLive",
+    'tour.perfil.titulo': "Set up your profile and network",
+    'tour.perfil.descricao':
+      "GoLive connects computers on the same local network or VPN, such as Radmin VPN or Tailscale.",
+    'tour.nome.titulo': "Choose your name",
+    'tour.nome.texto':
+      "On the home screen, enter your name and choose a photo. This is how others will see you in the " +
+      "room.",
+    'tour.rede.titulo': "Check the connection",
+    'tour.rede.texto':
+      "Connect everyone to the same network or VPN. The home screen shows your computer’s address and " +
+      "available rooms.",
+    'tour.sala.titulo': "Bring everyone into a room",
+    'tour.sala.descricao':
+      "One person creates the room and the others join. Everyone needs the same version of GoLive.",
+    'tour.criar.titulo': "Create a room",
+    'tour.criar.texto':
+      "Choose a name, the Table or Streams only type and an optional PIN. Then share the address with " +
+      "your group.",
+    'tour.entrar.titulo': "Join the room",
+    'tour.entrar.texto':
+      "Choose a room under “On your network” or paste its address into the join field. Enter the PIN if " +
+      "prompted.",
+    'tour.tela.titulo': "Share and watch",
+    'tour.tela.descricao': "You choose what to stream and which screens to watch.",
+    'tour.transmitir.titulo': "Share your screen",
+    'tour.transmitir.texto':
+      "In the room, use “Share screen” to choose a screen or window and audio. The controls let you " +
+      "pause, switch sources or stop.",
+    'tour.assistir.titulo': "Choose what to watch",
+    'tour.assistir.texto':
+      "Streams appear in the room’s bottom bar. Click a source to watch it; use Ctrl+click to watch " +
+      "more than one together.",
+    'tour.mesa.titulo': "A Table for doing things together",
+    'tour.mesa.descricao': "In Table rooms, games, media and tools share a space with your group.",
+    'tour.janelas.titulo': "Add a window to the Table",
+    'tour.janelas.texto':
+      "Use “Put on the Table” or right-click an empty area to add games, videos, notes and other " +
+      "windows.",
+    'tour.conversa.titulo': "Chat with your group",
+    'tour.conversa.texto':
+      "Open “Conversation” to exchange messages and images. In Settings, adjust your profile, " +
+      "appearance and devices.",
+    'tour.apoio.titulo': "Help GoLive improve",
+    'tour.apoio.descricao':
+      "“Help & support” is in the header, on the home screen and in the room. You can replay this tour " +
+      "there too.",
+    'tour.sugerir.titulo': "Share your idea",
+    'tour.sugerir.texto':
+      "Send suggestions or report problems using the form. Your feedback helps shape the next steps.",
+    'tour.doar.titulo': "Contribute if you like",
+    'tour.doar.texto':
+      "You’ll find the Pix key and PayPal in “Help & support”. Donations are optional and everyone gets " +
+      "the same app.",
     'config.idioma.titulo': 'Language',
     'config.idioma.rotulo': 'App language',
     'config.idioma.auto': 'Automatic (system language)',

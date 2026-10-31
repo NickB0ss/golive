@@ -53,7 +53,8 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
   (Electron 44, Windows, processo de GPU morto com a janela minimizada); não
   visto num PC real.
 - Sucessão canônica em `src/shared/succession.js`, usada pelo servidor e
-  renderer. A origem HTTP libera somente `/shared/succession.js` fora da
+  renderer. A origem HTTP libera somente `/shared/succession.js` e
+  `/shared/comunidade.js` fora da
   raiz renderer. Ver `docs/arquitetura-atual.md` para fronteiras e próximos passos.
 - Áudio negociado em **estéreo** (Opus, bitrate declarado no SDP dos dois
   lados).
@@ -129,8 +130,8 @@ servidor de sinalização embutido no próprio processo; a mídia é P2P.
 
 ## Versão atual
 
-`0.27.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
-Testes: `node --test` → **2462 testes, 2462 passando, 0 falhando**. `npm run lint` → 0
+`0.28.0` (no `package.json`). Electron `^44`, `electron-builder` na `^26`.
+Testes: `node --test` → **2467 testes, 2467 passando, 0 falhando**. `npm run lint` → 0
 erros, 8 avisos
 `require-atomic-updates` (falsos positivos em `let` de módulo reatribuído
 após `await`). Laboratório: `npm run lab` → 10 cenários (ver abaixo).
@@ -336,6 +337,25 @@ Spec `docs/superpowers/specs/2026-10-03-idiomas-design.md`, plano `docs/superpow
   visível fora dos dicionários (catraca zerada); `glossario.test.js` reprova os termos proibidos por língua.
 - **Falta antes do release:** revisão de um falante nativo do espanhol (sobretudo as 480 perguntas) e o teste em
   2+ PCs reais com idiomas diferentes.
+
+## 0.28.0 — tour e apoio (2026-10-30)
+
+- Base atualizada para o `main`/tag `v0.27.0` do GitHub (`2294bb8`), com as
+  funcionalidades reaplicadas sem conflitos na branch `codex/ajuda-tour-027`.
+  Validação: 2.467 testes aprovados, lint sem erros e smoke/roteiro no Electron
+  aprovados. Versão preparada para o workflow de release.
+- **Ajuda e apoio** no cabeçalho, no início e na sala: formulário de sugestões
+  e problemas, chave Pix copiável e PayPal. Dados copiados do `golive-site`;
+  doações opcionais, sem contrapartida. Links fixos, abertos no navegador
+  padrão por IPC exclusivo do quadro principal.
+- Tour de cinco etapas na primeira abertura, com Voltar, Próximo, Pular e
+  conclusão. Estado local separado das configurações (`golive:tour:v1`);
+  pode ser revisto por Ajuda e apoio. Fechar por Esc equivale a pular.
+- Textos em pt-BR, en e es; diálogos nativos com foco contido, fundo inerte
+  e devolução de foco. Aparência usa os tokens do Sinal.
+- Roteiro e evidências de validação em
+  `docs/testes/2026-10-30-tour-e-apoio.md`. O workflow da tag gera o instalador,
+  o blockmap e o `latest.yml` juntos em um rascunho para publicação.
 
 ## Próximos passos
 

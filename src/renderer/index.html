@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="sinal/sheets.css" />
 <link rel="stylesheet" href="sinal/criar-sala.css" />
 <link rel="stylesheet" href="sinal/mesa.css" />
+<link rel="stylesheet" href="sinal/comunidade.css" />
 <link rel="stylesheet" href="mesa-janelas.css" />
 </head>
 <body>
@@ -139,6 +140,11 @@
     </div>
   </div>
   <div class="head__group head__group--end">
+    <button id="btn-comunidade" class="btn btn--quiet btn--sm head__help" type="button"
+            data-i18n-attr="aria-label:comunidade.titulo;title:comunidade.titulo">
+      <svg class="i" aria-hidden="true"><use href="#i-circle-help" /></svg>
+      <span data-i18n="comunidade.titulo"></span>
+    </button>
     <div id="warn-center-wrap" class="warn-center-wrap">
       <button id="warn-center" class="btn btn--quiet btn--sm" type="button" hidden aria-label="0 avisos"
               aria-expanded="false" aria-controls="warn-center-panel" data-i18n-attr="aria-label:pagina.zeroAvisos">
@@ -634,10 +640,71 @@
 </div>
 
 </div><!-- /#app -->
+<!-- Ajuda e tour usam dialog nativo: foco contido e fundo inerte, inclusive na sala. -->
+<dialog id="comunidade-dialog" class="community-dialog" aria-labelledby="comunidade-titulo">
+  <div class="dlg__head">
+    <h2 id="comunidade-titulo" class="dlg__title" data-i18n="comunidade.titulo"></h2>
+    <button id="comunidade-fechar" class="btn btn--quiet btn--icon" type="button" autofocus
+            data-i18n-attr="aria-label:comunidade.fechar">
+      <svg class="i" aria-hidden="true"><use href="#i-x" /></svg>
+    </button>
+  </div>
+  <div class="dlg__body">
+    <section class="community-block">
+      <h3 class="settings__h" data-i18n="comunidade.comecar"></h3>
+      <p class="dlg__text" data-i18n="comunidade.tourDescricao"></p>
+      <button id="comunidade-tour" class="btn btn--secondary" type="button" data-i18n="comunidade.rever"></button>
+    </section>
+    <section class="community-block">
+      <h3 class="settings__h" data-i18n="comunidade.sugestoes"></h3>
+      <p class="dlg__text" data-i18n="comunidade.sugestoesDescricao"></p>
+      <button class="btn btn--secondary" type="button" data-apoio-link="sugestoes"
+              data-i18n="comunidade.abrirForms"></button>
+    </section>
+    <section class="community-block">
+      <h3 class="settings__h" data-i18n="comunidade.doar"></h3>
+      <p class="dlg__text" data-i18n="comunidade.doacaoDescricao"></p>
+      <p class="tx-meta" data-i18n="comunidade.pix"></p>
+      <code id="comunidade-pix" class="community-pix" tabindex="0"></code>
+      <div class="community-actions">
+        <button id="comunidade-copiar" class="btn btn--secondary" type="button" data-i18n="comunidade.copiar"></button>
+        <button class="btn btn--secondary" type="button" data-apoio-link="paypal"
+                data-i18n="comunidade.paypal"></button>
+      </div>
+    </section>
+    <p id="comunidade-status" class="community-status" role="status" aria-live="polite"></p>
+    <p class="tx-meta" data-i18n="comunidade.navegador"></p>
+  </div>
+</dialog>
+
+<dialog id="tour-dialog" class="community-dialog community-dialog--tour" aria-labelledby="tour-cabecalho"
+        aria-describedby="tour-progresso">
+  <div class="dlg__head">
+    <h2 id="tour-cabecalho" class="dlg__title" data-i18n="tour.titulo"></h2>
+    <button id="tour-pular" class="btn btn--quiet" type="button" data-i18n="tour.pular"></button>
+  </div>
+  <div class="dlg__body tour-body">
+    <p id="tour-progresso" class="tx-data" aria-live="polite" aria-atomic="true"></p>
+    <div class="tour-mark" aria-hidden="true"><svg class="i"><use id="tour-icone" href="#i-circle-user" /></svg></div>
+    <h3 id="tour-titulo" class="tour-title" tabindex="-1"></h3>
+    <p id="tour-descricao" class="dlg__text"></p>
+    <ol class="tour-items">
+      <li><h4 id="tour-item-0-titulo" class="settings__h"></h4><p id="tour-item-0-texto" class="dlg__text"></p></li>
+      <li><h4 id="tour-item-1-titulo" class="settings__h"></h4><p id="tour-item-1-texto" class="dlg__text"></p></li>
+    </ol>
+  </div>
+  <div class="dlg__foot">
+    <button id="tour-voltar" class="btn btn--secondary" type="button" data-i18n="tour.voltar"></button>
+    <button id="tour-avancar" class="btn btn--primary" type="button" data-i18n="tour.proximo"></button>
+  </div>
+</dialog>
+
 <script src="i18n/pt-BR.js"></script>
 <script src="i18n/en.js"></script>
 <script src="i18n/es.js"></script>
 <script src="i18n/index.js"></script>
+<script src="../shared/comunidade.js"></script>
+<script src="boas-vindas.js"></script>
 <script src="config.js"></script>
 <script src="qualitypolicy.js"></script>
 <script src="emoji-en.js"></script>

@@ -1,0 +1,56 @@
+/* Ajuda e tour seguem os dialogos do Sinal; a camada nativa contem o foco. */
+.community-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  width: min(var(--w-sheet), calc(100vw - var(--s-6)));
+  max-width: none;
+  max-height: calc(100dvh - var(--s-6));
+  border: 1px solid var(--line2);
+  border-radius: var(--r-lg);
+  color: var(--tx);
+  background: var(--s2);
+  box-shadow: var(--elev-float);
+  font: var(--t-body);
+  overflow: hidden;
+}
+.community-dialog[open] { display: flex; flex-direction: column; }
+.community-dialog::backdrop { background: var(--scrim); }
+.community-dialog .dlg__head, .community-dialog .dlg__foot { flex: none; flex-wrap: wrap; }
+.community-dialog .dlg__body { min-height: 0; }
+.community-dialog .btn { min-width: var(--h-head); min-height: var(--h-head); white-space: normal; }
+.community-block { display: grid; gap: var(--s-3); }
+.community-block + .community-block { border-top: 1px solid var(--line); padding-top: var(--s-4); }
+.community-block > .btn { justify-self: start; }
+.community-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.community-pix {
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  color: var(--tx);
+  font: var(--t-data);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.community-status { color: var(--tx2); }
+.community-status:empty { display: none; }
+.tour-body { gap: var(--s-4); }
+.tour-body > .tx-data { color: var(--tx3); }
+.tour-mark {
+  display: grid;
+  place-items: center;
+  width: var(--s-7);
+  height: var(--s-7);
+  border-radius: var(--r-lg);
+  color: var(--wire);
+  background: var(--wire-soft);
+}
+.tour-mark .i { width: var(--s-6); height: var(--s-6); }
+.tour-title { font: var(--t-title); }
+.tour-items { display: grid; gap: var(--s-4); }
+.tour-items li { display: grid; gap: var(--s-2); padding-left: var(--s-4); border-left: 2px solid var(--line2); }
+.head__help { -webkit-app-region: no-drag; }
+@media (max-width: 1100px) {
+  .head__help > span { display: none; }
+}

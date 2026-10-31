@@ -10,6 +10,11 @@ const IDIOMAS = i18n.IDIOMAS;
 const dicionarios = Object.fromEntries(IDIOMAS.map((idioma) => [idioma, require(`./${idioma}`)]));
 const RAIZ = path.join(__dirname, '..', '..', '..');
 const PREFIXOS_DINAMICOS = {
+  'tour.': () => require('../boas-vindas').PASSOS.flatMap((passo) => {
+    return [passo.nome, ...passo.itens].flatMap((nome) => [
+      `${nome}.titulo`, `${nome}.${nome === passo.nome ? 'descricao' : 'texto'}`,
+    ]);
+  }),
   'mesa.carta.valor.': () => ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'],
   'mesa.carta.naipe.': () => ['s', 'h', 'd', 'c'],
   'mesa.poquer.cat.': () => require('../mesa-modules/poquer-maos').CATEGORIAS,

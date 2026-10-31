@@ -4,6 +4,83 @@
 
 (function (root) {
   const textos = {
+    'comunidade.titulo': "Ayuda y apoyo",
+    'comunidade.fechar': "Cerrar ayuda y apoyo",
+    'comunidade.comecar': "Conoce la aplicación",
+    'comunidade.tourDescricao': "Un recorrido rápido por salas, transmisiones y Mesa.",
+    'comunidade.rever': "Repetir el recorrido",
+    'comunidade.sugestoes': "¿Qué podemos mejorar?",
+    'comunidade.sugestoesDescricao': "Sugiere novedades o cuéntanos qué falló en el formulario de GoLive.",
+    'comunidade.abrirForms': "Enviar sugerencia o reportar un problema",
+    'comunidade.doar': "Apoya a GoLive",
+    'comunidade.doacaoDescricao':
+      "GoLive es gratuito. Donar es opcional, por cualquier importe y sin beneficios exclusivos.",
+    'comunidade.pix': "Pix · clave aleatoria · solo cuentas de Brasil",
+    'comunidade.copiar': "Copiar clave Pix",
+    'comunidade.paypal': "Donar con PayPal",
+    'comunidade.navegador': "El formulario y PayPal se abren en tu navegador predeterminado.",
+    'comunidade.copiado': "Clave Pix copiada. Pégala en la aplicación de tu banco.",
+    'comunidade.erroCopiar': "No se pudo copiar. Selecciona la clave de arriba y cópiala manualmente.",
+    'comunidade.aberto': "Enlace abierto en el navegador.",
+    'comunidade.erroAbrir': "No se pudo abrir el navegador. Espera un momento e inténtalo de nuevo.",
+    'tour.titulo': "Conoce GoLive",
+    'tour.progresso': "Paso {atual} de {total}",
+    'tour.pular': "Saltar recorrido",
+    'tour.voltar': "Atrás",
+    'tour.proximo': "Siguiente",
+    'tour.concluir': "Empezar a usar",
+    'tour.perfil.titulo': "Prepara tu perfil y tu red",
+    'tour.perfil.descricao': "GoLive conecta computadoras en la misma red local o VPN, como Radmin VPN o Tailscale.",
+    'tour.nome.titulo': "Elige tu nombre",
+    'tour.nome.texto': "En el inicio, escribe tu nombre y elige una foto. Así te verán las demás personas en la sala.",
+    'tour.rede.titulo': "Revisa la conexión",
+    'tour.rede.texto':
+      "Conecta a todos a la misma red o VPN. El inicio muestra la dirección de tu computadora y las " +
+      "salas disponibles.",
+    'tour.sala.titulo': "Reúne al grupo en una sala",
+    'tour.sala.descricao': "Una persona crea la sala y las demás entran. Todos necesitan la misma versión de GoLive.",
+    'tour.criar.titulo': "Crear sala",
+    'tour.criar.texto':
+      "Elige el nombre, el tipo Mesa o Solo transmisiones y, si quieres, un PIN. Luego comparte la " +
+      "dirección con el grupo.",
+    'tour.entrar.titulo': "Entrar a la sala",
+    'tour.entrar.texto':
+      "Elige una sala en “En tu red” o pega la dirección en el campo de entrada. Introduce el PIN si la " +
+      "sala lo pide.",
+    'tour.tela.titulo': "Comparte y mira",
+    'tour.tela.descricao': "Tú eliges qué transmitir y qué pantallas mirar.",
+    'tour.transmitir.titulo': "Transmitir pantalla",
+    'tour.transmitir.texto':
+      "En la sala, usa “Transmitir pantalla” para elegir una pantalla o ventana y el audio. Los " +
+      "controles permiten pausar, cambiar la fuente o parar.",
+    'tour.assistir.titulo': "Elige qué mirar",
+    'tour.assistir.texto':
+      "Las transmisiones aparecen en la barra inferior de la sala. Haz clic en una fuente para verla; " +
+      "usa Ctrl+clic para ver varias a la vez.",
+    'tour.mesa.titulo': "Una Mesa para hacer cosas juntos",
+    'tour.mesa.descricao':
+      "En salas de tipo Mesa, los juegos, el contenido multimedia y las herramientas comparten espacio " +
+      "con el grupo.",
+    'tour.janelas.titulo': "Añade una ventana a la Mesa",
+    'tour.janelas.texto':
+      "Usa “Poner en la Mesa” o haz clic derecho en un espacio vacío para añadir juegos, vídeos, notas " +
+      "y otras ventanas.",
+    'tour.conversa.titulo': "Conversa con el grupo",
+    'tour.conversa.texto':
+      "Abre “Conversación” para intercambiar mensajes e imágenes. En Configuración, ajusta tu perfil, " +
+      "apariencia y dispositivos.",
+    'tour.apoio.titulo': "Ayuda a mejorar GoLive",
+    'tour.apoio.descricao':
+      "“Ayuda y apoyo” está en la cabecera, en el inicio y dentro de la sala. También puedes repetir " +
+      "este recorrido desde allí.",
+    'tour.sugerir.titulo': "Comparte tu idea",
+    'tour.sugerir.texto':
+      "Envía sugerencias o reporta problemas en el formulario. Tu opinión ayuda a decidir los próximos " +
+      "pasos.",
+    'tour.doar.titulo': "Contribuye si quieres",
+    'tour.doar.texto':
+      "Encontrarás la clave Pix y PayPal en “Ayuda y apoyo”. Donar es opcional y todos reciben la misma " +
+      "aplicación.",
     'config.idioma.titulo': 'Idioma',
     'config.idioma.rotulo': 'Idioma de la app',
     'config.idioma.auto': 'Automático (idioma del sistema)',

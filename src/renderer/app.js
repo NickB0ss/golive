@@ -7100,5 +7100,10 @@
   // lancar, a versao do app respondeu pelo IPC e a primeira consulta de rede
   // terminou (a continuacao dela tambem e boot). O smoke de abertura
   // (src/main/smoke.js) espera este marcador; nada no app le o atributo.
-  void Promise.all([appVersionReady, primeiraRede]).then(() => { document.documentElement.dataset.golivePronto = '1'; });
+  void Promise.all([appVersionReady, primeiraRede]).then(() => {
+    window.GoLive.boasVindas.init({
+      doc: document, storage: localStorage, bridge: window.golive, clipboard: navigator.clipboard, t,
+    });
+    document.documentElement.dataset.golivePronto = '1';
+  });
 })();

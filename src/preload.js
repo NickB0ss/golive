@@ -181,6 +181,9 @@ contextBridge.exposeInMainWorld('golive', {
    * { ok: false, reason: 'recusado' | 'rapido' | 'falhou' | 'origem' }. */
   abrirLinkDaMesa: (tipo, url) => ipcRenderer.invoke('mesa:abrir-link', { tipo, url }),
 
+  /** Ajuda e apoio: apenas os identificadores 'sugestoes' e 'paypal'. */
+  abrirApoio: (id) => ipcRenderer.invoke('comunidade:abrir', id),
+
   /** Abre a pasta de logs desta instalacao no explorador de arquivos, pra
    * mandar pra quem for investigar um bug depois. */
   openLogsFolder: () => ipcRenderer.invoke('logs:openFolder'),

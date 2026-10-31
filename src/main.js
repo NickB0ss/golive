@@ -17,6 +17,7 @@ const { normalizarConsoleMessage } = require('./main/consolelog');
 const { aplicarFlagsChromium } = require('./main/chromiumflags');
 const { runtimeInfo } = require('./main/runtime-info');
 const smoke = require('./main/smoke');
+const { linkDeApoio } = require('./shared/comunidade');
 
 // Smoke de abertura (scripts/smoke-app.js): ramo ANTES do lock e de qualquer
 // efeito colateral deste arquivo. Abre a pagina real numa janela escondida com
@@ -1485,6 +1486,26 @@ ipcMain.handle('mesa:abrir-link', async (event, { tipo, url } = {}) => {
     return { ok: true };
   } catch (err) {
     logger.error('link da mesa nao abriu:', err?.message || err);
+    return { ok: false, reason: 'falhou' };
+  }
+});
+
+// Ajuda: destinos publicos fixos do site; somente a pagina principal pode pedir.
+let ultimoLinkDeApoio = 0;
+ipcMain.handle('comunidade:abrir', async (event, id) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
+    return { ok: false, reason: 'origem' };
+  }
+  const destino = linkDeApoio(id);
+  if (!destino) return { ok: false, reason: 'recusado' };
+  const agora = Date.now();
+  if (agora - ultimoLinkDeApoio < 1000) return { ok: false, reason: 'rapido' };
+  ultimoLinkDeApoio = agora;
+  try {
+    await shell.openExternal(destino);
+    return { ok: true };
+  } catch (err) {
+    logger.error('link de apoio nao abriu:', err?.message || err);
     return { ok: false, reason: 'falhou' };
   }
 });

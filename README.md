@@ -108,6 +108,15 @@ vê tudo no próprio idioma — inclusive as jogadas, as perguntas do Quiz e as 
 
 ## Como usar
 
+Na primeira abertura, um tour apresenta perfil e rede, salas, transmissão,
+Mesa e conversa. Você pode pular ou concluir; a escolha fica salva neste
+computador. Para rever, abra **Ajuda e apoio** no cabeçalho, disponível
+também dentro da sala.
+
+Em **Ajuda e apoio** também estão o formulário de sugestões e relatos,
+a chave Pix com botão de copiar e o PayPal. Os links abrem no navegador
+padrão. Doações são opcionais e não desbloqueiam recursos.
+
 **1. Alguém da turma clica em "Criar sala"**, na barra lateral da tela
 inicial do GoLive. Um diálogo pergunta se a sala deve ser **anunciada na
 rede** (ligado por padrão), qual o **nome da sala** (o padrão é "Sala de

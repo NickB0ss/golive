@@ -8,8 +8,9 @@ por SFU nem converte o renderer inteiro para módulos ES.
 
 - `src/main.js`, `src/main/` e preloads cuidam de runtime, permissões,
   captura nativa, armazenamento, janelas e origem local. `origem.js` serve
-  a raiz renderer com contenção por realpath e uma exceção exata para
-  `/shared/succession.js`; não expõe o diretório `src/` ou `shared/` inteiro.
+  a raiz renderer com contenção por realpath e exceções exatas para
+  `/shared/succession.js` e `/shared/comunidade.js`; não expõe o diretório
+  `src/` ou `shared/` inteiro.
 - `server/signaling-core.js` mantém o estado da sala e roteia mensagens.
   `server/signaling.js` fornece o transporte WebSocket. Mídia não passa por
   esse servidor. A versão do app deve coincidir exatamente no join e beacon.
@@ -29,6 +30,11 @@ por SFU nem converte o renderer inteiro para módulos ES.
   importa diretamente; o renderer carrega `../shared/succession.js`, que
   resolve tanto em `file://` quanto em HTTP. `src/renderer/succession.js` é
   somente um adaptador CommonJS para consumidores antigos.
+- `src/shared/comunidade.js` concentra os dados públicos de apoio do site.
+  O renderer lê a chave Pix; o main resolve somente identificadores fixos
+  de destino pelo IPC `comunidade:abrir`, restrito ao quadro principal.
+  `src/renderer/boas-vindas.js` liga a ajuda e o tour ao fim do boot, com
+  persistência local própria e diálogos nativos sem alterar a sessão da sala.
 
 ## Telemetria e decisões
 

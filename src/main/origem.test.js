@@ -27,11 +27,15 @@ const {
 
 const RENDERER = path.join(__dirname, '..', 'renderer');
 
-test('shared serve apenas sucessao canonica e rejeita rotas vizinhas ou codificadas', async () => {
+test('shared serve apenas modulos publicos canonicos e rejeita rotas vizinhas ou codificadas', async () => {
   const good = await responder({ raiz: RENDERER, metodo: 'GET', url: 'http://localhost/shared/succession.js' });
   assert.equal(good.status, 200);
   assert.match(good.corpo.toString(), /function chooseSuccessor/);
+  const apoio = await responder({ raiz: RENDERER, metodo: 'GET', url: 'http://localhost/shared/comunidade.js' });
+  assert.equal(apoio.status, 200);
+  assert.match(apoio.corpo.toString(), /function linkDeApoio/);
   for (const pathname of ['/shared/outro.js', '/shared/succession.test.js', '/shared%2fsuccession.js',
+    '/shared/comunidade.test.js', '/shared/%63omunidade.js', '/shared/../shared/comunidade.js',
     '/shared%5csuccession.js', '/shared/%73uccession.js', '/shared/../main.js', '/shared/../../package.json',
     '/shared/../shared/succession.js', '/%73hared/succession.js', '/other/../shared/succession.js']) {
     assert.equal((await responder({ raiz: RENDERER, metodo: 'GET',
