@@ -1,4 +1,4 @@
-# Arquitetura vigente — 07/10/2026
+# Arquitetura vigente — 21/11/2026
 
 GoLive continua um aplicativo Electron/WebRTC com mídia P2P e árvore de
 retransmissão. Esta entrega extrai núcleos testáveis; não substitui o transporte
@@ -18,6 +18,13 @@ por SFU nem converte o renderer inteiro para módulos ES.
   a interface. `mesh.js` mantém PeerConnections e senders, incluindo kinds
   compostos como `screen@origem`. `ui.js` constrói o DOM e o design system
   vive em `sinal/`. Não houve redesign nesta entrega.
+- As negociações e a demanda de vídeo pertencem à identidade da
+  PeerConnection. Fechar uma conexão cancela logicamente suas operações;
+  resultados tardios não alteram a substituta. Operações de negociação têm
+  prazo de 10 s. Recuperações diretas usam retry limitado com backoff.
+- `capturequality.js` serializa ajustes da captura por track, confirma o
+  alvo após sucesso e repete falhas com backoff de 1 a 10 s. Reset e troca
+  de track invalidam conclusões antigas e cancelam tentativas pendentes.
 - `qualitypolicy.js`, `autoquality.js`, `peerquality.js`, `screenres.js` e
   `encodehealth.js` oferecem políticas puras. A carga vem de envios locais
   efetivos ou planejados, incluindo filhos de relay; membros ociosos e vídeo
@@ -37,6 +44,13 @@ por SFU nem converte o renderer inteiro para módulos ES.
   persistência local própria e diálogos nativos sem alterar a sessão da sala.
 
 ## Telemetria e decisões
+
+`screenrelay.stats()` separa frames lidos do Processor, desenhos no canvas,
+repetições de imagem estática e contextos refeitos. O heartbeat
+`[diag] captura-local` usa deltas desses contadores. A entrada do Processor
+não mede diretamente a captura WGC; tempo síncrono de `drawImage` não mede
+a execução posterior na GPU. Um relay com leitor encerrado precisa ser
+recriado ao trocar a fonte.
 
 `txstats.js` lê outbound RTP e suas referências codec, transport/par ICE,
 remote inbound e media source. Sem referência disponível, só um candidato

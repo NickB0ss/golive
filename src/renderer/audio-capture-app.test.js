@@ -7,6 +7,8 @@ const path = require('node:path');
 const audioCapture = require('./audio-capture');
 const sourceswap = require('./sourceswap');
 const pcmPlanar = require('./pcm-planar');
+const capturequality = require('./capturequality');
+const screenrelay = require('./screenrelay');
 const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 
 function functionSource(name) {
@@ -59,6 +61,7 @@ function setup({ windowPid = 12, refuse = [], videoFailure = false } = {}) {
     } } },
     t: (key) => key, showToast: (key) => toasts.push(key),
     screenrelay: { create: () => null }, screenRelay: null, captureTrack: null,
+    captureQuality: capturequality.create(),
     startSoundMeter: noop, watchCaptureTrack: noop, stopShare: noop, persist: noop,
     startAnnotOverlay: async () => {}, stopAnnotOverlay: noop, sendCameraState: noop, cameraStream: null,
     broadcastWatchers: noop, recomputeTree: noop, renderMembersPanel: noop, startStatsLoop: noop,
@@ -69,8 +72,9 @@ function setup({ windowPid = 12, refuse = [], videoFailure = false } = {}) {
     $: () => ({ classList: { remove: noop } }), INCLUDE_LIST_POLL_MS: 5000,
     setTimeout, clearTimeout,
   });
-  vm.runInContext(['showShareAudioState', 'createShareAudioCapture', 'startShare', 'swapShare', 'stopShare']
-    .map(functionSource).join('\n'), ctx);
+  const names = ['showShareAudioState', 'createShareAudioCapture', 'createScreenRelay',
+    'startShare', 'swapShare', 'stopShare'];
+  vm.runInContext(names.map(functionSource).join('\n'), ctx);
   return { ctx, stopped, selected, toasts, tracks };
 }
 
@@ -156,6 +160,46 @@ test('swap real preserva video e audio anteriores quando captura de video falha'
   await f.ctx.swapShare('window:2', true, true);
   assert.equal(f.ctx.localStream, old);
   assert.deepEqual(f.toasts, ['erro.trocarFonteMantemAnterior']);
+});
+
+test('swap real apos fim do leitor entrega o quadro da nova captura pelo canvas ao sender', async () => {
+  const { ctx } = setup();
+  const escopo = {
+    HTMLCanvasElement: class { captureStream() {} },
+    MediaStreamTrackProcessor: class {
+      constructor({ track }) {
+        let entregue = false;
+        this.readable = { getReader: () => ({
+          read: async () => {
+            if (entregue) return { done: true };
+            entregue = true;
+            return { value: { origem: track, displayWidth: 800, displayHeight: 600, close() {} } };
+          }, cancel() {},
+        }) };
+      }
+    },
+  };
+  const document = { createElement() {
+    let frame;
+    const output = { kind: 'video', requestFrame() { this.exibido = frame.origem; }, stop() {} };
+    return {
+      getContext: () => ({ drawImage(f) { frame = f; } }),
+      captureStream: () => ({ getVideoTracks: () => [output] }),
+    };
+  } };
+  ctx.screenrelay = { create: (track, opts) => screenrelay.create(track, { ...opts, escopo, document }) };
+  let senderTrack;
+  ctx.currentSession.mesh.replaceLocalTrack = (_kind, _media, track) => { senderTrack = track; };
+  await ctx.startShare('window:1', false, false);
+  const antiga = ctx.screenRelay.track;
+  assert.equal(ctx.screenRelay.stats().loopRunning, false);
+  assert.equal(antiga.exibido, ctx.captureTrack);
+  await ctx.swapShare('window:2', false, false);
+  assert.ok(senderTrack, 'a troca instalou a nova saida nos senders');
+  assert.notEqual(senderTrack, antiga);
+  assert.equal(ctx.localStream.getVideoTracks()[0], senderTrack);
+  assert.equal(senderTrack.exibido, ctx.captureTrack, 'o frame da nova fonte saiu pelo sender de canvas');
+  assert.equal(senderTrack.contentHint, 'motion');
 });
 
 test('swap real substitui audio base e avisa Discord recusado sem perder video novo', async () => {

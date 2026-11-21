@@ -71,7 +71,7 @@ function unknownBootChannel(channel) {
 /** Modulos `window.GoLive.*` que precisam existir depois do boot. */
 const REQUIRED_MODULES = [
   'config', 'qualitypolicy', 'txstats', 'rxstats', 'screenrelay', 'mesh', 'tree', 'succession',
-  'encodediag', 'audioCapture', 'i18n',
+  'encodediag', 'audioCapture', 'capturequality', 'i18n',
 ];
 
 /** Pares [antes, depois]: o primeiro <script> tem de vir antes do segundo. */
@@ -82,6 +82,7 @@ const ORDER_RULES = [
   ['qualitypolicy.js', 'app.js'],
   ['audio-capture.js', 'app.js'],
   ['screenrelay.js', 'app.js'],
+  ['capturequality.js', 'app.js'],
   ['mesh.js', 'app.js'],
   ['../shared/succession.js', 'migration.js'],
 ];

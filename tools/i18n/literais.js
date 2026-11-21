@@ -260,6 +260,19 @@ const EXCECOES = new Set([
   'contexto nao retomou em 1s', 'ao vivo', 'som desconhecido', 'falha no AudioContext', // nomes e motivos do log de sons
   'sons desligados', 'janela em foco', 'intervalo mínimo de chat', // motivos do log de sons (testes travam o texto)
   '[mesh] negociacao de', 'sinalizacao interrompida durante a retomada', // log e Error de negociacao
+  // Etapas e fragmentos do diagnostico de negociacao/captura; nunca sao texto de interface (spec 2.4).
+  'negociacao cancelada em', 'prazo de', 'ms esgotado em', 'aplicar candidato ICE',
+  'createOffer no reinicio de ICE', 'setLocalDescription no reinicio de ICE', 'enviar reinicio de ICE',
+  'desfazer oferta de ICE', 'desfazer reinicio de ICE sem resposta',
+  '[mesh] oferta pra #', ') ignorada: negociacao em', 'aguardar sinalizacao estavel',
+  'preparar transceivers', 'preparar transceiver', 'replaceTrack no transceiver reaproveitado',
+  'configurar transceiver reaproveitado', 'setParameters no transceiver reaproveitado',
+  'desativar transceivers restantes', 'setLocalDescription da oferta', 'enviar oferta',
+  ') falhou em', ', derrubando a conexao:', 'sinalizacao interrompida', 'oferta em andamento com #',
+  'setRemoteDescription da oferta', 'drenar candidatos ICE', 'setLocalDescription da resposta',
+  'setRemoteDescription da resposta', 'aguardar sinalizacao estavel para remover track',
+  'remover track', 'createOffer ao remover track', 'setLocalDescription ao remover track', 'enviar oferta sem track',
+  'fps canvas=', 'fps desenhoMs=', 'ms saidaHa=',
   "a conexao esta em '", "', nao esperava resposta", 'sem conexao', // log de diagnostico do mesh
   'recusou na hora (o PC responde, ninguem escuta na porta)', 'sem resposta (rota caida ou PC desligado)', // log
   'inalcancavel (sem rota ate o PC)', 'erro na checagem', // log da checagem de rota ao lider

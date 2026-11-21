@@ -8,6 +8,7 @@
     annotate, screenrelay, sourceswap, reconnect, resume, screenres, succession,
     migration: migrationPlan, stallwatch, capturewatch, networktiming, meshfallbackquality, broadcastguards,
     health, audiometer, viewhold, warnings: warningsModule, reactionsPermission, qualitypolicy, audioCapture,
+    capturequality,
   } = window.GoLive;
   const { t } = window.GoLive.i18n;
   const warningRegistry = warningsModule.create();
@@ -599,10 +600,16 @@
    * que a captura continuava produzindo a 1080p60: o custo de capturar e
    * escalar ficava pago inteiro, na maquina que ja nao esta dando conta.
    *
-   * lastCaptureKey existe porque recomputeTree chama isto varias vezes por
-   * evento de sala, e reconfigurar o capturador com o MESMO formato pode
-   * custar um solavanco de imagem a toa. */
-  let lastCaptureKey = '';
+   * O controlador deduplica alvos ja aplicados e repete falhas sem depender
+   * de outro evento de sala. O estado so e confirmado quando a API resolve. */
+  const captureQuality = capturequality.create({
+    onError: (err, context) => {
+      console.error('[qualidade] applyConstraints na captura falhou:'
+        + ` ${err?.name || 'Erro'}: ${err?.message || err}`
+        + ` constraint=${err?.constraint || '?'} tentativa=${context.attempt}`
+        + ` retryMs=${context.retryMs} alvo=${JSON.stringify(context.constraints)}`);
+    },
+  });
 
   /** Estamos repassando video pra alguem agora? Um relay paga 2 encodes e
    * um decode sem necessariamente transmitir nada proprio -- entao ainda
@@ -748,17 +755,11 @@
       // A CAPTURA continua guiada pelo piso global -- ela e comum a todas as
       // conexoes, entao segue o denominador comum.
       const captureConstraints = config.videoConstraints(floor);
-      const key = `${captureConstraints.width.max}x${captureConstraints.height.max}@${floor.fps}`;
       // A track de CAPTURA, nao a do relay: reconfigurar o canvas nao faz
       // nada, e e a captura que precisa parar de produzir 1080p60 quando a
       // escada desce. O relay acompanha o tamanho sozinho (screenrelay.js).
       const track = captureTrack || localStream.getVideoTracks()[0];
-      if (track && track.readyState === 'live' && key !== lastCaptureKey) {
-        lastCaptureKey = key;
-        track.applyConstraints(captureConstraints).catch((err) => {
-          console.error('[qualidade] applyConstraints na captura falhou:', err);
-        });
-      }
+      captureQuality.request(track, captureConstraints);
     }
 
     // Filhos de relay: valem MESMO sem localStream (relay puro). Os filhos
@@ -1067,14 +1068,8 @@
   $('btn-room-health').addEventListener('click', openDiagnostics);
 
   async function applyLiveQuality() {
-    const track = captureTrack || localStream.getVideoTracks()[0]; // ver reapplyAudienceQuality
-    if (track) {
-      await track.applyConstraints(config.videoConstraints(cfg.quality)).catch(() => {});
-    }
-    // A captura vai no preset que a pessoa escolheu, mas o encode passa por
-    // qualityFor -- senao trocar de preset no meio de uma sala cheia
-    // escaparia da degradacao por carga local ate o proximo
-    // peer-joined/peer-left. Retune por-peer: nao orfana o scaleResolutionDownBy.
+    // O piso efetivo guia captura e encode pelo mesmo controlador; aplicar
+    // antes o teto escolhido criava uma segunda reconfiguracao concorrente.
     reapplyAudienceQuality();
   }
 
@@ -1893,6 +1888,7 @@
   // desistencia do retry chamam isto.
   function teardownMedia() {
     shareEpoch += 1;
+    captureQuality.reset();
     for (const capture of pendingShareAudioCaptures) capture.stop();
     pendingShareAudioCaptures.clear();
     shareAudioCapture = null;
@@ -2671,11 +2667,11 @@
         // zera quando A outConn deste filho e kind chegou mesmo a connected.
         // Consultar o slot atual tambem impede que uma PC velha zere o ciclo
         // de uma PC nova que a substituiu.
-        if (dir === 'out' && sourceId && activeSession === currentSession
+        if (dir === 'out' && !failed && activeSession === currentSession
             && session.mesh.peers.get(peerId)?.outConns[kind]?.connectionState === 'connected') {
-          const relayState = myRole[baseKind].get(sourceId);
+          const relayState = sourceId && myRole[baseKind].get(sourceId);
           const isChild = relayState?.filhosIds.some((id) => String(id) === String(peerId));
-          if (relayState?.role === 'relay' && isChild) {
+          if (!sourceId || (relayState?.role === 'relay' && isChild)) {
             relayRetry.connectionState(relayRetryKey(peerId, kind), 'connected');
           }
         }
@@ -2732,15 +2728,7 @@
             console.error(`[arvore] repasse ${kind} para #${peerId} nao voltou depois de ${retry.attempts} tentativas; aguardando reoffer da folha ou nova epoch`);
           }
         } else if (failed && dir === 'out' && !sourceId && activeSession === currentSession) {
-          // O outro peer pode ter permanecido no servidor, mas a PC dele
-          // falhou durante a queda desta rota. Fechar e re-ofertar por aqui
-          // usa a recuperacao normal do mesh, agora pelo WebSocket retomado.
-          const stream = baseKind === 'camera' ? cameraStream : localStream;
-          if (stream) {
-            activeSession.mesh.closeOut(peerId, kind);
-            offerOwnStreamTo(activeSession, peerId, stream, qualityFor(baseKind), baseKind)
-              .catch((err) => console.error(`[retomada] re-oferta para ${peerId} falhou:`, err));
-          }
+          scheduleDirectRetry(activeSession, peerId, kind);
         }
         // Sem sinalizacao (orfa) nunca chega um 'peer-left'. Uma falha de
         // conexao direta (base kind, passada a carencia de 15s de A2) e o
@@ -3292,6 +3280,28 @@
     return `${peerId}|${kind}`;
   }
 
+  function scheduleDirectRetry(session, peerId, kind) {
+    const mesh = session.mesh;
+    const peer = mesh.peers.get(peerId);
+    const stream = kind === 'camera' ? cameraStream : localStream;
+    if (!peer || !stream) return;
+    mesh.closeOut(peerId, kind);
+    const retry = relayRetry.failed(relayRetryKey(peerId, kind), () => {
+      if (currentSession !== session || !session.sig.isOpen() || mesh.peers.get(peerId) !== peer) return;
+      if (stream !== (kind === 'camera' ? cameraStream : localStream) || peer.outConns[kind]) return;
+      if (!stream.getVideoTracks().some((track) => track.readyState === 'live')) return;
+      const assignments = originTree[kind].assignments;
+      // A primeira oferta direta pode falhar antes da primeira atribuicao.
+      // Com a arvore publicada, so reconecta um destinatario nosso.
+      if (cfg.network.tree && assignments.size && !['direct', 'relay'].includes(assignments.get(peerId)?.role)) return;
+      offerOwnStreamTo(session, peerId, stream, qualityFor(kind), kind)
+        .catch((err) => console.warn(`[retomada] re-oferta de ${kind} para #${peerId} falhou:`, err));
+    });
+    if (retry?.action === 'give-up') {
+      console.warn(`[retomada] saida ${kind} para #${peerId} falhou apos ${retry.attempts} tentativas`);
+    }
+  }
+
   function refreshStallTransport(session, peerId, kind) {
     const key = `${peerId}|${kind}`;
     if (stallTransportPending.has(key)) return;
@@ -3489,16 +3499,28 @@
   /** Refaz so a conexao de saida `kind` pra `peerId` (fecha e oferta de
    * novo). Kind composto: somos relay daquele filho e repassamos de novo. */
   async function reofferOne(session, peerId, kind) {
+    if (currentSession !== session || !session?.sig?.isOpen()) return false;
+    peerId = String(peerId);
     const mesh = session.mesh;
+    const peer = mesh.peers.get(peerId);
+    if (!peer) return false;
     const { baseKind, sourceId } = parseKind(kind);
     if (!KINDS.includes(baseKind)) return false;
     if (!sourceId) {
+      if (kind !== baseKind) return false;
       const stream = baseKind === 'camera' ? cameraStream : localStream;
-      if (!stream || !mesh.peers.get(peerId)?.outConns[kind]) return false;
+      if (!stream?.getVideoTracks().some((track) => track.readyState === 'live')) return false;
+      // O vigia pede reoferta tambem quando a conexao SUMIU. A atribuicao
+      // confirma que devemos servir esse peer; uma folha continua no relay.
+      // Antes da primeira arvore, so refazemos uma saida que ja existia.
+      const assignment = originTree[baseKind].assignments.get(peerId);
+      if (cfg.network.tree && (assignment
+        ? !['direct', 'relay'].includes(assignment.role)
+        : !peer.outConns[kind])) return false;
       if (mesh.isNegotiating(peerId, kind)) return false;
       mesh.closeOut(peerId, kind);
-      const offered = await mesh.offerTo(peerId, stream, qualityFor(baseKind), kind);
-      if (!offered) return false;
+      const offered = await offerOwnStreamTo(session, peerId, stream, qualityFor(baseKind), kind);
+      if (!offered || currentSession !== session) return false;
       if (baseKind === 'screen') enforceSharePauseFor(mesh, peerId);
       return true;
     }
@@ -3885,7 +3907,7 @@
         // ficam presos num id que nao esta mais na sala.
         if (msg.id === ownerId) ownerId = null;
         mesaViewers = mesaViewers.filter((id) => id !== String(msg.id));
-        relayRetry.cancelPeer(msg.id);
+        relayRetry.clearPeer(msg.id);
         pendingTrees.forgetOrigin(msg.id);
         mesh.removePeer(msg.id);
         for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
@@ -4663,6 +4685,21 @@
     });
   });
 
+  function createScreenRelay(track) {
+    return screenrelay.create(track, {
+      onFrameError: (err) => console.error('[diag] relay de tela falhou:', err?.message || err),
+      // GPU caiu e o relay refez o canvas: os senders precisam da nova saida.
+      // Quem esta pausado volta com a track do localStream quando religar.
+      onTrackChange: (nova, antiga) => {
+        console.warn('[diag] relay de tela: contexto do canvas perdido -- saida refeita');
+        if (!localStream?.getVideoTracks().includes(antiga)) return;
+        localStream.removeTrack(antiga);
+        localStream.addTrack(nova);
+        (currentSession || orphanSession)?.mesh.replaceLocalTrack('screen', 'video', nova);
+      },
+    });
+  }
+
   async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false, allowReactions = true) {
     if (sharing || localStream) return;
     const session = currentSession;
@@ -4743,12 +4780,11 @@
       currentShareSound = Boolean(audioState.track);
       currentIncludeDiscord = currentShareSound && includeDiscord;
       const captureConstraints = config.videoConstraints(cfg.quality);
-      lastCaptureKey = `${captureConstraints.width.max}x${captureConstraints.height.max}@${cfg.quality.fps}`;
       stopNativeAudioFns = startedNativeStops;
       const track = localStream.getVideoTracks()[0];
       captureTrack = track || null;
       if (track) {
-        track.applyConstraints({ frameRate: { ideal: cfg.quality.fps, max: cfg.quality.fps } }).catch(() => {});
+        captureQuality.request(track, captureConstraints);
         track.addEventListener('ended', stopShare);
         watchCaptureTrack(track);
       }
@@ -4765,21 +4801,7 @@
       // Entra ANTES da primeira oferta de proposito: `replaceTrack` NAO faz
       // o WebRTC reavaliar o encoder, entao ligar o relay depois nao
       // resgataria um sender que ja caiu em software.
-      screenRelay = track ? screenrelay.create(track, {
-        onFrameError: (err) => console.error('[diag] relay de tela falhou:', err?.message || err),
-        // GPU caiu (driver, jogo, memoria) e o canvas do relay perdeu o
-        // contexto: escondida, a janela nunca o restaura e quem assiste fica
-        // sem imagem. O relay ja refez a saida; falta ela chegar nos senders.
-        // Suspensos pela pausa ficam de fora (replaceLocalTrack) e voltam
-        // com a track do localStream ao religar.
-        onTrackChange: (nova, antiga) => {
-          console.warn('[diag] relay de tela: contexto do canvas perdido -- saida refeita');
-          if (!localStream?.getVideoTracks().includes(antiga)) return;
-          localStream.removeTrack(antiga);
-          localStream.addTrack(nova);
-          (currentSession || orphanSession)?.mesh.replaceLocalTrack('screen', 'video', nova);
-        },
-      }) : null;
+      screenRelay = track ? createScreenRelay(track) : null;
       if (screenRelay) {
         localStream.removeTrack(track);
         localStream.addTrack(screenRelay.track);
@@ -4956,15 +4978,15 @@
       }
       const oldCaptureTrack = captureTrack;
       const oldOutputTrack = localStream.getVideoTracks()[0];
-      let relayAccepted = false;
-      if (screenRelay) relayAccepted = screenRelay.swapSource(newCaptureTrack);
-      if (!relayAccepted) {
-        screenRelay?.stop();
-        screenRelay = null;
-        newCaptureTrack.contentHint = 'motion';
+      if (!screenRelay?.swapSource(newCaptureTrack)) {
+        const anterior = screenRelay;
+        screenRelay = createScreenRelay(newCaptureTrack);
+        const output = screenRelay?.track || newCaptureTrack;
+        if (!screenRelay) newCaptureTrack.contentHint = 'motion';
         localStream.removeTrack(oldOutputTrack);
-        localStream.addTrack(newCaptureTrack);
-        session.mesh.replaceLocalTrack('screen', 'video', newCaptureTrack);
+        localStream.addTrack(output);
+        session.mesh.replaceLocalTrack('screen', 'video', output);
+        anterior?.stop();
       }
       oldCaptureTrack?.removeEventListener('ended', stopShare);
       newCaptureTrack.addEventListener('ended', stopShare);
@@ -4975,7 +4997,7 @@
       watchCaptureTrack(newCaptureTrack);
       if (commit.discardOldVideo) oldCaptureTrack?.stop();
       // A nova captura pode nascer no teto, mesmo com a escada ja reduzida.
-      lastCaptureKey = '';
+      captureQuality.reset();
       reapplyAudienceQuality();
       if (shareSound) {
         const oldAudioTrack = localStream.getAudioTracks()[0];
@@ -5034,6 +5056,7 @@
   function stopShare() {
     shareEpoch += 1;
     swapEpoch += 1;
+    captureQuality.reset();
     for (const capture of pendingShareAudioCaptures) capture.stop();
     pendingShareAudioCaptures.clear();
     shareAudioCapture = null;
@@ -5090,7 +5113,6 @@
   function resetShareState() {
     swapEpoch += 1;
     autoQuality = autoquality.initialState();
-    lastCaptureKey = '';
     sharePaused = false;
     ui.grid.setPaused('me', false, {});
     ui.setToggleState('pause', 'off');
@@ -5271,11 +5293,10 @@
       quality = qualityForPeer(peerId, kind);
       reapplyAudienceQuality();
     }
-    const offer = session.mesh.offerTo(peerId, stream, quality, kind);
-    // offerTo cria sender antes do primeiro await; pausa na mesma pilha.
-    if (sourceswap.shouldPauseNewScreenSender({ kind, sharePaused, hasLocalStream: Boolean(localStream) })) {
-      enforceSharePauseFor(session.mesh, peerId);
-    }
+    const videoPaused = sourceswap.shouldPauseNewScreenSender({
+      kind, sharePaused, hasLocalStream: Boolean(localStream),
+    });
+    const offer = session.mesh.offerTo(peerId, stream, quality, kind, { videoPaused });
     return offer.finally(() => {
       if (kind !== 'screen') return;
       if (plannedScreenOffers.get(key) === plan) plannedScreenOffers.delete(key);
@@ -6345,6 +6366,8 @@
    * comparacao de recomputeTree acharia a topologia "inalterada" na
    * proxima transmissao e nao aplicaria nada -- ninguem receberia papel. */
   function forgetOriginTree(kind) {
+    const session = currentSession || orphanSession;
+    for (const peerId of session?.mesh?.peers.keys() || []) relayRetry.reset(relayRetryKey(peerId, kind));
     originTree[kind].assignments = new Map();
   }
 
@@ -6622,6 +6645,35 @@
     }
   }
 
+  // Mede o trecho local antes do encoder. "entrada" conta os frames lidos
+  // pelo Processor; "canvas" conta os desenhos solicitados para a track.
+  // Nao mede a captura WGC nativa nem a conclusao do trabalho na GPU.
+  let captureDiagPrev = null;
+  function logCaptureDiag() {
+    if (!screenRelay?.stats) {
+      captureDiagPrev = null;
+      return;
+    }
+    const sample = screenRelay.stats();
+    const previous = captureDiagPrev?.relay === screenRelay ? captureDiagPrev.sample : null;
+    const dt = previous ? sample.nowMs - previous.nowMs : 0;
+    if (previous && dt >= 0 && dt < encodediag.HEARTBEAT_MS
+      && previous.contextResets === sample.contextResets && previous.loopRunning === sample.loopRunning) return;
+    const delta = (key) => previous && dt > 0 && sample[key] >= previous[key]
+      ? sample[key] - previous[key] : null;
+    const rate = (key) => delta(key) == null ? '?' : Math.round(delta(key) * 1000 / dt);
+    const input = delta('sourceFrames');
+    const draw = delta('drawMsTotal');
+    const drawMs = input > 0 && draw != null ? (draw / input).toFixed(1) : '?';
+    const age = (at) => at == null || at > sample.nowMs ? '?' : Math.round(sample.nowMs - at);
+    console.info('[diag] captura-local:'
+      + ` entrada=${rate('sourceFrames')}fps canvas=${rate('drawnFrames')}fps`
+      + ` repete=${rate('repeatedFrames')}fps desenhoMs=${drawMs}`
+      + ` entradaHa=${age(sample.lastSourceFrameAtMs)}ms saidaHa=${age(sample.lastOutputFrameAtMs)}ms`
+      + ` loop=${sample.loopRunning ? 'rodando' : 'parado'} contextosRefeitos=${sample.contextResets}`);
+    captureDiagPrev = { relay: screenRelay, sample };
+  }
+
   // Com a janela oculta o painel de estatisticas nao esta na tela de
   // ninguem, mas getStats() + reescrita do innerHTML continuavam rodando a
   // cada segundo -- durante o jogo. Ver a spec de 2026-08-23, F1.4-c.
@@ -6644,6 +6696,7 @@
     clearInterval(statsTimer);
     statsTimer = null;
     statsPrev.clear();
+    captureDiagPrev = null;
     myEncodeHealth = null; // paramos de medir: nao ha saude a reportar
     myEncodeHealthByKind.clear();
     rxPrevSample.clear();
@@ -6680,6 +6733,7 @@
   async function updateStats() {
     const session = currentSession;
     if (!session?.mesh) return;
+    logCaptureDiag(); // antes dos awaits de getStats: o trecho local pode ter parado
     const activeMesh = session.mesh;
 
     let rows = [];

@@ -31,7 +31,7 @@ function setup() {
     rxPrevSample: Object.assign(new Map(), rxstats.createTracker()), rxPrevAtMs: 0,
     rxHealthByPeer: new Map(), peerQuality: new Map(), senderHealth: new Map(),
     myEncodeHealth: null, myEncodeHealthByKind: new Map(),
-    localStream: null, sharePaused: false, KINDS: ['screen', 'camera'],
+    localStream: null, screenRelay: null, captureDiagPrev: null, sharePaused: false, KINDS: ['screen', 'camera'],
     myRole: { screen: new Map(), camera: new Map() }, originTree: { screen: { assignments: new Map() } },
     isRelaying: () => false, conndiag: { readSelectedPair() {} }, logRouteChange() {},
     summarizeScreenEncodeHealth: encodehealth.summarizeScreenEncodeHealth,
@@ -45,7 +45,8 @@ function setup() {
   });
   const legacy = ['readSenderReport', 'deriveRates'].filter((name) => source.includes(`  function ${name}(`));
   const inputHealth = source.includes('  function receiveHealthForInput(') ? [fn('receiveHealthForInput')] : [];
-  vm.runInContext([...legacy.map(fn), ...inputHealth, fn('freshReceiveHealth'), fn('updateStats')].join('\n'), ctx);
+  vm.runInContext([...legacy.map(fn), ...inputHealth, fn('freshReceiveHealth'),
+    fn('logCaptureDiag'), fn('updateStats')].join('\n'), ctx);
   return { ctx, pc, peer, mesh, output, clock: (value) => { at = value; } };
 }
 test('updateStats rejeita resposta getStats de uma PC substituida durante await', async () => {

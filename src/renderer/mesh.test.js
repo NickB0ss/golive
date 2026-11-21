@@ -130,7 +130,7 @@ test('religar devolve a track ao mesmo sender', async () => {
 // preta permanente, sem uma linha de log.
 /** Espera a fila de demanda daquele peer/kind drenar. */
 function settled(mesh, peerId = '7', kind = 'screen') {
-  return Promise.resolve(mesh.peers.get(peerId)?.demandChain?.[kind]);
+  return mesh.demandApplied(peerId, kind);
 }
 
 function rejectingSender(track, quando) {
@@ -209,7 +209,7 @@ test('religar sem track nao descarta os senders suspensos', async () => {
 });
 
 test('suspender sem sender de video nao apaga a lista guardada', async () => {
-  const video = fakeSender({ kind: 'video' });
+  const video = rejectingSender({ kind: 'video' }, 'religar');
   const mesh = meshWithPeer([video]);
   const track = { kind: 'video' };
 
@@ -219,13 +219,13 @@ test('suspender sem sender de video nao apaga a lista guardada', async () => {
   // que tornava a tela preta irreversivel.
   mesh.setPeerDemand('7', 'screen', false);
   await settled(mesh);
-  const peer = mesh.peers.get('7');
-  peer.suspended.screen = false; // como se o religar tivesse falhado
+  mesh.setPeerDemand('7', 'screen', true, track);
+  await settled(mesh);
+  video.falhando = false;
   assert.equal(video.track, null);
 
   mesh.setPeerDemand('7', 'screen', false);
   await settled(mesh);
-  assert.deepEqual(peer.suspendedSenders.screen, [video], 'a lista sobreviveu');
 
   mesh.setPeerDemand('7', 'screen', true, track);
   await settled(mesh);
@@ -316,6 +316,55 @@ test('suspender concorrente termina suspenso e libera o encoder', async () => {
   assert.equal(video.track, null);
 });
 
+for (const expirou of [false, true]) {
+  test(`pausa da PC substituta independe da demanda antiga (timeout=${expirou})`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const track = { kind: 'video' };
+    const antiga = fakeSender(track);
+    const pendente = Promise.withResolvers();
+    let chamadasAntigas = 0;
+    antiga.replaceTrack = async (next) => {
+      chamadasAntigas += 1;
+      await pendente.promise;
+      antiga.track = next;
+    };
+    const mesh = meshWithPeer([antiga], { demandTimeoutMs: 10 });
+    const peer = mesh.peers.get('7');
+    peer.outConns.screen.close = () => {};
+    mesh.setPeerDemand('7', 'screen', false, track);
+    const esperaAntiga = mesh.demandApplied('7', 'screen');
+    await esvaziar();
+    if (expirou) {
+      t.mock.timers.tick(10);
+      await esperaAntiga;
+    }
+    mesh.closeOut('7', 'screen');
+
+    const nova = fakeSender(track);
+    const escritas = [];
+    nova.replaceTrack = async (next) => { escritas.push(next); nova.track = next; };
+    peer.outConns.screen = { getSenders: () => [nova] };
+    mesh.setPeerDemand('7', 'screen', false, track);
+    const esperaNova = mesh.demandApplied('7', 'screen');
+    await esvaziar();
+    assert.equal(nova.track, null, 'pausa chegou ao sender novo enquanto o antigo aguarda');
+    assert.notEqual(esperaAntiga, esperaNova);
+    await esperaNova;
+    pendente.resolve();
+    await esvaziar();
+    t.mock.timers.tick(20);
+    await esvaziar();
+    assert.equal(mesh.demandApplied('7', 'screen'), esperaNova, 'conclusao antiga nao reabre a fila nova');
+    assert.deepEqual(escritas, [null]);
+    assert.equal(mesh.isPeerSuspended('7', 'screen'), true);
+    mesh.setPeerDemand('7', 'screen', true, track);
+    await mesh.demandApplied('7', 'screen');
+    assert.equal(nova.track, track);
+    assert.equal(chamadasAntigas, 1, 'sender aposentado nao recebeu a track de retomada');
+    assert.equal(antiga.track, null);
+  });
+}
+
 // --- Renegociacao reaproveita transceivers (hotfix 2026-09-12) ---
 //
 // Empilhar um transceiver por renegociacao deixava o receptor com duas
@@ -387,6 +436,19 @@ test('canal que sobra sem track correspondente para de mandar a track velha', as
 
   assert.equal(audio.sender.track, null);
   assert.equal(audio.direction, 'inactive');
+});
+
+test('nova oferta de camera restaura o canal que o espectador suspendeu na captura anterior', async () => {
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState() {} });
+  const canal = fakeTransceiver('video', { kind: 'video' });
+  mesh.addPeer('7', 'Bruno').outConns.camera = fakeRenegotiablePc([canal]);
+  mesh.setPeerDemand('7', 'camera', false);
+  await mesh.demandApplied('7', 'camera');
+  assert.equal(canal.sender.track, null);
+  const nova = { kind: 'video' };
+  await mesh.offerTo('7', { getTracks: () => [nova] }, QUALIDADE_REUSO, 'camera');
+  assert.equal(canal.sender.track, nova);
+  assert.equal(mesh.isPeerSuspended('7', 'camera'), false);
 });
 
 test('midia nova sem canal existente ainda ganha transceiver proprio', async () => {
@@ -1376,7 +1438,8 @@ test('relayTo devolve false quando a oferta do filho ja esta em voo', async () =
 
   assert.equal(mesh.isNegotiating('folha', 'screen@origem'), true);
   assert.equal(await mesh.relayTo('folha', 'origem', 'screen', QUALIDADE), false);
-  void first;
+  mesh.closeOut('folha', 'screen@origem');
+  assert.equal(await first, false);
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;
@@ -1490,6 +1553,208 @@ async function saidaConectada({ send }) {
 }
 
 const esvaziar = () => new Promise((resolve) => setImmediate(resolve));
+
+function cenarioNegociacao(t, options = {}) {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  installFakeWebRTC();
+  t.after(() => {
+    delete global.RTCPeerConnection;
+    delete global.RTCRtpSender;
+  });
+  const enviadas = [];
+  const eventos = [];
+  const mesh = createMesh({
+    negotiationTimeoutMs: 30,
+    send: (msg) => enviadas.push(msg),
+    onTrack() {},
+    onPeerState: (id, evento) => eventos.push(evento),
+    ...options,
+  });
+  return { mesh, enviadas, eventos };
+}
+
+for (const [etapa, fechamento] of [
+  ['createOffer', 'closeOut'], ['setLocalDescription', 'removePeer'], ['replaceTrack', 'closeAllOut'],
+]) {
+  for (const desfecho of ['resolve', 'reject']) {
+    test(`negociacao obsoleta: ${fechamento} durante ${etapa}, seguido de ${desfecho}`, async (t) => {
+      const { mesh, enviadas, eventos } = cenarioNegociacao(t);
+      const peer = mesh.addPeer('7', 'Ana');
+      const antiga = new global.RTCPeerConnection();
+      peer.outConns.screen = antiga;
+      const pendente = Promise.withResolvers();
+      if (etapa === 'replaceTrack') {
+        const canal = fakeTransceiver('video');
+        canal.sender.replaceTrack = () => pendente.promise;
+        antiga.getTransceivers = () => [canal];
+      } else {
+        antiga[etapa] = () => pendente.promise;
+      }
+      const primeira = mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen');
+      const resultado = Promise.allSettled([primeira]);
+      await esvaziar();
+      assert.equal(mesh.isNegotiating('7', 'screen'), true);
+      if (fechamento === 'removePeer') mesh.removePeer('7');
+      if (fechamento === 'closeAllOut') mesh.closeAllOut('screen');
+      if (fechamento === 'closeOut') mesh.closeOut('7', 'screen');
+      assert.equal(mesh.isNegotiating('7', 'screen'), false, 'fechar solta a trava imediatamente');
+      const novaOferta = Promise.withResolvers();
+      global.RTCPeerConnection.prototype.createOffer = () => novaOferta.promise;
+      const segunda = mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen');
+      const nova = mesh.peers.get('7').outConns.screen;
+      assert.notEqual(nova, antiga);
+      if (desfecho === 'reject') pendente.reject(new Error('falha tardia'));
+      else pendente.resolve({ type: 'offer', sdp: 'antiga' });
+      await esvaziar();
+      assert.equal((await resultado)[0].value, false);
+      assert.equal(mesh.isNegotiating('7', 'screen'), true, 'a trava nova continua ocupada');
+      assert.equal(nova.closed, undefined);
+      assert.deepEqual(enviadas, []);
+      assert.deepEqual(eventos, []);
+      novaOferta.resolve({ type: 'offer', sdp: 'nova' });
+      assert.equal(await segunda, true);
+      assert.equal(enviadas[0].sdp.sdp, 'nova');
+    });
+  }
+}
+
+test('prazo da negociacao limpa slot e avisa na etapa presa mesmo sem a Promise nativa terminar', async (t) => {
+  const { mesh, eventos, enviadas } = cenarioNegociacao(t);
+  const travada = Promise.withResolvers();
+  const original = global.RTCPeerConnection.prototype.createOffer;
+  global.RTCPeerConnection.prototype.createOffer = () => travada.promise;
+  const resultado = Promise.allSettled([mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen')]);
+  const pc = mesh.peers.get('7').outConns.screen;
+  t.mock.timers.tick(30);
+  await esvaziar();
+  assert.equal(mesh.isNegotiating('7', 'screen'), false);
+  assert.equal(pc.closed, true);
+  assert.equal(mesh.peers.get('7').outConns.screen, null);
+  assert.equal(eventos.filter((e) => e.failed).length, 1);
+  assert.match((await resultado)[0].reason.message, /createOffer/);
+  global.RTCPeerConnection.prototype.createOffer = original;
+  assert.equal(await mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen'), true);
+  travada.resolve({ type: 'offer', sdp: 'velha' });
+  await esvaziar();
+  assert.equal(enviadas.length, 1);
+});
+
+test('troca de entrada interrompe resposta antiga mesmo que setRemoteDescription rejeite depois', async (t) => {
+  const { mesh, eventos } = cenarioNegociacao(t);
+  const travada = Promise.withResolvers();
+  const base = global.RTCPeerConnection.prototype;
+  const original = base.setRemoteDescription;
+  base.setRemoteDescription = () => travada.promise;
+  const oferta = { type: 'offer', sdp: 'v=0' };
+  const antiga = Promise.allSettled([mesh.handleOffer('7', oferta, 'screen')]);
+  base.setRemoteDescription = original;
+  assert.equal((await mesh.handleOffer('7', oferta, 'screen')).type, 'answer');
+  const nova = mesh.peers.get('7').inConns.screen;
+  travada.reject(new Error('antiga'));
+  assert.equal((await antiga)[0].status, 'rejected', 'o app so envia respostas da entrada vigente');
+  assert.equal(mesh.peers.get('7').inConns.screen, nova);
+  assert.equal(nova.closed, undefined);
+  assert.equal(eventos.some((e) => e.failed), false);
+});
+
+test('falha no callback de recuperacao nao retém a trava nem fecha a oferta iniciada por ele', async (t) => {
+  const travada = Promise.withResolvers();
+  let substituta;
+  let recuperacoes = 0;
+  const { mesh } = cenarioNegociacao(t, {
+    onPeerState() {
+      recuperacoes++;
+      assert.equal(mesh.isNegotiating('7', 'screen'), false);
+      substituta = mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen');
+      throw new Error('callback interrompido');
+    },
+  });
+  const pc = new global.RTCPeerConnection();
+  mesh.addPeer('7', 'Ana').outConns.screen = pc;
+  pc.createOffer = () => travada.promise;
+  const antiga = Promise.allSettled([mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen')]);
+  t.mock.timers.tick(30);
+  assert.equal((await antiga)[0].status, 'rejected');
+  assert.equal(await substituta, true);
+  const nova = mesh.peers.get('7').outConns.screen;
+  assert.notEqual(nova, pc);
+  travada.reject(new Error('rejeicao tardia'));
+  t.mock.timers.tick(100);
+  await esvaziar();
+  assert.equal(nova.closed, undefined);
+  assert.equal(mesh.isNegotiating('7', 'screen'), false);
+  assert.equal(recuperacoes, 1);
+});
+
+test('resposta pendente da saida fechada nao derruba sua substituta', async (t) => {
+  const { mesh, eventos } = cenarioNegociacao(t);
+  await mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen');
+  const travada = Promise.withResolvers();
+  mesh.peers.get('7').outConns.screen.setRemoteDescription = () => travada.promise;
+  const antiga = Promise.allSettled([mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'screen')]);
+  mesh.closeOut('7', 'screen');
+  await mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen');
+  const nova = mesh.peers.get('7').outConns.screen;
+  travada.reject(new Error('antiga'));
+  await antiga;
+  assert.equal(mesh.peers.get('7').outConns.screen, nova);
+  assert.equal(nova.closed, undefined);
+  assert.equal(eventos.some((e) => e.failed), false);
+});
+
+test('fechar a camera esperando estabilidade encerra a espera mesmo sem evento de sinalizacao', async (t) => {
+  const { mesh, enviadas } = cenarioNegociacao(t);
+  await mesh.offerTo('7', streamFalsa(), QUALIDADE, 'camera');
+  const pc = mesh.peers.get('7').outConns.camera;
+  pc.close = () => { pc.signalingState = 'closed'; };
+  const pendente = mesh.offerTo('7', streamFalsa(), QUALIDADE, 'camera', { waitForStable: true });
+  mesh.closeOut('7', 'camera');
+  assert.equal(await pendente, false);
+  assert.equal(pc.listeners.signalingstatechange.length, 0);
+  assert.equal(mesh.peers.get('7').outConns.camera, null);
+  assert.equal(enviadas.length, 1);
+});
+
+test('removeTrack interrompido depois de criar a oferta nao envia a SDP da camera antiga', async (t) => {
+  const { mesh, enviadas } = cenarioNegociacao(t);
+  const stream = streamFalsa();
+  await mesh.offerTo('7', stream, QUALIDADE, 'camera');
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'camera');
+  const pc = mesh.peers.get('7').outConns.camera;
+  const travada = Promise.withResolvers();
+  pc.setLocalDescription = () => travada.promise;
+  const remocao = mesh.removeTrack('7', stream.getTracks()[0], 'camera');
+  await esvaziar();
+  mesh.closeOut('7', 'camera');
+  assert.equal(await remocao, false);
+  await mesh.offerTo('7', stream, QUALIDADE, 'camera');
+  travada.resolve();
+  await esvaziar();
+  assert.equal(enviadas.length, 2);
+  assert.equal(enviadas[1].renegotiate, false);
+});
+
+test('fechar durante setLocalDescription do reinicio de ICE impede enviar a oferta antiga', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const enviadas = [];
+  const { mesh, pc } = await saidaConectada({ send: (m) => enviadas.push(m) });
+  t.after(() => {
+    delete global.RTCPeerConnection;
+    delete global.RTCRtpSender;
+  });
+  const travada = Promise.withResolvers();
+  pc.setLocalDescription = () => travada.promise;
+  pc.mudarEstado('disconnected');
+  t.mock.timers.tick(1000);
+  await esvaziar();
+  assert.equal(pc.restarts, 1);
+  mesh.closeOut('7', 'screen');
+  assert.equal(await mesh.offerTo('7', streamFalsa(), QUALIDADE, 'screen'), true);
+  travada.resolve();
+  await esvaziar();
+  assert.equal(enviadas.length, 2);
+  assert.equal(enviadas[1].renegotiate, false);
+});
 
 test('saida em disconnected por 1 s reinicia o ICE na mesma conexao e renegocia (C5)', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

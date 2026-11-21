@@ -12,6 +12,7 @@ const qualitypolicy = require('./qualitypolicy');
 const peerquality = require('./peerquality');
 const screenres = require('./screenres');
 const sourceswap = require('./sourceswap');
+const capturequality = require('./capturequality');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 
 // Executa as funcoes de producao, sem carregar o DOM do app nem manter uma
@@ -38,6 +39,7 @@ function setup() {
   const ctx = vm.createContext({
     config, qualitypolicy, peerquality, screenres, sourceswap, parseKind: meshModule.parseKind,
     cfg: config.load(null), currentSession: session, localStream: { getVideoTracks: () => [track] },
+    captureQuality: capturequality.create(),
     captureTrack: { getSettings: () => ({ width: 1920, height: 1080 }) },
     sharePaused: false, originTree: { screen: { assignments: new Map() } },
     myRole: { screen: new Map(), camera: new Map() }, plannedScreenOffers: new Map(),
@@ -191,7 +193,7 @@ test('fim da origem limpa plano apos dropRelaysOf real e reaplicador real restau
   Object.assign(ctx, {
     mesh, session, KINDS: ['screen', 'camera'], relayKindFor: meshModule.relayKindFor,
     relayRetry: { cancel() {} }, relayRetryKey: (id, k) => `${id}:${k}`,
-    cameraStream: null, appliedScreenEncoding: new Map(), lastCaptureKey: '',
+    cameraStream: null, appliedScreenEncoding: new Map(),
     captureTrack: { ...track, getSettings: () => ({ width: 1920, height: 1080 }),
       applyConstraints: () => Promise.resolve() }, console,
     pendingTrees: {}, normalizeLimit: () => null,
