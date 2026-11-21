@@ -11,14 +11,17 @@ function fakeFrame(w, h) {
 }
 
 /** Canvas falso que registra o que foi desenhado e o tamanho no momento. */
-function fakeCanvas() {
+function fakeCanvas({ aoDesenhar, aoPedir } = {}) {
   const c = {
     width: 0,
     height: 0,
     desenhos: [],
     pedidos: 0,
     getContext: () => ({
-      drawImage(frame) { c.desenhos.push({ w: c.width, h: c.height, frame }); },
+      drawImage(frame) {
+        aoDesenhar?.();
+        c.desenhos.push({ w: c.width, h: c.height, frame });
+      },
     }),
     captureStream(fps) {
       c.fpsPedido = fps;
@@ -26,7 +29,10 @@ function fakeCanvas() {
         getVideoTracks: () => [{
           contentHint: '',
           parada: false,
-          requestFrame() { c.pedidos += 1; },
+          requestFrame() {
+            aoPedir?.();
+            c.pedidos += 1;
+          },
           stop() { this.parada = true; },
         }],
       };
@@ -148,6 +154,57 @@ test('cada quadro lido vira um desenho e um requestFrame', async () => {
   relay.stop();
 });
 
+test('stats usa o relogio do relay e mede somente o drawImage do quadro novo', async (t) => {
+  let agora = 10;
+  const canvas = fakeCanvas({
+    aoDesenhar: () => { agora += 3; },
+    aoPedir: () => { agora += 7; },
+  });
+  const frame = fakeFrame(1280, 720);
+  Object.defineProperty(frame, 'displayWidth', { get() { agora += 2; return 1280; } });
+  const fonte = { frames: [frame], getSettings: trackFalsa.getSettings };
+  const relay = create(fonte, { escopo: escopoPorTrack(), document: fakeDoc(canvas), now: () => agora });
+  t.after(() => relay.stop());
+
+  const inicial = relay.stats();
+  assert.deepEqual(inicial, {
+    nowMs: 10,
+    sourceFrames: 0,
+    drawnFrames: 0,
+    repeatedFrames: 0,
+    drawMsTotal: 0,
+    lastSourceFrameAtMs: null,
+    lastOutputFrameAtMs: null,
+    contextResets: 0,
+    loopRunning: true,
+  });
+
+  agora = 50;
+  await proximoTick();
+  agora = 90;
+  assert.deepEqual(relay.stats(), {
+    nowMs: 90,
+    sourceFrames: 1,
+    drawnFrames: 1,
+    repeatedFrames: 0,
+    drawMsTotal: 3,
+    lastSourceFrameAtMs: 50,
+    lastOutputFrameAtMs: 62,
+    contextResets: 0,
+    loopRunning: true,
+  });
+  assert.equal(inicial.sourceFrames, 0, 'snapshot anterior conserva o valor lido');
+  assert.equal(frame.fechado, true);
+});
+
+test('sem now injetado, stats usa o relogio monotono de performance', (t) => {
+  const relay = create(trackFalsa, { escopo: montarEscopo([]), document: fakeDoc(fakeCanvas()) });
+  t.after(() => relay.stop());
+  const antes = performance.now();
+  const { nowMs } = relay.stats();
+  assert.ok(nowMs >= antes && nowMs <= performance.now());
+});
+
 test('TODO quadro e fechado -- VideoFrame segura memoria de GPU', async () => {
   const canvas = fakeCanvas();
   const frames = [fakeFrame(1280, 720), fakeFrame(1280, 720)];
@@ -188,6 +245,7 @@ test('stop para a track de saida e nao lanca duas vezes', () => {
   const relay = create(trackFalsa, { escopo: montarEscopo([]), document: fakeDoc(canvas) });
   relay.stop();
   assert.equal(relay.track.parada, true);
+  assert.equal(relay.stats().loopRunning, false);
   assert.doesNotThrow(() => relay.stop());
 });
 
@@ -220,6 +278,7 @@ test('swapSource troca a entrada e conserva a track de saida', async () => {
   const relay = create(antiga, { escopo: escopoPorTrack(), document: fakeDoc(canvas) });
   const saida = relay.track;
   await proximoTick();
+  assert.equal(relay.stats().sourceFrames, 1);
 
   assert.equal(relay.swapSource(nova), true);
   for (let i = 0; i < 4; i += 1) await proximoTick();
@@ -227,6 +286,10 @@ test('swapSource troca a entrada e conserva a track de saida', async () => {
   assert.equal(relay.track, saida);
   assert.deepEqual(canvas.desenhos.map((d) => `${d.w}x${d.h}`), ['1280x720', '800x600']);
   assert.equal(saida.parada, false);
+  const stats = relay.stats();
+  assert.equal(stats.sourceFrames, 2);
+  assert.equal(stats.drawnFrames, 2);
+  assert.equal(stats.loopRunning, true);
   relay.stop();
 });
 
@@ -241,6 +304,23 @@ test('swapSource recusada conserva a fonte anterior', async () => {
   assert.equal(canvas.desenhos.length, 2);
   relay.stop();
 });
+
+for (const falha of [false, true]) {
+  test(`relay encerrado recusa a troca sem abrir outro leitor (erro=${falha})`, async () => {
+    const escopo = montarEscopo([], { falhaNaLeitura: falha });
+    const processor = escopo.MediaStreamTrackProcessor;
+    let abertos = 0;
+    escopo.MediaStreamTrackProcessor = class extends processor {
+      constructor(opts) { super(opts); abertos += 1; }
+    };
+    const relay = create(trackFalsa, { escopo, document: fakeDoc(fakeCanvas()) });
+    await proximoTick();
+    assert.equal(relay.stats().loopRunning, false);
+    assert.equal(relay.swapSource(trackFalsa), false);
+    assert.equal(abertos, 1);
+    relay.stop();
+  });
+}
 
 test('dois swapSource seguidos mantem o laco vivo na fonte mais nova', async () => {
   const canvas = fakeCanvas();
@@ -258,23 +338,82 @@ test('dois swapSource seguidos mantem o laco vivo na fonte mais nova', async () 
   relay.stop();
 });
 
+test('frame da leitura antiga ja resolvida nao derruba o relay apos swapSource', async () => {
+  const antigo = fakeFrame(1280, 720);
+  const novo = fakeFrame(800, 600);
+  const canvas = fakeCanvas();
+  const ctx = canvas.getContext();
+  canvas.getContext = () => ({ drawImage(frame) {
+    if (frame === antigo) throw new Error('captura antiga indisponivel');
+    ctx.drawImage(frame);
+  } });
+  const relay = create({ frames: [antigo] }, { escopo: escopoPorTrack(), document: fakeDoc(canvas) });
+  assert.equal(relay.swapSource({ frames: [novo] }), true);
+  await proximoTick();
+  assert.equal(antigo.fechado, true);
+  assert.equal(canvas.desenhos[0]?.frame, novo);
+  assert.equal(novo.fechado, true);
+  relay.stop();
+});
+
 test('falha no laco vira callback, nao silencio', async () => {
   // Uma tela que congela sem deixar rastro no log foi exatamente o tipo de
   // problema que originou esta investigacao.
   const canvas = fakeCanvas();
   const erros = [];
+  const estadoNoErro = [];
   const relay = create(trackFalsa, {
     escopo: montarEscopo([], { falhaNaLeitura: true }),
     document: fakeDoc(canvas),
-    onFrameError: (e) => erros.push(e),
+    onFrameError(e) {
+      erros.push(e);
+      estadoNoErro.push(relay.stats().loopRunning);
+    },
   });
 
   for (let i = 0; i < 12; i += 1) await proximoTick();
 
   assert.equal(erros.length, 1);
   assert.match(String(erros[0].message), /explodiu/);
+  assert.deepEqual(estadoNoErro, [false]);
+  assert.equal(relay.stats().loopRunning, false);
+  assert.equal(relay.stats().sourceFrames, 0);
   relay.stop();
 });
+
+for (const etapa of ['drawImage', 'requestFrame']) {
+  test(`stats registra a entrada mas nenhuma saida quando ${etapa} falha`, async (t) => {
+    let agora = 30;
+    const falha = new Error(etapa);
+    const canvas = fakeCanvas({
+      aoDesenhar() {
+        agora += 5;
+        if (etapa === 'drawImage') throw falha;
+      },
+      aoPedir() { throw falha; },
+    });
+    const frame = fakeFrame(1280, 720);
+    const erros = [];
+    const relay = create(trackFalsa, {
+      escopo: montarEscopo([frame]),
+      document: fakeDoc(canvas),
+      now: () => agora,
+      onFrameError: (err) => erros.push(err),
+    });
+    t.after(() => relay.stop());
+    await proximoTick();
+
+    assert.deepEqual(erros, [falha]);
+    assert.equal(frame.fechado, true);
+    const stats = relay.stats();
+    assert.equal(stats.sourceFrames, 1);
+    assert.equal(stats.drawnFrames, 0);
+    assert.equal(stats.drawMsTotal, 5);
+    assert.equal(stats.lastSourceFrameAtMs, 30);
+    assert.equal(stats.lastOutputFrameAtMs, null);
+    assert.equal(stats.loopRunning, false);
+  });
+}
 
 /** Canvas cujo contexto 2D pode ser perdido de fora, como acontece quando o
  * processo de GPU cai com a janela escondida (spike 2026-10-25, Electron 44):
@@ -327,6 +466,7 @@ test('contexto do canvas perdido: a saida e refeita num canvas novo e quem chama
   assert.equal(primeiro.desenhos.length, 1, 'nada mais e desenhado no canvas perdido');
   assert.deepEqual(segundo.desenhos.map((d) => `${d.w}x${d.h}`), ['1280x720'], 'o quadro que chegou vai pro canvas novo');
   assert.equal(segundo.pedidos, 1);
+  assert.equal(relay.stats().contextResets, 1);
   relay.stop();
   assert.equal(relay.track.parada, true, 'stop encerra a saida atual');
 });
@@ -348,12 +488,14 @@ test('contexto perdido e canvas novo indisponivel: segue tentando no proximo qua
   relay.swapSource(fonte);
   for (let i = 0; i < 4; i += 1) await proximoTick();
   assert.equal(trocas.length, 0, 'sem canvas novo, sem troca');
+  assert.equal(relay.stats().contextResets, 0);
 
   fonte.frames.push(fakeFrame(640, 480));
   relay.swapSource(fonte);
   for (let i = 0; i < 4; i += 1) await proximoTick();
   assert.equal(trocas.length, 1);
   assert.equal(terceiro.desenhos.length, 1);
+  assert.equal(relay.stats().contextResets, 1);
   relay.stop();
 });
 
@@ -392,16 +534,19 @@ function fakeTimer() {
 const repeticoes = (canvas) => canvas.desenhos.filter((d) => d.frame === canvas).length;
 
 test('imagem parada: sem quadro novo no intervalo, o relay reemite o ultimo', async () => {
-  const canvas = fakeCanvas();
+  let agora = 10;
+  const canvas = fakeCanvas({ aoDesenhar: () => { agora += 2; } });
   const timer = fakeTimer();
   const fonte = { frames: [fakeFrame(1280, 720)], getSettings: () => ({ width: 1280, height: 720 }) };
-  const relay = create(fonte, { escopo: escopoPorTrack(), document: fakeDoc(canvas), ...timer });
+  const relay = create(fonte, { escopo: escopoPorTrack(), document: fakeDoc(canvas), now: () => agora, ...timer });
   await proximoTick();
   assert.equal(canvas.pedidos, 1);
 
   timer.fn(); // primeiro olhar: o quadro acabou de chegar, nada a repetir
   assert.equal(canvas.pedidos, 1);
+  agora = 410;
   timer.fn();
+  agora = 610;
   timer.fn();
   // requestFrame sozinho nao emite com o canvas inalterado (medido): a
   // repeticao copia 1 pixel do canvas sobre ele mesmo antes de pedir.
@@ -409,6 +554,13 @@ test('imagem parada: sem quadro novo no intervalo, o relay reemite o ultimo', as
   assert.equal(canvas.pedidos, 3);
   assert.equal(relay.repeticoes(), 2);
   assert.equal(relay.quadros(), 1, 'repeticao nao conta como quadro da captura');
+  const stats = relay.stats();
+  assert.equal(stats.sourceFrames, 1);
+  assert.equal(stats.drawnFrames, 1);
+  assert.equal(stats.repeatedFrames, 2);
+  assert.equal(stats.drawMsTotal, 2);
+  assert.equal(stats.lastSourceFrameAtMs, 10);
+  assert.equal(stats.lastOutputFrameAtMs, 612);
   relay.stop();
 });
 
@@ -461,5 +613,6 @@ test('laco morto nao repete -- a falha tem de aparecer, nao virar imagem parada'
   timer.fn();
   assert.equal(repeticoes(canvas), 0);
   assert.equal(timer.limpo, true, 'o fim do laco desliga o repetidor');
+  assert.equal(relay.stats().loopRunning, false);
   relay.stop();
 });

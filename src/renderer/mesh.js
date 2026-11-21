@@ -35,6 +35,7 @@
   // conexao que voltou sozinha: desfaz a oferta, senao a pc fica presa em
   // 'have-local-offer' e toda renegociacao seguinte desiste.
   const ICE_RESTART_ANSWER_TIMEOUT_MS = 10000;
+  const NEGOTIATION_TIMEOUT_MS = 10000;
 
   // Estados de sinalizacao em que uma pc de ENTRADA ainda pode receber uma
   // oferta remota: 'stable' (a negociacao anterior fechou) e
@@ -233,7 +234,10 @@
     return out.join(eol);
   }
 
-  function createMesh({ send, onTrack, onPeerState, demandTimeoutMs = DEMAND_REPLACE_TIMEOUT_MS }) {
+  function createMesh({
+    send, onTrack, onPeerState,
+    demandTimeoutMs = DEMAND_REPLACE_TIMEOUT_MS, negotiationTimeoutMs = NEGOTIATION_TIMEOUT_MS,
+  }) {
     const peers = new Map();
     // A sessao P2P pode sobreviver a troca do WebSocket de sinalizacao.
     // A retomada aponta este mesmo mesh para o socket novo, sem recriar PCs.
@@ -256,29 +260,82 @@
     // por peer que saiu.
     const pendingIce = new WeakMap();
 
-    // Negociacoes de saida em voo, por `${peerId}|${kind}`. Ver offerTo.
-    const negotiating = new Set();
-
-    function negotiationKey(peerId, kind) {
-      return `${peerId}|${kind}`;
-    }
+    // A resposta precisa rodar enquanto outra oferta espera por 'stable'.
+    // As duas operacoes pertencem a PC concreta, inclusive durante o fechamento.
+    const negotiating = new WeakMap();
+    const answering = new WeakMap();
+    const demandByPc = new WeakMap();
 
     function isNegotiating(peerId, kind) {
-      return negotiating.has(negotiationKey(peerId, kind));
+      const pc = peers.get(peerId)?.outConns[kind];
+      return negotiating.has(pc) || answering.has(pc);
     }
 
-    function waitForStable(pc) {
+    function currentPc(peerId, kind, dir) {
+      const peer = peers.get(peerId);
+      return dir === 'in' ? peer?.inConns[kind] : peer?.outConns[kind];
+    }
+
+    function cancelPcWork(pc) {
+      negotiating.get(pc)?.controller.abort();
+      answering.get(pc)?.controller.abort();
+      demandByPc.get(pc)?.controller.abort();
+      demandByPc.delete(pc);
+    }
+
+    async function runNegotiation(pc, peerId, kind, dir, operations, run) {
+      const controller = new AbortController();
+      const { signal } = controller;
+      const op = {
+        controller, signal, stage: 'iniciar', started: Date.now(),
+        at(next) {
+          if (signal.aborted || currentPc(peerId, kind, dir) !== pc) throw cancelled();
+          if (next) op.stage = next;
+        },
+      };
+      const cancelled = () => new Error(`negociacao cancelada em ${op.stage} com #${peerId} (kind=${kind})`);
+      operations.set(pc, op);
+      const stopped = new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+      let timeout;
+      const timer = setTimeout(() => {
+        timeout = new Error(`prazo de ${negotiationTimeoutMs} ms esgotado em ${op.stage} com #${peerId} (kind=${kind})`);
+        controller.abort(timeout);
+      }, negotiationTimeoutMs);
+      try {
+        const result = await Promise.race([stopped, run(op)]);
+        op.at();
+        return result;
+      } catch (err) {
+        if (currentPc(peerId, kind, dir) !== pc || (signal.aborted && !timeout)) {
+          // handleOffer precisa rejeitar: seu consumidor envia toda SDP devolvida.
+          if (dir === 'in') throw cancelled();
+          return false;
+        }
+        failNegotiation(peerId, kind, dir, pc, timeout || err, op.stage);
+        throw timeout || err;
+      } finally {
+        clearTimeout(timer);
+        if (operations.get(pc) === op) operations.delete(pc);
+      }
+    }
+
+    function waitForStable(pc, signal) {
       if (pc.signalingState === 'stable') return Promise.resolve(true);
       return new Promise((resolve) => {
         const finish = (stable) => {
           pc.removeEventListener?.('signalingstatechange', onState);
+          signal.removeEventListener('abort', onAbort);
           resolve(stable);
         };
+        const onAbort = () => finish(false);
         const onState = () => {
           if (pc.signalingState === 'stable') finish(true);
           else if (pc.signalingState === 'closed') finish(false);
         };
         pc.addEventListener('signalingstatechange', onState, { once: false });
+        signal.addEventListener('abort', onAbort, { once: true });
         onState();
       });
     }
@@ -286,11 +343,12 @@
     // Esvazia, na ordem de chegada, os candidatos guardados pra `pc`. Uma
     // falha individual (candidato malformado do outro lado) nao pode
     // impedir a entrega dos demais -- basta UM candidato bom pra rota fechar.
-    async function drainIce(pc) {
+    async function drainIce(pc, op) {
       const queued = pendingIce.get(pc);
       if (!queued) return;
       pendingIce.delete(pc);
       for (const candidate of queued) {
+        op.at('aplicar candidato ICE');
         try {
           await pc.addIceCandidate(candidate);
         } catch {
@@ -314,9 +372,12 @@
     function removePeer(id) {
       const peer = peers.get(id);
       if (!peer) return;
-      Object.values(peer.outConns).forEach((pc) => pc?.close());
-      Object.values(peer.inConns).forEach((pc) => pc?.close());
       peers.delete(id);
+      for (const pc of [...Object.values(peer.outConns), ...Object.values(peer.inConns)]) {
+        if (!pc) continue;
+        cancelPcWork(pc);
+        pc.close();
+      }
     }
 
     // `kind` distingue tela ('screen') de camera ('camera') -- cada uma tem
@@ -327,11 +388,13 @@
       const pc = new RTCPeerConnection(RTC_CONFIG);
 
       pc.addEventListener('icecandidate', (event) => {
+        if (currentPc(peerId, kind, dir) !== pc) return;
         if (event.candidate) sendSignal({ type: 'ice', to: peerId, dir, kind, candidate: event.candidate });
       });
 
       if (dir === 'in') {
         pc.addEventListener('track', (event) => {
+          if (currentPc(peerId, kind, dir) !== pc) return;
           const peer = peers.get(peerId);
           if (peer) (peer.inStreams ||= {})[kind] = event.streams[0];
           // Nem toda versao do Chromium expoe isto; sem a propriedade, o
@@ -375,13 +438,14 @@
         if (settled) return;
         settled = true;
         clearDisconnectTimer();
+        if (currentPc(peerId, kind, dir) !== pc) return;
+        cancelPcWork(pc);
         if (dir === 'in') {
           const peer = peers.get(peerId);
           // Uma inConn morta nao pode continuar ocupando o slot: quem
           // recebe usa esse slot para decidir se ainda ha video entrando e,
           // sem limpa-lo, nunca pede a oferta de volta. Se ja entrou uma PC
           // nova no lugar, a falha e da velha e nao deve apagar o estado sao.
-          if (peer?.inConns[kind] !== pc) return;
           peer.inConns[kind] = null;
           // A stream guardada morre junto com a conexao que a trouxe --
           // sem limpar aqui, relayTo repassaria adiante uma stream cujas
@@ -406,6 +470,10 @@
       }
 
       pc.addEventListener('connectionstatechange', () => {
+        if (currentPc(peerId, kind, dir) !== pc) {
+          clearDisconnectTimer();
+          return;
+        }
         const state = pc.connectionState;
 
         // 'failed' e 'closed' sao terminais -- reportar na hora continua
@@ -460,43 +528,55 @@
     async function restartIceOn(pc, peerId, kind) {
       if (peers.get(peerId)?.outConns[kind] !== pc) return false;
       if (typeof pc.restartIce !== 'function' || pc.signalingState !== 'stable') return false;
-      const emVoo = negotiationKey(peerId, kind);
-      if (negotiating.has(emVoo)) return false;
-      negotiating.add(emVoo);
-      try {
-        pc.restartIce();
-        const offer = await pc.createOffer({ iceRestart: true });
-        if (peers.get(peerId)?.outConns[kind] !== pc || pc.signalingState !== 'stable') return false;
-        await pc.setLocalDescription({ type: offer.type, sdp: withOpusParams(offer.sdp) });
-        const sent = sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
+      if (isNegotiating(peerId, kind)) return false;
+      return runNegotiation(pc, peerId, kind, 'out', negotiating, async (op) => {
+        let sent;
+        try {
+          op.at('restartIce');
+          pc.restartIce();
+          op.at('createOffer no reinicio de ICE');
+          const offer = await pc.createOffer({ iceRestart: true });
+          op.at('setLocalDescription no reinicio de ICE');
+          if (pc.signalingState !== 'stable') return false;
+          await pc.setLocalDescription({ type: offer.type, sdp: withOpusParams(offer.sdp) });
+          op.at('enviar reinicio de ICE');
+          sent = sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
+          if (sent === false) console.warn(`[mesh] reinicio de ICE com #${peerId} (kind=${kind}) sem sinalizacao`);
+        } catch (err) {
+          op.at();
+          console.warn(`[mesh] reinicio de ICE com #${peerId} (kind=${kind}) falhou em ${op.stage}:`, err);
+          sent = false;
+        }
         if (sent === false) {
           // Sinalizacao fora do ar: a oferta nao saiu e a resposta nunca
           // vira. Volta pra 'stable' e deixa a carencia decidir.
-          await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
-          console.warn(`[mesh] ICE com #${peerId} (kind=${kind}) caiu, mas a sinalizacao esta fora do ar -- sem reinicio`);
+          op.at('desfazer oferta de ICE');
+          if (pc.signalingState === 'have-local-offer') await pc.setLocalDescription({ type: 'rollback' });
           return false;
         }
         console.info(`[mesh] ICE com #${peerId} (kind=${kind}) em 'disconnected' ha ${ICE_RESTART_AFTER_MS / 1000}s -- reiniciando o ICE na mesma conexao`);
         const offered = pc.localDescription;
         setTimeout(() => {
+          if (currentPc(peerId, kind, 'out') !== pc) return;
           if (pc.signalingState !== 'have-local-offer' || pc.localDescription !== offered) return;
           if (pc.connectionState !== 'connected') return; // a carencia cuida
+          if (answering.has(pc)) return; // a aplicacao da resposta tem seu proprio prazo
           console.warn(`[mesh] resposta do reinicio de ICE de #${peerId} (kind=${kind}) nao chegou; a conexao voltou sozinha, desfazendo a oferta`);
-          pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+          runNegotiation(pc, peerId, kind, 'out', answering, async (op) => {
+            op.at('desfazer reinicio de ICE sem resposta');
+            await pc.setLocalDescription({ type: 'rollback' });
+          }).catch(() => {}); // a falha ja passa por failNegotiation
         }, ICE_RESTART_ANSWER_TIMEOUT_MS);
         return true;
-      } catch (err) {
-        console.warn(`[mesh] reinicio de ICE com #${peerId} (kind=${kind}) falhou: ${err?.name || 'Erro'}: ${err?.message || err}`);
-        if (pc.signalingState === 'have-local-offer') await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
-        return false;
-      } finally {
-        negotiating.delete(emVoo);
-      }
+      }).catch(() => false); // runNegotiation ja notificou a falha da PC vigente.
     }
 
     function ensureOutConn(peerId, kind) {
       const peer = addPeer(peerId, peers.get(peerId)?.name || `#${peerId}`);
-      if (!peer.outConns[kind]) peer.outConns[kind] = makeConnection(peerId, 'out', kind);
+      if (!peer.outConns[kind]) {
+        peer.outConns[kind] = makeConnection(peerId, 'out', kind);
+        if (peer.suspended) peer.suspended[kind] = false;
+      }
       return peer.outConns[kind];
     }
 
@@ -519,6 +599,8 @@
       const existing = peer.inConns[kind];
       if (renegotiate && existing && RENEGOTIABLE_STATES.has(existing.signalingState)) return existing;
       if (existing) {
+        peer.inConns[kind] = null;
+        cancelPcWork(existing);
         existing.close();
         // A stream antiga pertence a conexao que acabou de fechar; a nova
         // so existe quando o evento 'track' da nova conexao chegar.
@@ -564,45 +646,44 @@
       // mesma origem (flushPendingRelay, via onTrack e via case 'offer'), e
       // ali a segunda chamada e literalmente a mesma oferta -- enfileira-la
       // so devolveria o transceiver duplicado por outro caminho.
-      const emVoo = negotiationKey(peerId, kind);
-      if (negotiating.has(emVoo)) {
-        console.warn(`[mesh] oferta pra #${peerId} (kind=${kind}) ignorada: ja ha uma negociacao em voo`);
+      const existing = peers.get(peerId)?.outConns[kind];
+      const active = negotiating.get(existing);
+      if (active) {
+        console.warn(
+          `[mesh] oferta pra #${peerId} (kind=${kind}) ignorada: negociacao em ${active.stage}`
+          + ` ha ${Date.now() - active.started} ms`
+        );
         return false;
       }
-      negotiating.add(emVoo);
-      try {
-        const existing = peers.get(peerId)?.outConns[kind];
+      const pc = existing || ensureOutConn(peerId, kind);
+      if (options.videoPaused) setPeerDemand(peerId, kind, false, null);
+      const previousDemand = demandByPc.get(pc)?.desired;
+      return runNegotiation(pc, peerId, kind, 'out', negotiating, async (op) => {
         if (existing && existing.signalingState !== 'stable') {
-          if (!options.waitForStable || !await waitForStable(existing)) return false;
-          if (peers.get(peerId)?.outConns[kind] !== existing) return false;
+          op.at('aguardar sinalizacao estavel');
+          if (!options.waitForStable || !await waitForStable(pc, op.signal)) return false;
         }
-        await negotiateOffer(peerId, stream, quality, kind);
+        op.at('preparar transceivers');
+        // Uma nova oferta pode reativar a camera na mesma PC. Restaura o
+        // video antigo suspenso, exceto se a demanda mudou durante a espera.
+        if (!options.videoPaused && previousDemand?.wanted === false
+          && demandByPc.get(pc)?.desired === previousDemand) {
+          const video = stream.getTracks().find((t) => t.kind === 'video');
+          if (video) {
+            setPeerDemand(peerId, kind, true, video);
+            await demandApplied(peerId, kind);
+            op.at();
+          }
+        }
+        await negotiateOffer(pc, peerId, stream, quality, kind, Boolean(existing), op);
         return true;
-      } catch (err) {
-        // Sem isto a pc ficava ABERTA e meio negociada: como ela nunca chega
-        // em 'failed' no connectionstatechange (nao falhou -- nunca comecou),
-        // nada disparava a recuperacao, e sobrava um encoder pago por um
-        // espectador que so via tela preta. Mesmo racional do handleOffer.
-        failNegotiation(peerId, kind, 'out', err);
-        throw err;
-      } finally {
-        negotiating.delete(emVoo);
-      }
+      });
     }
 
-    async function negotiateOffer(peerId, stream, quality, kind) {
+    async function negotiateOffer(pc, peerId, stream, quality, kind, renegotiate, op) {
       // Ofertar numa outConn que JA existia e renegociacao (religar a camera
       // logo depois de stopCamera, por exemplo): sem avisar, o outro lado
       // derrubaria a conexao que continua de pe deste lado. Ver ensureInConn.
-      const renegotiate = Boolean(peers.get(peerId)?.outConns[kind]);
-      const pc = ensureOutConn(peerId, kind);
-      // Transceivers novos nascem com track: qualquer suspensao anterior
-      // (F1.3) deixou de valer, e manter o registro faria o proximo
-      // 'view-state: watching' virar no-op.
-      const peerRef = peers.get(peerId);
-      if (peerRef?.suspended) peerRef.suspended[kind] = false;
-      if (peerRef?.suspendedSenders) peerRef.suspendedSenders[kind] = [];
-      if (peerRef?.demandSenders) peerRef.demandSenders[kind] = [];
 
       // Renegociar numa pc que ja existe REAPROVEITA o transceiver de cada
       // tipo de midia em vez de empilhar outro. Empilhar deixava o receptor
@@ -614,19 +695,26 @@
         ? pc.getTransceivers().filter((t) => !t.stopped && t.receiver?.track)
         : [];
       for (const track of stream.getTracks()) {
+        op.at('preparar transceiver');
+        const paused = track.kind === 'video' && isPeerSuspended(peerId, kind);
         const idx = reusable.findIndex((t) => t.receiver.track.kind === track.kind);
         if (idx >= 0) {
           const reused = reusable.splice(idx, 1)[0];
           reused.direction = 'sendonly';
-          await reused.sender.replaceTrack(track);
+          op.at('replaceTrack no transceiver reaproveitado');
+          if (!paused && reused.sender.track !== track) await reused.sender.replaceTrack(track);
+          op.at('configurar transceiver reaproveitado');
           reused.sender.setStreams?.(stream);
           if (track.kind === 'video') {
             preferCodec(reused, quality.codec);
+            op.at('setParameters no transceiver reaproveitado');
             await applyReusedVideoParams(reused.sender, quality, peerId, kind);
           }
           continue;
         }
-        const transceiver = pc.addTransceiver(track, {
+        // Quando a transmissao esta pausada, nem a primeira SDP pode carregar
+        // a captura. O canal de video continua negociado para o religamento.
+        const transceiver = pc.addTransceiver(paused ? 'video' : track, {
           direction: 'sendonly',
           streams: [stream],
           sendEncodings: track.kind === 'video'
@@ -634,6 +722,7 @@
             : undefined,
         });
         if (track.kind === 'video') {
+          if (paused) demandByPc.get(pc)?.senders.add(transceiver.sender);
           preferCodec(transceiver, quality.codec);
           // degradationPreference nao existe no RTCRtpTransceiverInit, so em
           // setParameters -- sem isto a conexao nasce em 'balanced' e so vira
@@ -647,16 +736,20 @@
       // Sobrou transceiver sem track correspondente (a stream nova tem menos
       // midias, ou havia um empilhado por uma versao anterior): nao pode
       // seguir mandando a track velha.
+      op.at('desativar transceivers restantes');
       for (const leftover of reusable) {
         leftover.sender.replaceTrack(null).catch(() => {});
         leftover.direction = 'inactive';
       }
 
+      op.at('createOffer');
       const offer = await pc.createOffer();
+      op.at('setLocalDescription da oferta');
       await pc.setLocalDescription({
         type: offer.type,
         sdp: withOpusParams(withStartBitrate(offer.sdp, startBitrateKbps(quality.bitrate))),
       });
+      op.at('enviar oferta');
       sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate });
     }
 
@@ -669,21 +762,21 @@
      * disparava a maquina de recuperacao, e o unico rastro era uma linha no
      * log. Pra quem estava na sala, "a tela de alguem sumiu e nao voltou".
      * Ver o log de 2026-09-05, 04:57:21-22. */
-    function failNegotiation(peerId, kind, dir, err) {
+    function failNegotiation(peerId, kind, dir, pc, err, stage) {
       const peer = peers.get(peerId);
       const slot = dir === 'in' ? peer?.inConns : peer?.outConns;
-      const pc = slot?.[kind];
-      if (pc) {
-        try {
-          pc.close();
-        } catch {
-          /* ja fechada */
-        }
-        slot[kind] = null;
+      if (slot?.[kind] !== pc) return;
+      slot[kind] = null;
+      if (dir === 'out' && peer.suspended) peer.suspended[kind] = false;
+      cancelPcWork(pc);
+      try {
+        pc.close();
+      } catch {
+        /* ja fechada */
       }
       if (dir === 'in') clearInStream(peerId, kind);
       console.error(
-        `[mesh] negociacao de ${dir} com #${peerId} (kind=${kind}) falhou, derrubando a conexao:`,
+        `[mesh] negociacao de ${dir} com #${peerId} (kind=${kind}) falhou em ${stage}, derrubando a conexao:`,
         `${err?.name || 'Erro'}: ${err?.message || err}`
       );
       onPeerState(peerId, { removedTile: dir === 'in', kind, dir, failed: true });
@@ -700,7 +793,7 @@
             if (!pc) continue;
             if (pc.signalingState === 'stable' && pc.iceConnectionState !== 'failed' && pc.connectionState !== 'failed') continue;
             recovered.push({ peerId, kind, dir });
-            failNegotiation(peerId, kind, dir, new Error('sinalizacao interrompida durante a retomada'));
+            failNegotiation(peerId, kind, dir, pc, new Error('sinalizacao interrompida'), 'retomada');
           }
         }
       }
@@ -713,18 +806,20 @@
 
     async function handleOffer(fromId, sdp, kind, renegotiate) {
       const pc = ensureInConn(fromId, kind, renegotiate);
-      try {
+      if (negotiating.has(pc)) throw new Error(`oferta em andamento com #${fromId} (kind=${kind})`);
+      return runNegotiation(pc, fromId, kind, 'in', negotiating, async (op) => {
+        op.at('setRemoteDescription da oferta');
         await pc.setRemoteDescription(sdp);
-        await drainIce(pc);
+        op.at('drenar candidatos ICE');
+        await drainIce(pc, op);
+        op.at('createAnswer');
         const answer = await pc.createAnswer();
         // Estereo se negocia dos dois lados: sem declarar aqui tambem, o par
         // cai pra mono mesmo com a oferta pedindo estereo.
+        op.at('setLocalDescription da resposta');
         await pc.setLocalDescription({ type: answer.type, sdp: withOpusParams(answer.sdp) });
-      } catch (err) {
-        failNegotiation(fromId, kind, 'in', err);
-        throw err; // quem chamou ainda loga a mensagem original
-      }
-      return pc.localDescription;
+        return pc.localDescription;
+      });
     }
 
     async function handleAnswer(fromId, sdp, kind) {
@@ -744,13 +839,13 @@
         );
         return;
       }
-      try {
+      if (answering.has(pc)) return;
+      await runNegotiation(pc, fromId, kind, 'out', answering, async (op) => {
+        op.at('setRemoteDescription da resposta');
         await pc.setRemoteDescription(sdp);
-        await drainIce(pc);
-      } catch (err) {
-        failNegotiation(fromId, kind, 'out', err);
-        throw err;
-      }
+        op.at('drenar candidatos ICE');
+        await drainIce(pc, op);
+      });
     }
 
     async function handleIce(fromId, dir, candidate, kind) {
@@ -886,24 +981,22 @@
       if (!pc) return false;
       const sender = pc.getSenders().find((s) => s.track === track);
       if (!sender) return false;
-      const emVoo = negotiationKey(peerId, kind);
-      if (negotiating.has(emVoo)) return false;
-      negotiating.add(emVoo);
-      try {
-        if (!await waitForStable(pc)) return false;
+      if (negotiating.has(pc)) return false;
+      return runNegotiation(pc, peerId, kind, 'out', negotiating, async (op) => {
+        op.at('aguardar sinalizacao estavel para remover track');
+        if (!await waitForStable(pc, op.signal)) return false;
+        op.at('remover track');
         pc.removeTrack(sender);
+        op.at('createOffer ao remover track');
         const offer = await pc.createOffer();
+        op.at('setLocalDescription ao remover track');
         await pc.setLocalDescription(offer);
         // Renegociacao pura: a pc, o ICE e o DTLS continuam de pe deste
         // lado, so a track saiu. Ver ensureInConn.
+        op.at('enviar oferta sem track');
         sendSignal({ type: 'offer', to: peerId, sdp: pc.localDescription, kind, renegotiate: true });
         return true;
-      } catch {
-        /* conexao pode ja ter fechado (peer saiu durante a renegociacao) */
-        return false;
-      } finally {
-        negotiating.delete(emVoo);
-      }
+      }).catch(() => false);
     }
 
     // Fecha so a outConn de um peer/kind especifico, sem mexer no outro
@@ -916,15 +1009,10 @@
       const peer = peers.get(peerId);
       const pc = peer?.outConns[kind];
       if (!pc) return;
-      pc.close();
       peer.outConns[kind] = null;
-      // Senders de uma pc fechada nao servem mais pra nada, e guarda-los
-      // faria um religar futuro tentar devolver a track num sender morto --
-      // o mesmo fim de linha silencioso que setPeerDemand passou a evitar.
-      // negotiateOffer ja faz esta limpeza ao reabrir; aqui e o outro lado.
+      cancelPcWork(pc);
       if (peer.suspended) peer.suspended[kind] = false;
-      if (peer.suspendedSenders) peer.suspendedSenders[kind] = [];
-      if (peer.demandSenders) peer.demandSenders[kind] = [];
+      pc.close();
     }
 
     // Repassa uma track JA RECEBIDA (peers.get(sourcePeerId).inStreams[kind])
@@ -967,168 +1055,90 @@
     // So a track de VIDEO suspende: quem minimizou provavelmente ainda quer
     // ouvir, e encode de audio e irrelevante perto do de video.
     //
-    // `replaceTrack` e ASSINCRONO, e por isso a demanda tem duas metades:
-    //
-    //   - `peer.suspended[kind]` e o DESEJADO, gravado na hora. E ele que
-    //     dedupa mensagem repetida e que todo mundo le (isPeerSuspended,
-    //     watchersOf, replaceLocalTrack). Precisa ser sincrono: duas
-    //     mensagens view-state na mesma volta do laco de eventos veriam o
-    //     estado velho e a segunda viraria no-op.
-    //   - `peer.demandChain[kind]` aplica isso nos senders, UMA operacao por
-    //     vez. A fila guarda somente a ULTIMA intencao completa (booleano e
-    //     track): estados intermediarios nao importam e assim a memoria nao
-    //     cresce numa rajada de view-state.
-    //
-    // A rejeicao nao pode mais morrer em silencio (log de 2026-09-19): ate
-    // aqui era `.catch(() => {})` com o estado ja gravado como sucesso. Um
-    // religar que falhava deixava o sender sem track, a suspensao seguinte
-    // nao achava sender de video (a track e null) e salvava uma lista vazia,
-    // e o religar seguinte nao tinha mais em quem devolver a track -- tela
-    // preta permanente, sem uma linha de log. Agora a falha avisa e PRESERVA
-    // `suspendedSenders`, entao a proxima mudanca de demanda tenta de novo.
-    //
-    // Devolve true quando houve mudanca de estado (pra quem chama saber se
-    // precisa redesenhar), false quando ja estava no estado pedido ou nao ha
-    // conexao daquele kind.
+    // A intencao fica visivel imediatamente para watchersOf e a qualidade.
+    // A fila, os senders e os prazos pertencem a uma unica PC: ao trocar de
+    // conexao, nem um replaceTrack pendente da antiga pode atrasar a nova.
     function setPeerDemand(peerId, kind, wanted, track) {
       const peer = peers.get(peerId);
       const pc = peer?.outConns[kind];
       if (!pc) return false;
-
-      peer.suspended ||= {};
-      peer.suspendedSenders ||= {};
-      peer.demandSenders ||= {};
-      peer.demandChain ||= {};
-      peer.demandDesired ||= {};
-      peer.demandVersion ||= {};
-      peer.demandRunning ||= {};
-      peer.demandDirty ||= {};
-      const previous = peer.demandDesired[kind];
-      if (Boolean(peer.suspended[kind]) === !wanted
-        && (!wanted || !previous || previous.track === track)) return false;
-
-      peer.suspended[kind] = !wanted;
-      peer.demandVersion[kind] = (peer.demandVersion[kind] || 0) + 1;
-      peer.demandDesired[kind] = { wanted, track, version: peer.demandVersion[kind] };
-      peer.demandDirty[kind] = true;
-      runDemand(peer, pc, kind);
+      let state = demandByPc.get(pc);
+      if (Boolean(peer.suspended?.[kind]) === !wanted
+        && (!wanted || !state || state.desired.track === track)) return false;
+      if (!state) {
+        state = { controller: new AbortController(), senders: new Set(), desired: null, running: false };
+        demandByPc.set(pc, state);
+      }
+      (peer.suspended ||= {})[kind] = !wanted;
+      state.desired = { wanted, track };
+      runDemand(peerId, kind, pc, state);
       return true;
     }
 
-    // So um reconciliador pode estar em voo por peer/kind. Cada volta le a
-    // intencao completa mais nova; a proxima volta so existe se ela mudou
-    // durante o await, portanto nao ha uma fila de Promises para crescer.
-    function runDemand(peer, pc, kind) {
-      if (peer.demandRunning[kind]) return;
-      peer.demandRunning[kind] = true;
-      peer.demandChain[kind] = (async () => {
-        do {
-          peer.demandDirty[kind] = false;
-          const intent = peer.demandDesired[kind];
-          await applyDemand(peer, pc, kind, intent);
-        } while (peer.demandDirty[kind]);
-        peer.demandRunning[kind] = false;
-      })().catch((err) => {
-        peer.demandRunning[kind] = false;
-        console.warn('[mesh] demanda falhou', peer.id, kind, err?.name || err);
-      });
-    }
-
-    // O Chromium nao permite cancelar replaceTrack. Se uma chamada expirou e
-    // terminar depois, reaplicamos a ultima intencao para ela nao desfazer a
-    // demanda nova fora de ordem.
-    function replaceDemandTrack(peer, pc, kind, sender, track, phase, version) {
-      let expired = false;
-      let settled = false;
-      return new Promise((resolve) => {
-        const timer = setTimeout(() => {
-          if (settled) return;
-          expired = true;
-          console.warn('[mesh] demanda expirou', peer.id, kind, phase, `${demandTimeoutMs}ms`);
-          resolve(false);
-        }, demandTimeoutMs);
-        // A chamada tambem pode lancar antes de devolver Promise; começa-la
-        // numa cadeia captura esse caminho e deixa a proxima demanda seguir.
-        Promise.resolve().then(() => sender.replaceTrack(track)).then(() => {
-          // replaceTrack nao e cancelavel: quando a chamada velha termina,
-          // ela pode ter escrito null DEPOIS do religamento. A versao torna
-          // essa conclusao inofensiva e manda reaplicar a intencao atual.
-          if (expired || peer.demandDesired[kind]?.version !== version) {
-            rememberDemandSenders(peer, kind, [sender]);
-            peer.demandDirty[kind] = true;
-            runDemand(peer, pc, kind);
-            // A chamada obsoleta que ainda nao tinha expirado tambem precisa
-            // soltar a volta antiga; senao ela prende o reconciliador ate o
-            // timeout apesar de ja haver uma intencao mais nova para aplicar.
-            if (!expired) {
-              settled = true;
-              clearTimeout(timer);
-              resolve(false);
+    function runDemand(peerId, kind, pc, state) {
+      if (state.controller.signal.aborted) return;
+      state.dirty = true;
+      if (state.running) return;
+      state.running = true;
+      state.applied = (async () => {
+        try {
+          while (state.dirty && !state.controller.signal.aborted) {
+            state.dirty = false;
+            const intent = state.desired;
+            // Depois de replaceTrack(null) e o receiver que identifica o
+            // canal de video. Guardamos os conhecidos mesmo se o religar falhar.
+            for (const s of pc.getSenders?.() || []) {
+              if (s.track?.kind === 'video') state.senders.add(s);
             }
-            return;
+            for (const t of pc.getTransceivers?.() || []) {
+              if (t.receiver?.track?.kind === 'video' && t.sender && !t.stopped) state.senders.add(t.sender);
+            }
+            if (intent.wanted && !intent.track) {
+              console.warn('[mesh] religar sem track -- senders preservados', peerId, kind);
+              continue;
+            }
+            await Promise.all([...state.senders].map((sender) =>
+              replaceDemandTrack(peerId, kind, pc, state, sender, intent)));
           }
-          settled = true;
+        } catch (err) {
+          console.warn('[mesh] demanda falhou', peerId, kind, err?.name || err);
+        } finally {
+          state.running = false;
+        }
+      })();
+    }
+
+    // Se a chamada expirar, o reconciliador pode seguir. Uma escrita
+    // tardia so pede outra aplicacao enquanto ESTA conexao ainda estiver viva.
+    function replaceDemandTrack(peerId, kind, pc, state, sender, intent) {
+      const { signal } = state.controller;
+      const phase = intent.wanted ? 'religar' : 'suspender';
+      let expired = false;
+      return new Promise((resolve) => {
+        let waiting = true;
+        const finish = () => {
+          if (!waiting) return;
+          waiting = false;
           clearTimeout(timer);
-          resolve(true);
+          signal.removeEventListener('abort', finish);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          expired = true;
+          console.warn('[mesh] demanda expirou', peerId, kind, phase, `${demandTimeoutMs}ms`);
+          finish();
+        }, demandTimeoutMs);
+        signal.addEventListener('abort', finish, { once: true });
+        Promise.resolve().then(() => {
+          if (!signal.aborted) return sender.replaceTrack(intent.wanted ? intent.track : null);
+        }).then(() => {
+          if (expired && !signal.aborted && currentPc(peerId, kind, 'out') === pc && state.desired !== intent) {
+            runDemand(peerId, kind, pc, state);
+          }
         }, (err) => {
-          if (expired) return;
-          settled = true;
-          clearTimeout(timer);
-          console.warn(`[mesh] ${phase} falhou`, peer.id, kind, err?.name || err);
-          resolve(false);
-        });
+          if (!expired && !signal.aborted) console.warn(`[mesh] ${phase} falhou`, peerId, kind, err?.name || err);
+        }).finally(finish);
       });
-    }
-
-    // A PC e consultada em toda tentativa porque uma renegociacao pode ter
-    // trocado os senders. Os conhecidos ficam so para o intervalo em que um
-    // replaceTrack tardio deixou a track null e getSenders nao revela o kind.
-    function rememberDemandSenders(peer, kind, senders) {
-      peer.demandSenders ||= {};
-      const known = peer.demandSenders[kind] || [];
-      peer.demandSenders[kind] = [...new Set([...known, ...senders])];
-      return peer.demandSenders[kind];
-    }
-
-    function currentDemandSenders(peer, pc, kind) {
-      const current = (pc.getSenders?.() || []).filter((s) => s.track?.kind === 'video');
-      // Depois de replaceTrack(null), o receiver do transceiver ainda marca
-      // qual sender era video. Isso prefere o estado atual da PC a uma lista
-      // capturada por uma chamada antiga.
-      const transceiverSenders = (pc.getTransceivers?.() || [])
-        .filter((t) => t.receiver?.track?.kind === 'video' && t.sender)
-        .map((t) => t.sender);
-      return rememberDemandSenders(peer, kind, [...current, ...transceiverSenders]);
-    }
-
-    /** Reconcilia os senders com a intencao completa que a fila leu. */
-    async function applyDemand(peer, pc, kind, intent) {
-      if (!intent) return;
-      if (!intent.wanted) {
-        const senders = currentDemandSenders(peer, pc, kind);
-        // Nenhum sender com track de video: ou nunca houve, ou um religar
-        // anterior falhou e deixou todos sem track. Nos dois casos sobrescrever
-        // a lista guardada e o que tornaria a tela preta irreversivel.
-        if (!senders.length) return;
-        peer.suspendedSenders[kind] = senders;
-        await Promise.all(senders.map((s) => replaceDemandTrack(peer, pc, kind, s, null, 'suspender', intent.version)));
-        return;
-      }
-
-      const senders = currentDemandSenders(peer, pc, kind);
-      if (!senders.length) return; // nada suspenso: religar nao tem o que fazer
-      const { track } = intent;
-      if (!track) {
-        // A captura sumiu entre suspender e religar. `replaceTrack(null)`
-        // aqui seria indistinguivel de sucesso e perderia os senders.
-        console.warn('[mesh] religar sem track -- senders preservados', peer.id, kind);
-        return;
-      }
-      const outcomes = await Promise.all(senders.map((s) => replaceDemandTrack(peer, pc, kind, s, track, 'religar', intent.version)));
-      // Se chegou outra intencao enquanto o await rodava, ela ainda precisa
-      // dos mesmos senders para aplicar a track mais nova; limpa so quando
-      // esta e de fato a ultima versao desejada.
-      if (outcomes.every(Boolean) && peer.demandDesired[kind] === intent) peer.suspendedSenders[kind] = [];
     }
 
     function isPeerSuspended(peerId, kind) {
@@ -1141,7 +1151,7 @@
      * troca e imprimia sempre o estado ANTERIOR -- 'religado ... [sem-track]'
      * e 'suspenso ... [live]', invertido, em 100% das 60 transicoes. */
     function demandApplied(peerId, kind) {
-      return Promise.resolve(peers.get(peerId)?.demandChain?.[kind]);
+      return Promise.resolve(demandByPc.get(currentPc(peerId, kind, 'out'))?.applied);
     }
 
     function replaceLocalTrack(kind, matchKind, track) {
@@ -1186,12 +1196,7 @@
     }
 
     function closeAllOut(kind) {
-      for (const peer of peers.values()) {
-        const pc = peer.outConns[kind];
-        if (!pc) continue;
-        pc.close();
-        peer.outConns[kind] = null;
-      }
+      for (const peerId of peers.keys()) closeOut(peerId, kind);
     }
 
     async function statsFor(peerId, kind = 'screen') {

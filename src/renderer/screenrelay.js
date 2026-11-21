@@ -139,6 +139,9 @@
    * em silencio de outra forma, e uma tela que congela sem log foi
    * exatamente o tipo de problema que originou esta investigacao.
    *
+   * `stats()` devolve um snapshot acumulado desde a criacao. Os tempos
+   * usam o relogio monotono, substituivel por `opts.now` nos testes.
+   *
    * `onTrackChange(nova, antiga)` avisa que o contexto do canvas se perdeu e
    * a saida foi refeita: `track` passa a ser `nova`, e quem chamou precisa
    * troca-la nos senders. A antiga ja vem encerrada logo depois do aviso. */
@@ -164,6 +167,7 @@
       return null;
     }
     let { canvas, ctx, track } = primeira;
+    let contextResets = 0;
 
     // Contexto perdido: troca canvas e track. Sem canvas novo agora, segue
     // no perdido e tenta de novo no proximo quadro.
@@ -172,14 +176,19 @@
       if (!nova) return;
       const antiga = track;
       ({ canvas, ctx, track } = nova);
+      contextResets += 1;
       try { o.onTrackChange?.(track, antiga); } catch { /* quem chamou nao derruba o laco */ }
       try { antiga.stop(); } catch { /* ja parada */ }
     };
 
     let vivo = true;
-    let trocando = false;
+    const now = typeof o.now === 'function' ? o.now : () => root.performance.now();
+    let sourceFrames = 0;
     let quadros = 0;
     let repeticoes = 0;
+    let drawMsTotal = 0;
+    let lastSourceFrameAtMs = null;
+    let lastOutputFrameAtMs = null;
     // `desenhou`: ja ha imagem no canvas (antes disso, repetir mandaria um
     // quadro vazio). `chegouQuadro`: a captura entregou quadro desde o
     // ultimo olhar do repetidor.
@@ -200,40 +209,47 @@
         ctx.drawImage(canvas, 0, 0, 1, 1, 0, 0, 1, 1);
         track.requestFrame?.();
         repeticoes += 1;
+        lastOutputFrameAtMs = now();
       } catch {
         /* canvas indisponivel neste olhar; o proximo tenta de novo */
       }
     }, REPETIR_MS);
     // Node (testes): o intervalo nao segura o processo vivo.
     if (repetidor && typeof repetidor === 'object') repetidor.unref?.();
-    const pararRepetidor = () => {
+    const encerrarLaco = () => {
+      vivo = false;
       if (repetidor == null) return;
       desagendar(repetidor);
       repetidor = null;
     };
+    const notificarErro = (err) => {
+      if (!vivo) return;
+      encerrarLaco();
+      o.onFrameError?.(err);
+    };
 
     (async () => {
       while (vivo) {
+        const atual = leitor;
         let r;
         try {
-          r = await leitor.read();
+          r = await atual.read();
         } catch (err) {
-          if (trocando) {
-            trocando = false;
-            continue;
-          }
-          if (vivo) o.onFrameError?.(err);
+          if (atual !== leitor) continue;
+          notificarErro(err);
           break;
         }
-        if (r.done) {
-          if (trocando) {
-            trocando = false;
-            continue;
-          }
-          break;
+        if (!vivo || atual !== leitor) {
+          // A leitura antiga pode ja ter resolvido com um frame quando o
+          // swap ou stop cancela o leitor. A nova origem ja e a dona da saida.
+          try { r.value?.close(); } catch { /* ja fechado */ }
+          continue;
         }
+        if (r.done) break;
         const frame = r.value;
         try {
+          sourceFrames += 1;
+          lastSourceFrameAtMs = now();
           if (ctx.isContextLost?.()) refazerSaida();
           const w = evenCanvasDimension(frame.displayWidth, canvas.width);
           const h = evenCanvasDimension(frame.displayHeight, canvas.height);
@@ -241,32 +257,52 @@
             canvas.width = w;
             canvas.height = h;
           }
-          ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+          // Tempo sincrono da chamada no renderer; o trabalho da GPU pode
+          // continuar depois que drawImage volta.
+          const largura = canvas.width;
+          const altura = canvas.height;
+          const inicioDesenho = now();
+          try {
+            ctx.drawImage(frame, 0, 0, largura, altura);
+          } finally {
+            drawMsTotal += now() - inicioDesenho;
+          }
           // requestFrame e o que entrega UM quadro pra track de saida --
           // sem ele o captureStream(0) nao emite nada.
           track.requestFrame?.();
           quadros += 1;
+          lastOutputFrameAtMs = now();
           desenhou = true;
           chegouQuadro = true;
         } catch (err) {
-          if (vivo) o.onFrameError?.(err);
-          try { frame.close(); } catch { /* ja fechado */ }
+          notificarErro(err);
           break;
+        } finally {
+          try { frame.close(); } catch { /* ja fechado */ }
         }
-        // Fora do try de cima pra fechar mesmo quando o desenho falhou uma
-        // vez sem derrubar o laco.
-        try { frame.close(); } catch { /* ja fechado */ }
       }
       // Laco morto (fonte encerrada ou erro) nao vira imagem parada: repetir
       // o ultimo quadro esconderia a falha de quem assiste.
-      pararRepetidor();
+      encerrarLaco();
     })();
 
     return {
       get track() { return track; },
       quadros: () => quadros,
       repeticoes: () => repeticoes,
+      stats: () => ({
+        nowMs: now(),
+        sourceFrames,
+        drawnFrames: quadros,
+        repeatedFrames: repeticoes,
+        drawMsTotal,
+        lastSourceFrameAtMs,
+        lastOutputFrameAtMs,
+        contextResets,
+        loopRunning: vivo,
+      }),
       swapSource(newTrack) {
+        if (!vivo) return false;
         let novoLeitor;
         try {
           novoLeitor = new g.MediaStreamTrackProcessor({ track: newTrack }).readable.getReader();
@@ -275,13 +311,11 @@
         }
         const leitorAntigo = leitor;
         leitor = novoLeitor;
-        trocando = true;
         try { leitorAntigo.cancel(); } catch { /* ja cancelado */ }
         return true;
       },
       stop() {
-        vivo = false;
-        pararRepetidor();
+        encerrarLaco();
         try { leitor.cancel(); } catch { /* ja cancelado */ }
         try { track.stop(); } catch { /* ja parada */ }
       },

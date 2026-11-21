@@ -3,6 +3,19 @@
 Pra quem voltou ao projeto depois de um mês. Leitura de 30 segundos.
 Para o passo a passo de uso e a instalação, ver `README.md`.
 
+## 0.28.1 — recuperação da transmissão (21/11/2026)
+
+Correções para os incidentes de `logs/lagsTela`: conexão ausente passa a ser
+recriada respeitando a árvore; negociações antigas são invalidadas; a pausa
+pertence à conexão atual; falhas persistentes usam retry limitado; ajustes
+de captura que falharam são repetidos; troca de fonte recria relay encerrado.
+O novo log `[diag] captura-local` distingue entrada, canvas e repetição.
+
+O desempenho sob The Last of Us, Fortnite e Dead by
+Daylight precisa de comparação em PCs reais. Diagnóstico em
+`docs/2026-11-21-diagnostico-lags-jogos.md`; roteiro e validação em
+`docs/testes/2026-11-21-recuperacao-transmissao.md`.
+
 ## O que o app faz hoje
 
 Compartilhamento de tela em até 1080p60 entre amigos numa LAN virtual (Radmin
