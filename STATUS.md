@@ -15,6 +15,12 @@ comparação. Precisa de `npm run build:native` e teste A/B com jogo real.
 Reavaliação completa e próximos passos (pipeline nativo, transporte UDP) em
 `docs/2026-11-25-reavaliacao-compartilhamento-jogos.md`.
 
+**Próxima sessão começa por aqui:** `docs/superpowers/plans/2026-11-25-pipeline-nativo.md`,
+seção "Comece aqui". Passo atual: **P0.1** (compilar o addon no Windows e conferir a
+linha `[gpu] prioridade` no log), depois **P0.2** (A/B com jogo real). Sem PC com jogo,
+adiantar **P1.1** (esqueleto do `golive-media.exe`) e **P2.1** (spec do protocolo UDP).
+Decisões e problemas encontrados, prontos para o vault: `docs/decisoes-e-problemas/`.
+
 ## 0.28.1 — recuperação da transmissão (21/11/2026)
 
 Correções para os incidentes de `logs/lagsTela`: conexão ausente passa a ser
