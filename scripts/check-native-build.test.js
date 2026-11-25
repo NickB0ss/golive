@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { beforeBuild, missingNativeBuilds } = require('./check-native-build');
+const { beforeBuild, missingNativeBuilds, missingOptionalNativeBuilds } = require('./check-native-build');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'golive-native-build-'));
@@ -38,4 +38,18 @@ test('beforeBuild falha sem o addon e devolve true com ele', () => {
   fs.writeFileSync(addonPath, '');
   // true mantem o install/rebuild do electron-builder (falsy o desliga).
   assert.equal(beforeBuild({ appDir: rootDir }), true);
+});
+
+test('o golive-media e opcional: listado quando ausente, sem bloquear o beforeBuild', () => {
+  const rootDir = tmpDir();
+  const exe = path.join('build', 'Release', process.platform === 'win32' ? 'golive-media.exe' : 'golive-media');
+  assert.deepEqual(missingOptionalNativeBuilds(rootDir), [path.join(rootDir, exe)]);
+  assert.ok(!missingNativeBuilds(rootDir).some((f) => f.includes('golive-media')));
+
+  fs.mkdirSync(path.join(rootDir, 'build', 'Release'), { recursive: true });
+  fs.writeFileSync(path.join(rootDir, 'build', 'Release', 'golive_audio.node'), '');
+  assert.equal(beforeBuild({ appDir: rootDir }), true);
+
+  fs.writeFileSync(path.join(rootDir, exe), '');
+  assert.deepEqual(missingOptionalNativeBuilds(rootDir), []);
 });

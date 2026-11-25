@@ -7,8 +7,20 @@ const NATIVE_BUILD_FILES = [
   path.join('build', 'Release', 'golive_audio.node'),
 ];
 
+// Executaveis auxiliares: ainda nao entram no pacote (P4.1), entao a ausencia
+// so e informada, nunca bloqueia o `npm run dist`.
+const NATIVE_OPTIONAL_FILES = [
+  path.join('build', 'Release', process.platform === 'win32' ? 'golive-media.exe' : 'golive-media'),
+];
+
 function missingNativeBuilds(rootDir) {
   return NATIVE_BUILD_FILES
+    .map((relativePath) => path.join(rootDir, relativePath))
+    .filter((filePath) => !fs.existsSync(filePath));
+}
+
+function missingOptionalNativeBuilds(rootDir) {
+  return NATIVE_OPTIONAL_FILES
     .map((relativePath) => path.join(rootDir, relativePath))
     .filter((filePath) => !fs.existsSync(filePath));
 }
@@ -25,4 +37,4 @@ function beforeBuild(context) {
   return true;
 }
 
-module.exports = { beforeBuild, missingNativeBuilds };
+module.exports = { beforeBuild, missingNativeBuilds, missingOptionalNativeBuilds };
