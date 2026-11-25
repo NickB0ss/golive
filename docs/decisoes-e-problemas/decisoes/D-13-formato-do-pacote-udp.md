@@ -3,7 +3,7 @@ tipo: decisao
 id: D-13
 titulo: "Formato do pacote UDP do vídeo nativo"
 data: 2026-11-25
-status: proposta, revisar com a spec (P2.1)
+status: proposta, spec revisada em 2026-11-25 (P2.1)
 fase: 2-3
 tags: [golive, transmissao]
 aliases: [D-13]
@@ -60,8 +60,9 @@ Fase 3 repassar sem recodificar. Contrato completo:
 - Três mensagens novas de sinalização (`nativo-oferta`, `nativo-resposta`, `nativo-fim`) para
   o P2.6. A chave passa pelo servidor de sinalização de quem criou a sala, que já é confiável
   hoje; ela nunca pode aparecer em log.
-- Regressão de sigilo em relação ao DTLS-SRTP do WebRTC para quem usar o app numa LAN física
-  sem VPN.
+- Regressão em relação ao DTLS-SRTP do WebRTC para quem usar o app numa LAN física sem VPN, de
+  sigilo **e de integridade**: o WebSocket da sala é `ws://` sem TLS, então quem escuta a rede
+  lê a chave e consegue injetar. Na LAN virtual o túnel da VPN cobre isso.
 
 ## Ligações
 [[2026-11-25-protocolo-video-nativo|Spec do protocolo]] · [[2026-11-25-pipeline-nativo|Plano do pipeline nativo]] (P2.1–P2.6, P3.1) · [[D-06-transporte-udp-proprio|D-06]] · [[D-10-recepcao-udp-no-main|D-10]] · [[D-04-so-apis-do-windows|D-04]]

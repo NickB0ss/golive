@@ -51,7 +51,8 @@ no C++ (um header do exe). Os testes cruzados do P2.2 comparam os valores.
 | `FEC_N_PADRAO` | 10 | fragmentos por grupo de FEC |
 | `FEC_N_MAX` | 32 | |
 | `JANELA_REPLAY` | 1024 sequências | |
-| `ESPERA_NACK_MS` | 5 | |
+| `ESPERA_NACK_MS` | 5 | também o intervalo mínimo entre dois `NACK` da sessão |
+| `SUSPEITA_MS` | 20 | seção 6.5 |
 | `VENCIMENTO_QUADRO_MS` | 100 | |
 | `MAX_QUADROS_EM_MONTAGEM` | 8 | |
 | `BUFFER_REENVIO_MS` | 300 | emissor e relay |
@@ -137,11 +138,11 @@ flags (byte 24):
 | Off | Tam | Campo | Faixa | Regra de validação no receptor do pacote |
 |---|---|---|---|---|
 | 0 | 2 | magia | `0x47 0x4C` | Diferente: descarta em silêncio, conta `magia`. |
-| 2 | 1 | versão | `1` | Diferente: descarta, conta `versao`, uma linha de log por endereço de origem a cada 60 s. |
+| 2 | 1 | versão | `1` | Diferente: descarta, conta `versao`; no máximo uma linha de log a cada 60 s **no total** (com o endereço do pacote que a disparou), sem tabela por endereço (4.5: nada de alocação antes do HMAC). |
 | 3 | 1 | tipo | 1–7 (seção 5) | Fora da faixa: descarta, conta `tipo`. |
 | 4 | 4 | sessão | 1 – 2³²−1 | 0 ou desconhecida na tabela local: descarta em silêncio, conta `sessao`. Escolhe a chave do HMAC. |
 | 8 | 4 | sequência | 1 – 2³²−1 | 0: descarta, conta `campo`. Fora da janela ou repetida: descarta, conta `replay` (seção 8.4). |
-| 12 | 4 | tempo de envio | qualquer | Sem validação. Relógio monotônico do emissor **deste salto** em µs, mod 2³² (`QueryPerformanceCounter` no C++, `process.hrtime.bigint()` no JS). |
+| 12 | 4 | tempo de envio | qualquer | Sem validação. Relógio monotônico de quem manda **neste salto** em µs, mod 2³² (`QueryPerformanceCounter` no C++, convertido sem estourar 64 bits: `(q / f) × 10⁶ + (q % f) × 10⁶ / f`; `process.hrtime.bigint() / 1000n` no JS). |
 | 16 | 4 | número do quadro | 1 – 2³²−1 em `VIDEO`/`FEC`; 0 nos outros | Fora disso: descarta, conta `campo`. |
 | 20 | 2 | índice do fragmento | 0 – n−1 em `VIDEO`/`FEC`; 0 nos outros | Idem. |
 | 22 | 2 | total de fragmentos | 1 – 1024 em `VIDEO`/`FEC`; 0 nos outros | Idem. |
@@ -195,13 +196,20 @@ P4.4): `tamanho`, `magia`, `versao`, `tipo`, `sessao`, `hmac`, `direcao`,
 
 - **Sequência:** 32 bits, começa em 1 em cada sentido de cada sessão e sobe
   de 1 em 1 em **todo** datagrama enviado naquele sentido (inclusive `FEC`,
-  `OLA`, reenvio). **Não dá a volta.** Ao chegar em `0xFFFF0000`, o emissor
-  manda `TCHAU` (motivo 4) e a sessão é refeita pela sinalização com chave
+  `OLA`, reenvio). **Não dá a volta.** Quando a sequência de qualquer um
+  dos sentidos chega a `0xFFFF0000`, quem a está usando manda `TCHAU`
+  (motivo 4) e a sessão é refeita pela sinalização com chave
   nova. Na prática não acontece: a 2.000 pacotes/s são 24 dias. Comparação
   sem sinal, direta.
-- **Número do quadro:** 32 bits, começa em 1 no primeiro quadro que a origem
-  manda e sobe de 1 em 1, **sem buracos** (seção 6.4). Não dá a volta (2,2
-  anos a 60 fps); mesma regra de encerrar a sessão no limite. Comparação sem
+- **Número do quadro:** 32 bits, é o contador do encoder da **origem**
+  (um por execução do exe), comum a todas as sessões dela: começa em 1 no
+  primeiro quadro que o exe manda e sobe de 1 em 1, **sem buracos** (seção
+  6.4). Por isso uma sessão aberta depois (segundo receptor, filho de relay,
+  sessão substituída) começa num número qualquer, e o receptor **não deve**
+  supor que o primeiro quadro é 1 (o modo `ESPERANDO_KEYFRAME` cuida disso).
+  Não dá a volta (2,2 anos a 60 fps); no limite a origem encerra a
+  transmissão como num fim normal (`TCHAU` motivo 1) e recomeça com exe
+  novo. Comparação sem
   sinal, direta. O relay preserva o número da origem.
 - **Tempo de envio:** dá a volta a cada 71,6 min. Toda conta com ele é
   diferença de 32 bits com sinal: `(a - b) | 0` no JS, `(int32_t)(a - b)` no
@@ -251,9 +259,12 @@ regra.
   | 2 | 2 | `xor_tamanhos` | XOR dos `tamanho` dos `k` fragmentos |
   | 4 | L | `xor_dados` | XOR dos `k` payloads, cada um completado com zeros até L |
 
-  `L` = maior tamanho entre os `k` fragmentos (1152, exceto num grupo de um
-  fragmento só, que é o último do quadro). Validação: `i % N == 0`, `i < n`,
-  `k` como acima, `tamanho do payload == 4 + L` com `1 ≤ L ≤ 1152`.
+  `L` = maior tamanho entre os `k` fragmentos: 1152, exceto quando o grupo
+  é só o último fragmento do quadro (`i == n−1`, então `k = 1`), em que `L`
+  é o tamanho dele. Validação: `N ≥ 1` (com `fecN = 0` anunciado, todo `FEC`
+  é descartado e conta `campo`; nada de `i % 0`), `i % N == 0`, `i < n`,
+  `k` como acima, `tamanho do payload == 4 + L` com `L == 1152` se
+  `i < n−1` e `1 ≤ L ≤ 1152` se `i == n−1`.
 - **Quando e o que o receptor faz:** seção 7.
 - `FEC` não é pedido em `NACK` nem reenviado.
 
@@ -268,18 +279,26 @@ regra.
   | 2 | 8 × qtd | entradas | cada uma: `quadro` (u32), `primeiro` (u16), `quantidade` (u16) |
 
   Entrada = fragmentos `[primeiro, primeiro + quantidade)` do quadro. Regras:
-  `quadro ≥ 1`; `quantidade` de 1 a 1024, ou `0xFFFF` com `primeiro = 0`
-  para "o quadro inteiro" (quando nenhum fragmento dele chegou e `n` é
-  desconhecido). Tamanho do payload deve ser `2 + 8 × qtd`.
-- **Quando:** seção 6.5. Cada fragmento faltante é pedido **uma vez** só por
-  sessão. Vários fragmentos e quadros vão no mesmo `NACK`.
+  `quadro ≥ 1`; `quantidade` de 1 a 1024 com `primeiro + quantidade ≤ 1024`,
+  ou `0xFFFF` com `primeiro = 0` para "o quadro inteiro" (quando nenhum
+  fragmento dele chegou e `n` é desconhecido). Tamanho do payload deve ser
+  `2 + 8 × qtd`.
+- **Quando:** seção 6.5, no máximo 1 `NACK` a cada 5 ms por sessão (os
+  faltantes que vencem no intervalo esperam o próximo). Cada fragmento
+  faltante é pedido **uma vez** só por sessão; depois de um `0xFFFF`, todos
+  os fragmentos daquele quadro contam como pedidos. Vários fragmentos e
+  quadros vão no mesmo `NACK`.
 - **Emissor:** reenvia do buffer de reenvio (últimos 300 ms, chave
   `(quadro, índice)`) o que tiver; o que não tiver é ignorado em silêncio.
-  Limites por sessão: no máximo 50 `NACK`/s processados (excesso descartado,
-  conta `nack_excesso`); cada `(quadro, índice)` reenviado no máximo uma vez;
+  O reenvio vai sempre para o endereço da sessão (9.3), **nunca** para o
+  endereço de origem do `NACK`.
+  Limites por sessão: no máximo 250 `NACK`/s processados (acima do que um
+  receptor correto manda, 200/s; excesso descartado, conta `nack_excesso`);
+  cada `(quadro, índice)` reenviado no máximo uma vez;
   bytes reenviados em qualquer janela de 1 s ≤ 25 % do bitrate alvo atual
-  (o que passar é pulado e contado). Esses tetos existem para um receptor com
-  defeito não virar amplificador de banda.
+  (no relay, que não tem encoder: 25 % da taxa de ida recebida da origem no
+  último 1 s; o que passar é pulado e contado). Esses tetos existem para um
+  receptor com defeito não virar amplificador de banda.
 
 ### 5.4 `PEDIR_KEYFRAME` (4)
 
@@ -305,8 +324,8 @@ regra.
   | 4 | 2 | `esperados` | `maior_seq` agora − `maior_seq` do relatório anterior; no primeiro relatório, `maior_seq` − (sequência do primeiro pacote aceito) + 1 |
   | 6 | 2 | `recebidos` | pacotes de ida aceitos (passo 7 da 4.5) no período |
   | 8 | 4 | `kbps` | bytes de datagrama de ida aceitos no período × 8 / `intervalo_us` × 1000, arredondado para baixo |
-  | 12 | 4 | `atraso_medio_us` | média do atraso relativo (abaixo) dos pacotes do período |
-  | 16 | 4 | `atraso_max_us` | máximo do atraso relativo no período |
+  | 12 | 4 | `atraso_medio_us` | média do atraso relativo (abaixo) dos pacotes do período (0 sem pacotes) |
+  | 16 | 4 | `atraso_max_us` | máximo do atraso relativo no período (0 sem pacotes) |
   | 20 | 4 | `maior_seq` | maior sequência de ida aceita até agora |
   | 24 | 4 | `eco_tempo` | `tempo de envio` do pacote de ida mais recente |
   | 28 | 4 | `eco_espera_us` | tempo entre a chegada dele e o envio deste relatório |
@@ -336,12 +355,16 @@ regra.
 - **Payload (12 bytes):** `estado` (u8: 0 = transmitindo, 1 = pausado; o
   receptor sempre manda 0), reservado (3 bytes), `eco_tempo` (u32: `tempo de
   envio` do último `OLA` recebido do outro lado, 0 se nenhum),
-  `eco_espera_us` (u32).
+  `eco_espera_us` (u32). `estado` diferente de 0 e 1 (ou 1 com `VOLTA = 1`):
+  descarta, conta `campo`.
 - **Emissor:** manda o primeiro assim que a sessão é aceita na sinalização,
   depois a cada 250 ms até receber um `OLA` de volta; daí em diante a cada
   1 s, e na hora quando `estado` muda (pausa e volta, `Ctrl+Alt+P`). **Não
-  manda `VIDEO` antes do primeiro `OLA` de volta.** O primeiro quadro depois
-  dele é keyframe. Sem `OLA` de volta em 5 s: sessão falha (`nativo-fim`
+  manda `VIDEO` antes do primeiro `OLA` de volta.** No exe, o primeiro quadro
+  que uma sessão recebe é keyframe (no relay, ver 10, regra 4), e o primeiro
+  quadro depois de uma pausa também (o encoder pode ter seguido codificando
+  durante a pausa, e 6.2 proíbe mandar delta cuja referência não foi
+  mandada). Sem `OLA` de volta em 5 s: sessão falha (`nativo-fim`
   motivo `silencio`, volta para WebRTC por [[D-09-webrtc-continua-como-fallback|D-09]]).
 - **Receptor:** responde a cada `OLA` recebido com um `OLA` (`VOLTA = 1`),
   no máximo 10 por segundo por sessão. Guarda `estado`: com 1, a falta de
@@ -354,9 +377,9 @@ regra.
 
 - **Payload (4 bytes):** `motivo` (u8), reservado (3 bytes).
   1 = fim normal (parou de transmitir, saiu da sala), 2 = falha do emissor
-  (encoder ou exe), 3 = volta para WebRTC, 4 = sequência ou número de quadro
-  no limite, 5 = silêncio (o outro lado sumiu), 6 = substituída por sessão
-  nova.
+  (encoder ou exe), 3 = volta para WebRTC, 4 = sequência no limite (4.6),
+  5 = silêncio (o outro lado sumiu), 6 = substituída por sessão
+  nova. Outro valor: descarta, conta `campo`.
 - **Quando:** ao encerrar, 3 vezes com 20 ms de intervalo (não há
   confirmação). Sempre acompanhado de `nativo-fim` na sinalização, que é o
   caminho garantido.
@@ -410,10 +433,13 @@ quadro a 60 fps).
 - Até 8 quadros em montagem, cada um com `n`, `KEYFRAME`, os fragmentos
   recebidos e o instante do primeiro pacote.
 
-Regras para cada `VIDEO` ou `FEC` aceito (as regras 1, 2, 3 e 6 valem para os dois):
+Regras para cada `VIDEO` ou `FEC` aceito (todas valem para os dois, exceto a 5,
+que é só de `VIDEO`):
 
 1. `quadro ≤ U`: atrasado. Descarta, conta `atrasados`.
-2. Em `ESPERANDO_KEYFRAME`, pacote sem `KEYFRAME`: descarta, conta
+2. Em `ESPERANDO_KEYFRAME`, pacote sem `KEYFRAME`: só segue se já houver em
+   montagem um keyframe com número menor que o dele (é um delta que vai
+   valer quando aquele keyframe completar); senão descarta, conta
    `sem_referencia`, não gera `NACK`.
 3. Primeiro pacote de um quadro fixa `n` e `KEYFRAME`. Pacote seguinte do
    mesmo quadro com `n` ou `KEYFRAME` diferente: descarta, conta `campo`.
@@ -424,16 +450,25 @@ Regras para cada `VIDEO` ou `FEC` aceito (as regras 1, 2, 3 e 6 valem para os do
 5. Fora de ordem é normal: o fragmento vai para a posição `i × 1152`.
 6. Quadro novo quando já há 8 em montagem: o mais antigo vence na hora
    (regra 6.6).
-7. Chegou pacote do quadro `q > U + 1` e os quadros entre eles não estão em
-   montagem: cria entradas vazias para eles (com `n` desconhecido), com o
-   instante de agora; se forem mais de 8, descarta tudo, vai para
-   `ESPERANDO_KEYFRAME` e manda `PEDIR_KEYFRAME` motivo 1.
+7. Em `NORMAL`: chegou pacote do quadro `q > U + 1` e quadros entre
+   `U + 1` e `q − 1` não estão em montagem: cria entradas vazias para eles
+   (com `n` desconhecido), com o instante de agora. Se a lacuna tiver mais de
+   8 quadros (`MAX_QUADROS_EM_MONTAGEM`), não cria nenhuma e descarta tudo o
+   que está em montagem com número `< q`; aí, se o pacote é de keyframe,
+   vai para `ESPERANDO_KEYFRAME` **sem** pedir e segue com ele (o keyframe
+   resolve a lacuna, e os deltas seguintes entram pela regra 2); senão descarta
+   também o pacote, vai para `ESPERANDO_KEYFRAME` e manda `PEDIR_KEYFRAME`
+   motivo 1. Em `ESPERANDO_KEYFRAME` ela só vale para os deltas aceitos pela
+   regra 2, com o número do keyframe em montagem no lugar de `U`; para o
+   resto não vale: lá `U` é velho ou não existe, e a lacuna até o keyframe é
+   esperada.
 
 ### 6.4 Entrega
 
 - Quadro completo `q` com `KEYFRAME`: entrega na hora, descarta tudo o que
   estiver em montagem com número `< q` (sem pedir keyframe), `U = q`, modo
-  `NORMAL`.
+  `NORMAL`, e em seguida entrega os seguintes que já estiverem completos
+  (regra 2 de 6.3), como no delta.
 - Quadro completo delta em `NORMAL`: entrega se `q == U + 1`, e em seguida
   entrega os seguintes que já estiverem completos. Se `q > U + 1`, espera
   os anteriores completarem ou vencerem.
@@ -445,8 +480,8 @@ Regras para cada `VIDEO` ou `FEC` aceito (as regras 1, 2, 3 e 6 valem para os do
 
 Um fragmento é **suspeito** quando: chegou um fragmento de índice maior do
 mesmo quadro, ou chegou pacote de um quadro posterior (aí o fim do quadro
-também é suspeito), ou passaram 20 ms do último pacote do quadro sem ele
-completar. Um quadro vazio criado pela regra 7 é suspeito por inteiro.
+também é suspeito), ou passaram `SUSPEITA_MS` (20 ms) do último pacote do
+quadro sem ele completar. Um quadro vazio criado pela regra 7 é suspeito por inteiro.
 
 `ESPERA_NACK_MS` (5 ms) depois de virar suspeito, se ainda faltar:
 
@@ -461,10 +496,12 @@ quadro vence.
 ### 6.6 Vencimento
 
 Um quadro incompleto vence 100 ms depois do primeiro pacote dele (ou da
-criação da entrada vazia), ou antes pela regra 6. Quadro vencido: descarta,
-conta `quadros_vencidos`, modo `ESPERANDO_KEYFRAME`, manda `PEDIR_KEYFRAME`
-motivo 1 (respeitando 500 ms). Os deltas posteriores que completarem depois
-disso são descartados pela regra 2.
+criação da entrada vazia), ou antes pela regra 6. Quadro vencido `q`:
+descarta, e descarta também os deltas em montagem com número `> q` (dependem
+dele); conta `quadros_vencidos`, modo `ESPERANDO_KEYFRAME`. Um keyframe em
+montagem com número `> q` continua, e se completar encerra a espera; só se
+não houver nenhum o receptor manda `PEDIR_KEYFRAME` motivo 1 (respeitando
+500 ms). Deltas que chegarem depois seguem a regra 2.
 
 100 ms cabem um `NACK` e o reenvio com RTT de até ~80 ms, que cobre a
 LAN virtual medida (3–4 ms) e o Radmin passando por relay.
@@ -487,7 +524,7 @@ LAN virtual medida (3–4 ms) e o Radmin passando por relay.
 - **Recuperação:** com exatamente um fragmento `j` faltando no grupo e o
   `FEC` presente: `tamanho_j = xor_tamanhos XOR (tamanhos dos outros)`;
   `dados_j = xor_dados XOR (outros completados com zeros até L)`, cortado em
-  `tamanho_j`. Valida: `1 ≤ tamanho_j ≤ 1152`, e `= 1152` se `j < n−1`;
+  `tamanho_j`. Valida: `1 ≤ tamanho_j ≤ L`, e `= 1152` se `j < n−1`;
   senão descarta a recuperação e conta `campo`. O fragmento recuperado entra
   na montagem como se tivesse chegado (com `KEYFRAME` do `FEC`), e conta
   `recuperados_fec`. Dois ou mais faltando: `NACK`.
@@ -503,6 +540,11 @@ repetir pacotes que tenha visto, e participar da sala com o app modificado.
 Ela **não** vê o tráfego unicast entre outros dois PCs (o túnel do
 Tailscale/Radmin é por par e cifrado) nem as mensagens de sinalização
 endereçadas a outros (`offer`, `nativo-oferta` etc. vão só ao destino).
+Atenção: essa segunda garantia vem **só** do túnel da VPN. O WebSocket da
+sala é `ws://` sem TLS (`new WebSocketServer({ port })` em
+`server/signaling-core.js`), então numa LAN física sem VPN quem consegue
+escutar a rede (Wi-Fi compartilhado, espelhamento de porta) lê a `chave` e
+passa a forjar pacotes da sessão. Ver o custo aceito em 8.5.
 
 **O que tem de ser impossível:**
 
@@ -523,6 +565,12 @@ endereçadas a outros (`offer`, `nativo-oferta` etc. vão só ao destino).
 - **Inundação da porta.** Não dá para impedir; o custo é limitado (4.5:
   filtros baratos antes do HMAC, nenhuma resposta, só contadores).
 - **Sigilo contra quem está no caminho.** Ver 8.5.
+- **Receptor legítimo mal-intencionado.** Com a chave da própria sessão ele
+  pode pedir keyframe a cada 500 ms e relatar perda falsa (derrubando o
+  bitrate de quem segue o pior caminho, P3.2). Os tetos de 5.3–5.5 limitam
+  o estrago ao que uma rede ruim já faria; ele não consegue mandar o
+  emissor transmitir para um terceiro, porque o endereço de envio vem do
+  servidor (9.3), não dele.
 
 ### 8.2 Chave por sessão
 
@@ -539,7 +587,8 @@ endereçadas a outros (`offer`, `nativo-oferta` etc. vão só ao destino).
   nunca pela linha de comando, que outros processos podem ler.
 - Nunca entra em log (nem do app, nem do servidor de sinalização, nem do
   exe, nem em eco de comando). Os testes do P2.6 devem conferir isso no
-  `signaling-core.js`.
+  `signaling-core.js` e no caminho renderer → main → exe (o console do
+  renderer vai para o log do main, `src/main/consolelog.js`).
 - Apagada quando a sessão termina. Nunca reutilizada.
 
 ### 8.3 HMAC
@@ -596,7 +645,12 @@ Decisão: **só autentica, não cifra.** Motivos:
 
 Custo aceito: é uma regressão em relação ao DTLS-SRTP do WebRTC para quem
 usa o app numa LAN física sem VPN e tem alguém capaz de espelhar o tráfego.
-Rever se o app passar a ser usado fora de LAN virtual.
+A regressão é de sigilo **e de integridade**: a chave passa em claro pelo
+`ws://` da sala (8.1), então quem só escuta já consegue injetar, enquanto no
+WebRTC precisaria de um ataque ativo (trocar a impressão digital DTLS no
+meio da sinalização). Cifrar o UDP não resolve isso; resolveria TLS no
+WebSocket ou troca de chave autenticada. Rever se o app passar a ser usado
+fora de LAN virtual.
 
 ## 9. Porta, sinalização e versão
 
@@ -608,14 +662,22 @@ receptor e, num relay, como emissor para os filhos). As sessões se separam
 pelo campo `sessão`. Faixa proposta: **UDP 9020–9030**, a primeira livre
 (`findFreeServer` de `ports.js` serve), fora da faixa TCP 9000–9010 da
 sinalização e da 41235 da descoberta. Abre quando a primeira sessão nativa
-começa e fecha quando a última termina (P2.6).
+começa e fecha quando a última termina (P2.6). O socket é `udp6` com
+`ipv6Only: false` (recebe IPv4 e IPv6, porque o `endereco` de 9.3 pode ser
+dos dois); sem IPv6 no sistema, `udp4`. Tudo o que o main manda (volta como
+receptor, ida como relay) sai **deste mesmo socket**: é o par endereço/porta
+que o outro lado conhece, e é o que casa com o estado do firewall do exe
+(9.2).
 
 ### 9.2 O exe não escuta porta fixa
 
-O exe da origem manda de um socket próprio numa porta efêmera. Quem responde
-(receptor) manda o sentido de volta **para o endereço e porta de origem do
-último pacote de ida autenticado** da sessão, nunca para um endereço vindo
-de pacote não autenticado (assim ninguém usa o receptor como refletor). O
+O exe da origem manda de um socket próprio numa porta efêmera (um socket
+por família de endereço de destino, IPv4 ou IPv6, sem `bind` explícito numa
+porta fixa). Quem responde (receptor) manda o sentido de volta **para o
+endereço e porta de origem do último pacote de ida que avançou a janela de
+replay** da sessão (aceito no passo 7 da 4.5 com `seq > maior`), nunca para
+um endereço vindo de pacote não autenticado ou repetido (assim ninguém usa o
+receptor como refletor reenviando um pacote capturado de outro endereço). O
 firewall do Windows deixa passar a resposta a um fluxo UDP de saída, e o
 `OLA` a cada 1 s mantém esse estado vivo; só a porta do main precisa de regra
 (`firewall.js`, protocolo UDP). **Confirmar no P2.6**: se o firewall barrar a
@@ -643,6 +705,13 @@ Regras que dependem delas:
   tabela dele, em qualquer papel; o emissor sorteia outra e oferece de novo.
   Assim a tabela por `sessão` nunca tem dois donos, mesmo com duas origens
   ou um relay escolhendo números.
+- O receptor tem **no máximo uma sessão de ida por `(origem, kind)`**. Ao
+  aceitar uma `nativo-oferta` para um par que já tem sessão (exe
+  reiniciado, sessão refeita no limite de 4.6, troca de relay na árvore), a
+  anterior é apagada na hora, o emissor dela recebe `TCHAU` motivo 6 e
+  `nativo-fim` `'substituida'`, e a nova começa do zero em
+  `ESPERANDO_KEYFRAME` (estado de 6.3 é por sessão; nada passa de uma para
+  a outra).
 - Endereço de envio: o emissor usa `endereco` da resposta. Se ele for de
   loopback (o receptor é quem hospeda a sala e entrou por `127.0.0.1`), usa o
   endereço da sala por onde o próprio emissor entrou.
@@ -696,7 +765,10 @@ Regras:
    `j = n−1`). Repassa `FEC` da origem uma vez por filho, também.
 3. Repassa independentemente do próprio estado de decode (o relay pode
    estar em `ESPERANDO_KEYFRAME` e mesmo assim repassar deltas).
-4. Só manda `VIDEO` a um filho depois do `OLA` de volta dele (5.6).
+4. Só manda `VIDEO` a um filho depois do `OLA` de volta dele (5.6). Ao
+   contrário do exe, o relay não garante que o primeiro quadro do filho seja
+   keyframe: repassa o que vier, e o filho descarta os deltas até o keyframe
+   pedido pela regra 6 (6.3, regra 2).
 5. **`NACK` do filho:** responde do buffer próprio (últimos 300 ms, chave
    `(quadro, índice)`, um só para todos os filhos), com os mesmos limites do
    emissor (5.3). O que ele não tem é ignorado: o próprio relay também
@@ -711,7 +783,11 @@ Regras:
    salto origem → relay.
 8. **`OLA`/`TCHAU`:** por salto. `estado` do `OLA` de cima é propagado aos
    filhos na hora. `TCHAU` de cima vira `TCHAU` com o mesmo motivo para cada
-   filho.
+   filho, exceto o motivo 4: a sequência no limite é só do salto de cima, a
+   sessão nova de cima segue com o mesmo contador de quadros da origem (4.6)
+   e as sessões com os filhos continuam. Com o motivo 6 (por exemplo, exe da
+   origem reiniciado, contador de quadros de volta a 1) o relay também
+   substitui a sessão de cada filho, com `nativo-oferta` nova.
 
 ## 11. O que o `RELATORIO` dá ao controle de taxa (P2.4)
 
@@ -827,3 +903,39 @@ tamanho 5 e os bytes `aa bb cc dd ee`.
   receptor, não muda o fio).
 - **Faixa UDP 9020–9030:** proposta; o P2.6 pode mudar sem mexer nesta spec
   além da seção 9.1.
+- **Migração da sala e reconexão da sinalização:** a sessão UDP não depende
+  do WebSocket depois de aberta, mas o `nativo-fim` e a regra de uma sessão
+  por `(origem, kind)` usam peerIds. O P2.6 decide se as sessões sobrevivem a
+  uma migração de dono (peerId retomado) ou se são refeitas; o fio não muda.
+
+## Revisão (2026-11-25)
+
+Revisão independente do P2.1. Os vetores V1–V4 (inclusive HMAC completo do
+V1, SHA-256 do V4, o negativo e a recuperação por FEC) foram refeitos do zero
+a partir só do texto e conferem byte a byte; `tools/videonativo/gerar-vetores.js`
+produz o mesmo hex. Nenhuma mudança altera o formato no fio nem os vetores.
+
+- **6.3 regra 7:** em `ESPERANDO_KEYFRAME` (ou sem `U`), a lacuna até o keyframe de recuperação disparava "descarta tudo e pede keyframe" para sempre; agora a regra só vale em `NORMAL` (e para deltas atrás de um keyframe em montagem), e lacuna > 8 com keyframe não pede nada.
+- **6.3 regra 2:** delta que chega depois de um keyframe ainda em montagem não é mais descartado (antes, perda num keyframe custava um `NACK` de quadro inteiro do delta seguinte).
+- **6.3 cabeçalho das regras:** "1, 2, 3 e 6 valem para os dois" deixava de fora a 4 (que cita `FEC`) e a 7; agora todas valem, exceto a 5.
+- **6.4:** depois de entregar um keyframe, entrega os deltas seguintes já completos (antes só o delta fazia isso).
+- **6.6:** o vencimento diz o que fazer com os deltas posteriores em montagem (descartar) e com um keyframe posterior em montagem (manter, sem pedir outro).
+- **4.6 número do quadro:** é o contador da origem, comum às sessões dela; o receptor não pode supor que a sessão começa no quadro 1. Limite de quadro encerra com motivo 1 (o motivo 4 fica só para sequência, que é por salto).
+- **5.6 pausa:** o primeiro quadro depois de uma pausa é keyframe (senão o encoder que seguiu rodando manda delta com referência não enviada, contra 6.2).
+- **5.3 NACK:** o receptor manda no máximo 1 a cada 5 ms (até 200/s) e o emissor processava só 50/s, perdendo pedidos legítimos com perda alta; teto do emissor passa a 250/s.
+- **5.3 NACK:** reenvio vai sempre ao endereço da sessão, nunca à origem do `NACK`; `primeiro + quantidade ≤ 1024`; depois de `0xFFFF` todos os fragmentos do quadro contam como pedidos.
+- **5.3 relay:** "25 % do bitrate alvo" não existia no relay; passa a ser 25 % da taxa recebida da origem.
+- **5.2/7 FEC:** regra de `L` estava errada para `N = 1`; `fecN = 0` deixava `i % N` indefinido (divisão por zero no C++); recuperação valida `tamanho_j ≤ L`.
+- **5.6/5.7:** valores inválidos de `estado` (`OLA`) e `motivo` (`TCHAU`) passam a ter regra (descarta, `campo`).
+- **5.5:** `atraso_medio_us`/`atraso_max_us` = 0 num período sem pacotes.
+- **4.3 versão:** log "por endereço de origem" exigia tabela por endereço antes do HMAC, contra 4.5; passa a um log global a cada 60 s.
+- **4.3 tempo:** conversão de `QueryPerformanceCounter` para µs sem estouro de 64 bits; `hrtime` em ns dividido por 1000.
+- **2:** `SUSPEITA_MS` (20 ms) entra na tabela de constantes; `ESPERA_NACK_MS` também é o intervalo mínimo entre `NACK`.
+- **8.1/8.5:** o WebSocket da sala é `ws://` sem TLS; numa LAN física sem VPN quem escuta lê a chave, então a regressão é de integridade também, não só de sigilo.
+- **8.1:** registrado o que um receptor legítimo mal-intencionado ainda consegue (keyframe a cada 500 ms, perda falsa) e o que não consegue (refletir para terceiros).
+- **8.2:** teste de "chave fora do log" cobre também o console do renderer, que vai para o log do main.
+- **9.1:** socket `udp6` dual-stack (o `endereco` pode ser IPv6) e todo envio do main sai do mesmo socket (casa com o estado do firewall do lado do exe).
+- **9.2:** o endereço de volta é aprendido só de pacote que avançou a janela de replay (antes "autenticado" deixava um pacote repetido de outro endereço redirecionar a volta).
+- **9.3:** uma sessão de ida por `(origem, kind)` no receptor; sessão nova substitui a velha (`TCHAU` 6), com estado zerado.
+- **10 regras 4 e 8:** o relay não garante keyframe no primeiro quadro do filho; `TCHAU` motivo 4 de cima não derruba os filhos, motivo 6 substitui as sessões deles.
+- **13:** acrescentada a migração de dono da sala como questão em aberto do P2.6.
