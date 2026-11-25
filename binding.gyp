@@ -6,7 +6,8 @@
         "native/src/addon.cc",
         "native/src/process_util.cc",
         "native/src/loopback_capture.cc",
-        "native/src/audio_sessions.cc"
+        "native/src/audio_sessions.cc",
+        "native/src/gpu_priority.cc"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")"

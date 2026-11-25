@@ -3,6 +3,18 @@
 Pra quem voltou ao projeto depois de um mês. Leitura de 30 segundos.
 Para o passo a passo de uso e a instalação, ver `README.md`.
 
+## Em andamento — prioridade de GPU durante a transmissão (25/11/2026)
+
+Ainda não lançado. Com um jogo deixando a GPU em ~99%, os processos do
+GoLive (captura, canvas e encoder) ficam na fila atrás dele. Era o que
+explicava `cap=10fps` com a rede ociosa. Agora, enquanto há vídeo correndo,
+o app sobe a classe de GPU para HIGH e a de CPU para acima do normal, como
+OBS e Sunshine fazem, e volta ao normal ao parar (`src/main/gpupriority.js`,
+`native/src/gpu_priority.cc`). `GOLIVE_PRIORIDADE_GPU=off` desliga para
+comparação. Precisa de `npm run build:native` e teste A/B com jogo real.
+Reavaliação completa e próximos passos (pipeline nativo, transporte UDP) em
+`docs/2026-11-25-reavaliacao-compartilhamento-jogos.md`.
+
 ## 0.28.1 — recuperação da transmissão (21/11/2026)
 
 Correções para os incidentes de `logs/lagsTela`: conexão ausente passa a ser

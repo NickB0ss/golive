@@ -7,6 +7,7 @@
 #include "loopback_capture.h"
 #include "process_util.h"
 #include "audio_sessions.h"
+#include "gpu_priority.h"
 
 namespace {
 
@@ -72,6 +73,31 @@ Napi::Value ListProcessNames(const Napi::CallbackInfo& info) {
   return out;
 }
 
+// setProcessGpuPriority(pid, gpuClass, cpuClass) -> { status, win32Error,
+// cpuApplied, readBack }. pid 0 = o proprio processo. cpuClass 0 = nao mexe
+// na CPU. Ver gpu_priority.h.
+Napi::Value SetProcessGpuPriorityBinding(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 3 || !info[0].IsNumber() || !info[1].IsNumber() || !info[2].IsNumber()) {
+    Napi::TypeError::New(env, "esperado (pid: number, gpuClass: number, cpuClass: number)").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  const DWORD pid = info[0].As<Napi::Number>().Uint32Value();
+  const int gpuClass = info[1].As<Napi::Number>().Int32Value();
+  const DWORD cpuClass = info[2].As<Napi::Number>().Uint32Value();
+  if (gpuClass < kGpuPriorityIdle || gpuClass > kGpuPriorityRealtime) {
+    Napi::RangeError::New(env, "gpuClass fora de 0..5").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  const GpuPriorityResult r = SetProcessGpuPriority(pid, gpuClass, cpuClass);
+  Napi::Object out = Napi::Object::New(env);
+  out.Set("status", Napi::Number::New(env, static_cast<double>(r.status)));
+  out.Set("win32Error", Napi::Number::New(env, r.win32Error));
+  out.Set("cpuApplied", Napi::Boolean::New(env, r.cpuApplied));
+  out.Set("readBack", Napi::Number::New(env, r.readBack));
+  return out;
+}
+
 }  // namespace
 
 Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
@@ -79,6 +105,7 @@ Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
   exports.Set("pidForWindowHandle", Napi::Function::New(env, PidForWindowHandleBinding));
   exports.Set("listProcessNames", Napi::Function::New(env, ListProcessNames));
   exports.Set("listAudioRenderPids", Napi::Function::New(env, ListAudioRenderPidsBinding));
+  exports.Set("setProcessGpuPriority", Napi::Function::New(env, SetProcessGpuPriorityBinding));
   return LoopbackCapture::Init(env, exports);
 }
 
