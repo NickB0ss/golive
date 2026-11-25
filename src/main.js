@@ -187,6 +187,7 @@ let keepAwakeBlockerId = null;
  * o blocker so quando muda (idempotente). */
 function applyKeepAwake() {
   const deve = shouldKeepAwake(keepAwakeState);
+  prioridadeGpu.definirAtivo(deve);
   const ligado = keepAwakeBlockerId !== null;
   if (deve && !ligado) {
     keepAwakeBlockerId = powerSaveBlocker.start('prevent-display-sleep');
@@ -200,6 +201,7 @@ function applyKeepAwake() {
  * o estado que o renderer mandou por ultimo nao e mais confiavel. */
 function forceStopKeepAwake() {
   keepAwakeState = { inRoom: false, sharing: false, watching: false };
+  prioridadeGpu.definirAtivo(false);
   if (keepAwakeBlockerId !== null) {
     powerSaveBlocker.stop(keepAwakeBlockerId);
     keepAwakeBlockerId = null;
@@ -236,6 +238,7 @@ const { mergeSourceDisplays, boundsFor } = require('./main/overlay');
 const { friendlySourceNames } = require('./main/sourcename');
 const { pickDisplayMediaStreams, replyOnce } = require('./main/displaymedia');
 const { shouldKeepAwake } = require('./main/awake');
+const { criarPrioridadeGpu, lerModo: lerModoPrioridadeGpu } = require('./main/gpupriority');
 const { canNavigateTo } = require('./main/navigation');
 const { linkParaNavegador, linkDaMesa } = require('./main/linksexternos');
 const origemLocal = require('./main/origem');
@@ -266,6 +269,24 @@ function lockNavigation(webContents, allowedUrl) {
 // implicita do Electron.
 const logger = setupLogger();
 aplicarFlagsChromium(app.commandLine, logger);
+
+// Prioridade de GPU/CPU dos processos do app enquanto ha video correndo (a
+// mesma regra do keep-awake). Sem isto, um jogo com a GPU em 99% deixa a
+// captura e o encode na fila atras dele. Ver src/main/gpupriority.js.
+// GOLIVE_PRIORIDADE_GPU=off desliga; =realtime mede a classe mais alta.
+const prioridadeGpu = criarPrioridadeGpu({
+  addon: audioAddon,
+  listarProcessos: () => app.getAppMetrics(),
+  pidPrincipal: () => {
+    try {
+      return win && !win.isDestroyed() ? win.webContents.getOSProcessId() : null;
+    } catch {
+      return null;
+    }
+  },
+  logger,
+  modo: lerModoPrioridadeGpu(process.env.GOLIVE_PRIORIDADE_GPU),
+});
 // O crashpad precisa nascer antes do ready e antes de qualquer renderer; sem
 // upload, ele so deixa os .dmp locais para a proxima investigacao.
 try {
