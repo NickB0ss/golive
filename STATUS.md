@@ -17,6 +17,12 @@ propostas maiores para decidir. Do pipeline nativo, P1.1 (esqueleto do `golive-m
 (spec do protocolo UDP, revisada) e P2.2 (pacote e remontagem, C++ e JS) estão prontos.
 Nada disso foi testado em PC Windows: a lista do que validar está na nota de passagem.
 
+**27/11, fim do dia — P2.3 em JS:** o receptor agora decide sozinho quando recuperar por FEC e
+quando pedir `NACK` (suspeita, 5 ms de espera, cada fragmento uma vez, até 64 faixas, 1 a cada
+5 ms) e há um buffer de reenvio de referência (`src/main/videonativo/reenvio.js`). Uma simulação
+com 2% de perda em tudo entrega 98,8–99,6% dos quadros sem keyframe (critério do plano: >95%).
+Falta portar o buffer de reenvio para o `golive-media` (C++). Próximo sem Windows: P2.4.
+
 ## Em andamento — prioridade de GPU durante a transmissão (25/11/2026)
 
 Ainda não lançado. Com um jogo deixando a GPU em ~99%, os processos do

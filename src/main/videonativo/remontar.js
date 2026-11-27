@@ -8,17 +8,19 @@
  *   - `ReceptorVideo`: a tabela de sessoes de ida de um PC, com o Verificador na frente, uma sessao
  *     por (origem, kind) e a substituicao da 9.3.
  *
- * O relogio e injetavel (ms). Nada aqui tem timer proprio: quem usa chama `tick()` (o P2.3 vai
- * chamar a cada ESPERA_NACK_MS); `receber()` tambem confere os vencimentos antes de cada pacote.
+ * O relogio e injetavel (ms). Nada aqui tem timer proprio: quem usa chama `tick()` a cada
+ * ESPERA_NACK_MS (5 ms); `receber()` tambem confere os vencimentos antes de cada pacote.
  *
- * Ganchos para o P2.3 (NACK, FEC, PEDIR_KEYFRAME de verdade):
- *   - `entradas()` lista o que esta em montagem com os faltantes, `criadoEm`, `ultimoEm`, `maiorIndice`
- *     e `maiorQuadroVisto` (6.5: "suspeito"); o campo `pedidos` de cada entrada e reservado para
- *     marcar o que ja foi pedido por NACK;
- *   - `recuperarFec(quadro, inicio)` aplica a recuperacao da secao 7 quando o P2.3 decidir (6.5, passo 1);
- *   - `aoPedirKeyframe({motivo, ultimoQuadro})` ja sai aqui, no maximo 1 a cada 500 ms (5.4), repetindo
- *     enquanto o modo for ESPERANDO_KEYFRAME sem keyframe em montagem; `pedirKeyframe(motivo)` e a
- *     entrada do decoder (P2.5, motivos 2 e 4).
+ * Recuperacao de perda (P2.3, secoes 5.3, 6.5 e 7):
+ *   - cada fragmento faltante vira "suspeito" (chegou indice maior ou o FEC do grupo, chegou quadro
+ *     posterior, ou 20 ms sem pacote do quadro; entrada vazia da regra 7 e suspeita por inteiro);
+ *   - 5 ms depois, se o grupo tem um faltante so e o FEC chegou, recupera por FEC sem pedir nada;
+ *   - senao entra no proximo NACK (`aoNack(entradas)`): no maximo 1 a cada 5 ms, ate 64 entradas,
+ *     faixas contiguas juntas, quadro desconhecido como 0xFFFF, e cada fragmento pedido uma vez so;
+ *   - `aoPedirKeyframe({motivo, ultimoQuadro})` no maximo 1 a cada 500 ms (5.4), repetindo enquanto
+ *     o modo for ESPERANDO_KEYFRAME sem keyframe em montagem; `pedirKeyframe(motivo)` e a entrada do
+ *     decoder (P2.5, motivos 2 e 4).
+ * `entradas()` e `recuperarFec(quadro, inicio)` continuam publicos para diagnostico e teste.
  * Puro Node, sem Electron.
  */
 
@@ -40,6 +42,8 @@ function novosContadoresRemontagem() {
     quadros_descartados: 0, // jogados fora sem vencer: atras de um keyframe, deltas de um vencido, lacuna
     lacunas: 0, // regra 7 com lacuna > MAX_QUADROS_EM_MONTAGEM
     recuperados_fec: 0,
+    nacks: 0, // NACKs mandados (5.3)
+    pedidos_nack: 0, // fragmentos pedidos (quadro inteiro conta 1)
   };
 }
 
@@ -47,14 +51,18 @@ class Remontador {
   /**
    * @param {{fecN?:number, agora?:() => number,
    *   aoQuadro?:(q:{quadro:number, keyframe:boolean, dados:Buffer}) => void,
-   *   aoPedirKeyframe?:(p:{motivo:number, ultimoQuadro:number}) => void}} [op]
+   *   aoPedirKeyframe?:(p:{motivo:number, ultimoQuadro:number}) => void,
+   *   aoNack?:(entradas:{quadro:number, primeiro:number, quantidade:number}[]) => void}} [op]
    */
   constructor({ fecN = C.FEC_N_PADRAO, agora = () => performance.now(), aoQuadro = () => {},
-    aoPedirKeyframe = () => {} } = {}) {
+    aoPedirKeyframe = () => {}, aoNack = () => {} } = {}) {
     this.fecN = fecN;
     this.agora = agora;
     this.aoQuadro = aoQuadro;
     this.aoPedirKeyframe = aoPedirKeyframe;
+    this.aoNack = aoNack;
+    this._ultimoNackEm = -Infinity;
+    this._varridoEm = -Infinity;
     this.modo = MODO.ESPERANDO_KEYFRAME;
     this.U = null; // ultimo quadro entregue
     this.montagem = new Map(); // quadro -> entrada
@@ -69,14 +77,19 @@ class Remontador {
     const agora = this.agora();
     this._vencer(agora);
     if (p.quadro > this.maiorQuadroVisto) this.maiorQuadroVisto = p.quadro;
+    // 6.5: pacote de quadro posterior torna suspeito tudo o que falta nos anteriores.
+    for (const e of this.montagem.values()) if (e.quadro < p.quadro && e.posteriorEm === Infinity) e.posteriorEm = agora;
     this._receber(p, agora);
+    // A varredura custa O(fragmentos em montagem): por pacote, no maximo uma por ms.
+    if (agora - this._varridoEm >= 1) this._varrer(agora);
     this._talvezPedir(agora);
   }
 
-  /** Vencimentos (6.6) e repeticao do PEDIR_KEYFRAME (5.4). */
+  /** Vencimentos (6.6), FEC e NACK dos faltantes (6.5) e repeticao do PEDIR_KEYFRAME (5.4). */
   tick() {
     const agora = this.agora();
     this._vencer(agora);
+    this._varrer(agora);
     this._talvezPedir(agora);
   }
 
@@ -174,7 +187,11 @@ class Remontador {
     const e = {
       quadro: q, n: null, keyframe: null, buf: null, tamanhos: null, recebidos: 0, completo: false,
       fec: new Map(), criadoEm: agora, ultimoEm: agora, maiorIndice: -1,
-      pedidos: null, // P2.3: fragmentos ja pedidos por NACK (6.5: cada um uma vez so)
+      pedidos: null, // Uint8Array(n): fragmentos ja pedidos por NACK (6.5: cada um uma vez so)
+      pedidoInteiro: false, // ja foi num NACK 0xFFFF: todos contam como pedidos
+      suspeito: null, // Float64Array(n): instante em que o fragmento virou suspeito (Infinity = ainda nao)
+      suspeitoAte: -1, // indices <= este ja passaram pela marcacao de suspeita
+      posteriorEm: Infinity, // chegou pacote de quadro posterior (6.5): tudo o que falta e suspeito
     };
     this.montagem.set(q, e);
     return e;
@@ -221,10 +238,12 @@ class Remontador {
         } else {
           let refazer = false;
           for (const m of faltam) {
-            if (!this._criar(m, agora)) {
+            const vazia = this._criar(m, agora);
+            if (!vazia) {
               refazer = true;
               break;
             }
+            vazia.posteriorEm = agora; // 6.5: entrada vazia e suspeita por inteiro
           }
           if (refazer) continue;
         }
@@ -240,6 +259,9 @@ class Remontador {
         e.keyframe = kf;
         e.buf = Buffer.alloc(e.n * C.TAM_FRAGMENTO);
         e.tamanhos = new Uint16Array(e.n);
+        e.suspeito = new Float64Array(e.n).fill(Infinity);
+        e.pedidos = new Uint8Array(e.n);
+        if (e.pedidoInteiro) e.pedidos.fill(1);
       } else if (e.n !== p.total || e.keyframe !== kf) {
         this.contadores.campo++;
         return;
@@ -253,6 +275,8 @@ class Remontador {
         }
         const f = p.campos;
         e.fec.set(p.indice, { k: f.k, xorTamanhos: f.xorTamanhos, xorDados: Buffer.from(f.xorDados) });
+        // O FEC sai logo depois do ultimo fragmento do grupo (7): o que falta ate ali e suspeito.
+        this._suspeitar(e, Math.min(p.indice + f.k, e.n) - 1, agora);
         return;
       }
       // Regra 4 (fragmento repetido) e 5 (fora de ordem vai para i x 1152).
@@ -261,9 +285,82 @@ class Remontador {
         return;
       }
       if (p.indice > e.maiorIndice) e.maiorIndice = p.indice;
+      this._suspeitar(e, p.indice - 1, agora);
       this._colocar(e, p.indice, p.payload);
       return;
     }
+  }
+
+  /** 6.5: os faltantes de indice <= `ate` viram suspeitos agora (os ja marcados ficam como estao). */
+  _suspeitar(e, ate, agora) {
+    for (let i = e.suspeitoAte + 1; i <= ate; i++) if (e.tamanhos[i] === 0) e.suspeito[i] = agora;
+    if (ate > e.suspeitoAte) e.suspeitoAte = ate;
+  }
+
+  /**
+   * 6.5: faltantes suspeitos ha ESPERA_NACK_MS. Grupo com um faltante so e FEC presente: recupera.
+   * O resto vai no proximo NACK (no maximo 1 a cada 5 ms; o que nao couber espera o seguinte).
+   */
+  _varrer(agora) {
+    this._varridoEm = agora;
+    if (this.montagem.size === 0) return;
+    const espera = C.ESPERA_NACK_MS;
+    const pedir = []; // {e, i} ou {e, inteiro:true}
+    const lista = [...this.montagem.values()].sort((a, b) => a.quadro - b.quadro);
+    for (const e of lista) {
+      if (this.montagem.get(e.quadro) !== e || e.completo) continue;
+      if (e.n === null) {
+        if (!e.pedidoInteiro && agora - e.posteriorEm >= espera) pedir.push({ e, inteiro: true });
+        continue;
+      }
+      const base = Math.min(e.posteriorEm, e.ultimoEm + C.SUSPEITA_MS);
+      const passo = this.fecN > 0 ? this.fecN : e.n;
+      for (let ini = 0; ini < e.n; ini += passo) {
+        const fim = Math.min(ini + passo, e.n);
+        let falta = 0;
+        let vencidos = 0;
+        for (let i = ini; i < fim; i++) {
+          if (e.tamanhos[i] !== 0) continue;
+          falta++;
+          if (!e.pedidos[i] && agora - Math.min(e.suspeito[i], base) >= espera) vencidos++;
+        }
+        if (vencidos === 0) continue;
+        if (falta === 1 && e.fec.has(ini) && this.recuperarFec(e.quadro, ini) !== -1) {
+          if (this.montagem.get(e.quadro) !== e || e.completo) break; // completou (e talvez entregou)
+          continue;
+        }
+        for (let i = ini; i < fim; i++) {
+          if (e.tamanhos[i] === 0 && !e.pedidos[i] && agora - Math.min(e.suspeito[i], base) >= espera) {
+            pedir.push({ e, i });
+          }
+        }
+      }
+    }
+    if (pedir.length === 0 || agora - this._ultimoNackEm < espera) return;
+    // Faixas contiguas do mesmo quadro viram uma entrada; ate NACK_MAX_ENTRADAS por NACK.
+    const entradas = [];
+    for (const x of pedir) {
+      const ult = entradas[entradas.length - 1];
+      if (x.inteiro) {
+        if (entradas.length === C.NACK_MAX_ENTRADAS) break;
+        x.e.pedidoInteiro = true;
+        entradas.push({ quadro: x.e.quadro, primeiro: 0, quantidade: C.NACK_QUADRO_INTEIRO });
+        this.contadores.pedidos_nack++;
+        continue;
+      }
+      if (ult && ult.quadro === x.e.quadro && ult.quantidade !== C.NACK_QUADRO_INTEIRO
+        && ult.primeiro + ult.quantidade === x.i) {
+        ult.quantidade++;
+      } else {
+        if (entradas.length === C.NACK_MAX_ENTRADAS) break;
+        entradas.push({ quadro: x.e.quadro, primeiro: x.i, quantidade: 1 });
+      }
+      x.e.pedidos[x.i] = 1;
+      this.contadores.pedidos_nack++;
+    }
+    this._ultimoNackEm = agora;
+    this.contadores.nacks++;
+    this.aoNack(entradas);
   }
 
   _colocar(e, i, dados) {
@@ -359,15 +456,16 @@ class ReceptorVideo {
    * @param {{agora?:() => number, log?:(l:string) => void,
    *   aoQuadro?:(sessao:number, q:object) => void,
    *   aoPedirKeyframe?:(sessao:number, p:{motivo:number, ultimoQuadro:number}) => void,
+   *   aoNack?:(sessao:number, entradas:{quadro:number, primeiro:number, quantidade:number}[]) => void,
    *   aoOla?:(sessao:number, ola:object) => void,
    *   aoFim?:(sessao:number, motivo:number) => void}} [op]
    */
   constructor({ agora = () => performance.now(), log = null, aoQuadro = () => {}, aoPedirKeyframe = () => {},
-    aoOla = () => {}, aoFim = () => {} } = {}) {
+    aoNack = () => {}, aoOla = () => {}, aoFim = () => {} } = {}) {
     this.agora = agora;
     this.verificador = new Verificador({ agora, log });
     this.sessoes = new Map();
-    this.cb = { aoQuadro, aoPedirKeyframe, aoOla, aoFim };
+    this.cb = { aoQuadro, aoPedirKeyframe, aoNack, aoOla, aoFim };
   }
 
   /**
@@ -389,6 +487,7 @@ class ReceptorVideo {
       agora: this.agora,
       aoQuadro: (q) => this.cb.aoQuadro(sessao, q),
       aoPedirKeyframe: (p) => this.cb.aoPedirKeyframe(sessao, p),
+      aoNack: (entradas) => this.cb.aoNack(sessao, entradas),
     });
     this.sessoes.set(sessao, {
       sessao, origem, kind, remontador,
