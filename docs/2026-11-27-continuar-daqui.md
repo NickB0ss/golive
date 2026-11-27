@@ -12,7 +12,7 @@ nativo avançou o que dava sem Windows (P1.1, P2.1, P2.2). Nada foi testado em P
 
 ## Verificação no fim desta rodada (Linux, nuvem)
 
-- `npm test` (depois do P2.3, 27/11 à noite): 2743 testes, 0 falhas, 13 pulados (sem binário do
+- `npm test` (depois do P2.4, 27/11 à noite): 2753 testes, 0 falhas, 13 pulados (sem binário do
   exe neste container). Antes do P2.3: 2727 testes, 0 falhas. Inclui os testes do `golive-media` porque havia binário
   Linux em `build/Release/`; sem binário (CI no Windows) 5 + 8 desses testes são pulados.
 - `npm run lint`: 0 erros, 8 warnings antigos (6 `require-atomic-updates` em `app.js`, analisados
@@ -30,6 +30,7 @@ nativo avançou o que dava sem Windows (P1.1, P2.1, P2.2). Nada foi testado em P
 | P1.1 esqueleto do `golive-media` | `native/media/{main,args,controle,metricas}.*`, target no `binding.gyp`, nota D-11 | pronto; falta MSVC |
 | P2.1 spec do protocolo UDP | `docs/superpowers/specs/2026-11-25-protocolo-video-nativo.md`, nota D-13 | pronto, revisado por um segundo agente |
 | P2.2 empacotar e remontar | `src/main/videonativo/{constantes,pacote,remontar}.js`, `native/media/{pacote,sha256,protocolo,pacote_vetores}.*` | pronto; 57 testes + teste cruzado |
+| P2.4 controle de taxa | `src/main/videonativo/taxa.js` (`MedidorRelatorio`, `ControleTaxa`), `taxa.test.js`, `taxa-simulacao.test.js` | JS pronto (gargalo 30→8 Mbps normaliza em ~2 s); ligar `definirTeto` à escada de qualidade no P2.6 |
 | P2.3 recuperação de perda | `remontar.js` (suspeita, FEC automático, `aoNack`), `reenvio.js` (`BufferReenvio`), `simulacao.test.js` | JS pronto (2% de perda → ~99% dos quadros sem keyframe); **falta o buffer de reenvio em C++ no exe** |
 
 Pontos para quem continuar o pipeline:
@@ -96,8 +97,9 @@ boas-vindas; marcar `golive:tour:v1` como visto antes de navegar (como o agente 
    4. Se tudo passar: P0.4 (bump de versão, `npm run release:check`, release) — as correções
       da auditoria saem juntas.
 2. **Sem Windows:** portar `src/main/videonativo/reenvio.js` para o exe (`native/media/reenvio.*`,
-   com teste no modo `--gerar-vetores` ou similar) e fechar o P2.3. Depois P2.4 (controle de taxa:
-   `RELATORIO` a cada 200 ms no receptor e a regra −20%/+10% no envio) na parte que é JS puro.
+   com teste no modo `--gerar-vetores` ou similar) e fechar o P2.3. O P2.4 em JS já está pronto
+   (`taxa.js`). Depois disso, o que sobra do pipeline precisa de Windows (captura, encode, P2.5
+   com WebCodecs no Electron, P2.6 ligando tudo).
 3. Decisões do dono: propostas R1–R3 de design; gabarito do quiz só no servidor; TLS na
    sinalização (afeta a chave do vídeo nativo).
 
