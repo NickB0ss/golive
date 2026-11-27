@@ -252,3 +252,19 @@ test('categoria em código não muda a comparação: vale o texto digitado', () 
   assert.equal(de('bia', 0), 5);
   assert.equal(de('caio', 0), 0);
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-14) ----
+
+test('J-14: voto com categoria negativa ou fora do intervalo e recusado (nao enche o estado)', () => {
+  let state = rodada();
+  state = respondeTudo(state, 'ana');
+  state = act(state, { kind: 'stop' }, 'ana');
+  assert.equal(state.phase, 'review');
+  for (const category of [-1, -5, state.categories.length, 99]) {
+    const acao = { kind: 'vote', player: 'bia', category, annul: true };
+    assert.notEqual(stop.validate(state, acao, ctx('ana')), true, `category ${category}`);
+  }
+  assert.equal(stop.validate(state, { kind: 'vote', player: 'bia', category: 0, annul: true }, ctx('ana')), true);
+  assert.equal(stop.validate(state, { kind: 'vote', player: 'bia', category: state.categories.length - 1, annul: true },
+    ctx('ana')), true);
+});

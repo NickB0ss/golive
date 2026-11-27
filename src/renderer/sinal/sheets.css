@@ -97,8 +97,9 @@
   #settings-modal { width: clamp(440px, calc(100vw - 480px), var(--w-sheet)); }
   .settings__nav { padding-right: var(--s-3); padding-left: var(--s-3); overflow-x: hidden; }
   .settings__nav .seg { display: flex; width: 100%; justify-content: space-between; }
-  /* Abas de largura igual: com space-between a ultima colava na borda e o fundo da escolhida variava. */
-  .settings__nav .seg__opt { flex: 1; justify-content: center; padding-right: var(--s-2); padding-left: var(--s-2); }
+  /* As abas dividem a sobra por igual: com space-between a ultima colava na borda. Sem quebrar o rotulo. */
+  .settings__nav .seg__opt { flex: 1 1 auto; justify-content: center; white-space: nowrap;
+    padding-right: var(--s-2); padding-left: var(--s-2); }
 }
 
 /* Grade de temas: cada cartao e a sala do Sinal em miniatura. */

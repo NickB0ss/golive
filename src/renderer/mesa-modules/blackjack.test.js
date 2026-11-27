@@ -840,3 +840,39 @@ test('summary em portugues', () => {
   s = betAll(s, ['bia', 'leo']);
   assert.equal(R(bj.summary(s, PEERS)), 'Blackjack — vez de Bia');
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-15) ----
+
+test('J-15: levantar e sentar de novo devolve as fichas que a pessoa tinha, nao 1000', () => {
+  let s = deepFreeze(bj.init({ random: seeded(1), now: clock }));
+  s = act(s, { kind: 'sit', seat: 0 }, '1');
+  s = deepFreeze(Object.assign({}, s, { chips: [10, null, null, null, null] }));
+  s = act(s, { kind: 'leave' }, '1');
+  assert.equal(s.chips[0], null);
+  s = act(s, { kind: 'sit', seat: 2 }, '1');
+  assert.equal(s.chips[2], 10, 'volta com o que tinha (em outra cadeira tambem)');
+  // A recompra continua sendo o caminho de quem quebrou.
+  s = deepFreeze(Object.assign({}, s, { chips: [null, null, 0, null, null] }));
+  s = act(s, { kind: 'rebuy' }, '1');
+  assert.equal(s.chips[2], bj.START_CHIPS);
+  // Quem nunca sentou entra com o valor inicial.
+  s = act(s, { kind: 'sit', seat: 0 }, '2');
+  assert.equal(s.chips[0], bj.START_CHIPS);
+});
+
+test('J-15: quem sai da sala (dropPeer) tambem guarda as fichas; a migracao zera o guardado', () => {
+  let s = deepFreeze(bj.init({ random: seeded(1), now: clock }));
+  s = act(s, { kind: 'sit', seat: 0 }, '1');
+  s = deepFreeze(Object.assign({}, s, { chips: [30, null, null, null, null] }));
+  s = bj.dropPeer(s, '1');
+  assert.deepEqual(s.bank, { 1: 30 });
+  assert.equal(act(s, { kind: 'sit', seat: 1 }, '1').chips[1], 30);
+  assert.deepEqual(bj.migrate(s).bank, {});
+  // O guardado tem teto: nao cresce sem limite com gente passando pela mesa.
+  let cheio = s;
+  for (let i = 10; i < 30; i += 1) {
+    cheio = deepFreeze(Object.assign({}, cheio, { seats: [`${i}`, null, null, null, null], chips: [5, null, null, null, null] }));
+    cheio = bj.dropPeer(cheio, `${i}`);
+  }
+  assert.ok(Object.keys(cheio.bank).length <= 8);
+});

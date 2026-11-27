@@ -199,6 +199,7 @@
       seats: fill(null),
       names: fill(null),
       chips: fill(null),
+      bank: {},
       bets: fill(0),
       insurance: fill(null),
       insuranceNet: fill(null),
@@ -408,7 +409,21 @@
     return s.shoe.shift();
   }
 
+  const BANK_MAX = 8;
+
+  /** Fichas de quem levantou, por id, para devolver se ele voltar (so as ultimas BANK_MAX pessoas). */
+  function guardaFichas(s, id, fichas) {
+    if (typeof id !== 'string' || !Number.isFinite(fichas)) return;
+    const bank = Object.assign({}, s.bank);
+    delete bank[id];
+    bank[id] = fichas;
+    const ids = Object.keys(bank);
+    for (const velho of ids.slice(0, Math.max(0, ids.length - BANK_MAX))) delete bank[velho];
+    s.bank = bank;
+  }
+
   function freeSeat(s, seat) {
+    guardaFichas(s, s.seats[seat], s.chips[seat]);
     s.seats[seat] = null;
     s.names[seat] = null;
     s.chips[seat] = null;
@@ -591,7 +606,10 @@
           const name = typeof action.name === 'string' ? action.name.trim().slice(0, NAME_MAX) || null : null;
           s.seats[action.seat] = from;
           s.names[action.seat] = name;
-          s.chips[action.seat] = START_CHIPS;
+          // Quem volta a mesa leva as fichas com que saiu; so quem nunca sentou ganha START_CHIPS. Recompra so com
+          // zero (J-15, auditoria 2026-11-25).
+          s.chips[action.seat] = Object.hasOwn(s.bank || {}, from) ? s.bank[from] : START_CHIPS;
+          if (s.bank) delete s.bank[from];
           s.bets[action.seat] = 0;
           s.insurance[action.seat] = null;
           s.insuranceNet[action.seat] = null;
@@ -706,6 +724,7 @@
       toBets(s);
       s.shoe = [];
       s.reshuffled = false;
+      s.bank = {}; // os ids mudam na migracao: fichas guardadas por id antigo nao voltam a ninguem
       return s;
     }, state);
   }

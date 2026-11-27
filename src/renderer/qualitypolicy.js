@@ -53,6 +53,10 @@
     const positive = (v) => finiteNonnegative(v) > 0 ? v : null;
     return {
       softwareEncoder: raw.softwareEncoder === true,
+      // R-09 (auditoria 2026-11-25): sinal autoritativo do autoquality.isBad.
+      // Descartado aqui, o relay limitado por CPU com carga <= 1 nao contava
+      // como saturado para a origem (peerEncodeSaturated).
+      cpuLimited: raw.cpuLimited === true,
       msPerFrame: finiteNonnegative(raw.msPerFrame),
       load: finiteNonnegative(raw.load),
       budgetMs: positive(raw.budgetMs),

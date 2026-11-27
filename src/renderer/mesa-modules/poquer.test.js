@@ -695,3 +695,35 @@ test('summary', () => {
   s = act(s, { kind: 'deal' }, 'ana');
   assert.equal(R(P.summary(s)), 'Pôquer 10/20 — 2 na mesa, mão 1, vez de Ana');
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-15) ----
+
+test('J-15: levantar e sentar de novo devolve as fichas que a pessoa tinha, nao 1000', () => {
+  let s = act(P.init(), { kind: 'sit', seat: 0 }, 'ana');
+  s = deepFreeze(Object.assign({}, s, { stacks: [5, 0, 0, 0, 0, 0, 0, 0] }));
+  s = act(s, { kind: 'stand' }, 'ana');
+  assert.equal(s.stacks[0], 0);
+  s = act(s, { kind: 'sit', seat: 3 }, 'ana');
+  assert.equal(s.stacks[3], 5);
+  // Quem nunca sentou entra com o STACK; com zero fichas a recompra segue valendo.
+  s = act(s, { kind: 'sit', seat: 0 }, 'bia');
+  assert.equal(s.stacks[0], P.STACK);
+  s = deepFreeze(Object.assign({}, s, { stacks: [P.STACK, 0, 0, 0, 0, 0, 0, 0].map((v, i) => (i === 3 ? 0 : v)) }));
+  assert.equal(act(s, { kind: 'rebuy' }, 'ana').stacks[3], P.STACK);
+});
+
+test('J-15: quem sai da sala (dropPeer) guarda as fichas; a migracao zera o guardado; o guardado tem teto', () => {
+  let s = act(P.init(), { kind: 'sit', seat: 0 }, 'ana');
+  s = deepFreeze(Object.assign({}, s, { stacks: [40, 0, 0, 0, 0, 0, 0, 0] }));
+  s = P.dropPeer(s, 'ana');
+  assert.deepEqual(s.bank, { ana: 40 });
+  assert.equal(act(s, { kind: 'sit', seat: 1 }, 'ana').stacks[1], 40);
+  assert.deepEqual(P.migrate(s).bank, {});
+  let cheio = s;
+  for (let i = 10; i < 30; i += 1) {
+    cheio = deepFreeze(Object.assign({}, cheio, { seats: [`${i}`, null, null, null, null, null, null, null],
+      stacks: [5, 0, 0, 0, 0, 0, 0, 0] }));
+    cheio = P.dropPeer(cheio, `${i}`);
+  }
+  assert.ok(Object.keys(cheio.bank).length <= 8);
+});

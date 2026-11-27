@@ -353,6 +353,7 @@
       seats: fill(null),
       names: fill(null),
       stacks: fill(0),
+      bank: {},
       level: DEFAULT_LEVEL,
       button: -1,
       handNo: 0,
@@ -519,13 +520,17 @@
         case 'sit': {
           s.seats[action.seat] = from;
           s.names[action.seat] = typeof action.name === 'string' && action.name.trim() ? action.name.trim().slice(0, NAME_MAX) : null;
-          s.stacks[action.seat] = STACK;
+          // Quem volta a mesa leva as fichas com que saiu (o `stand` as guardou em `bank`); so quem nunca sentou
+          // (ou veio de outra sala) ganha o STACK. Recompra so com zero (J-15, auditoria 2026-11-25).
+          s.stacks[action.seat] = Object.hasOwn(s.bank || {}, from) ? s.bank[from] : STACK;
+          if (s.bank) delete s.bank[from];
           event(s, action.seat, 'sit');
           return s;
         }
         case 'stand':
           event(s, seat, 'stand');
           leaveHand(s, seat, at);
+          guardaFichas(s, from, s.stacks[seat]);
           s.seats[seat] = null;
           s.names[seat] = null;
           s.stacks[seat] = 0;
@@ -659,6 +664,7 @@
       }
       s.hand = null;
       s.ev = null;
+      s.bank = {}; // os ids mudam na migracao: fichas guardadas por id antigo nao voltam a ninguem
       return s;
     }, init());
   }
@@ -680,11 +686,25 @@
       const h = s.hand;
       const at = Number.isFinite(now) ? now : (h && Number.isFinite(h.deadline) ? h.deadline : 0);
       leaveHand(s, seat, at);
+      guardaFichas(s, peerId, s.stacks[seat]);
       s.seats[seat] = null;
       s.names[seat] = null;
       s.stacks[seat] = 0;
       return s;
     }, state);
+  }
+
+  const BANK_MAX = 8;
+
+  /** Fichas de quem levantou, por id, para devolver se ele voltar (so as ultimas BANK_MAX pessoas). */
+  function guardaFichas(s, id, fichas) {
+    if (typeof id !== 'string' || !Number.isFinite(fichas)) return;
+    const bank = Object.assign({}, s.bank);
+    delete bank[id];
+    bank[id] = fichas;
+    const ids = Object.keys(bank);
+    for (const velho of ids.slice(0, Math.max(0, ids.length - BANK_MAX))) delete bank[velho];
+    s.bank = bank;
   }
 
   /** IDs anteriores a uma migração não voltam a ocupar cadeira. A limpeza

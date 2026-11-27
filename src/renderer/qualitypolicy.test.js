@@ -95,6 +95,19 @@ test('normalizacao conserva load valido sem exigir campo de clientes antigos', (
   assert.equal(normalizeEncodeHealth(null), null);
 });
 
+// R-09 (auditoria 2026-11-25): cpuLimited sobrevive ao fio.
+test('normalizacao conserva cpuLimited e o relay limitado por CPU conta como saturado', () => {
+  const encodehealth = require('./encodehealth');
+  const autoquality = require('./autoquality');
+  const rows = [{ kind: 'screen', msPerFrame: 8, limitation: 'cpu', encoder: 'NVIDIA MediaFoundation' }];
+  const local = encodehealth.summarizeScreenEncodeHealth(rows, () => 30);
+  const recebido = normalizeEncodeHealth(JSON.parse(JSON.stringify(local)));
+  assert.equal(recebido.cpuLimited, true);
+  assert.equal(autoquality.isBad(recebido, autoquality.budgetMsFor(30)), true);
+  assert.equal(normalizeEncodeHealth({ cpuLimited: 'sim' }).cpuLimited, false, 'so true literal');
+  assert.equal(normalizeEncodeHealth({ msPerFrame: 5 }).cpuLimited, false, 'cliente antigo: neutro');
+});
+
 test('20ms a 30FPS tem folga, 20ms a 60FPS e penalizado; load tem precedencia', () => {
   for (const field of [{ fps: 30 }, { budgetMs: 1000 / 30 }, { load: 0.6, fps: 60 }]) {
     const candidates = [

@@ -111,6 +111,9 @@
         if (action.id !== undefined && (typeof action.id !== 'string' || !ID_RE.test(action.id))) return codigo('mesa.radio.musicaInvalida');
         const a = { kind: action.kind, videoId: action.videoId, ...extra };
         if (action.id !== undefined) a.id = action.id;
+        // `need`/`keep` so valem se o `prepare` do servidor os pos (ele apaga os do cliente antes).
+        if (Number.isInteger(action.need) && action.need >= 1 && action.need <= 1000) a.need = action.need;
+        if (Array.isArray(action.keep) && action.keep.length <= 1000 && action.keep.every(isPeerId)) a.keep = action.keep.slice();
         return a;
       }
       case 'title': {
@@ -141,9 +144,12 @@
       const name = me ? L.cleanText(me.name, MAX_NAME) : null;
       if (name) a.name = name;
     }
-    if (a.kind === 'vote-skip' && peers) {
+    // `ended`/`failed` de quem nao pos a musica (nem e o lider) valem como voto: sem isso qualquer pessoa pularia
+    // a faixa dos outros mandando `ended` e burlaria "so quem pos ou o lider pula" (J-13, auditoria 2026-11-25).
+    // Dois avisos bastam (cada PC avisa quando o proprio player acaba), ou a maioria, se a sala for de 1 ou 2.
+    if ((a.kind === 'vote-skip' || a.kind === 'ended' || a.kind === 'failed') && peers) {
       const present = new Set(peers.map((p) => String(p && p.id)));
-      a.need = votesNeeded(peers.length);
+      a.need = a.kind === 'vote-skip' ? votesNeeded(peers.length) : Math.min(votesNeeded(peers.length), 2);
       a.keep = state.votes.filter((v) => present.has(v));
     }
     return a;
@@ -201,6 +207,17 @@
     return state.current.videoId === a.videoId;
   }
 
+  /** `ended`/`failed` de quem pode mexer na faixa (quem pos, ou o lider) avanca na hora; de qualquer outra
+   * pessoa vira voto e avanca quando `need` avisos distintos chegam. Devolve o estado de voto, ou null = avanca. */
+  function avisoDeFim(state, a, from, ctx) {
+    if (canManage(state.current, ctx)) return null;
+    if (from === null) return state;
+    const base = a.keep ? state.votes.filter((v) => a.keep.includes(v)) : state.votes;
+    if (base.includes(from)) return state;
+    const votes = [...base, from];
+    return a.need !== undefined && votes.length < a.need ? { ...state, votes } : null;
+  }
+
   function reduce(state, action, ctx) {
     const a = parse(action);
     if (typeof a === 'string') return state;
@@ -250,13 +267,17 @@
       }
       case 'failed': {
         if (!isCurrent(state, a)) return state;
+        const aviso = avisoDeFim(state, a, from, ctx);
+        if (aviso) return aviso;
         const mark = { videoId: state.current.videoId, title: state.current.title || '' };
         const failed = [...state.failed.filter((f) => f.videoId !== mark.videoId), mark].slice(-MAX_FAILED);
         return { ...advance(state, a.at), failed };
       }
-      case 'ended':
+      case 'ended': {
         if (!isCurrent(state, a)) return state;
-        return advance(state, a.at);
+        const aviso = avisoDeFim(state, a, from, ctx);
+        return aviso || advance(state, a.at);
+      }
       case 'title': {
         const fill = (it) => (it.id === a.id && !it.title ? { ...it, title: a.title } : it);
         const current = state.current ? fill(state.current) : null;
