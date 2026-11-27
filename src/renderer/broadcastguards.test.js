@@ -60,9 +60,11 @@ test('sanitizeTree filtra filhos fora da sala, repetidos, a origem e nos mesmos,
   const { sanitizeTree, MAX_TREE_CHILDREN } = require('./broadcastguards');
   const sala = new Set(['O', 'eu', 'a', 'b', ...Array.from({ length: 20 }, (_, i) => `p${i}`)]);
   const base = { origem: 'O', myId: 'eu', isKnownPeer: (id) => sala.has(id) };
-  const ok = sanitizeTree({ ...base, msg: { epoch: 3, paiId: 'O', filhos: ['a', 'fantasma', 'a', 'O', 'eu', 7, {}, 'b'] } });
+  const filhos = ['a', 'fantasma', 'a', 'O', 'eu', 7, {}, 'b'];
+  const ok = sanitizeTree({ ...base, msg: { epoch: 3, paiId: 'O', filhos } });
   assert.deepEqual(ok, { epoch: 3, paiId: 'O', filhosIds: ['a', 'b'] });
-  const muitos = sanitizeTree({ ...base, msg: { epoch: 1, paiId: 'O', filhos: [...sala].filter((id) => id.startsWith('p')) } });
+  const pX = [...sala].filter((id) => id.startsWith('p'));
+  const muitos = sanitizeTree({ ...base, msg: { epoch: 1, paiId: 'O', filhos: pX } });
   assert.equal(muitos.filhosIds.length, MAX_TREE_CHILDREN);
   assert.deepEqual(sanitizeTree({ ...base, msg: { epoch: 2, paiId: 'a', filhos: 'x' } }).filhosIds, []);
 });

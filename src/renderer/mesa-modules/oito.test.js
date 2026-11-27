@@ -215,11 +215,16 @@ test('J-10: apos a migracao o lugar fantasma nao recebe cartas nem a vez (reduce
   assert.equal(volta.estado.turn, 1, 'depois do 2 volta ao 1, sem passar pelo fantasma');
 });
 
-test('J-12: depois do fim da partida o proximo start abre partida nova com o placar zerado', () => {
-  const s = { ...pronto(), phase: 'finished', scores: [105, 20, 0, 0, 0, 0, 0, 0], winner: 0, hands: Array(8).fill(null).map(() => []) };
-  const r = comoServidor(s, { kind: 'start' }, 'ana');
-  assert.equal(r.erro, undefined);
-  assert.equal(r.estado.phase, 'play');
-  assert.deepEqual(r.estado.scores, Array(8).fill(0));
-  assert.equal(r.estado.winner, null);
+test('J-12: depois do fim da partida o start e recusado; o reset abre partida nova', () => {
+  const vazias = Array(8).fill(null).map(() => []);
+  const s = { ...pronto(), phase: 'finished', scores: [105, 20, 0, 0, 0, 0, 0, 0], winner: 0, hands: vazias };
+  assert.equal(comoServidor(s, { kind: 'start' }, 'ana').erro, 'mesa.cadeiras.partidaAcabou');
+  assert.equal(oito.view(s, 'ana', { peers: PEERS }).me.can.start, false);
+  const novo = comoServidor(s, { kind: 'reset' }, 'ana').estado;
+  assert.deepEqual(novo.scores, Array(8).fill(0));
+  assert.equal(comoServidor(novo, { kind: 'start' }, 'ana').erro, undefined);
+});
+
+test('view.can.play e falso para quem so assiste quando nao ha rodada (-1 nao e a vez de ninguem)', () => {
+  assert.equal(oito.view(oito.init(), 'zz', { peers: PEERS }).me.can.play, false);
 });

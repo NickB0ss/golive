@@ -3599,8 +3599,8 @@
     if (agora - (relayInputReofferAt.get(inputKey) || 0) < stallwatch.DEFAULTS.cooldownMs) return true;
     relayInputReofferAt.set(inputKey, agora);
     const nome = session.mesh.peers.get(sourceId)?.name || `#${sourceId}`;
-    console.warn(`[arvore] folha acusou ${baseKind} de ${nome} parada e a entrada deste relay tambem esta`
-      + ' sem quadros: pedindo a origem para refazer a entrada');
+    console.warn(`[arvore] folha acusou ${baseKind} de ${nome} parada e a entrada deste relay esta sem quadros`);
+    console.warn(`[arvore] pedindo a ${nome} para refazer a entrada ${baseKind} deste relay`);
     session.sig.send({ type: 'reoffer', to: sourceId, kind: baseKind });
     return true;
   }

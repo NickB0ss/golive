@@ -343,7 +343,8 @@
   function endRound(state, nextOptions, at, extra = {}) {
     const id = extra.drawerId === undefined ? drawerIdOf(state) : extra.drawerId;
     const credita = id && state.players.some((p) => p.id === id);
-    const drawCounts = credita ? { ...state.drawCounts, [id]: (state.drawCounts[id] || 0) + 1 } : { ...state.drawCounts };
+    const drawCounts = { ...state.drawCounts };
+    if (credita) drawCounts[id] = (state.drawCounts[id] || 0) + 1;
     const lastRound = state.word ? { round: state.round, word: state.word, drawerId: id } : state.lastRound;
     const acabouPraTodos = state.players.length > 0
       && state.players.every((p) => (drawCounts[p.id] || 0) >= DRAWS_PER_PLAYER);

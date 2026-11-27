@@ -217,15 +217,18 @@ test('J-13: `ended` de quem nao pos a musica nao a pula sozinho (burla de "so qu
 
 test('J-13: `ended`/`failed` de quem pos a musica ou do lider avancam na hora; need do cliente e ignorado', () => {
   const s = roda(radio.init({}), [[{ kind: 'add', url: A }, { from: '3' }], [{ kind: 'add', url: B }]]); // dono: '3'
-  assert.equal(servidor(s, { kind: 'ended', videoId: A, id: 'r1' }, { from: '3', peers: PEERS4 }).state.current.videoId, B);
+  const fim = { kind: 'ended', videoId: A, id: 'r1' };
+  assert.equal(servidor(s, fim, { from: '3', peers: PEERS4 }).state.current.videoId, B);
   assert.equal(servidor(s, { kind: 'failed', videoId: A, id: 'r1' }, { from: '2', isLeader: true, peers: PEERS4 })
     .state.current.videoId, B);
-  const forjado = servidor(s, { kind: 'ended', videoId: A, id: 'r1', need: 1, keep: ['2'] }, { from: '2', peers: PEERS4 });
+  const forja = { kind: 'ended', videoId: A, id: 'r1', need: 1, keep: ['2'] };
+  const forjado = servidor(s, forja, { from: '2', peers: PEERS4 });
   assert.equal(forjado.state.current.videoId, A, 'need:1 forjado nao vale');
 });
 
 test('J-13: numa sala de uma pessoa o aviso do proprio player continua pulando', () => {
   const s = roda(radio.init({}), [[{ kind: 'add', url: A }, { from: '1' }], [{ kind: 'add', url: B }, { from: '1' }]]);
   const solo = [{ id: '2', name: 'Bia' }];
-  assert.equal(servidor(s, { kind: 'ended', videoId: A, id: 'r1' }, { from: '2', peers: solo }).state.current.videoId, B);
+  const fim = { kind: 'ended', videoId: A, id: 'r1' };
+  assert.equal(servidor(s, fim, { from: '2', peers: solo }).state.current.videoId, B);
 });

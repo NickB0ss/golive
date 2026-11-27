@@ -245,30 +245,33 @@ test('createRateLimiter padrao cobre a rajada de re-oferta do welcome', () => {
   assert.equal(cortou, true);
 });
 
-test('nao encaminha offer/ice para destino em outra sala', async () => {
+// S-03 (auditoria 2026-11-25): o servidor tem uma sala so. Outro nome nao
+// abre uma sala paralela (invisivel pro lider, fora do teto, mas com o
+// historico e a mesa da 'geral'): o join e recusado.
+test('join com outra sala e recusado, e quem foi recusado nao recebe sinalizacao', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
     const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => a.once('open', r));
-    a.send(JSON.stringify({ type: 'join', room: 'salaA', name: 'Ana' }));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
     const welcomeA = await once(a, 'welcome');
 
     const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => b.once('open', r));
-    b.send(JSON.stringify({ type: 'join', room: 'salaB', name: 'Bruno' }));
-    const welcomeB = await once(b, 'welcome');
-
+    const fechouB = new Promise((r) => b.once('close', (code) => r(code)));
     let recebeu = false;
     b.on('message', (raw) => {
       if (JSON.parse(raw.toString()).type === 'offer') recebeu = true;
     });
-    a.send(JSON.stringify({ type: 'offer', to: welcomeB.id, sdp: 'x' }));
+    b.send(JSON.stringify({ type: 'join', room: 'salaB', name: 'Bruno' }));
+    assert.equal((await once(b, 'join-denied')).reason, 'room');
+    assert.equal(await fechouB, 1008);
+    assert.equal(server.getPeerCount(), 1);
+    a.send(JSON.stringify({ type: 'offer', to: String(Number(welcomeA.id) + 1), sdp: 'x' }));
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(recebeu, false);
-    assert.equal(welcomeA.id !== welcomeB.id, true);
 
     a.close();
-    b.close();
   } finally {
     await server.close();
   }

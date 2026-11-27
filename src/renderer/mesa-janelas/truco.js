@@ -60,6 +60,7 @@
 
   function textoStatus(view, nome) {
     if (!view) return '';
+    if (view.phase === 'finished' && view.me?.can?.reset) return t('mesa.cadeiras.partidaAcabou');
     if (view.phase === 'waiting' || view.phase === 'finished') {
       return view.me?.seat < 0
         ? t('mesa.poquer.escolhaLugar')
@@ -97,6 +98,7 @@
     const acoes = [];
     if (view?.me?.can?.stand) acoes.push({ kind: 'stand' });
     if (view?.me?.can?.deal) acoes.push({ kind: 'deal' });
+    if (view?.me?.can?.reset) acoes.push({ kind: 'reset' });
     return acoes;
   }
 
@@ -238,7 +240,9 @@
       const itens = [];
       for (const action of acoesPrincipais(view)) {
         const levantar = action.kind === 'stand';
-        const texto = t(levantar ? 'mesa.jogo.levantar' : 'mesa.poquer.darAsCartas');
+        let texto = t('mesa.poquer.darAsCartas');
+        if (levantar) texto = t('mesa.jogo.levantar');
+        else if (action.kind === 'reset') texto = t('mesa.tabuleiro.novaPartida');
         itens.push({ texto, action, principal: !levantar });
       }
       if (view?.me?.can?.eleven) {

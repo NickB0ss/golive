@@ -127,7 +127,9 @@
     if (!isObj(action) || action.kind !== 'sit') return action;
     const name = peerName(ctx, fromOf(ctx));
     const tomada = Array.isArray(state.seats) && state.seats[action.seat] != null;
-    if (tomada && !cadeiraViva(state, action.seat, ctx)) return { kind: 'sit', seat: action.seat, name, fantasma: true };
+    if (tomada && !cadeiraViva(state, action.seat, ctx)) {
+      return { kind: 'sit', seat: action.seat, name, fantasma: true };
+    }
     return { kind: 'sit', seat: action.seat, name };
   }
 

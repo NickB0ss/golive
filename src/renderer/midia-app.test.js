@@ -53,7 +53,7 @@ function load(code, names, stubs) {
     },
     set(alvo, chave, valor) { alvo[chave] = valor; return true; },
   });
-  // eslint-disable-next-line no-new-func -- o with so existe fora do modo estrito
+  // O `with` so existe fora do modo estrito, dai o Function em vez de vm.
   const fns = new Function('escopo', `with (escopo) { return (function () { ${code}\n`
     + `return { ${names.join(', ')} }; })(); }`)(escopo);
   return { fns, escopo: stubs, calls };

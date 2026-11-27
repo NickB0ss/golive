@@ -415,8 +415,9 @@ test('J-09: a vez gira certo quando o desenhista que sai e o do meio ou o ultimo
   const agora = 1.7e12;
   // Bia (2a) desenha e sai: segue a Caio.
   let s = tresNoDesenho(agora);
-  s = desenha.dropPeer(passo(passo(s, { kind: 'timeout' }, '2', { now: agora + 80000 }), { kind: 'choose', index: 0 }, '2',
-    { now: agora + 81000 }), '2');
+  s = passo(s, { kind: 'timeout' }, '2', { now: agora + 80000 });
+  s = passo(s, { kind: 'choose', index: 0 }, '2', { now: agora + 81000 });
+  s = desenha.dropPeer(s, '2');
   assert.equal(s.players[s.drawerIdx].id, '3');
   // Caio (ultimo) desenha e sai: volta para a Ana.
   s = tresNoDesenho(agora);

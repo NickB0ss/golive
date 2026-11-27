@@ -47,10 +47,10 @@ function criarLimpezaDaPagina({ passos, log = () => {} }) {
         const resultado = passo();
         // Passo assincrono (fechar o servidor): a falha vira log, nunca excecao solta.
         if (resultado && typeof resultado.catch === 'function') {
-          resultado.catch((err) => log(`limpeza da pagina: ${nome} falhou: ${err?.message || err}`));
+          resultado.catch((err) => log(`[limpeza] ${nome} falhou: ${err?.message || err}`));
         }
       } catch (err) {
-        log(`limpeza da pagina: ${nome} falhou: ${err?.message || err}`);
+        log(`[limpeza] ${nome} falhou: ${err?.message || err}`);
       }
     }
   };

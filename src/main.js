@@ -653,13 +653,13 @@ function createWindow() {
   const limparEstadoDaPagina = criarLimpezaDaPagina({
     log: (msg) => logger.error(msg),
     passos: [
-      ['capturas de audio', () => pararCapturasDe(activeCaptures, capturaDonos, principal)],
-      ['janela de rabisco', () => destroyOverlayWindow()],
-      ['servidor embutido', () => {
+      ['capturas', () => pararCapturasDe(activeCaptures, capturaDonos, principal)],
+      ['overlay', () => destroyOverlayWindow()],
+      ['servidor', () => {
         discovery.stopAdvertising();
         return closeEmbeddedServerComPrazo({ migrate: true });
       }],
-      ['sala ativa', () => {
+      ['sala', () => {
         roomActive = false;
         updatePolicy.setRoomActive(false);
       }],

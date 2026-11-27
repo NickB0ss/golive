@@ -202,7 +202,9 @@ function comoServidor(s, action, from, now = 1000, peers = PEERS) {
 }
 
 function emAbertura() {
-  return state({ phase: 'opening', turn: 1, winner: 1, ends: null, deadline: 31000, hands: [[[1, 2]], [[6, 6]], [], []] });
+  return state({
+    phase: 'opening', turn: 1, winner: 1, ends: null, deadline: 31000, hands: [[[1, 2]], [[6, 6]], [], []],
+  });
 }
 
 test('J-06: timeout na abertura vale (o prazo que o servidor anuncia) e abre com a 1a pedra', () => {
@@ -233,7 +235,8 @@ test('J-06: se quem devia abrir sai da sala, a mao volta a esperar "Nova mao" (n
 
 test('J-07: nao da para sentar com a mao em curso (abertura ou jogo)', () => {
   for (const phase of ['opening', 'play']) {
-    assert.equal(comoServidor(state({ phase }), { kind: 'sit', seat: 2 }, 'c').erro, 'mesa.cadeiras.partidaComecou', phase);
+    const r = comoServidor(state({ phase }), { kind: 'sit', seat: 2 }, 'c');
+    assert.equal(r.erro, 'mesa.cadeiras.partidaComecou', phase);
   }
   for (const phase of ['waiting', 'done']) {
     assert.equal(comoServidor(state({ phase }), { kind: 'sit', seat: 2 }, 'c').erro, undefined, phase);
@@ -257,7 +260,8 @@ test('J-12: depois do jogo (100 pontos) a proxima mao zera o placar', () => {
 
 test('migracao: lugar fantasma nao ganha pedras nem a vez quando a mao comeca', () => {
   const novos = [{ id: 'x', name: 'X' }, { id: 'y', name: 'Y' }];
-  let s = domino.migrate(state({ seats: ['velho', null, null, null], names: ['V', null, null, null], phase: 'waiting' }));
+  const antigo = state({ seats: ['velho', null, null, null], names: ['V', null, null, null], phase: 'waiting' });
+  let s = domino.migrate(antigo);
   s = comoServidor(s, { kind: 'sit', seat: 1 }, 'x', 1000, novos).estado;
   s = comoServidor(s, { kind: 'sit', seat: 2 }, 'y', 1000, novos).estado;
   const r = comoServidor(s, { kind: 'start' }, 'x', 1000, novos);

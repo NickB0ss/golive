@@ -118,6 +118,9 @@
       }
       if (action.kind === 'start') {
         if (s.phase === 'play') return codigo('mesa.oito.rodadaCorrendo');
+        // Partida acabada (100 pontos): so um `reset` abre outra; comecar rodada mantinha o placar e escondia o
+        // vencedor (J-12, auditoria 2026-11-25).
+        if (s.phase === 'finished') return codigo('mesa.cadeiras.partidaAcabou');
         return players(s, ctx).length >= 2 ? true : codigo('mesa.oito.precisaDuasPessoas');
       }
       if (s.phase !== 'play') return codigo('mesa.oito.rodadaParada');
@@ -232,8 +235,6 @@
           for (let i = 0; i < N; i += 1) {
             if (!p.includes(i)) { out.seats[i] = null; out.names[i] = null; }
           }
-          // Partida acabada (100 pontos): o proximo start abre partida nova, com o placar zerado (J-12).
-          if (out.phase === 'finished') out.scores = fill(0);
           const count = p.length === 2 ? 7 : 5;
           out.hands = fill([]);
           out.deck = deck;
@@ -328,7 +329,7 @@
             sit: Array.from({ length: N }, (_, i) => can({ kind: 'sit', seat: i })),
             stand: can({ kind: 'stand' }),
             start: can({ kind: 'start' }),
-            play: me === s.turn,
+            play: me >= 0 && me === s.turn, // sem rodada, turn e -1 e quem so assiste tambem e -1
             draw: can({ kind: 'draw' }),
             reset: can({ kind: 'reset' }),
           },

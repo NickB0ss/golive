@@ -235,6 +235,8 @@
         ? true
         : codigo('mesa.truco.soQuemEstaNaMesaReinicia');
     if (entrada.kind === 'deal') {
+      // Partida acabada (12 pontos): so um `reset` abre outra; dar cartas esconderia o vencedor (J-12).
+      if (estado.phase === 'finished') return codigo('mesa.cadeiras.partidaAcabou');
       if (lugar < 0 || !podeComecar(estado, contexto) || maoValida(estado)) return codigo('mesa.truco.naoPodeDarAgora');
       return true;
     }
@@ -339,10 +341,8 @@
     if (entrada.kind === 'stand') return removerPessoa(estado, quem);
     if (entrada.kind === 'reset') return estadoNovo();
     if (entrada.kind === 'deal') {
-      // Partida acabada (12 pontos): a proxima mao abre partida nova, com o placar zerado (J-12).
-      const base = estado.phase === 'finished' ? Object.assign({}, estado, { scores: [0, 0] }) : estado;
-      const mao = criarMao(base, entrada);
-      return Object.assign({}, base, {
+      const mao = criarMao(estado, entrada);
+      return Object.assign({}, estado, {
         dealer: entrada.dealer,
         phase: mao.eleven === null ? 'play' : 'eleven',
         hand: mao,
@@ -451,7 +451,8 @@
     if (!estado.hand) {
       publico.me.can.sit = lugar < 0;
       publico.me.can.stand = lugar >= 0;
-      publico.me.can.deal = lugar >= 0 && podeComecar(estado, contexto);
+      publico.me.can.deal = lugar >= 0 && podeComecar(estado, contexto) && estado.phase !== 'finished';
+      publico.me.can.reset = lugar >= 0 && estado.phase === 'finished';
       return publico;
     }
 

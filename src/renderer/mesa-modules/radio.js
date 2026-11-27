@@ -113,7 +113,9 @@
         if (action.id !== undefined) a.id = action.id;
         // `need`/`keep` so valem se o `prepare` do servidor os pos (ele apaga os do cliente antes).
         if (Number.isInteger(action.need) && action.need >= 1 && action.need <= 1000) a.need = action.need;
-        if (Array.isArray(action.keep) && action.keep.length <= 1000 && action.keep.every(isPeerId)) a.keep = action.keep.slice();
+        if (Array.isArray(action.keep) && action.keep.length <= 1000 && action.keep.every(isPeerId)) {
+          a.keep = action.keep.slice();
+        }
         return a;
       }
       case 'title': {

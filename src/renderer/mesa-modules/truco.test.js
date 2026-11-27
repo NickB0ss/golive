@@ -354,10 +354,13 @@ test('J-05: levantar quem nao esta na mao nao encerra a mao nem mexe no placar',
   assert.equal(truco.dropPeer(s, 'desconhecido'), s, 'quem nunca sentou nao altera nada');
 });
 
-test('J-12: depois do fim da partida a proxima mao comeca placar novo (o vencedor nao e mascarado)', () => {
-  let s = Object.assign({}, sentados(2), { scores: [12, 3], phase: 'finished' });
-  s = passo(s, { kind: 'deal' }, 'ana');
-  assert.deepEqual(s.scores, [0, 0]);
-  assert.equal(s.phase, 'play');
-  assert.equal(s.hand.value, 1, 'nao herda mao de onze do placar antigo');
+test('J-12: depois do fim da partida nao da cartas sem `reset` (o vencedor nao e mascarado)', () => {
+  const s = Object.assign({}, sentados(2), { scores: [12, 3], phase: 'finished' });
+  assert.equal(comoServidor(s, { kind: 'deal' }, 'ana').erro, 'mesa.cadeiras.partidaAcabou');
+  const v = truco.view(s, 'ana', { peers: PEERS });
+  assert.equal(v.me.can.deal, false);
+  assert.equal(v.me.can.reset, true, 'a janela oferece "Nova partida"');
+  const novo = comoServidor(s, { kind: 'reset' }, 'ana').estado;
+  assert.deepEqual(novo.scores, [0, 0]);
+  assert.equal(comoServidor(novo, { kind: 'sit', seat: 2 }, 'caio').erro, undefined, 'e volta a dar cartas depois');
 });
