@@ -37,7 +37,7 @@ function captureHandlers(audioAddon) {
   const end = source.indexOf('\n});', stop) + 4;
   const activeCaptures = new Map();
   const result = new Map();
-  vm.runInNewContext(source.slice(start, end), { audioAddon, activeCaptures, nextCaptureId: 1,
+  vm.runInNewContext(source.slice(start, end), { audioAddon, activeCaptures, capturaDonos: new WeakMap(), nextCaptureId: 1,
     console, ipcMain: { handle: (name, fn) => result.set(name, fn) } });
   return { result, activeCaptures };
 }

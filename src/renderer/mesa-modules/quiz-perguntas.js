@@ -17,8 +17,15 @@
     return [];
   }
 
+  // O gabarito (`certa`) so serve a quem pontua: o servidor da sala, que roda em Node. No renderer o banco so
+  // mostra texto; com `certa` ali, abrir o DevTools bastaria para responder sempre certo (J-11, auditoria
+  // 2026-11-25). Sem `module` (renderer), o indice some das perguntas e as globais dos temas saem da pagina.
+  const servidor = typeof module !== 'undefined';
   const perguntas = Object.freeze(TEMAS.flatMap((tema) =>
-    carregar(tema).map((q) => Object.freeze({ ...q, tema }))));
+    carregar(tema).map((q) => {
+      const { certa, ...texto } = q;
+      return Object.freeze({ ...(servidor ? q : texto), tema });
+    })));
   const indice = new Map(perguntas.map((q) => [q.id, q]));
 
   function porId(id) { return indice.get(id) || null; }
@@ -38,7 +45,7 @@
       if (typeof q.id !== 'string' || !q.id.startsWith(`${q.tema}-`) || ids.has(q.id)) throw new Error(`id: ${q.id}`);
       ids.add(q.id);
       if (![1, 2, 3].includes(q.nivel)) throw new Error(`nivel: ${q.id}`);
-      if (!Number.isInteger(q.certa) || q.certa < 0 || q.certa > 3) throw new Error(`certa: ${q.id}`);
+      if (servidor && (!Number.isInteger(q.certa) || q.certa < 0 || q.certa > 3)) throw new Error(`certa: ${q.id}`);
       for (const l of ['pt', 'en', 'es']) {
         const par = q[l];
         if (!Array.isArray(par) || typeof par[0] !== 'string' || !par[0].trim()) throw new Error(`${l}: ${q.id}`);
@@ -60,6 +67,7 @@
 
   // Banco completo (Tarefa 14i): erro de conteudo aparece ja na carga, nos testes e no servidor da sala.
   validarBanco();
+  if (!servidor && root.GoLive) delete root.GoLive.mesaQuizBanco;
 
   const api = { TEMAS, perguntas, porId, texto, validarBanco };
   root.GoLive = root.GoLive || {};

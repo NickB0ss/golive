@@ -127,9 +127,9 @@
            data-i18n-attr="aria-label:pagina.menuSala">
         <!-- So abaixo de 1024 px, quando o endereco (com o botao de copiar) sai da cabeca: shell.css. -->
         <button class="menu__item room-menu__estreito" type="button" role="menuitem" data-copy="address"><svg class="i"><use href="#i-copy" /></svg><span data-i18n="pagina.copiarEndereco">Copiar endereço</span></button>
-        <button id="room-copy-pin" class="menu__item hidden" type="button" role="menuitem" data-copy="pin"><svg class="i"><use href="#i-lock" /></svg>Copiar PIN</button>
-        <button class="menu__item" type="button" role="menuitem" data-room-action="diagnostics"><svg class="i"><use href="#i-info" /></svg>Diagnóstico</button>
-        <button class="menu__item" type="button" role="menuitem" data-room-action="theater"><svg class="i"><use href="#i-tv-minimal" /></svg>Modo teatro<span class="menu__hint">T</span></button>
+        <button id="room-copy-pin" class="menu__item hidden" type="button" role="menuitem" data-copy="pin"><svg class="i"><use href="#i-lock" /></svg><span data-i18n="pagina.copiarPin">Copiar PIN</span></button>
+        <button class="menu__item" type="button" role="menuitem" data-room-action="diagnostics"><svg class="i"><use href="#i-info" /></svg><span data-i18n="pagina.diagnostico">Diagnóstico</span></button>
+        <button class="menu__item" type="button" role="menuitem" data-room-action="theater"><svg class="i"><use href="#i-tv-minimal" /></svg><span data-i18n="pagina.modoTeatro">Modo teatro</span><span class="menu__hint">T</span></button>
         <div id="room-more-mesa-sep" class="menu__sep" role="separator"></div>
         <p id="room-more-mesa-label" class="menu__label" data-i18n="pagina.mesa">Mesa</p>
         <label id="opt-mesa-cursors-row" class="menu__item" role="menuitemcheckbox" aria-checked="true" tabindex="-1"><input id="opt-mesa-cursors" class="sr-only" type="checkbox" checked /><span data-i18n="pagina.mostrarPonteiros">Mostrar ponteiros das pessoas</span></label>
@@ -182,7 +182,7 @@
             <span id="presence-count">0</span></span>
         </div>
         <ul id="peer-list" class="presence__list"></ul>
-        <section id="banned-section" class="presence__banned hidden"><div class="menu__sep" role="separator"></div><button class="menu__item banned-toggle" type="button" aria-expanded="false" aria-controls="banned-list"><svg class="i i--sm"><use href="#i-lock" /></svg>Banidos<svg class="i i--sm menu__hint"><use href="#i-chevron-down" /></svg></button><ul id="banned-list" class="presence__list" hidden></ul></section>
+        <section id="banned-section" class="presence__banned hidden"><div class="menu__sep" role="separator"></div><button class="menu__item banned-toggle" type="button" aria-expanded="false" aria-controls="banned-list"><svg class="i i--sm"><use href="#i-lock" /></svg><span data-i18n="pagina.banidos">Banidos</span><svg class="i i--sm menu__hint"><use href="#i-chevron-down" /></svg></button><ul id="banned-list" class="presence__list" hidden></ul></section>
       </div>
       <button id="btn-room-health" class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="Conexão" data-i18n-attr="aria-label:pagina.conexao"><span class="health" data-level="none"><span></span><span></span><span></span></span></button>
       <button id="btn-room-settings" class="btn btn--quiet btn--icon" type="button" aria-label="Configurações" data-i18n-attr="aria-label:pagina.configuracoes"><svg class="i"><use href="#i-settings" /></svg></button>
@@ -598,7 +598,7 @@
         <div class="picker__opt">
           <span id="picker-quality-title" class="tx-tag" data-i18n="pagina.qualidade">Qualidade</span>
           <div id="picker-quality" class="picker__quality"></div>
-          <small id="picker-quality-bandwidth" class="tx-data tx-2" aria-live="polite"></small>
+          <small id="picker-quality-bandwidth" class="tx-meta" aria-live="polite"></small>
         </div>
         <div id="audio-mode" class="picker__opt">
           <span class="tx-tag" data-i18n="pagina.som">Som</span>

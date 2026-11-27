@@ -289,3 +289,78 @@ test('espectador nao pode falsificar reinicio de lider nem cantar truco', () => 
   assert.equal(truco.validate(s, { kind: 'call' }, ctx('caio')), 'mesa.truco.cantoIndisponivel');
   assert.equal(truco.view(s, 'caio', { peers: PEERS }).me.can.call, false);
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-01, J-02, J-05, J-12) ----
+
+// Roda como o servidor: validate -> prepare -> reduce, e o reduce so recebe { from, isLeader }
+// (src/renderer/mesa.js applyOp). Devolve o motivo da recusa ou o estado novo.
+function comoServidor(state, action, from, now = 1000) {
+  const c = ctx(from, now);
+  const veredito = truco.validate(state, action, c);
+  if (veredito !== true) return { erro: veredito };
+  const preparada = JSON.parse(JSON.stringify(truco.prepare(state, action, c)));
+  return { estado: truco.reduce(state, preparada, { from, isLeader: false }) };
+}
+
+test('J-01: o `from` que vem na acao do cliente e ignorado (so vale o id da conexao)', () => {
+  const s = mao(sentados(2), [['4s', '6s'], ['7s', 'Qs']]);
+  // Caio so assiste e manda a jogada em nome de Ana (a da vez).
+  const forjada = comoServidor(s, { kind: 'play', index: 0, from: 'ana' }, 'caio');
+  assert.notEqual(forjada.erro, undefined, 'espectador nao joga pela Ana');
+  // Idem para call/answer/stand.
+  assert.notEqual(comoServidor(s, { kind: 'call', from: 'ana' }, 'caio').erro, undefined);
+  assert.notEqual(comoServidor(s, { kind: 'stand', from: 'ana' }, 'caio').erro, undefined);
+  // E o `from` forjado nao desvia a acao de quem esta de fato na vez.
+  const real = comoServidor(s, { kind: 'play', index: 0, from: 'bia' }, 'ana');
+  assert.equal(real.estado.hand.table[0].seat, 0, 'a carta e do lugar de quem mandou (Ana)');
+});
+
+test('J-01: sentar com `from` forjado senta quem mandou, nao a outra pessoa', () => {
+  const s = truco.init({});
+  assert.notEqual(comoServidor(s, { kind: 'sit', seat: 2, from: 'bia' }, 'caio').estado.seats[2], 'bia');
+  assert.equal(comoServidor(s, { kind: 'sit', seat: 2, from: 'bia' }, 'caio').estado.seats[2], 'caio');
+});
+
+test('J-02: so `kind` vale; `type: "timeout"` nao passa (o servidor so confere o prazo de `kind`)', () => {
+  const s = mao(sentados(2), [['4s', '6s'], ['7s', 'Qs']]);
+  assert.notEqual(truco.validate(s, { type: 'timeout' }, ctx('caio', 1000)), true);
+  assert.notEqual(truco.validate(s, { type: 'play', index: 0 }, ctx('ana')), true);
+  assert.notEqual(truco.validate(truco.init({}), { type: 'sit', seat: 0 }, ctx('ana')), true);
+});
+
+test('J-02: timeout antes do prazo da mao e recusado tambem no validate (defesa em profundidade)', () => {
+  const s = mao(sentados(2), [['4s', '6s'], ['7s', 'Qs']]); // deadline 31000
+  assert.notEqual(truco.validate(s, { kind: 'timeout' }, ctx('caio', 30999)), true);
+  assert.equal(truco.validate(s, { kind: 'timeout' }, ctx('caio', 31000)), true);
+});
+
+test('J-05: nao da para sentar com a mao em curso; truco de quem nao esta na mao e recusado', () => {
+  const s = mao(sentados(2), [['4s', '6s'], ['7s', 'Qs']]);
+  assert.notEqual(truco.validate(s, { kind: 'sit', seat: 3 }, ctx('caio')), true);
+  // Defesa: mesmo com a cadeira ocupada por quem nao esta na mao, nada de pending {fromTeam: -1}.
+  const intruso = Object.assign({}, s, { seats: ['ana', 'bia', 'caio', null] });
+  for (const kind of ['call', 'play']) {
+    assert.notEqual(truco.validate(intruso, { kind, index: 0 }, ctx('caio')), true, kind);
+  }
+});
+
+test('J-05: levantar quem nao esta na mao nao encerra a mao nem mexe no placar', () => {
+  const s = mao(sentados(2), [['4s'], ['5s']]);
+  const intruso = Object.assign({}, s, { seats: ['ana', 'bia', 'caio', null], names: ['A', 'B', 'C', null] });
+  const depois = truco.dropPeer(intruso, 'caio');
+  assert.deepEqual(depois.scores, [0, 0]);
+  assert.ok(depois.hand, 'a mao continua');
+  assert.equal(depois.seats[2], null);
+  assert.equal(truco.dropPeer(s, 'desconhecido'), s, 'quem nunca sentou nao altera nada');
+});
+
+test('J-12: depois do fim da partida nao da cartas sem `reset` (o vencedor nao e mascarado)', () => {
+  const s = Object.assign({}, sentados(2), { scores: [12, 3], phase: 'finished' });
+  assert.equal(comoServidor(s, { kind: 'deal' }, 'ana').erro, 'mesa.cadeiras.partidaAcabou');
+  const v = truco.view(s, 'ana', { peers: PEERS });
+  assert.equal(v.me.can.deal, false);
+  assert.equal(v.me.can.reset, true, 'a janela oferece "Nova partida"');
+  const novo = comoServidor(s, { kind: 'reset' }, 'ana').estado;
+  assert.deepEqual(novo.scores, [0, 0]);
+  assert.equal(comoServidor(novo, { kind: 'sit', seat: 2 }, 'caio').erro, undefined, 'e volta a dar cartas depois');
+});

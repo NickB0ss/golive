@@ -44,25 +44,34 @@
     return { ...state, hidden: action.hidden };
   }
 
-  function estaEscondido(state) {
-    return state && state.hidden === true;
+  // Na migracao de host os ids mudam e `owner` fica com um id que ninguem mais tem: o quadro escondido ficaria
+  // invisivel para todos, sem quem o desfizesse. Com a lista `ctx.peers`, dono fora da sala nao esconde nada
+  // (J-16, auditoria 2026-11-25). Sem a lista, vale o estado como esta.
+  function donoAusente(state, ctx) {
+    const peers = ctx && ctx.peers;
+    if (!Array.isArray(peers)) return false;
+    return !peers.some((p) => p && String(p.id) === String(state && state.owner));
   }
 
-  function isPrivate(state) {
-    return estaEscondido(state);
+  function estaEscondido(state, ctx) {
+    return !!state && state.hidden === true && !donoAusente(state, ctx);
   }
 
-  function canAnnotateDraw(state, from) {
-    return !estaEscondido(state) || String(from) === String(state && state.owner);
+  function isPrivate(state, ctx) {
+    return estaEscondido(state, ctx);
+  }
+
+  function canAnnotateDraw(state, from, ctx) {
+    return !estaEscondido(state, ctx) || String(from) === String(state && state.owner);
   }
 
   function canAnnotateClear(state, from, ctx) {
-    if (estaEscondido(state)) return String(from) === String(state && state.owner);
+    if (estaEscondido(state, ctx)) return String(from) === String(state && state.owner);
     return String(from) === String(state && state.owner) || (ctx && ctx.isLeader === true);
   }
 
-  function canAnnotateSee(state, peerId) {
-    return !estaEscondido(state) || String(peerId) === String(state && state.owner);
+  function canAnnotateSee(state, peerId, ctx) {
+    return !estaEscondido(state, ctx) || String(peerId) === String(state && state.owner);
   }
 
   function dropPeer(state, peerId) {

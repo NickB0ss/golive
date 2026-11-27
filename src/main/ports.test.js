@@ -58,6 +58,41 @@ test('propaga imediatamente um erro que nao seja EADDRINUSE', async () => {
   assert.deepEqual(calls, [9000]);
 });
 
+// M-07 da auditoria 2026-11-25: no Windows, porta dentro de uma faixa reservada
+// (Hyper-V/WSL/Docker, `netsh int ipv4 show excludedportrange`) falha com
+// EACCES no bind -- tem que passar pra proxima, como uma porta ocupada.
+test('EACCES (porta reservada no Windows) tambem cai pra proxima porta', async () => {
+  const calls = [];
+  const createServer = async (port) => {
+    calls.push(port);
+    if (port === 9000 || port === 9001) {
+      const err = new Error(`listen EACCES: permission denied 0.0.0.0:${port}`);
+      err.code = 'EACCES';
+      throw err;
+    }
+    return { port };
+  };
+  const server = await findFreeServer(createServer);
+  assert.equal(server.port, 9002);
+  assert.deepEqual(calls, [9000, 9001, 9002]);
+});
+
+test('preferredPort reservada (EACCES) cai na faixa normal em vez de abortar a migracao', async () => {
+  const calls = [];
+  const createServer = async (port) => {
+    calls.push(port);
+    if (port === 9004) {
+      const err = new Error('listen EACCES');
+      err.code = 'EACCES';
+      throw err;
+    }
+    return { port };
+  };
+  const server = await findFreeServer(createServer, { preferredPort: 9004 });
+  assert.equal(server.port, 9000);
+  assert.deepEqual(calls, [9004, 9000]);
+});
+
 // B/C da auditoria 2026-09-18: o sucessor de uma migracao tenta primeiro a
 // porta da sala que caiu, que e onde os sobreviventes o procuram direto.
 test('preferredPort e tentada antes da faixa e nao repete na varredura', async () => {

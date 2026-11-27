@@ -73,7 +73,7 @@ function setup({ windowPid = 12, refuse = [], videoFailure = false } = {}) {
     setTimeout, clearTimeout,
   });
   const names = ['showShareAudioState', 'createShareAudioCapture', 'createScreenRelay',
-    'startShare', 'swapShare', 'stopShare'];
+    'startShare', 'showShareControls', 'swapShare', 'stopShare'];
   vm.runInContext(names.map(functionSource).join('\n'), ctx);
   return { ctx, stopped, selected, toasts, tracks };
 }

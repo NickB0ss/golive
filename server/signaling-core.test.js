@@ -245,30 +245,33 @@ test('createRateLimiter padrao cobre a rajada de re-oferta do welcome', () => {
   assert.equal(cortou, true);
 });
 
-test('nao encaminha offer/ice para destino em outra sala', async () => {
+// S-03 (auditoria 2026-11-25): o servidor tem uma sala so. Outro nome nao
+// abre uma sala paralela (invisivel pro lider, fora do teto, mas com o
+// historico e a mesa da 'geral'): o join e recusado.
+test('join com outra sala e recusado, e quem foi recusado nao recebe sinalizacao', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
     const a = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => a.once('open', r));
-    a.send(JSON.stringify({ type: 'join', room: 'salaA', name: 'Ana' }));
+    a.send(JSON.stringify({ type: 'join', room: 'geral', name: 'Ana' }));
     const welcomeA = await once(a, 'welcome');
 
     const b = new WebSocket(`ws://127.0.0.1:${server.port}`);
     await new Promise((r) => b.once('open', r));
-    b.send(JSON.stringify({ type: 'join', room: 'salaB', name: 'Bruno' }));
-    const welcomeB = await once(b, 'welcome');
-
+    const fechouB = new Promise((r) => b.once('close', (code) => r(code)));
     let recebeu = false;
     b.on('message', (raw) => {
       if (JSON.parse(raw.toString()).type === 'offer') recebeu = true;
     });
-    a.send(JSON.stringify({ type: 'offer', to: welcomeB.id, sdp: 'x' }));
+    b.send(JSON.stringify({ type: 'join', room: 'salaB', name: 'Bruno' }));
+    assert.equal((await once(b, 'join-denied')).reason, 'room');
+    assert.equal(await fechouB, 1008);
+    assert.equal(server.getPeerCount(), 1);
+    a.send(JSON.stringify({ type: 'offer', to: String(Number(welcomeA.id) + 1), sdp: 'x' }));
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(recebeu, false);
-    assert.equal(welcomeA.id !== welcomeB.id, true);
 
     a.close();
-    b.close();
   } finally {
     await server.close();
   }
@@ -647,10 +650,10 @@ test('watchers e broadcast pra sala inteira, com o from carimbado', async () => 
     assert.equal(msgB.from, '1');
     assert.equal(msgC.from, '1');
     assert.equal(msgB.kind, 'screen');
-    // O item volta refeito pela tabela de peers do servidor (nome e avatar
-    // do join de Bruno), por isso traz `avatar: null` mesmo sem o cliente
-    // mandar -- ver o teste "watchers refaz os itens pela tabela de peers".
-    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno', avatar: null }]);
+    // O item volta refeito pela tabela de peers do servidor (o nome do join
+    // de Bruno), sem avatar -- ver o teste "watchers refaz os itens pela
+    // tabela de peers".
+    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno' }]);
 
     a.close();
     b.close(1000);
@@ -715,10 +718,10 @@ test('watchers e kind chegam limitados no rebroadcast (anti-amplificacao)', asyn
   }
 });
 
-// Os itens sao refeitos pela tabela de peers do servidor, nao cortados: o
-// avatar e um data URL de ate 256 KB que a lista de quem assiste desenha, e
-// cortar em N caracteres quebraria a imagem. O que o cliente manda so indica
-// QUEM esta assistindo.
+// Os itens sao refeitos pela tabela de peers do servidor: o que o cliente
+// manda so indica QUEM esta assistindo. Sem avatar (S-01 da auditoria
+// 2026-11-25): ele ja chegou no welcome/peer-joined, e com ele cada item
+// virava ate 64 KB repetidos pra sala inteira.
 test('watchers refaz os itens pela tabela de peers e descarta o que nao e da sala', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
@@ -735,7 +738,7 @@ test('watchers refaz os itens pela tabela de peers e descarta o que nao e da sal
       ],
     }));
     const msg = await emB;
-    assert.deepEqual(msg.watchers, [{ id: b.welcome.id, name: 'Bruno', avatar: null }]);
+    assert.deepEqual(msg.watchers, [{ id: b.welcome.id, name: 'Bruno' }]);
 
     a.ws.close();
     b.ws.close();
@@ -2239,7 +2242,8 @@ test('limitador de PIN normaliza IPv4 mapeado e limita IPs lembrados', () => {
 });
 
 test('sockets ainda sem join nao ocupam vagas da sala', async () => {
-  const server = await createSignalingServer({ port: 0 });
+  // Todos vem do loopback: a cota de pendentes por IP (S-04) sobe pra caber.
+  const server = await createSignalingServer({ port: 0, maxPendingPerIp: 32 });
   try {
     const host = await entrar(server.port, 'Host');
     const pending = [];
@@ -3111,11 +3115,16 @@ test('roomName de tipo errado (nao string) e ignorado sem lancar', async () => {
   }
 });
 
-test('initialTransferredTo faz o cliente correspondente entrar como dono', async () => {
-  const server = await createSignalingServer({ port: 0, initialTransferredTo: 'client-novo-dono' });
+// S-02 (auditoria 2026-11-25): a semente e o hash da chave de lider que o
+// room-migrating mandou so pro lider escolhido. O clientId nao decide nada.
+test('initialTransferredTo faz quem apresenta a chave de lider entrar como dono', async () => {
+  const { createHash } = require('node:crypto');
+  const chave = 'chave-do-novo-dono';
+  const hash = createHash('sha256').update(chave).digest('base64url');
+  const server = await createSignalingServer({ port: 0, initialTransferredTo: hash });
   try {
-    const novoDono = await entrar(server.port, 'Ana', { clientId: 'client-novo-dono' });
     const outro = await entrar(server.port, 'Bruno', { clientId: 'client-outro' });
+    const novoDono = await entrar(server.port, 'Ana', { clientId: 'client-novo-dono', leaderKey: chave });
     assert.equal(novoDono.welcome.owner, true);
     assert.equal(outro.welcome.owner, false);
     novoDono.ws.close();

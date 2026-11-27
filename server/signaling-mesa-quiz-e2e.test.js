@@ -48,8 +48,8 @@ function cliente(porta, nome, sala) {
 
 test('Quiz nao vaza respostas no eco, no sync nem antes de todos responderem', async (t) => {
   const servidor = await createSignalingServer({ port: 0, roomId: 'quiz-segredo', ownerToken: 'segredo' });
-  const ana = cliente(servidor.port, 'Ana', 'quiz-segredo');
-  const bia = cliente(servidor.port, 'Bia', 'quiz-segredo');
+  const ana = cliente(servidor.port, 'Ana', 'geral');
+  const bia = cliente(servidor.port, 'Bia', 'geral');
   t.after(async () => {
     ana.ws.close();
     bia.ws.close();
@@ -57,7 +57,7 @@ test('Quiz nao vaza respostas no eco, no sync nem antes de todos responderem', a
   });
   await Promise.all([new Promise((r) => ana.ws.once('open', r)), new Promise((r) => bia.ws.once('open', r))]);
   ana.entra = async () => {
-    ana.envia({ type: 'join', room: 'quiz-segredo', name: 'Ana', ownerToken: 'segredo', clientId: 'quiz-Ana' });
+    ana.envia({ type: 'join', room: 'geral', name: 'Ana', ownerToken: 'segredo', clientId: 'quiz-Ana' });
     const w = await ana.ate((m) => m.type === 'welcome', 'welcome');
     ana.id = w.id;
     return w;

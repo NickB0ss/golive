@@ -3,7 +3,7 @@ tipo: decisao
 id: D-03
 titulo: "Pipeline nativo num processo auxiliar (golive-media.exe)"
 data: 2026-11-25
-status: proposta, confirmar no P1.1
+status: aceita no P1.1 (esqueleto em native/media, falta compilar com MSVC)
 fase: 1
 tags: [golive, transmissao]
 aliases: [D-03]

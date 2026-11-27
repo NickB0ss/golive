@@ -105,14 +105,14 @@
       count.hidden = summary.total < 2;
       label.textContent = summary.pior === 'grave' ? (summary.rotuloCurto || '') : '';
       label.hidden = !label.textContent;
-      button.setAttribute('aria-label', `${summary.total} ${summary.total === 1 ? 'aviso' : 'avisos'}`);
+      button.setAttribute('aria-label', root.GoLive.i18n.t('pagina.avisosContagem', { n: summary.total }));
 
       panel.textContent = '';
       items.forEach((item) => panel.appendChild(renderItem(item)));
 
       const currentKeys = new Set(items.map(itemKey));
       const entered = items.filter((item) => !previousKeys.has(itemKey(item)));
-      if (entered.length) live.textContent = `${entered.length} ${entered.length === 1 ? 'novo aviso' : 'novos avisos'}`;
+      if (entered.length) live.textContent = root.GoLive.i18n.t('pagina.avisosNovos', { n: entered.length });
       if (entered.some((item) => item.severidade === 'grave')) {
         button.classList.remove('warn-center-pulse');
         void button.offsetWidth;

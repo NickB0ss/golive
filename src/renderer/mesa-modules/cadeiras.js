@@ -13,6 +13,13 @@
  * joga, e so na sua vez; o resto assiste. Quem sai da sala libera a
  * cadeira por `dropPeer`, que o servidor chama.
  *
+ * Cadeira de fantasma: na migracao de host os ids das pessoas mudam (o servidor
+ * novo da ids a partir de `idFloor`), e `seats` guarda ids que nao existem mais.
+ * Onde ha `ctx.peers` (validate, prepare, view), cadeira de id fora da lista conta
+ * como LIVRE. O `reduce` nao tem `peers` (so `{ from, isLeader }`), entao o
+ * `prepare` do `sit` grava `fantasma: true` na acao quando vai tomar uma cadeira
+ * assim, e o `validate` do proprio reduce o respeita (J-04, auditoria 2026-11-25).
+ *
  * Nada aqui lanca excecao por causa de mensagem malformada: a acao ruim
  * vira um motivo curto em portugues e e recusada.
  */
@@ -34,6 +41,36 @@
   function fromOf(ctx) {
     const from = ctxOf(ctx).from;
     return typeof from === 'string' && from ? from : null;
+  }
+
+  /** Ids da sala, ou null se o contexto nao traz a lista (reduce). */
+  function idsVivos(ctx) {
+    const peers = ctxOf(ctx).peers;
+    if (!Array.isArray(peers)) return null;
+    return new Set(peers.filter(isObj).map((p) => p.id));
+  }
+
+  /** A cadeira tem alguem de verdade? Vazia, ou de id que saiu da sala (fantasma), nao tem. Sem lista de
+   * `peers` (reduce), vale o que o servidor gravou na acao `sit` (`fantasma`). */
+  function cadeiraViva(state, seat, ctx, action) {
+    const id = state && Array.isArray(state.seats) ? state.seats[seat] : null;
+    if (id === null || id === undefined) return false;
+    const vivos = idsVivos(ctx);
+    if (vivos) return vivos.has(id);
+    return !(isObj(action) && action.fantasma === true);
+  }
+
+  /** O mesmo estado com as cadeiras de fantasma zeradas (para a interface e para o resumo). Sem lista de
+   * peers, ou sem fantasma, devolve o proprio `state`. */
+  function semFantasmas(state, peers) {
+    if (!state || !Array.isArray(state.seats) || !Array.isArray(peers)) return state;
+    const ctx = { peers };
+    if (state.seats.every((id, i) => id === null || cadeiraViva(state, i, ctx))) return state;
+    const seats = state.seats.map((id, i) => (cadeiraViva(state, i, ctx) ? id : null));
+    const names = Array.isArray(state.names)
+      ? state.names.map((nome, i) => (seats[i] === null ? null : nome))
+      : state.names;
+    return Object.assign({}, state, { seats, names });
   }
 
   function seatOf(state, peerId) {
@@ -68,7 +105,7 @@
     if (action.kind === 'sit') {
       if (action.seat !== 0 && action.seat !== 1) return codigo('mesa.cadeiras.invalida');
       if (seatOf(state, from) >= 0) return codigo('mesa.jogo.jaEstaSentado');
-      if (state.seats[action.seat] !== null) return codigo('mesa.cadeiras.ocupada');
+      if (cadeiraViva(state, action.seat, ctx, action)) return codigo('mesa.cadeiras.ocupada');
       return true;
     }
     if (seatOf(state, from) < 0) return codigo('mesa.cadeiras.naoEstaSentado');
@@ -89,6 +126,10 @@
   function prepareSeat(state, action, ctx) {
     if (!isObj(action) || action.kind !== 'sit') return action;
     const name = peerName(ctx, fromOf(ctx));
+    const tomada = Array.isArray(state.seats) && state.seats[action.seat] != null;
+    if (tomada && !cadeiraViva(state, action.seat, ctx)) {
+      return { kind: 'sit', seat: action.seat, name, fantasma: true };
+    }
     return { kind: 'sit', seat: action.seat, name };
   }
 
@@ -124,7 +165,7 @@
     const from = fromOf(ctx);
     const seat = seatOf(state, from);
     if (seat < 0) return codigo('mesa.jogo.senteSeParaJogar');
-    if (state.seats[1 - seat] === null) return codigo('mesa.cadeiras.esperaOutra');
+    if (!cadeiraViva(state, 1 - seat, ctx)) return codigo('mesa.cadeiras.esperaOutra');
     if (seat !== turnSeat) return codigo('mesa.jogo.naoESuaVez');
     return true;
   }
@@ -151,8 +192,8 @@
   /** Resumo de partida em andamento: quem esta sentado e de quem e a vez.
    * Devolve `{ chave, valores }`; `labels` sao codigos de traducao. */
   function describePlaying(state, turnSeat, labels, peers) {
-    const a = state.seats[0] !== null;
-    const b = state.seats[1] !== null;
+    const a = cadeiraViva(state, 0, { peers });
+    const b = cadeiraViva(state, 1, { peers });
     if (!a && !b) return { chave: 'mesa.resumo.cadeirasLivres' };
     if (a !== b) {
       return { chave: 'mesa.resumo.esperaAdversario', valores: { nome: nameOf(state, a ? 0 : 1, labels, peers) } };
@@ -177,6 +218,8 @@
     isObj,
     fromOf,
     seatOf,
+    cadeiraViva,
+    semFantasmas,
     emptySeats,
     isSeatAction,
     validateSeat,

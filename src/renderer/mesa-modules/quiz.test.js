@@ -134,7 +134,7 @@ test('start sorteia dez perguntas e registra todos os participantes', () => {
 test('prepare ignora a identidade enviada e calcula tempo pelo relogio do servidor', () => {
   const s = estado();
   const a = quiz.prepare(s, { kind: 'answer', by: 'bia', option: 2 }, { from: 'ana', now: 8500 });
-  assert.deepEqual(a, { kind: 'answer', by: 'ana', option: 2, seconds: 8 });
+  assert.deepEqual(a, { kind: 'answer', by: 'ana', option: 2, seconds: 8, at: 8500 });
 });
 
 test('resposta fora da partida e recusada', () => {
@@ -333,4 +333,84 @@ test('perguntas em pt sem palavra que so existe com acento (texto de tela acentu
   const SEM_ACENTO = /\b(nao|voce|tambem|entao|informacao|eletrica|eletronico|numero|musica|unico|ultimo|premio)\b/i;
   const ruins = banco.perguntas.filter((p) => SEM_ACENTO.test(`${p.pt[0]} ${p.pt[1].join(' ')}`)).map((p) => p.id);
   assert.deepEqual(ruins, []);
+});
+
+// ---- Auditoria da Mesa 2026-11-25 (J-03, J-11) ----
+
+// Como o servidor: validate(ctx completo) -> prepare(ctx completo) -> reduce so com { from, isLeader }
+// (src/renderer/mesa.js applyOp). A hora so chega ao reduce se o prepare a puser na acao.
+function comoServidor(s, action, from, now) {
+  const c = { from, peers: PEERS, now, isLeader: from === 'ana', random: aleatorio };
+  assert.equal(quiz.validate(s, action, c), true, JSON.stringify(action));
+  const preparada = JSON.parse(JSON.stringify(quiz.prepare(s, action, c)));
+  return quiz.reduce(s, preparada, { from, isLeader: c.isLeader });
+}
+
+test('J-03: a 2a pergunta nasce com prazo de hora real (reduce nao tem ctx.now)', () => {
+  const T = 1.7e12;
+  let s = comoServidor(preparo(), { kind: 'start' }, 'ana', T);
+  assert.equal(s.deadline, T + quiz.TEMPO_MS);
+  for (const by of ['ana', 'bia', 'caio']) s = comoServidor(s, { kind: 'answer', option: 0 }, by, T + 3000);
+  assert.equal(s.round, 1);
+  assert.equal(s.deadline, T + 3000 + quiz.TEMPO_MS, 'prazo da proxima = hora da ultima resposta + 20 s');
+  assert.equal(quiz.timeoutAt(s), s.deadline);
+});
+
+test('J-03: a pontuacao por velocidade continua na 2a pergunta em diante (seconds nao vira 500)', () => {
+  const T = 1.7e12;
+  let s = comoServidor(preparo(), { kind: 'start' }, 'ana', T);
+  for (const by of ['ana', 'bia', 'caio']) s = comoServidor(s, { kind: 'answer', option: 0 }, by, T + 1000);
+  const abre = T + 1000; // a 2a pergunta abriu aqui
+  s = comoServidor(s, { kind: 'answer', option: 0 }, 'ana', abre + 4000);
+  assert.equal(s.answers[0].seconds, 4);
+});
+
+test('J-03: timeout na 2a pergunta so passa depois do prazo real (e leva a hora na acao)', () => {
+  const T = 1.7e12;
+  let s = comoServidor(preparo(), { kind: 'start' }, 'ana', T);
+  for (const by of ['ana', 'bia', 'caio']) s = comoServidor(s, { kind: 'answer', option: 0 }, by, T + 1000);
+  const prazo = quiz.timeoutAt(s);
+  assert.ok(prazo > T + 1000, `prazo da 2a pergunta e de hora real, veio ${prazo}`);
+  s = comoServidor(s, { kind: 'timeout' }, 'bia', prazo);
+  assert.equal(s.round, 2);
+  assert.equal(s.deadline, prazo + quiz.TEMPO_MS, 'a 3a pergunta herda a hora do timeout');
+});
+
+test('J-03: quem sai e fecha a pergunta nao leva o prazo de volta a 1970', () => {
+  const T = 1.7e12;
+  let s = comoServidor(preparo(), { kind: 'start' }, 'ana', T);
+  s = comoServidor(s, { kind: 'answer', option: 0 }, 'ana', T + 1000);
+  s = comoServidor(s, { kind: 'answer', option: 0 }, 'bia', T + 2000);
+  const n = quiz.dropPeer(s, 'caio'); // Caio era o unico que faltava
+  assert.equal(n.round, 1);
+  assert.ok(n.deadline > T, `prazo de hora real, veio ${n.deadline}`);
+});
+
+// Roda o carregador do banco como o renderer (sem `module`): bancos por <script>, depois quiz-perguntas.js.
+function bancoComoRenderer() {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+  const ctx = vm.createContext({});
+  ctx.globalThis = ctx;
+  for (const t of banco.TEMAS) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, 'quiz-banco', `${t}.js`), 'utf8'), ctx);
+  }
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'quiz-perguntas.js'), 'utf8'), ctx);
+  return ctx;
+}
+
+test('J-11: no renderer o banco nao carrega o gabarito (nem em porId, nem nas globais dos temas)', () => {
+  const ctx = bancoComoRenderer();
+  const b = ctx.GoLive.mesaQuizPerguntas;
+  assert.equal(b.perguntas.length, 480, 'o texto continua la');
+  for (const q of b.perguntas) assert.equal(Object.hasOwn(q, 'certa'), false, q.id);
+  assert.equal(b.porId('games-001').certa, undefined);
+  assert.equal(ctx.GoLive.mesaQuizBanco, undefined, 'as globais dos temas (com certa) somem depois da carga');
+  assert.equal(typeof b.gabarito, 'undefined');
+});
+
+test('J-11: no servidor (Node) o banco segue com o gabarito, que e quem pontua', () => {
+  const q = banco.porId('games-001');
+  assert.ok(Number.isInteger(q.certa) && q.certa >= 0 && q.certa < 4);
 });

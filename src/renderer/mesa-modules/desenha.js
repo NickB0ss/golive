@@ -212,6 +212,19 @@
     return out;
   }
 
+  /** 3 palavras sem sorte (o `dropPeer` nao tem `ctx.random`): fatias seguidas da lista, que andam com a rodada. */
+  function opcoesSemSorte(state) {
+    const inicio = ((Number.isInteger(state.round) ? state.round : 0) * 3) % PALAVRAS.length;
+    return [0, 1, 2].map((k) => PALAVRAS[(inicio + k) % PALAVRAS.length].id);
+  }
+
+  /** Hora para o que o `dropPeer` fecha: ele nao recebe relogio (so `state` e o id de quem saiu), e `0` faria o
+   * prazo nascer em 1970 (qualquer `timeout` passaria na hora). O prazo da fase que acabou e hora do servidor e
+   * esta no futuro ou agora: o novo prazo parte dele (J-09, auditoria 2026-11-25). */
+  function horaDoDrop(state) {
+    return Number.isFinite(state.deadline) ? state.deadline : 0;
+  }
+
   function pontosPeloTempo(state, at) {
     const inicio = Number.isFinite(state.startedAt) ? state.startedAt : at;
     const decorrido = Math.max(0, at - inicio);
@@ -322,10 +335,16 @@
    * jogo acabou (todo mundo ja desenhou DRAWS_PER_PLAYER vezes) ou passa a
    * vez pra quem vem depois. `nextOptions` vem do `prepare` (sorteado com
    * `ctx.random`); sem ele (dropPeer nao tem sorte nenhuma pra usar), cai
-   * nas 3 primeiras palavras da lista -- deterministico, nunca undefined. */
-  function endRound(state, nextOptions, at) {
-    const id = drawerIdOf(state);
-    const drawCounts = id ? { ...state.drawCounts, [id]: (state.drawCounts[id] || 0) + 1 } : { ...state.drawCounts };
+   * 3 palavras da lista a partir de um ponto que anda com a rodada
+   * (`opcoesSemSorte`) -- deterministico, nunca undefined.
+   * `extra.drawerId`: quem desenhou, quando ja nao esta em `players` (saiu da
+   * sala: nao e creditado); `extra.proximo`: indice (em `players`) de quem
+   * desenha em seguida, quando nao e simplesmente o seguinte ao `drawerIdx`. */
+  function endRound(state, nextOptions, at, extra = {}) {
+    const id = extra.drawerId === undefined ? drawerIdOf(state) : extra.drawerId;
+    const credita = id && state.players.some((p) => p.id === id);
+    const drawCounts = { ...state.drawCounts };
+    if (credita) drawCounts[id] = (state.drawCounts[id] || 0) + 1;
     const lastRound = state.word ? { round: state.round, word: state.word, drawerId: id } : state.lastRound;
     const acabouPraTodos = state.players.length > 0
       && state.players.every((p) => (drawCounts[p.id] || 0) >= DRAWS_PER_PLAYER);
@@ -335,9 +354,8 @@
         drawCounts, lastRound, drawerIdx: -1,
       };
     }
-    const proximo = (state.drawerIdx + 1) % state.players.length;
-    const opcoes = Array.isArray(nextOptions) && nextOptions.length === 3
-      ? nextOptions : PALAVRAS.slice(0, 3).map((palavra) => palavra.id);
+    const proximo = Number.isInteger(extra.proximo) ? extra.proximo : (state.drawerIdx + 1) % state.players.length;
+    const opcoes = Array.isArray(nextOptions) && nextOptions.length === 3 ? nextOptions : opcoesSemSorte(state);
     return {
       ...state, phase: 'choosing', drawerIdx: proximo, word: null, options: opcoes,
       guessedBy: [], deadline: at + CHOOSE_MS, drawCounts, lastRound, round: state.round + 1,
@@ -443,9 +461,16 @@
     let drawerIdx = state.drawerIdx;
     if (idx < drawerIdx) drawerIdx -= 1;
     else if (idx === drawerIdx) drawerIdx %= players.length;
-    if (eraDesenhista) return endRound({ ...state, players, drawCounts, guessedBy, drawerIdx }, null, 0);
+    if (eraDesenhista) {
+      // `players` ja sem ele, entao quem vinha depois dele esta no indice `idx` (ou volta ao 0 se era o ultimo):
+      // a rodada fecha em nome de quem saiu, sem creditar desenho a ninguem.
+      return endRound({ ...state, players, drawCounts, guessedBy, drawerIdx }, null, horaDoDrop(state),
+        { drawerId: peerId, proximo: idx % players.length });
+    }
     const next = { ...state, players, drawCounts, guessedBy, drawerIdx };
-    if (next.phase === 'drawing' && next.guessedBy.length >= next.players.length - 1) return endRound(next, null, 0);
+    if (next.phase === 'drawing' && next.guessedBy.length >= next.players.length - 1) {
+      return endRound(next, null, horaDoDrop(state));
+    }
     return next;
   }
 

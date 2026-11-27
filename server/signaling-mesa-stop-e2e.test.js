@@ -38,7 +38,7 @@ function client(port) {
     },
     send(msg) { ws.send(JSON.stringify(msg)); },
     async join(name, extra = {}) {
-      c.send({ type: 'join', room: 'stop', name, ...extra });
+      c.send({ type: 'join', room: 'geral', name, ...extra });
       const welcome = await c.wait((m) => m.type === 'welcome', 0);
       c.id = welcome.id;
     },

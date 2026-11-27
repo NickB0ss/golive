@@ -302,43 +302,35 @@ test('rajada offer + ice chega na mesma ordem em que foi enviada', async (t) => 
   );
 });
 
-test('sinalizacao de uma sala nunca vaza pra outra', async (t) => {
+// S-03 (auditoria 2026-11-25): o servidor tem uma sala so ('geral'). Um
+// nome inventado no join nao abre sala paralela -- e recusado, e quem foi
+// recusado nao recebe nada do que a sala troca.
+test('join com nome de sala inventado e recusado e nao recebe nada da sala', async (t) => {
   const p = palco(t);
   const servidor = await p.servidor();
   const ana = await p.cliente(servidor, 'ana');
   const alice = await p.cliente(servidor, 'alice');
   const bruno = await p.cliente(servidor, 'bruno');
 
-  await ana.entra('salaA', 'Ana');
-  await alice.entra('salaA', 'Alice');
-  const welcomeBruno = await bruno.entra('salaB', 'Bruno');
-  assert.deepEqual(welcomeBruno.peers, [], 'salaB comeca vazia mesmo com salaA cheia');
+  const welcomeAna = await ana.entra('geral', 'Ana');
+  await alice.entra('geral', 'Alice');
+  bruno.envia({ type: 'join', room: 'salaB', name: 'Bruno' });
+  assert.equal((await bruno.esperaTipo('join-denied')).reason, 'room');
+  assert.equal((await bruno.esperaFechar()).code, 1008);
+  assert.equal(servidor.getPeerCount(), 2);
 
-  // Unicast pra fora da sala e broadcast de sala: nada disso pode cruzar.
-  ana.envia({ type: 'offer', to: welcomeBruno.id, kind: 'screen', sdp: 'vazamento' });
-  ana.envia({ type: 'ice', to: welcomeBruno.id, kind: 'screen', candidate: 'vazamento' });
-  ana.envia({ type: 'tree', to: welcomeBruno.id, kind: 'screen', epoch: 1 });
+  // Unicast pro id que o Bruno teria e broadcast de sala: nada chega nele.
+  const idDoBruno = String(Number(welcomeAna.id) + 2);
+  ana.envia({ type: 'offer', to: idDoBruno, kind: 'screen', sdp: 'vazamento' });
   ana.envia({ type: 'broadcast-state', live: true });
   const marcaAna = ana.marcaDeSala();
-
-  // Dois passos, sem timer: a barreira da Ana prova que o servidor ja
-  // processou tudo que ela mandou; a do Bruno prova que o socket dele ja
-  // recebeu tudo que o servidor tinha pra ele ate ali.
   await ana.barreira();
-  await bruno.barreira();
+  assert.deepEqual(tipos(bruno.entrada), ['join-denied']);
 
-  const recebidoPeloBruno = tipos(bruno.entrada).filter((tipo) => tipo !== 'welcome' && tipo !== 'ice');
-  assert.deepEqual(recebidoPeloBruno, [], `salaB recebeu ${JSON.stringify(bruno.entrada)}`);
-  assert.equal(
-    bruno.entrada.filter((m) => m.type === 'ice' && m.candidate === 'vazamento').length,
-    0,
-    'nem o ice enderecado pra fora da sala pode passar'
-  );
-
-  // Controle positivo: dentro da salaA a mesma rajada chega normalmente --
+  // Controle positivo: dentro da sala a mesma rajada chega normalmente --
   // sem isto o teste passaria mesmo com o servidor mudo.
   await alice.esperaMarca(marcaAna);
-  await alice.esperaMsg((m) => m.type === 'broadcast-state' && m.live === true, 'broadcast-state na salaA');
+  await alice.esperaMsg((m) => m.type === 'broadcast-state' && m.live === true, 'broadcast-state na sala');
 });
 
 test('saida de peer avisa o resto da sala, e so ele', async (t) => {
@@ -350,8 +342,8 @@ test('saida de peer avisa o resto da sala, e so ele', async (t) => {
 
   await ana.entra('geral', 'Ana');
   const welcomeBruno = await bruno.entra('geral', 'Bruno');
-  await carla.entra('outra', 'Carla');
-  await ana.esperaTipo('peer-joined');
+  await carla.entra('geral', 'Carla');
+  await ana.esperaMsg((m) => m.type === 'peer-joined' && m.name === 'Carla', 'peer-joined da Carla');
   assert.equal(servidor.getPeerCount(), 3);
 
   bruno.ws.close(1000);
@@ -361,11 +353,11 @@ test('saida de peer avisa o resto da sala, e so ele', async (t) => {
   // sincronizacao do contador -- nao precisa esperar por tempo.
   assert.equal(servidor.getPeerCount(), 2);
 
+  // Um aviso so, e so da saida do Bruno: a Carla tambem fica sabendo.
   await carla.barreira();
   assert.deepEqual(
-    carla.entrada.filter((m) => m.type === 'peer-left'),
-    [],
-    'saida na sala vizinha nao e da conta de quem esta em outra'
+    carla.entrada.filter((m) => m.type === 'peer-left').map((m) => m.id),
+    [welcomeBruno.id],
   );
 });
 

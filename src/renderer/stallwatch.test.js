@@ -333,3 +333,24 @@ test('pedido explicito depois da desistência reinicia o ciclo de retry', () => 
   retry.restart(key);
   assert.deepEqual(retry.failed(key, () => {}), { action: 'retry', attempts: 1, delayMs: 1000 });
 });
+
+// R-01 (auditoria 2026-11-25): o relay escondido decide pela entrada.
+test('relayInputStalled: entrada sem quadros decodificados na janela e defeito antes do relay', () => {
+  const { relayInputStalled } = require('./stallwatch');
+  const h = (pares) => pares.map(([at, framesDecoded]) => ({ at, sample: { framesDecoded } }));
+  assert.equal(relayInputStalled({ history: h([[0, 50], [2000, 50], [4000, 50], [6000, 50]]), now: 6500 }), true);
+  assert.equal(relayInputStalled({ history: h([[0, 50], [2000, 51], [4000, 52], [6000, 53]]), now: 6500 }), false,
+    'quadros chegando: a perna com problema e a do filho');
+  assert.equal(relayInputStalled({ hasInbound: false, history: [], now: 0 }), true, 'sem entrada nenhuma');
+});
+
+test('relayInputStalled: sem prova nao culpa a entrada', () => {
+  const { relayInputStalled } = require('./stallwatch');
+  const h = (pares) => pares.map(([at, framesDecoded]) => ({ at, sample: { framesDecoded } }));
+  assert.equal(relayInputStalled({ history: [], now: 0 }), false, 'sem amostra');
+  assert.equal(relayInputStalled({ history: undefined, now: 0, hasInbound: true }), false);
+  assert.equal(relayInputStalled({ history: h([[0, 50], [2000, 50]]), now: 2100 }), false, 'janela curta');
+  assert.equal(relayInputStalled({ history: h([[0, 50], [6000, 50]]), now: 20000 }), false, 'amostra velha');
+  assert.equal(relayInputStalled({ history: h([[0, 900], [6000, 3]]), now: 6000 }), false,
+    'contador recomecou: PC nova a caminho');
+});

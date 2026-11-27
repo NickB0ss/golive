@@ -104,7 +104,9 @@
         return { kind: 'answer', answers };
       }
       case 'vote':
-        if (!peerId(action.player) || !Number.isInteger(action.category) || typeof action.annul !== 'boolean') {
+        // Categoria negativa nao existe: cada uma viraria uma entrada em `votes` e encheria o estado (J-14).
+        if (!peerId(action.player) || !Number.isInteger(action.category) || action.category < 0
+          || typeof action.annul !== 'boolean') {
           return codigo('mesa.stop.votoInvalido');
         }
         return { kind: 'vote', player: action.player, category: action.category, annul: action.annul };

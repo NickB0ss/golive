@@ -3,6 +3,20 @@
 Pra quem voltou ao projeto depois de um mês. Leitura de 30 segundos.
 Para o passo a passo de uso e a instalação, ver `README.md`.
 
+## Rodada de 25 a 27/11/2026 — auditoria completa e pipeline nativo adiantado
+
+**Comece por `docs/2026-11-27-continuar-daqui.md`** (passagem completa para a próxima sessão).
+
+Ainda não lançado. Uma auditoria do app inteiro achou 45 bugs com reprodução (servidor de
+sinalização, main/nativo, mídia e rede do renderer, Mesa) e todos foram corrigidos com teste
+de regressão; os relatórios estão em `docs/auditoria-2026-11-25/`. Os mais graves: servidor da
+sala derrubável por memória e liderança tomável depois da migração, relay escondido deixando as
+folhas sem imagem, fechar o app preso por conexão travada, truco e quiz aceitando ação forjada.
+A auditoria de design aplicou 11 correções pequenas (textos sem tradução, contraste) e deixou 3
+propostas maiores para decidir. Do pipeline nativo, P1.1 (esqueleto do `golive-media`), P2.1
+(spec do protocolo UDP, revisada) e P2.2 (pacote e remontagem, C++ e JS) estão prontos.
+Nada disso foi testado em PC Windows: a lista do que validar está na nota de passagem.
+
 ## Em andamento — prioridade de GPU durante a transmissão (25/11/2026)
 
 Ainda não lançado. Com um jogo deixando a GPU em ~99%, os processos do

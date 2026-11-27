@@ -12,3 +12,6 @@ lab-out/
 tools/sfu-spike/node_modules/
 tools/sfu-spike/lab-out/
 tools/sfu-spike/renderer/mediasoup-client.bundle.js
+
+# Saidas de bancada do golive-media (binarios ficam em build/, ja ignorado)
+*.h264

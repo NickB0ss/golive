@@ -48,6 +48,8 @@
     return { questions, ordens: questions.map(() => embaralharAlternativas(random)) };
   }
   function agora(ctx) { return Number.isFinite(ctx && ctx.now) ? ctx.now : 0; }
+  // O `reduce` roda com { from, isLeader } (sem `now`): a hora do servidor chega na acao, posta pelo `prepare`.
+  function momento(action, ctx) { return Number.isFinite(action && action.at) ? action.at : agora(ctx); }
   function pergunta(state) {
     return banco.porId(state.questions[state.round]);
   }
@@ -127,9 +129,9 @@
       const started = state.deadline - TEMPO_MS;
       const seconds = Math.min(500, Math.max(0, Math.ceil(
         (agora(ctx) - started) / 1000)));
-      return { kind: 'answer', by: ctx.from, option: action.option, seconds };
+      return { kind: 'answer', by: ctx.from, option: action.option, seconds, at: agora(ctx) };
     }
-    if (action.kind === 'timeout') return { kind: 'timeout' };
+    if (action.kind === 'timeout') return { kind: 'timeout', at: agora(ctx) };
     if (action.kind === 'temas') return { kind: 'temas', temas: action.temas.slice() };
     if (action.kind === 'start') {
       return {
@@ -188,9 +190,9 @@
       if (!participante(state, action.by) || resposta(state, action.by)) return state;
       const answers = [...state.answers, { by: action.by, option: action.option, seconds: action.seconds }];
       const next = { ...state, answers };
-      return todosResponderam(next) ? avancar(next, agora(ctx)) : next;
+      return todosResponderam(next) ? avancar(next, momento(action, ctx)) : next;
     }
-    if (action.kind === 'timeout') return avancar(state, agora(ctx));
+    if (action.kind === 'timeout') return avancar(state, momento(action, ctx));
     return state;
   }
   function view(state, peerId, ctx) {

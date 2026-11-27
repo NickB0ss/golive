@@ -195,3 +195,40 @@ test('summary', () => {
   let s = roda(radio.init({}), [[{ kind: 'add', url: A }, { now: 0 }], [{ kind: 'add', url: B }], [{ kind: 'title', id: 'r1', title: 'Hino' }]]);
   assert.equal(R(radio.summary(s, 65000)), 'Tocando: Hino · 1:05 · +1 na fila');
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-13) ----
+
+const PEERS4 = [...PEERS3, { id: '4', name: 'Duda' }];
+
+test('J-13: `ended` de quem nao pos a musica nao a pula sozinho (burla de "so quem pos ou o lider pula")', () => {
+  let s = roda(radio.init({}), [[{ kind: 'add', url: A }], [{ kind: 'add', url: B }]]); // dona: '1'
+  assert.equal(servidor(s, { kind: 'skip' }, { from: '2' }).denied, 'mesa.radio.soQuemPosPula');
+  const r = servidor(s, { kind: 'ended', videoId: A, id: 'r1' }, { from: '2', peers: PEERS4 });
+  assert.equal(r.denied, undefined);
+  assert.equal(r.state.current.videoId, A, 'um intruso so, nao pula');
+  assert.deepEqual(r.state.votes, ['2']);
+  // Repetir do mesmo intruso nao conta de novo.
+  assert.equal(servidor(r.state, { kind: 'ended', videoId: A, id: 'r1' }, { from: '2', peers: PEERS4 }).state, r.state);
+  // Mas dois avisos distintos (os PCs de quem ouve) avancam, como antes.
+  const dois = servidor(r.state, { kind: 'ended', videoId: A, id: 'r1' }, { from: '3', peers: PEERS4 });
+  assert.equal(dois.state.current.videoId, B);
+  assert.deepEqual(dois.state.votes, []);
+});
+
+test('J-13: `ended`/`failed` de quem pos a musica ou do lider avancam na hora; need do cliente e ignorado', () => {
+  const s = roda(radio.init({}), [[{ kind: 'add', url: A }, { from: '3' }], [{ kind: 'add', url: B }]]); // dono: '3'
+  const fim = { kind: 'ended', videoId: A, id: 'r1' };
+  assert.equal(servidor(s, fim, { from: '3', peers: PEERS4 }).state.current.videoId, B);
+  assert.equal(servidor(s, { kind: 'failed', videoId: A, id: 'r1' }, { from: '2', isLeader: true, peers: PEERS4 })
+    .state.current.videoId, B);
+  const forja = { kind: 'ended', videoId: A, id: 'r1', need: 1, keep: ['2'] };
+  const forjado = servidor(s, forja, { from: '2', peers: PEERS4 });
+  assert.equal(forjado.state.current.videoId, A, 'need:1 forjado nao vale');
+});
+
+test('J-13: numa sala de uma pessoa o aviso do proprio player continua pulando', () => {
+  const s = roda(radio.init({}), [[{ kind: 'add', url: A }, { from: '1' }], [{ kind: 'add', url: B }, { from: '1' }]]);
+  const solo = [{ id: '2', name: 'Bia' }];
+  const fim = { kind: 'ended', videoId: A, id: 'r1' };
+  assert.equal(servidor(s, fim, { from: '2', peers: solo }).state.current.videoId, B);
+});

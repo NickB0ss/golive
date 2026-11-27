@@ -8,7 +8,7 @@
  *      junto com o audio do sistema (loopback, so funciona no Windows).
  */
 
-const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter, net } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, ipcMain, screen, shell, globalShortcut, powerMonitor, powerSaveBlocker, crashReporter, net, Menu } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -144,13 +144,22 @@ try {
 }
 /** captureId -> instancia nativa LoopbackCapture em andamento. */
 const activeCaptures = new Map();
+/** captura nativa -> webContents que a pediu (pra limpar quando a pagina some). */
+const capturaDonos = new WeakMap();
 let nextCaptureId = 1;
 
+const { criarSlotOverlay } = require('./main/overlayslot');
+
 let win = null;
-/** Janela transparente que desenha os rabiscos da sala na tela REAL de quem
- * esta compartilhando. Nasce so quando a transmissao e de uma TELA inteira
- * com anotacao ligada -- ver createOverlayWindow. */
-let overlayWin = null;
+/** Dono da janela transparente que desenha os rabiscos da sala na tela REAL
+ * de quem esta compartilhando (`overlaySlot.janela`). Nasce so quando a
+ * transmissao e de uma TELA inteira com anotacao ligada -- ver
+ * createOverlayWindow e src/main/overlayslot.js. */
+const overlaySlot = criarSlotOverlay({
+  destruir: (janela) => {
+    if (!janela.isDestroyed()) janela.destroy();
+  },
+});
 /** `Map<sourceId, displayId>` montado a cada `sources:list`. E o unico jeito
  * honesto de saber que monitor cobrir: o `<n>` de `screen:<n>:0` nao e o id
  * de display do Electron (ver src/main/overlay.js). */
@@ -224,6 +233,9 @@ const { createSignalingServer, normalizeRoomName } = require('../server/signalin
 const { pickAddress } = require('./main/network');
 const { ensureFirewallRule } = require('./main/firewall');
 const { findFreeServer } = require('./main/ports');
+const { comPrazo, PRAZO_ESGOTADO } = require('./main/prazo');
+const { removerMenuPadrao } = require('./main/menu');
+const { pararCapturasDe, criarLimpezaDaPagina, navegacaoDescartaPagina } = require('./main/limpezajanela');
 const { checkTcpPort } = require('./main/tcpcheck');
 const { createDiscovery } = require('./main/discovery');
 const { resolveRoomPin, resolveRoomMesa } = require('./main/roomhost');
@@ -415,8 +427,12 @@ async function ensureDiscoveryStarted() {
   });
   try {
     await discovery.start();
-  } catch {
-    discoveryStarted = false; // best-effort: sem descoberta o resto do app segue funcionando
+  } catch (err) {
+    // Best-effort: sem descoberta o resto do app segue funcionando. Mas deixa
+    // rastro (porta 41235 reservada/tomada) e libera o flag pra a proxima
+    // chamada tentar de novo (M-04 da auditoria 2026-11-25).
+    logger.error('descoberta: bind UDP falhou:', err?.code || '', err?.message || err);
+    discoveryStarted = false;
   }
 }
 
@@ -443,7 +459,21 @@ async function closeEmbeddedServer(opts) {
   return embeddedServerClosing;
 }
 
+/** Prazo do fechamento do servidor embutido. O `close()` dele ja derruba os
+ * sockets que sobram (closeGraceMs em signaling-core.js); este e o teto de
+ * seguranca por cima, pro `app.quit()` e o proximo "Criar sala" nunca ficarem
+ * presos atras de um par mudo (M-01 da auditoria 2026-11-25). */
+const FECHAR_SERVIDOR_PRAZO_MS = 3000;
+
+async function closeEmbeddedServerComPrazo(opts) {
+  const resultado = await comPrazo(closeEmbeddedServer(opts), FECHAR_SERVIDOR_PRAZO_MS);
+  if (resultado === PRAZO_ESGOTADO) logger.error('servidor embutido: fechamento passou do prazo, seguindo sem esperar');
+}
+
 function createWindow() {
+  // Sem o menu padrao nao ha Ctrl+R nem Ctrl+Shift+I no app empacotado
+  // (M-02). Tem que ser antes da janela nascer.
+  removerMenuPadrao(Menu, app.isPackaged);
   win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -615,6 +645,31 @@ function createWindow() {
     // O renderer que caiu nao manda mais 'power:keep-awake(false)' nenhum --
     // sem isto o blocker fica preso ligado pro resto da vida do processo.
     forceStopKeepAwake();
+    limparEstadoDaPagina();
+  });
+  // Recarga da pagina principal (location.reload, ou um Ctrl+R que escape):
+  // a pagina nova nasce no lobby sem saber das capturas, do rabisco e da sala
+  // que o main ainda segura em nome da anterior (M-02).
+  const principal = win.webContents;
+  const limparEstadoDaPagina = criarLimpezaDaPagina({
+    log: (msg) => logger.error(msg),
+    passos: [
+      ['capturas', () => pararCapturasDe(activeCaptures, capturaDonos, principal)],
+      ['overlay', () => destroyOverlayWindow()],
+      ['servidor', () => {
+        discovery.stopAdvertising();
+        return closeEmbeddedServerComPrazo({ migrate: true });
+      }],
+      ['sala', () => {
+        roomActive = false;
+        updatePolicy.setRoomActive(false);
+      }],
+    ],
+  });
+  let primeiraCargaTerminou = false;
+  principal.on('did-finish-load', () => { primeiraCargaTerminou = true; });
+  principal.on('did-start-navigation', (details) => {
+    if (navegacaoDescartaPagina(details, primeiraCargaTerminou)) limparEstadoDaPagina();
   });
   win.webContents.on('unresponsive', () => {
     logger.error('renderer ficou sem responder (unresponsive)');
@@ -1089,7 +1144,7 @@ app.on('window-all-closed', async () => {
   // de ficar presos numa sala fantasma. `await` garante que os frames saiam
   // antes do processo morrer; se travar, o quit abaixo encerra mesmo assim.
   try {
-    await closeEmbeddedServer({ migrate: true });
+    await closeEmbeddedServerComPrazo({ migrate: true });
   } catch {
     /* best-effort: seguimos com o encerramento */
   }
@@ -1208,13 +1263,13 @@ ipcMain.handle('room:host', async (_event, {
     if (!pickedPin.ok) return { ok: false, error: pickedPin.error };
     const pin = pickedPin.pin;
     const roomMesa = resolveRoomMesa(mesa);
-    if (embeddedServer || embeddedServerClosing) await closeEmbeddedServer();
+    if (embeddedServer || embeddedServerClosing) await closeEmbeddedServerComPrazo();
     // Token de dono (novo): gerado por sala, nunca sai desta maquina -- so
     // volta pro renderer que criou a sala, que o reenvia no proprio 'join'.
     const ownerToken = require('crypto').randomUUID();
     // A versao entra na sala junto com o PIN e o token de dono: o servidor
     // barra no 'join' quem nao estiver exatamente nela (ver signaling-core).
-    embeddedServer = await findFreeServer((port) => createSignalingServer({
+    const server = await findFreeServer((port) => createSignalingServer({
       port,
       pin,
       ownerToken,
@@ -1234,18 +1289,25 @@ ipcMain.handle('room:host', async (_event, {
       // sobreviventes o procuram direto (item B da auditoria 2026-09-18).
       preferredPort: Number.isInteger(preferredPort) ? preferredPort : null,
     });
+    embeddedServer = server;
     hostedRoomPin = pin;
     hostedRoomMesa = roomMesa;
 
-    const firewall = await ensureFirewallRule(embeddedServer.port);
+    // Cada `await` abaixo e uma janela pro `room:abort-host` (a migracao
+    // cedeu a vez enquanto o PowerShell/UAC rodava) fechar este servidor e
+    // zerar `embeddedServer`. Quem foi abortado devolve CANCELLED em vez de
+    // estourar em `null.port` (M-08 da auditoria 2026-11-25).
+    const firewall = await ensureFirewallRule(server.port);
+    if (embeddedServer !== server) return { ok: false, cancelled: true, error: 'CANCELLED' };
     const picked = pickAddress();
-    const address = picked ? `${picked.address}:${embeddedServer.port}` : null;
+    const address = picked ? `${picked.address}:${server.port}` : null;
 
     // P1: o beacon anuncia o nome da SALA, nao mais o nome de quem hospeda.
     // Mesma normalizacao do servidor (normalizeRoomName), pro card do lobby
     // e o cabecalho de quem entra nunca discordarem entre si.
     hostedRoomName = normalizeRoomName(roomName) || `sala de ${name || 'anônimo'}`;
     await ensureDiscoveryStarted();
+    if (embeddedServer !== server) return { ok: false, cancelled: true, error: 'CANCELLED' };
     if (advertise && address) {
       advertiseHostedRoom();
     } else {
@@ -1254,7 +1316,7 @@ ipcMain.handle('room:host', async (_event, {
 
     return {
       ok: true,
-      port: embeddedServer.port,
+      port: server.port,
       address,
       pin,
       ownerToken,
@@ -1275,7 +1337,7 @@ ipcMain.handle('room:host', async (_event, {
 // senao o proximo tick do beacon chama getPeerCount() num servidor ja nulo.
 ipcMain.handle('room:unhost', async () => {
   discovery.stopAdvertising();
-  await closeEmbeddedServer({ migrate: true });
+  await closeEmbeddedServerComPrazo({ migrate: true });
   return true;
 });
 
@@ -1284,7 +1346,7 @@ ipcMain.handle('room:unhost', async () => {
 // autoritativa e anunciar agora so criaria uma segunda migracao falsa.
 ipcMain.handle('room:abort-host', async () => {
   discovery.stopAdvertising();
-  await closeEmbeddedServer();
+  await closeEmbeddedServerComPrazo();
   return true;
 });
 
@@ -1398,9 +1460,10 @@ ipcMain.handle('window:setFullScreen', (_event, enabled) => {
 //                  WDA_EXCLUDEFROMCAPTURE, que some com a janela pro
 //                  capturador sem pintar nada por cima dela.
 
+/** Cria a janela e devolve ela com a promessa do carregamento. Quem fecha a
+ * anterior e o `overlaySlot.abrir`. */
 function createOverlayWindow(bounds) {
-  destroyOverlayWindow();
-  overlayWin = new BrowserWindow({
+  const overlayWin = new BrowserWindow({
     ...bounds,
     show: false,
     frame: false,
@@ -1432,20 +1495,21 @@ function createOverlayWindow(bounds) {
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
   overlayWin.setContentProtection(true);
   overlayWin.setMenuBarVisibility(false);
-  overlayWin.on('closed', () => { overlayWin = null; });
+  overlayWin.on('closed', () => overlaySlot.fechada(overlayWin));
   // showInactive, nao show: aparecer nao pode tirar o foco do que a pessoa
   // esta fazendo.
-  overlayWin.once('ready-to-show', () => overlayWin?.showInactive());
+  overlayWin.once('ready-to-show', () => {
+    if (!overlayWin.isDestroyed()) overlayWin.showInactive();
+  });
   // A promessa so resolve depois que a pagina carregou. Sem isso, o primeiro
   // `overlay:load` que o renderer mandar logo apos o start cairia num
   // webContents que ainda nao rodou o script -- `send` nao enfileira, e a
   // lousa que ja existia sumiria da tela real.
-  return overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html'));
+  return { janela: overlayWin, carregou: overlayWin.loadFile(path.join(__dirname, 'renderer', 'overlay.html')) };
 }
 
 function destroyOverlayWindow() {
-  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy();
-  overlayWin = null;
+  overlaySlot.fechar();
 }
 
 /** Manda um evento pra janela de rabisco, se ela existir e ja tiver carregado.
@@ -1453,6 +1517,7 @@ function destroyOverlayWindow() {
  * desenhando, e nenhuma delas vale um erro no log se a janela acabou de
  * fechar. */
 function sendToOverlay(channel, payload) {
+  const overlayWin = overlaySlot.janela;
   if (!overlayWin || overlayWin.isDestroyed()) return false;
   overlayWin.webContents.send(channel, payload);
   return true;
@@ -1467,14 +1532,15 @@ ipcMain.handle('overlay:start', async () => {
   if (!selectedDisplayId) return { ok: false, reason: 'window' };
   const bounds = boundsFor(selectedDisplayId, screen.getAllDisplays());
   if (!bounds) return { ok: false, reason: 'display' };
-  try {
-    await createOverlayWindow(bounds);
-  } catch (err) {
-    logger.error('overlay: a janela de rabisco nao carregou:', err?.message || err);
-    destroyOverlayWindow();
-    return { ok: false, reason: 'display' };
+  // Cada pedido so mexe na janela que ele mesmo criou: dois starts
+  // sobrepostos nao derrubam um ao outro (M-09 da auditoria 2026-11-25).
+  const r = await overlaySlot.abrir(() => createOverlayWindow(bounds));
+  if (!r.ok && r.reason === 'display') {
+    logger.error('overlay: a janela de rabisco nao carregou:', r.erro?.message || r.erro);
   }
-  return { ok: true };
+  // 'superseded': outro start ou um stop tomou o lugar. Nao e falha do
+  // monitor, e o renderer nao mostra aviso pra um motivo que nao conhece.
+  return r.ok ? { ok: true } : { ok: false, reason: r.reason };
 });
 
 ipcMain.handle('overlay:stop', () => {
@@ -1626,6 +1692,7 @@ ipcMain.handle('audio:startCapture', (event, { pid, exclude } = {}) => {
     try {
       const capture = new audioAddon.LoopbackCapture(pid, !!exclude, onData, onReady);
       activeCaptures.set(captureId, capture);
+      capturaDonos.set(capture, sender);
     } catch (err) {
       resolve({ ok: false, error: err.message });
     }

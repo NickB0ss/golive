@@ -27,6 +27,33 @@
           }
         }]
       ]
+    },
+    {
+      "target_name": "golive-media",
+      "type": "executable",
+      "sources": [
+        "native/media/main.cc",
+        "native/media/args.cc",
+        "native/media/controle.cc",
+        "native/media/metricas.cc",
+        "native/media/pacote.cc",
+        "native/media/pacote_vetores.cc",
+        "native/media/sha256.cc"
+      ],
+      "cflags_cc": [ "-std=c++20", "-pthread" ],
+      "ldflags": [ "-pthread" ],
+      "conditions": [
+        ["OS=='win'", {
+          "win_delay_load_hook": "false",
+          "msvs_settings": {
+            "VCCLCompilerTool": {
+              "ExceptionHandling": 1,
+              "AdditionalOptions": [ "/std:c++20" ]
+            },
+            "VCLinkerTool": { "SubSystem": 1 }
+          }
+        }]
+      ]
     }
   ]
 }

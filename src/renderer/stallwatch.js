@@ -24,6 +24,30 @@
     };
   }
 
+  // R-01 (auditoria 2026-11-25): o relay que nao olha a tela nao mede
+  // quadros exibidos, entao o vigia dele nao cobre a entrada origem->relay.
+  // Quando uma folha acusa congelamento, o relay decide pelas amostras de
+  // getStats da ENTRADA (conndiag.readStallSample, uma a cada 2 s) se o
+  // defeito esta antes dele. Entrada parada = nenhum quadro decodificado
+  // numa janela de pelo menos `minSpanMs`. Sem amostra recente, sem janela
+  // coberta ou com contador recomecado (PC nova): nao ha prova, e o relay so
+  // refaz a perna dele. Sem entrada nenhuma a arvore ja diz que devia haver.
+  const RELAY_INPUT_DEFAULTS = { minSpanMs: 4000, freshMs: 5000 };
+
+  function relayInputStalled({ hasInbound, history, now, minSpanMs, freshMs } = {}) {
+    if (hasInbound === false) return true;
+    const span = minSpanMs ?? RELAY_INPUT_DEFAULTS.minSpanMs;
+    const fresh = freshMs ?? RELAY_INPUT_DEFAULTS.freshMs;
+    const samples = Array.isArray(history) ? history : [];
+    const last = samples.at(-1);
+    if (!last || !Number.isFinite(last.at) || !(now - last.at <= fresh)) return false;
+    const prev = samples.slice(0, -1).reverse().find((h) => last.at - h.at >= span);
+    const before = prev?.sample?.framesDecoded;
+    const after = last.sample?.framesDecoded;
+    if (!Number.isFinite(before) || !Number.isFinite(after)) return false;
+    return after === before;
+  }
+
   function createStallWatch(opts = {}) {
     const stallMs = opts.stallMs ?? DEFAULTS.stallMs;
     const cooldownMs = opts.cooldownMs ?? DEFAULTS.cooldownMs;
@@ -268,7 +292,10 @@
     };
   }
 
-  const api = { createStallWatch, createRelayRetry, stallDemand, DEFAULTS, RELAY_RETRY_DEFAULTS };
+  const api = {
+    createStallWatch, createRelayRetry, stallDemand, relayInputStalled,
+    DEFAULTS, RELAY_RETRY_DEFAULTS, RELAY_INPUT_DEFAULTS,
+  };
   root.GoLive = root.GoLive || {};
   root.GoLive.stallwatch = api;
   if (typeof module !== 'undefined') module.exports = api;

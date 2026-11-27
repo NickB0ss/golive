@@ -9,7 +9,9 @@ sem passar pelo renderer, pelo canvas nem pela cópia para a CPU do Chromium.
 ## Comece aqui (próxima sessão)
 
 1. Ler este arquivo inteiro e o índice de `docs/decisoes-e-problemas/`.
-2. O passo atual é o **P0.1**. Os passos de código só começam depois de
+2. O passo atual é o **P0.1** (precisa de Windows). P1.1, P2.1 e P2.2 já foram adiantados
+   na nuvem (27/11); sem Windows, o próximo é o **P2.3**. Ver `docs/2026-11-27-continuar-daqui.md`.
+   O passo de medição continua sendo o **P0.1**. Os passos de código só começam depois de
    P0.1 e P0.2 terem resultado registrado, porque o P0.2 diz se a Fase 0 sozinha
    já resolveu parte do problema.
 3. Se não houver um PC Windows com jogo disponível na sessão, dá para
@@ -99,15 +101,15 @@ Decisões: [[D-03-processo-auxiliar-golive-media|D-03]], [[D-04-so-apis-do-windo
 ### P1.1 — Esqueleto do `golive-media.exe`
 - **O que faz:** cria o processo auxiliar e o jeito de compilar.
 - **Passos:**
-  - [ ] Pasta `native/media/` com `main.cc` e o protocolo de linha de comando:
+  - [x] Pasta `native/media/` com `main.cc` e o protocolo de linha de comando:
         `--janela <hwnd> | --monitor <indice>`, `--fps`, `--kbps`, `--saida <arquivo.h264>`, `--segundos`.
-  - [ ] Saída de métricas: uma linha JSON por segundo no stdout (ver P1.6). Erros no stderr.
-  - [ ] Controle pelo stdin, uma linha JSON por comando: `{"cmd":"keyframe"}`,
+  - [x] Saída de métricas: uma linha JSON por segundo no stdout (ver P1.6). Erros no stderr.
+  - [x] Controle pelo stdin, uma linha JSON por comando: `{"cmd":"keyframe"}`,
         `{"cmd":"kbps","valor":6000}`, `{"cmd":"parar"}`. Serve para a Fase 2.
-  - [ ] Build: tentar um segundo target `"type": "executable"` no `binding.gyp`, para usar o mesmo
+  - [x] Build: tentar um segundo target `"type": "executable"` no `binding.gyp`, para usar o mesmo
         `npm run build:native`. Se o node-gyp atrapalhar (hook de delay-load, flags de addon),
         usar um `CMakeLists.txt` só para o exe e registrar a escolha numa nota nova `D-11`.
-  - [ ] `.gitignore` e `scripts/check-environment.js` cientes do exe novo.
+  - [x] `.gitignore` e `scripts/check-environment.js` cientes do exe novo.
 - **Não faz:** captura nem encode ainda; só sobe, lê argumentos, responde `parar` e sai com código 0.
 - **Pronto quando:** `golive-media.exe --segundos 2` sai com 0 e imprime 2 linhas JSON.
 
@@ -193,22 +195,22 @@ Decisões: [[D-06-transporte-udp-proprio|D-06]], [[D-07-decode-webcodecs-no-rece
 ### P2.1 — Especificar o protocolo
 - **O que faz:** escreve o contrato antes do código, em `docs/superpowers/specs/<data>-protocolo-video-nativo.md`.
 - **Conteúdo obrigatório:**
-  - [ ] Cabeçalho (versão, tipo, sessão, sequência, número do quadro, fragmento i/n, flags keyframe/fim).
-  - [ ] Tipos: `VIDEO`, `FEC`, `NACK`, `PEDIR_KEYFRAME`, `RELATORIO` (perda, atraso, kbps recebidos), `OLA`, `TCHAU`.
-  - [ ] Tamanho máximo de pacote ~1200 bytes (cabe no MTU do Radmin/Tailscale).
-  - [ ] Autenticação: chave por sessão trocada pela sinalização; HMAC curto em cada pacote. Sem
+  - [x] Cabeçalho (versão, tipo, sessão, sequência, número do quadro, fragmento i/n, flags keyframe/fim).
+  - [x] Tipos: `VIDEO`, `FEC`, `NACK`, `PEDIR_KEYFRAME`, `RELATORIO` (perda, atraso, kbps recebidos), `OLA`, `TCHAU`.
+  - [x] Tamanho máximo de pacote ~1200 bytes (cabe no MTU do Radmin/Tailscale).
+  - [x] Autenticação: chave por sessão trocada pela sinalização; HMAC curto em cada pacote. Sem
         isso, qualquer um na LAN virtual injeta vídeo na tela de outro.
-  - [ ] Porta: uma UDP por sala, anunciada pela sinalização.
+  - [x] Porta: uma UDP por sala, anunciada pela sinalização.
 - **Pronto quando:** a spec está revisada e cada campo tem tamanho e regra de validação.
 
 ### P2.2 — Empacotar e remontar
 - **O que faz:** quebra cada quadro em pacotes no envio e remonta na recepção.
 - **Passos:**
-  - [ ] Envio em C++ dentro do exe (Winsock, um socket UDP), com pacing: espalhar os pacotes de
+  - [x] Envio em C++ dentro do exe (Winsock, um socket UDP), com pacing: espalhar os pacotes de
         um quadro em ~2 ms em vez de rajada.
-  - [ ] Recepção em JS puro, módulo novo `src/main/videonativo/remontar.js`, testável no `node --test`:
+  - [x] Recepção em JS puro, módulo novo `src/main/videonativo/remontar.js`, testável no `node --test`:
         pacotes fora de ordem, duplicados, perdidos, quadro incompleto vencido.
-  - [ ] Testes cruzados: vetor de pacotes gerado pelo C++ e lido pelo JS.
+  - [x] Testes cruzados: vetor de pacotes gerado pelo C++ e lido pelo JS.
 - **Pronto quando:** os testes cobrem perda, reordenação e duplicação.
 
 ### P2.3 — Recuperação de perda
@@ -325,3 +327,6 @@ Uma linha por passo concluído: data, passo, resultado, link da nota.
 | Data | Passo | Resultado | Nota |
 |---|---|---|---|
 | 2026-11-25 | Fase 0 código | Implementado e testado em Node (12 testes novos, 2544 no total); C++ só com checagem de sintaxe MinGW | [[D-01-prioridade-gpu-high|D-01]] |
+| 2026-11-25 | P1.1 | Esqueleto do `golive-media` (args, métricas JSON, controle por stdin); compila em g++ e MinGW, 5 testes; falta MSVC | [[D-11-como-compilar-o-golive-media\|D-11]] |
+| 2026-11-25 | P2.1 | Spec do protocolo UDP escrita e revisada de forma independente (vetores conferidos byte a byte) | [[D-13-formato-do-pacote-udp\|D-13]] |
+| 2026-11-27 | P2.2 | Pacote e remontagem em JS (`src/main/videonativo/`), empacotador e HMAC próprios em C++; 57 testes, teste cruzado C++→JS byte a byte | [[D-13-formato-do-pacote-udp\|D-13]] |
