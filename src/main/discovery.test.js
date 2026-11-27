@@ -568,7 +568,9 @@ test('M-04: start() rejeita com um bind real numa porta que outro socket tomou s
   await new Promise((resolve) => bloqueio.bind(0, resolve));
   const d = createDiscovery({ port: bloqueio.address().port });
   try {
-    await assert.rejects(d.start(), { code: 'EADDRINUSE' });
+    // No Windows o bind UDP numa porta tomada sem SO_REUSEADDR falha com EACCES (WSAEACCES);
+    // no Linux, com EADDRINUSE. O que importa aqui e o start() rejeitar.
+    await assert.rejects(d.start(), (err) => ['EADDRINUSE', 'EACCES'].includes(err.code));
   } finally {
     d.stop();
     bloqueio.close();
