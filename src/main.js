@@ -148,6 +148,8 @@ const activeCaptures = new Map();
 const capturaDonos = new WeakMap();
 let nextCaptureId = 1;
 
+const { criarSlotOverlay } = require('./main/overlayslot');
+
 let win = null;
 /** Dono da janela transparente que desenha os rabiscos da sala na tela REAL
  * de quem esta compartilhando (`overlaySlot.janela`). Nasce so quando a
@@ -234,7 +236,6 @@ const { findFreeServer } = require('./main/ports');
 const { comPrazo, PRAZO_ESGOTADO } = require('./main/prazo');
 const { removerMenuPadrao } = require('./main/menu');
 const { pararCapturasDe, criarLimpezaDaPagina, navegacaoDescartaPagina } = require('./main/limpezajanela');
-const { criarSlotOverlay } = require('./main/overlayslot');
 const { checkTcpPort } = require('./main/tcpcheck');
 const { createDiscovery } = require('./main/discovery');
 const { resolveRoomPin, resolveRoomMesa } = require('./main/roomhost');

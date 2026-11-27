@@ -52,3 +52,27 @@ test('M-09: o overlay e aberto pelo slot, que isola um pedido do outro', () => {
   assert.match(corpo, /overlaySlot\.abrir\(/);
   assert.doesNotMatch(corpo, /destroyOverlayWindow\(/);
 });
+
+// Regressao: um require desestruturado declarado depois do primeiro uso no topo do main.js
+// derruba o app inteiro ao carregar (ReferenceError de TDZ) e nenhum teste unitario pega,
+// porque o main.js nao e importavel no node:test. Visto no laboratorio com criarSlotOverlay.
+test('main.js: nenhum nome de require e usado antes da propria declaracao', () => {
+  const fonte = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const linhas = fonte.split('\n');
+  const declarados = [];
+  linhas.forEach((linha, i) => {
+    const m = /^const \{([^}]+)\} = require\(/.exec(linha);
+    if (!m) return;
+    for (const parte of m[1].split(',')) {
+      const nome = parte.split(':').pop().trim();
+      if (nome) declarados.push({ nome, linha: i });
+    }
+  });
+  assert.ok(declarados.length > 0);
+  for (const { nome, linha } of declarados) {
+    const uso = new RegExp(`\\b${nome}\\b`);
+    // Antes da declaracao, so conta uso fora de funcao (coluna 0 do topo do modulo).
+    const antes = linhas.slice(0, linha).findIndex((l) => /^\S/.test(l) && !/^(\/\/|\/\*|\*)/.test(l) && uso.test(l));
+    assert.equal(antes, -1, `${nome} usado na linha ${antes + 1} antes do require na linha ${linha + 1}`);
+  }
+});
