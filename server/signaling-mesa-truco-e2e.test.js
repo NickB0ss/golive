@@ -54,7 +54,7 @@ function cliente(porta) {
       ws.send(JSON.stringify(mensagem));
     },
     async join(nome, extra = {}) {
-      pessoa.send({ type: 'join', room: 'truco', name: nome, ...extra });
+      pessoa.send({ type: 'join', room: 'geral', name: nome, ...extra });
       const boasVindas = await pessoa.wait((m) => m.type === 'welcome', 'welcome', 0);
       pessoa.id = boasVindas.id;
     },

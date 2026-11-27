@@ -11,7 +11,7 @@ function cliente(port) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`); const inbox = [];
   ws.on('message', (x) => inbox.push(JSON.parse(x.toString()))); ws.on('error', () => {});
   const wait = (fn, from = inbox.length) => new Promise((resolve, reject) => { const until = Date.now() + 5000; const tick = () => { const v = inbox.slice(from).find(fn); if (v) return resolve(v); if (Date.now() > until) return reject(new Error('mensagem não chegou')); setTimeout(tick, 10); }; tick(); });
-  return { ws, inbox, async join(name, token) { if (ws.readyState !== WebSocket.OPEN) await new Promise((ok) => ws.once('open', ok)); ws.send(JSON.stringify({ type: 'join', room: 'domino-segredo', name, ownerToken: token })); const w = await wait((m) => m.type === 'welcome', 0); this.id = w.id; }, send(m) { ws.send(JSON.stringify(m)); }, wait };
+  return { ws, inbox, async join(name, token) { if (ws.readyState !== WebSocket.OPEN) await new Promise((ok) => ws.once('open', ok)); ws.send(JSON.stringify({ type: 'join', room: 'geral', name, ownerToken: token })); const w = await wait((m) => m.type === 'welcome', 0); this.id = w.id; }, send(m) { ws.send(JSON.stringify(m)); }, wait };
 }
 
 test('dominó secreto não envia mão ou monte alheios em add, state ou sync', async (t) => {

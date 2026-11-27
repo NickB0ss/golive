@@ -650,10 +650,10 @@ test('watchers e broadcast pra sala inteira, com o from carimbado', async () => 
     assert.equal(msgB.from, '1');
     assert.equal(msgC.from, '1');
     assert.equal(msgB.kind, 'screen');
-    // O item volta refeito pela tabela de peers do servidor (nome e avatar
-    // do join de Bruno), por isso traz `avatar: null` mesmo sem o cliente
-    // mandar -- ver o teste "watchers refaz os itens pela tabela de peers".
-    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno', avatar: null }]);
+    // O item volta refeito pela tabela de peers do servidor (o nome do join
+    // de Bruno), sem avatar -- ver o teste "watchers refaz os itens pela
+    // tabela de peers".
+    assert.deepEqual(msgB.watchers, [{ id: '2', name: 'Bruno' }]);
 
     a.close();
     b.close(1000);
@@ -718,10 +718,10 @@ test('watchers e kind chegam limitados no rebroadcast (anti-amplificacao)', asyn
   }
 });
 
-// Os itens sao refeitos pela tabela de peers do servidor, nao cortados: o
-// avatar e um data URL de ate 256 KB que a lista de quem assiste desenha, e
-// cortar em N caracteres quebraria a imagem. O que o cliente manda so indica
-// QUEM esta assistindo.
+// Os itens sao refeitos pela tabela de peers do servidor: o que o cliente
+// manda so indica QUEM esta assistindo. Sem avatar (S-01 da auditoria
+// 2026-11-25): ele ja chegou no welcome/peer-joined, e com ele cada item
+// virava ate 64 KB repetidos pra sala inteira.
 test('watchers refaz os itens pela tabela de peers e descarta o que nao e da sala', async () => {
   const server = await createSignalingServer({ port: 0 });
   try {
@@ -738,7 +738,7 @@ test('watchers refaz os itens pela tabela de peers e descarta o que nao e da sal
       ],
     }));
     const msg = await emB;
-    assert.deepEqual(msg.watchers, [{ id: b.welcome.id, name: 'Bruno', avatar: null }]);
+    assert.deepEqual(msg.watchers, [{ id: b.welcome.id, name: 'Bruno' }]);
 
     a.ws.close();
     b.ws.close();
