@@ -23,7 +23,7 @@ links usam o nome do arquivo, então funcionam em qualquer pasta do vault.
 | [[D-09-webrtc-continua-como-fallback\|D-09]] | WebRTC continua como padrão e como volta automática | 2-4 | aceita |
 | [[D-10-recepcao-udp-no-main\|D-10]] | Recepção UDP no processo main, entrega ao renderer por MessagePort | 2 | proposta, validar no P2.5 |
 | [[D-11-como-compilar-o-golive-media\|D-11]] | golive-media como segundo target do binding.gyp | 1 | proposta, confirmar com MSVC |
-| [[D-13-formato-do-pacote-udp\|D-13]] | Formato do pacote UDP: big-endian, HMAC-SHA256/16 por par, sem cifra, FEC XOR | 2-3 | aceita, spec revisada; implementada no P2.2 |
+| [[D-13-formato-do-pacote-udp\|D-13]] | Formato do pacote UDP: big-endian, HMAC-SHA256/16 por par, sem cifra, FEC XOR | 2-3 | aceita, spec revisada; implementada no P2.2 e P2.3 (JS) |
 
 ## Problemas encontrados
 

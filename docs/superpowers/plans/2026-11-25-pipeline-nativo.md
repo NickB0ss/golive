@@ -10,7 +10,8 @@ sem passar pelo renderer, pelo canvas nem pela cópia para a CPU do Chromium.
 
 1. Ler este arquivo inteiro e o índice de `docs/decisoes-e-problemas/`.
 2. O passo atual é o **P0.1** (precisa de Windows). P1.1, P2.1 e P2.2 já foram adiantados
-   na nuvem (27/11); sem Windows, o próximo é o **P2.3**. Ver `docs/2026-11-27-continuar-daqui.md`.
+   na nuvem (27/11) e o P2.3 ficou pronto em JS (27/11, falta o buffer de reenvio em C++);
+   sem Windows, o próximo é o **P2.4** (parte JS). Ver `docs/2026-11-27-continuar-daqui.md`.
    O passo de medição continua sendo o **P0.1**. Os passos de código só começam depois de
    P0.1 e P0.2 terem resultado registrado, porque o P0.2 diz se a Fase 0 sozinha
    já resolveu parte do problema.
@@ -216,10 +217,12 @@ Decisões: [[D-06-transporte-udp-proprio|D-06]], [[D-07-decode-webcodecs-no-rece
 ### P2.3 — Recuperação de perda
 - **O que faz:** recupera pacote perdido sem pedir keyframe a toda hora.
 - **Passos:**
-  - [ ] Buffer de reenvio no exe (últimos ~300 ms).
-  - [ ] Receptor pede `NACK` uma vez por pacote faltante, depois de um curto tempo de espera.
-  - [ ] FEC XOR simples por grupo (1 pacote de paridade a cada N, N configurável).
-  - [ ] Sem como recuperar → `PEDIR_KEYFRAME`, no máximo 1 a cada 500 ms.
+  - [ ] Buffer de reenvio no exe (últimos ~300 ms). **Referência em JS pronta**
+        (`src/main/videonativo/reenvio.js`, com os tetos da 5.3); falta portar para C++ e ligar ao
+        socket do exe (P2.6 junta os dois lados).
+  - [x] Receptor pede `NACK` uma vez por pacote faltante, depois de um curto tempo de espera.
+  - [x] FEC XOR simples por grupo (1 pacote de paridade a cada N, N configurável).
+  - [x] Sem como recuperar → `PEDIR_KEYFRAME`, no máximo 1 a cada 500 ms.
 - **Pronto quando:** com 2% de perda simulada, o vídeo segue sem keyframe em mais de 95% dos quadros.
 
 ### P2.4 — Controle de taxa
@@ -329,4 +332,5 @@ Uma linha por passo concluído: data, passo, resultado, link da nota.
 | 2026-11-25 | Fase 0 código | Implementado e testado em Node (12 testes novos, 2544 no total); C++ só com checagem de sintaxe MinGW | [[D-01-prioridade-gpu-high|D-01]] |
 | 2026-11-25 | P1.1 | Esqueleto do `golive-media` (args, métricas JSON, controle por stdin); compila em g++ e MinGW, 5 testes; falta MSVC | [[D-11-como-compilar-o-golive-media\|D-11]] |
 | 2026-11-25 | P2.1 | Spec do protocolo UDP escrita e revisada de forma independente (vetores conferidos byte a byte) | [[D-13-formato-do-pacote-udp\|D-13]] |
+| 2026-11-27 | P2.3 (JS) | Suspeita/NACK/FEC automático no `Remontador`, `BufferReenvio` de referência, simulação: 2% de perda → 98,8–99,6% dos quadros sem keyframe (N=10 e 5, 4 sementes); sem FEC 87–94%. Falta o reenvio em C++ | [[D-13-formato-do-pacote-udp\|D-13]] |
 | 2026-11-27 | P2.2 | Pacote e remontagem em JS (`src/main/videonativo/`), empacotador e HMAC próprios em C++; 57 testes, teste cruzado C++→JS byte a byte | [[D-13-formato-do-pacote-udp\|D-13]] |

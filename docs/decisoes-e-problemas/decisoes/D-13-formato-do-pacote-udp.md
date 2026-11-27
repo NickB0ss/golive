@@ -52,6 +52,8 @@ Fase 3 repassar sem recodificar. Contrato completo:
   replay ambíguo depois da volta. Descartada.
 - **FEC Reed-Solomon:** recupera mais de uma perda por grupo, mas é bem mais código nos dois
   lados; com NACK numa LAN virtual de RTT baixo, XOR basta para começar (P2.3 mede).
+  **Medido no P2.3 (27/11, simulação em JS):** com 2 % de perda e NACK, XOR com N = 10 entrega
+  98,8–99,6 % dos quadros sem keyframe; sem FEC, 87–94 %. XOR fica.
 
 ## Consequências
 - O JS e o C++ compartilham uma tabela de constantes e vetores de teste com HMAC real

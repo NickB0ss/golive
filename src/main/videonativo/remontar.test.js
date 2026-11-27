@@ -415,3 +415,133 @@ test('ReceptorVideo: tick faz vencer em todas as sessoes', () => {
   assert.equal(r.rv.sessao(4).remontador.contadores.quadros_vencidos, 1);
   assert.deepEqual(r.pedidos, [[4, C.MOTIVO_KEYFRAME.VENCIDO]]);
 });
+
+// --- P2.3: suspeita, FEC automatico e NACK (6.5) ---
+
+function cenarioNack(op) {
+  const c = cenario(op);
+  c.nacks = [];
+  c.rem.aoNack = (e) => c.nacks.push(e);
+  return c;
+}
+
+test('P2.3: faltante com indice maior chegando vira NACK depois de ESPERA_NACK_MS, uma vez so', () => {
+  const c = cenarioNack({ fecN: 0 });
+  c.dar(c.pacotes(10, true));
+  const d = c.videos(11, false, 1152 * 5);
+  c.dar([d[0], d[1], d[3], d[4]]); // falta o 2
+  assert.deepEqual(c.nacks, []);
+  c.t += C.ESPERA_NACK_MS - 1;
+  c.rem.tick();
+  assert.deepEqual(c.nacks, []);
+  c.t += 1;
+  c.rem.tick();
+  assert.deepEqual(c.nacks, [[{ quadro: 11, primeiro: 2, quantidade: 1 }]]);
+  c.t += 20;
+  c.rem.tick();
+  assert.equal(c.nacks.length, 1, 'cada fragmento e pedido uma vez so');
+  c.dar([d[2]]);
+  assert.deepEqual(c.entregues(), [10, 11]);
+  c.confere();
+  assert.equal(c.rem.contadores.nacks, 1);
+  assert.equal(c.rem.contadores.pedidos_nack, 1);
+});
+
+test('P2.3: um faltante no grupo com FEC presente recupera sozinho, sem NACK', () => {
+  const c = cenarioNack({ fecN: 4 });
+  c.dar(c.pacotes(10, true));
+  const d = c.pacotes(11, false, 1152 * 7 + 10); // 8 fragmentos, 2 grupos de 4
+  const semUm = d.filter((p) => !(p.tipo === TIPO.VIDEO && p.indice === 5));
+  c.dar(semUm);
+  assert.deepEqual(c.entregues(), [10]);
+  c.t += C.ESPERA_NACK_MS;
+  c.rem.tick();
+  assert.deepEqual(c.entregues(), [10, 11]);
+  c.confere();
+  assert.deepEqual(c.nacks, []);
+  assert.equal(c.rem.contadores.recuperados_fec, 1);
+});
+
+test('P2.3: dois faltantes no grupo vao juntos numa faixa so do NACK', () => {
+  const c = cenarioNack({ fecN: 4 });
+  c.dar(c.pacotes(10, true));
+  const d = c.pacotes(11, false, 1152 * 7 + 10);
+  c.dar(d.filter((p) => !(p.tipo === TIPO.VIDEO && (p.indice === 1 || p.indice === 2))));
+  c.t += C.ESPERA_NACK_MS;
+  c.rem.tick();
+  assert.deepEqual(c.nacks, [[{ quadro: 11, primeiro: 1, quantidade: 2 }]]);
+});
+
+test('P2.3: fim do quadro perdido fica suspeito com o quadro seguinte ou depois de SUSPEITA_MS', () => {
+  const c = cenarioNack({ fecN: 0 });
+  c.dar(c.pacotes(10, true));
+  const d = c.videos(11, false, 1152 * 3);
+  c.dar([d[0], d[1]]); // o ultimo (indice 2) nao chegou e nada indica isso
+  c.t += C.ESPERA_NACK_MS;
+  c.rem.tick();
+  assert.deepEqual(c.nacks, []);
+  c.t += C.SUSPEITA_MS - C.ESPERA_NACK_MS + C.ESPERA_NACK_MS; // 20 ms do ultimo pacote + 5 ms
+  c.rem.tick();
+  assert.deepEqual(c.nacks, [[{ quadro: 11, primeiro: 2, quantidade: 1 }]]);
+
+  const c2 = cenarioNack({ fecN: 0 });
+  c2.dar(c2.pacotes(10, true));
+  const e = c2.videos(11, false, 1152 * 3);
+  c2.dar([e[0], e[1]]);
+  c2.dar([c2.videos(12, false, 100)[0]]); // quadro posterior: o fim do 11 vira suspeito
+  c2.t += C.ESPERA_NACK_MS;
+  c2.rem.tick();
+  assert.deepEqual(c2.nacks, [[{ quadro: 11, primeiro: 2, quantidade: 1 }]]);
+});
+
+test('P2.3: quadro inteiro perdido vai como 0xFFFF e depois nao pede os fragmentos dele', () => {
+  const c = cenarioNack({ fecN: 0 });
+  c.dar(c.pacotes(10, true));
+  const perdido = c.videos(11, false, 1152 * 2);
+  c.dar(c.videos(12, false, 500));
+  c.t += C.ESPERA_NACK_MS;
+  c.rem.tick();
+  assert.deepEqual(c.nacks, [[{ quadro: 11, primeiro: 0, quantidade: C.NACK_QUADRO_INTEIRO }]]);
+  c.dar([perdido[1]]); // so metade do reenvio chegou
+  c.t += 50;
+  c.rem.tick();
+  assert.equal(c.nacks.length, 1, 'depois do 0xFFFF todos contam como pedidos');
+  c.dar([perdido[0]]);
+  assert.deepEqual(c.entregues(), [10, 11, 12]);
+  c.confere();
+});
+
+test('P2.3: no maximo 1 NACK a cada 5 ms; o que vence no intervalo espera o proximo', () => {
+  const c = cenarioNack({ fecN: 0 });
+  c.dar(c.pacotes(10, true));
+  const a = c.videos(11, false, 1152 * 3);
+  c.dar([a[0], a[2]]);
+  c.t += C.ESPERA_NACK_MS;
+  c.rem.tick();
+  assert.equal(c.nacks.length, 1);
+  const b = c.videos(12, false, 1152 * 3);
+  c.t += 1;
+  c.dar([b[0], b[2]]); // b[1] suspeito agora
+  c.t += C.ESPERA_NACK_MS - 2; // passaram 4 ms do NACK anterior... e so 3 desde a suspeita
+  c.rem.tick();
+  assert.equal(c.nacks.length, 1);
+  c.t += 2;
+  c.rem.tick();
+  assert.deepEqual(c.nacks[1], [{ quadro: 12, primeiro: 1, quantidade: 1 }]);
+});
+
+test('P2.3: NACK com mais de 64 faixas leva as 64 primeiras e o resto vai no seguinte', () => {
+  const c = cenarioNack({ fecN: 0 });
+  c.dar(c.pacotes(10, true));
+  const d = c.videos(11, false, 1152 * 200);
+  c.dar(d.filter((p) => p.indice % 2 === 0)); // 100 faltantes nao contiguos
+  c.t += C.ESPERA_NACK_MS;
+  c.rem.tick();
+  assert.equal(c.nacks[0].length, C.NACK_MAX_ENTRADAS);
+  c.t += C.SUSPEITA_MS; // o 199 (fim do quadro) so fica suspeito pelos 20 ms
+  c.rem.tick();
+  assert.equal(c.nacks[1].length, 100 - C.NACK_MAX_ENTRADAS);
+  assert.equal(c.rem.contadores.pedidos_nack, 100);
+  // As entradas montam um NACK valido.
+  for (const n of c.nacks) assert.ok(P.payloadNack(n).length > 0);
+});
