@@ -255,3 +255,30 @@ test('R-10: start mais novo fica com a janela; o antigo nao a fecha', async () =
   f.fns.stopAnnotOverlay();
   assert.equal(f.golive.stopAnnotOverlay.chamadas.length, 1);
 });
+
+test('M-09: start ultrapassado no main (superseded) nao vira aviso', async () => {
+  const f = overlay();
+  const avisos = [];
+  f.escopo.showToast = (m) => avisos.push(m);
+  f.escopo.reactionsPermission = { overlayUnavailableToast: ({ reason }) => `aviso:${reason}` };
+  const abrindo = f.fns.startAnnotOverlay();
+  f.pendentes[0]({ ok: false, reason: 'superseded' });
+  await abrindo;
+  assert.deepEqual(avisos, []);
+  const outro = f.fns.startAnnotOverlay();
+  f.pendentes[1]({ ok: false, reason: 'display' });
+  await outro;
+  assert.deepEqual(avisos, ['aviso:display']);
+});
+
+test('M-08: room:host cancelado pela migracao volta como cancelamento, sem texto de erro', async () => {
+  let resposta;
+  const { fns } = load(fn('hostRoomFlow'), ['hostRoomFlow'], {
+    console: quieto, cfg: { name: 'Ana' }, t: (k) => k, showLobbyError() {},
+    hostErrorText: (e) => `erro:${e}`, window: { golive: { hostRoom: async () => resposta } },
+  });
+  resposta = { ok: false, cancelled: true, error: 'CANCELLED' };
+  assert.deepEqual(await fns.hostRoomFlow(false, false), { ok: false, cancelled: true });
+  resposta = { ok: false, error: 'EADDRINUSE' };
+  assert.deepEqual(await fns.hostRoomFlow(false, false), { ok: false, error: 'erro:EADDRINUSE' });
+});

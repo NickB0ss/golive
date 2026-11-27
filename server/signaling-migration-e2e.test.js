@@ -137,12 +137,19 @@ test('close({ migrate: true }) anuncia a migracao aos sobreviventes, sem avisar 
     assert.equal(msg.roomId, 'sala-da-migracao');
     assert.equal(msg.successor, successor);
     assert.equal(msg.successorName, 'Bruno');
-    assert.equal(msg.newOwnerClientId, 'client-carla');
+    // S-02 (auditoria 2026-11-25): o clientId do lider novo nao viaja; todos
+    // recebem o hash da chave de lider (o que o sucessor semeia).
+    assert.equal('newOwnerClientId' in msg, false);
+    assert.equal(typeof msg.leaderKeyHash, 'string');
     assert.equal(msg.pin, '482100');
     assert.deepEqual(msg.bans, []);
     assert.ok(Array.isArray(msg.chat));
   }
   assert.equal(newOwnerId, welcomeCarla.id);
+  // A chave em si vai so pra Carla, a lider escolhida.
+  assert.equal(typeof msgCarla.leaderKey, 'string');
+  assert.equal('leaderKey' in msgBruno, false);
+  assert.equal(msgBruno.leaderKeyHash, msgCarla.leaderKeyHash);
   await hostFechou;
   assert.deepEqual(host.entrada.filter((msg) => msg.type === 'room-migrating'), []);
 });
@@ -192,16 +199,24 @@ test('close({ migrate: true }) com somente o host segue o room-closed normal', a
   assert.deepEqual(host.entrada.filter((msg) => msg.type === 'room-migrating'), []);
 });
 
-test('close({ migrate: true }) elege sucessor somente entre sobreviventes da sala do host', async (t) => {
+// S-06 (auditoria 2026-11-25): quem esta suspenso (janela de retomada) nao
+// tem socket, nao recebe o room-migrating e nao pode ser o sucessor.
+test('close({ migrate: true }) elege sucessor somente entre sobreviventes conectados', async (t) => {
   const p = palco(t);
-  await p.servidor({ ownerToken: 'segredo' });
+  const server = await p.servidor({ ownerToken: 'segredo' });
   const host = await p.cliente('host');
-  const visitanteDeOutraSala = await p.cliente('visitante de outra sala');
+  const suspenso = await p.cliente('suspenso');
   const sobrevivente = await p.cliente('sobrevivente');
 
-  await host.entra('Host', { room: 'sala-host', ownerToken: 'segredo', clientId: 'client-host' });
-  const welcomeVisitante = await visitanteDeOutraSala.entra('Visitante', { room: 'outra-sala', clientId: 'client-outra-sala' });
-  const welcomeSobrevivente = await sobrevivente.entra('Sobrevivente', { room: 'sala-host', clientId: 'client-sobrevivente' });
+  await host.entra('Host', { ownerToken: 'segredo', clientId: 'client-host' });
+  const welcomeSuspenso = await suspenso.entra('Suspenso', { clientId: 'client-suspenso' });
+  const welcomeSobrevivente = await sobrevivente.entra('Sobrevivente', { clientId: 'client-sobrevivente' });
+  const saida = new Promise((r) => suspenso.ws.once('close', r));
+  suspenso.ws.terminate(); // 1006 sem frame de close: suspenso, ainda em `peers`
+  await saida;
+  // O servidor ve o 1006 um pouco depois do cliente: espera o socket sumir.
+  while (server.wss.clients.size > 2) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(server.getPeerCount(), 3);
   const migrando = sobrevivente.esperaTipo('room-migrating');
 
   await p.closeServer({ migrate: true });
@@ -209,8 +224,8 @@ test('close({ migrate: true }) elege sucessor somente entre sobreviventes da sal
   const msg = await migrando;
   assert.equal(msg.successor, welcomeSobrevivente.id);
   assert.equal(msg.successorName, 'Sobrevivente');
-  assert.equal(visitanteDeOutraSala.entrada.some((entrada) => entrada.type === 'room-migrating'), false);
-  assert.notEqual(msg.successor, welcomeVisitante.id);
+  assert.notEqual(msg.successor, welcomeSuspenso.id);
+  assert.equal(typeof msg.leaderKey, 'string');
 });
 
 // ---------------------------------------------------------------------------

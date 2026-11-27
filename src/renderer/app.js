@@ -1449,6 +1449,9 @@
       return { ok: false, error: t('erro.subirSalaInesperado') };
     }
     if (!result.ok) {
+      // M-08 (auditoria 2026-11-25): o abortHosting da migracao no meio do
+      // room:host volta como CANCELLED. E cancelamento, nao erro de subir.
+      if (result.cancelled === true || result.error === 'CANCELLED') return { ok: false, cancelled: true };
       return {
         ok: false,
         error: hostErrorText(result.error),
@@ -1776,7 +1779,7 @@
           roomName: (roomName || '').trim() || nomePadrao, mesa, ...(protect ? { pin } : {}),
         });
         if (res.ok) ui.dialogs.closeCreateRoom();
-        else ui.dialogs.setCreateRoomError(res.error);
+        else if (!res.cancelled) ui.dialogs.setCreateRoomError(res.error);
       },
     });
   });
@@ -2967,6 +2970,9 @@
       window.golive.sendAnnotOverlayLoad?.({ surface: minhaTela, items: ui.annotations.snapshot(minhaTela) });
       return;
     }
+    // M-09: o main recusa o start que outro mais novo ultrapassou. Nao e
+    // falha do monitor nem da permissao: quem ficou com a janela e o outro.
+    if (r?.reason === 'superseded') return;
     const toast = reactionsPermission.overlayUnavailableToast({
       reason: r?.reason,
       annotations: shareAnnotations,
