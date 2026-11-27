@@ -21,7 +21,13 @@ Nada disso foi testado em PC Windows: a lista do que validar está na nota de pa
 quando pedir `NACK` (suspeita, 5 ms de espera, cada fragmento uma vez, até 64 faixas, 1 a cada
 5 ms) e há um buffer de reenvio de referência (`src/main/videonativo/reenvio.js`). Uma simulação
 com 2% de perda em tudo entrega 98,8–99,6% dos quadros sem keyframe (critério do plano: >95%).
-Falta portar o buffer de reenvio para o `golive-media` (C++). Próximo sem Windows: P2.4.
+Falta portar o buffer de reenvio para o `golive-media` (C++).
+
+**27/11, noite — P2.4 em JS:** `src/main/videonativo/taxa.js` mede o `RELATORIO` de quem assiste
+e ajusta o bitrate de quem transmite (−20% ou 85% do que chegou na congestão, +10% a cada 5 s de
+folga). Gargalo simulado de 30 para 8 Mbps: o atraso volta ao normal em ~2 s (critério: <3 s).
+Próximo sem Windows: portar o buffer de reenvio para C++. O resto do pipeline (P1.2 em diante,
+P2.5, P2.6) precisa de Windows.
 
 ## Em andamento — prioridade de GPU durante a transmissão (25/11/2026)
 

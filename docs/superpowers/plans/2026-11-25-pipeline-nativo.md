@@ -10,8 +10,8 @@ sem passar pelo renderer, pelo canvas nem pela cópia para a CPU do Chromium.
 
 1. Ler este arquivo inteiro e o índice de `docs/decisoes-e-problemas/`.
 2. O passo atual é o **P0.1** (precisa de Windows). P1.1, P2.1 e P2.2 já foram adiantados
-   na nuvem (27/11) e o P2.3 ficou pronto em JS (27/11, falta o buffer de reenvio em C++);
-   sem Windows, o próximo é o **P2.4** (parte JS). Ver `docs/2026-11-27-continuar-daqui.md`.
+   na nuvem (27/11); P2.3 e P2.4 ficaram prontos em JS (27/11). Falta portar o buffer de
+   reenvio para C++ (P2.3). Sem Windows, o próximo é esse porte; depois o P2.6 precisa de Windows. Ver `docs/2026-11-27-continuar-daqui.md`.
    O passo de medição continua sendo o **P0.1**. Os passos de código só começam depois de
    P0.1 e P0.2 terem resultado registrado, porque o P0.2 diz se a Fase 0 sozinha
    já resolveu parte do problema.
@@ -228,9 +228,12 @@ Decisões: [[D-06-transporte-udp-proprio|D-06]], [[D-07-decode-webcodecs-no-rece
 ### P2.4 — Controle de taxa
 - **O que faz:** ajusta o bitrate do encoder à rede, como a escada atual faz.
 - **Passos:**
-  - [ ] Receptor manda `RELATORIO` a cada 200 ms (perda, atraso de chegada relativo).
-  - [ ] Regra no lado do envio: perda > 5% ou atraso subindo → −20%; folga por 5 s → +10% até o teto.
+  - [x] Receptor manda `RELATORIO` a cada 200 ms (perda, atraso de chegada relativo).
+        `MedidorRelatorio` em `src/main/videonativo/taxa.js`; quem usa chama `gerar()` a cada 200 ms.
+  - [x] Regra no lado do envio: perda > 5% ou atraso subindo → −20%; folga por 5 s → +10% até o teto.
+        `ControleTaxa` no mesmo arquivo; no corte o alvo também fica em 85% do kbps recebido (ver Registro).
   - [ ] Reaproveitar o teto e a escada de resolução de `autoquality.js` / `capturequality.js` quando fizer sentido.
+        (`definirTeto(kbps)` já existe; ligar à escada fica para o P2.6, quando o exe estiver no ar.)
 - **Pronto quando:** com banda limitada artificialmente, o atraso volta ao normal em menos de 3 s.
 
 ### P2.5 — Receptor com WebCodecs
@@ -332,5 +335,6 @@ Uma linha por passo concluído: data, passo, resultado, link da nota.
 | 2026-11-25 | Fase 0 código | Implementado e testado em Node (12 testes novos, 2544 no total); C++ só com checagem de sintaxe MinGW | [[D-01-prioridade-gpu-high|D-01]] |
 | 2026-11-25 | P1.1 | Esqueleto do `golive-media` (args, métricas JSON, controle por stdin); compila em g++ e MinGW, 5 testes; falta MSVC | [[D-11-como-compilar-o-golive-media\|D-11]] |
 | 2026-11-25 | P2.1 | Spec do protocolo UDP escrita e revisada de forma independente (vetores conferidos byte a byte) | [[D-13-formato-do-pacote-udp\|D-13]] |
+| 2026-11-27 | P2.4 (JS) | `MedidorRelatorio` + `ControleTaxa` (`taxa.js`); gargalo simulado 30→8 Mbps normaliza o atraso em ~2,0 s (critério <3 s). −20% por segundo sozinho levava ~6 s: no corte o alvo vai a `min(80% do alvo, 85% do kbps recebido)`, 1 s entre cortes | [[D-13-formato-do-pacote-udp\|D-13]] |
 | 2026-11-27 | P2.3 (JS) | Suspeita/NACK/FEC automático no `Remontador`, `BufferReenvio` de referência, simulação: 2% de perda → 98,8–99,6% dos quadros sem keyframe (N=10 e 5, 4 sementes); sem FEC 87–94%. Falta o reenvio em C++ | [[D-13-formato-do-pacote-udp\|D-13]] |
 | 2026-11-27 | P2.2 | Pacote e remontagem em JS (`src/main/videonativo/`), empacotador e HMAC próprios em C++; 57 testes, teste cruzado C++→JS byte a byte | [[D-13-formato-do-pacote-udp\|D-13]] |
