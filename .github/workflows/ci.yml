@@ -33,8 +33,9 @@ jobs:
       # Lint primeiro: separa erros de estilo dos erros de comportamento dos testes.
       - run: npm run lint
 
-      # O teste falha o job se houver regressao funcional.
-      - run: npm test
+      # O teste falha o job se houver regressao funcional. O reporter spec lista os testes
+      # que falharam no fim do log tambem no Node 22 (o padrao dele fora de TTY e TAP, sem resumo).
+      - run: npm test -- --test-reporter=spec
 
       # A cobertura fica visivel no log, mas nao bloqueia o CI por ter denominador parcial.
       - name: cobertura (informativa)
