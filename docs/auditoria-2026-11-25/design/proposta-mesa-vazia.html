@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<!-- Mock estatico da proposta R1 (design.md): estado vazio da Mesa, como a spec 05 §3.4 pede.
+     Abre direto no navegador; le os tokens e componentes reais do Sinal. Nao e codigo do app. -->
+<title>Proposta: Mesa vazia</title>
+<link rel="stylesheet" href="../../../src/renderer/sinal/tokens.css" />
+<link rel="stylesheet" href="../../../src/renderer/sinal/base.css" />
+<link rel="stylesheet" href="../../../src/renderer/sinal/components.css" />
+<style>
+  /* So para o mock: a superficie da Mesa com a grade de pontos e o bloco vazio no centro. */
+  body { display: grid; grid-template-rows: var(--h-head) 1fr var(--h-bus); }
+  .faixa { display: flex; align-items: center; gap: var(--s-3); padding: 0 var(--s-4); background: var(--s1);
+    border-bottom: 1px solid var(--line); font: var(--t-heading); }
+  .superficie { position: relative; background-color: var(--bg);
+    background-image: radial-gradient(var(--grid) 1px, transparent 1.5px); background-size: 48px 48px; }
+  .vazia { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: var(--s-3);
+    text-align: center; }
+  .tipos { display: grid; grid-template-columns: repeat(3, minmax(0, 168px)); gap: var(--s-2); margin-top: var(--s-2); }
+  .tipos .btn { justify-content: flex-start; }
+  .dica { font: var(--t-meta); color: var(--tx3); }
+  .dica kbd { margin: 0 2px; }
+  .bus { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2); padding: 0 var(--s-4);
+    background: var(--s1); border-top: 1px solid var(--line); }
+  .seta { position: absolute; right: 160px; bottom: var(--s-2); font: var(--t-meta); color: var(--wire); }
+</style>
+</head>
+<body>
+  <header class="faixa">Sala de Nick <span class="tx-data tx-3">26.12.4.8:47800</span></header>
+  <main class="superficie">
+    <section class="vazia" aria-labelledby="vazia-titulo">
+      <svg class="blank__art" viewBox="0 0 32 32" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="0.75" stroke-linecap="round">
+          <path d="M20.71 14.20 L11.35 9.06" /><path d="M20.71 17.80 L11.35 22.94" />
+          <circle cx="8.5" cy="7.5" r="3.25" /><circle cx="8.5" cy="24.5" r="3.25" />
+          <path d="M24 12.2 L27.8 16 L24 19.8 L20.2 16 Z" />
+        </g>
+      </svg>
+      <h1 id="vazia-titulo" class="blank__title">A Mesa está vazia.</h1>
+      <p class="blank__text">Ponha um jogo, um vídeo ou uma nota. Todo mundo na sala vê e mexe junto.</p>
+      <div class="tipos" role="group" aria-label="Janelas mais usadas">
+        <button class="btn btn--secondary btn--sm" type="button">Vídeo do YouTube</button>
+        <button class="btn btn--secondary btn--sm" type="button">Truco</button>
+        <button class="btn btn--secondary btn--sm" type="button">Jogo da velha</button>
+        <button class="btn btn--secondary btn--sm" type="button">Bloco de notas</button>
+        <button class="btn btn--secondary btn--sm" type="button">Rádio da sala</button>
+        <button class="btn btn--secondary btn--sm" type="button">Pôquer</button>
+      </div>
+      <p class="dica">Tem mais em “Pôr na Mesa”, na barra de baixo, ou com <kbd>N</kbd>.</p>
+    </section>
+    <span class="seta" aria-hidden="true">↓</span>
+  </main>
+  <footer class="bus">
+    <button class="btn btn--primary" type="button">＋ Transmitir tela</button>
+    <button class="btn btn--quiet" type="button">Câmera</button>
+    <button class="btn btn--quiet" type="button">＋ Pôr na Mesa</button>
+    <button class="btn btn--quiet" type="button">Conversa</button>
+  </footer>
+</body>
+</html>
