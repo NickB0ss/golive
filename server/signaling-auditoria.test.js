@@ -220,7 +220,9 @@ test('S-02: room-migrating nao publica o clientId do lider novo; a chave vai so 
 
 test('S-02: no servidor do sucessor, so a chave vale coroa (o clientId, nao), e uma vez so', async () => {
   const chave = 'chave-secreta-da-bia';
-  const server = await createSignalingServer({ port: 0, ownerToken: 'tok-caio', initialTransferredTo: hashDaChave(chave) });
+  const server = await createSignalingServer({
+    port: 0, ownerToken: 'tok-caio', initialTransferredTo: hashDaChave(chave),
+  });
   try {
     // Quem hospeda a sala nova (token) nao e o lider escolhido.
     const caio = await entra(server.port, { name: 'Caio', ownerToken: 'tok-caio', clientId: 'c-caio' });
@@ -378,7 +380,9 @@ test('S-06: a migracao escolhe sucessor e lider novo so entre quem esta conectad
 
   const novo = await createSignalingServer({ port: 0, ownerToken: 'tok-caio', initialTransferredTo: m.leaderKeyHash });
   try {
-    const caio2 = await entra(novo.port, { name: 'Caio', ownerToken: 'tok-caio', clientId: 'c-caio', leaderKey: m.leaderKey });
+    const caio2 = await entra(novo.port, {
+      name: 'Caio', ownerToken: 'tok-caio', clientId: 'c-caio', leaderKey: m.leaderKey,
+    });
     assert.equal(caio2.welcome.owner, true);
     caio2.ws.terminate();
   } finally {
@@ -444,7 +448,9 @@ test('S-09: quem caiu retoma o proprio lugar mesmo com a sala cheia', async () =
   const server = await createSignalingServer({ port: 0 });
   const todos = [];
   try {
-    for (let i = 0; i < MAX_CONNECTIONS; i++) todos.push(await entra(server.port, { name: `p${i}`, clientId: `c${i}` }));
+    for (let i = 0; i < MAX_CONNECTIONS; i++) {
+      todos.push(await entra(server.port, { name: `p${i}`, clientId: `c${i}` }));
+    }
     const caiu = todos[5];
     caiu.ws.terminate(); // 1006 -> suspenso
     await pausa(100);

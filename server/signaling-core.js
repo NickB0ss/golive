@@ -648,8 +648,10 @@ function normalizeRoomName(raw) {
  * Com ele, quem entra com a chave certa e o lider da sala nova -- nem o
  * `clientId`, que e publico, nem o ownerToken de quem a hospeda.
  * `maxBufferedBytes`: teto da fila de envio de cada socket (S-01).
- * `joinTimeoutMs`: prazo de uma conexao nova pra mandar o 'join' (S-04). */
-function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS, mesa = true, closeGraceMs = CLOSE_GRACE_MS, maxBufferedBytes = MAX_BUFFERED_BYTES, joinTimeoutMs = JOIN_TIMEOUT_MS }) {
+ * `joinTimeoutMs`: prazo de uma conexao nova pra mandar o 'join' (S-04).
+ * `maxPendingPerIp`: conexoes sem join de um mesmo IP (S-04; os testes, que
+ * vem todos do loopback, sobem quando precisam de muitas). */
+function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS, mesa = true, closeGraceMs = CLOSE_GRACE_MS, maxBufferedBytes = MAX_BUFFERED_BYTES, joinTimeoutMs = JOIN_TIMEOUT_MS, maxPendingPerIp = MAX_PENDING_PER_IP }) {
   const mesaEnabled = mesa !== false;
   if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
     return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
@@ -1568,7 +1570,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
         // IP: um script so nao tranca a porta pra todo mundo (S-04).
         const pending = Array.from(wss.clients).filter((client) => !client.joined && client.readyState === client.OPEN);
         const pendingSameIp = pending.filter((client) => client.remoteIp === ws.remoteIp).length;
-        if (pending.length > MAX_PENDING_CONNECTIONS || pendingSameIp > MAX_PENDING_PER_IP) {
+        if (pending.length > MAX_PENDING_CONNECTIONS || pendingSameIp > maxPendingPerIp) {
           ws.close(1013, 'too-many-pending');
           return;
         }

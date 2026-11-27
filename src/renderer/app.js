@@ -1652,7 +1652,10 @@
     const seed = {
       roomId: migration.roomId,
       pin: joinedPin ?? migration.pin ?? null,
-      initialTransferredTo: migration.newOwnerClientId || null,
+      // Hash da chave de lider (o servidor antigo o mandou a todos): quem
+      // apresentar a chave no join vira lider da sala nova. Ver S-02 da
+      // auditoria 2026-11-25 em server/signaling-core.js.
+      initialTransferredTo: migration.leaderKeyHash || null,
       initialBans: migration.bans,
       initialChatHistory: migration.chat.length ? migration.chat : localChatTail,
       // Mesa: o retrato que o servidor antigo mandou no room-migrating.
@@ -2281,6 +2284,9 @@
               type: 'join', room: 'geral', name: name || t('sala.anonimo'), avatar: cfg.avatar || null,
               pin: pin || undefined, clientId: cfg.clientId, ownerToken: hostInfo?.ownerToken || undefined,
               ...(reconnectAttempt > 0 && resumeToken ? { resumeToken } : {}),
+              // Lider escolhido numa migracao: a chave que so ele recebeu no
+              // room-migrating e o que o faz lider da sala nova (S-02).
+              ...(migrationState?.leaderKey ? { leaderKey: migrationState.leaderKey } : {}),
               appVersion: appVersion || undefined,
             });
           });
@@ -2561,7 +2567,8 @@
                 roomId,
                 successor: successorId,
                 successorName: null,
-                newOwnerClientId: null,
+                leaderKeyHash: null,
+                leaderKey: null,
                 newOwnerConnectionId,
                 pin: null,
                 // Sem 'room-migrating' explicito (a queda foi abrupta demais
@@ -4139,7 +4146,9 @@
           roomId: msg.roomId,
           successor: msg.successor,
           successorName: msg.successorName,
-          newOwnerClientId: msg.newOwnerClientId,
+          // S-02: o hash vai pra todos; a chave, so pro lider escolhido.
+          leaderKeyHash: typeof msg.leaderKeyHash === 'string' ? msg.leaderKeyHash : null,
+          leaderKey: typeof msg.leaderKey === 'string' ? msg.leaderKey : null,
           pin: msg.pin ?? null,
           roomName: currentRoomName,
           bans: Array.isArray(msg.bans) ? msg.bans : [],

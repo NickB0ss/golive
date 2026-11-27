@@ -2242,7 +2242,8 @@ test('limitador de PIN normaliza IPv4 mapeado e limita IPs lembrados', () => {
 });
 
 test('sockets ainda sem join nao ocupam vagas da sala', async () => {
-  const server = await createSignalingServer({ port: 0 });
+  // Todos vem do loopback: a cota de pendentes por IP (S-04) sobe pra caber.
+  const server = await createSignalingServer({ port: 0, maxPendingPerIp: 32 });
   try {
     const host = await entrar(server.port, 'Host');
     const pending = [];
@@ -3114,11 +3115,16 @@ test('roomName de tipo errado (nao string) e ignorado sem lancar', async () => {
   }
 });
 
-test('initialTransferredTo faz o cliente correspondente entrar como dono', async () => {
-  const server = await createSignalingServer({ port: 0, initialTransferredTo: 'client-novo-dono' });
+// S-02 (auditoria 2026-11-25): a semente e o hash da chave de lider que o
+// room-migrating mandou so pro lider escolhido. O clientId nao decide nada.
+test('initialTransferredTo faz quem apresenta a chave de lider entrar como dono', async () => {
+  const { createHash } = require('node:crypto');
+  const chave = 'chave-do-novo-dono';
+  const hash = createHash('sha256').update(chave).digest('base64url');
+  const server = await createSignalingServer({ port: 0, initialTransferredTo: hash });
   try {
-    const novoDono = await entrar(server.port, 'Ana', { clientId: 'client-novo-dono' });
     const outro = await entrar(server.port, 'Bruno', { clientId: 'client-outro' });
+    const novoDono = await entrar(server.port, 'Ana', { clientId: 'client-novo-dono', leaderKey: chave });
     assert.equal(novoDono.welcome.owner, true);
     assert.equal(outro.welcome.owner, false);
     novoDono.ws.close();
