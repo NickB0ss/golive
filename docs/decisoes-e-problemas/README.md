@@ -14,7 +14,7 @@ links usam o nome do arquivo, então funcionam em qualquer pasta do vault.
 |---|---|---|---|
 | [[D-01-prioridade-gpu-high\|D-01]] | Prioridade de GPU HIGH (não REALTIME) enquanto há vídeo | 0 | aceita, aguarda validação no P0.2 |
 | [[D-02-prioridade-segue-keep-awake\|D-02]] | Prioridade liga e desliga pela mesma regra do keep-awake | 0 | aceita |
-| [[D-03-processo-auxiliar-golive-media\|D-03]] | Pipeline nativo num processo auxiliar (golive-media.exe) | 1 | proposta, confirmar no P1.1 |
+| [[D-03-processo-auxiliar-golive-media\|D-03]] | Pipeline nativo num processo auxiliar (golive-media.exe) | 1 | aceita no P1.1 (esqueleto compila e roda; falta MSVC) |
 | [[D-04-so-apis-do-windows\|D-04]] | Só APIs do Windows, sem bibliotecas de terceiros | 1-2 | aceita |
 | [[D-05-spike-em-arquivo-antes-da-rede\|D-05]] | Spike grava em arquivo antes de construir a rede | 1 | aceita |
 | [[D-06-transporte-udp-proprio\|D-06]] | Transporte UDP próprio em vez de WebRTC para o vídeo nativo | 2 | proposta, depende do portão da Fase 1 |
@@ -22,6 +22,8 @@ links usam o nome do arquivo, então funcionam em qualquer pasta do vault.
 | [[D-08-audio-continua-no-webrtc\|D-08]] | Áudio continua no WebRTC na primeira versão | 2 | proposta |
 | [[D-09-webrtc-continua-como-fallback\|D-09]] | WebRTC continua como padrão e como volta automática | 2-4 | aceita |
 | [[D-10-recepcao-udp-no-main\|D-10]] | Recepção UDP no processo main, entrega ao renderer por MessagePort | 2 | proposta, validar no P2.5 |
+| [[D-11-como-compilar-o-golive-media\|D-11]] | golive-media como segundo target do binding.gyp | 1 | proposta, confirmar com MSVC |
+| [[D-13-formato-do-pacote-udp\|D-13]] | Formato do pacote UDP: big-endian, HMAC-SHA256/16 por par, sem cifra, FEC XOR | 2-3 | aceita, spec revisada; implementada no P2.2 |
 
 ## Problemas encontrados
 
