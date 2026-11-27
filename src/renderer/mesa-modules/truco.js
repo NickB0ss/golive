@@ -23,17 +23,10 @@
     return valor && typeof valor === 'object' ? valor : {};
   }
 
-  function comTipo(acao) {
-    const entrada = objeto(acao);
-    return Object.assign({}, entrada, { type: entrada.type || entrada.kind });
-  }
-
-  function origem(acao) {
-    return String(objeto(acao).from || '');
-  }
-
-  function idDaAcao(acao, contexto) {
-    return origem(acao) || String(objeto(contexto).from || '');
+  // Quem agiu e SEMPRE o id da conexao que o servidor entrega em `contexto.from` (no reduce, o `by` da
+  // operacao). O `from` que o cliente escreve na acao nao vale nada (J-01 da auditoria 2026-11-25).
+  function quemAgiu(contexto) {
+    return String(objeto(contexto).from || '');
   }
 
   function agoraDoServidor(contexto) {
@@ -200,21 +193,15 @@
   }
 
   function preparar(estado, acao, contexto) {
-    const entrada = comTipo(acao);
+    const entrada = objeto(acao);
     const agora = agoraDoServidor(contexto);
-    if (entrada.type === 'sit') {
-      return {
-        type: 'sit',
-        from: idDaAcao(entrada, contexto),
-        seat: entrada.seat,
-        name: nomeDaPessoa(contexto, idDaAcao(entrada, contexto))
-      };
+    if (entrada.kind === 'sit') {
+      return { kind: 'sit', seat: entrada.seat, name: nomeDaPessoa(contexto, quemAgiu(contexto)) };
     }
-    if (entrada.type !== 'deal') {
-      return Object.assign({}, entrada, {
-        from: idDaAcao(entrada, contexto),
-        at: agora
-      });
+    if (entrada.kind !== 'deal') {
+      // `from` do cliente sai: o reduce le o autor de `contexto.from`.
+      const { from: _forjado, ...resto } = entrada;
+      return Object.assign({}, resto, { at: agora });
     }
 
     const lugares = lugaresAtivos(estado, contexto);
@@ -222,43 +209,51 @@
     const baralho = moduloBaralho.shuffle(baralhoDoTruco(), aleatorio);
     const carteador = carteadorSeguinte(estado, lugares, aleatorio);
     const distribuicao = distribuirCartas(baralho, lugares, carteador);
-    return Object.assign({ type: 'deal', seats: lugares, dealer: carteador }, distribuicao, {
+    return Object.assign({ kind: 'deal', seats: lugares, dealer: carteador }, distribuicao, {
       at: agora
     });
   }
 
   function validar(estado, acao, contexto) {
-    const entrada = comTipo(acao);
-    const id = idDaAcao(entrada, contexto);
+    const entrada = objeto(acao);
+    const id = quemAgiu(contexto);
     const lugar = lugarDaPessoa(estado, id);
     const mao = estado.hand;
 
-    if (entrada.type === 'sit') {
+    if (entrada.kind === 'sit') {
       if (!Number.isInteger(entrada.seat) || entrada.seat < 0 || entrada.seat > 3) {
         return codigo('mesa.jogo.lugarInvalido');
       }
       if (lugar >= 0) return codigo('mesa.jogo.jaEstaSentado');
+      // Sentar com a mao em curso deixaria alguem na mesa fora da mao (dupla -1): so entre maos (J-05).
+      if (estado.hand) return codigo('mesa.cadeiras.partidaComecou');
       if (pessoaNoLugar(estado, contexto, entrada.seat)) return codigo('mesa.jogo.lugarOcupado');
       return true;
     }
-    if (entrada.type === 'stand') return lugar >= 0 ? true : codigo('mesa.truco.naoEstaSentado');
-    if (entrada.type === 'reset') return lugar >= 0 || objeto(contexto).isLeader === true
+    if (entrada.kind === 'stand') return lugar >= 0 ? true : codigo('mesa.truco.naoEstaSentado');
+    if (entrada.kind === 'reset') return lugar >= 0 || objeto(contexto).isLeader === true
         ? true
         : codigo('mesa.truco.soQuemEstaNaMesaReinicia');
-    if (entrada.type === 'deal') {
+    if (entrada.kind === 'deal') {
       if (lugar < 0 || !podeComecar(estado, contexto) || maoValida(estado)) return codigo('mesa.truco.naoPodeDarAgora');
       return true;
     }
-    if (entrada.type === 'timeout') return mao && mao.deadline ? true : codigo('mesa.truco.semDecisaoPendente');
+    if (entrada.kind === 'timeout') {
+      if (!mao || !mao.deadline) return codigo('mesa.truco.semDecisaoPendente');
+      // O servidor ja devolve `early` para `kind: 'timeout'`; conferir aqui tambem nao custa nada (J-02).
+      const agora = objeto(contexto).now;
+      return typeof agora === 'number' && agora < mao.deadline ? codigo('mesa.truco.semDecisaoPendente') : true;
+    }
     if (!mao) return codigo('mesa.truco.semMao');
 
-    if (entrada.type === 'eleven') {
+    if (entrada.kind === 'eleven') {
       if (estado.phase !== 'eleven' || duplaDaMao(mao, lugar) !== mao.eleven) {
         return codigo('mesa.truco.naoESuaDecisao');
       }
       return ['play', 'run'].includes(entrada.choice) ? true : codigo('mesa.truco.decisaoInvalida');
     }
-    if (entrada.type === 'play') {
+    if (entrada.kind === 'play') {
+      if (duplaDaMao(mao, lugar) < 0) return codigo('mesa.jogo.naoESuaVez');
       if (mao.pending || estado.phase !== 'play' || mao.turn !== lugar) return codigo('mesa.jogo.naoESuaVez');
       if (!Number.isInteger(entrada.index) || !mao.cards[lugar][entrada.index]) {
         return codigo('mesa.jogo.cartaInvalida');
@@ -266,14 +261,14 @@
       if (entrada.covered && mao.rounds.length === 0) return codigo('mesa.truco.encobertaSegunda');
       return true;
     }
-    if (entrada.type === 'call') {
-      if (lugar < 0) return codigo('mesa.truco.cantoIndisponivel');
+    if (entrada.kind === 'call') {
+      if (duplaDaMao(mao, lugar) < 0) return codigo('mesa.truco.cantoIndisponivel');
       if (estado.phase !== 'play') return codigo('mesa.truco.maoNaoJogando');
       if (mao.pending || mao.noCall || mao.value >= 12) return codigo('mesa.truco.cantoIndisponivel');
       if (duplaDaMao(mao, lugar) === mao.lastCaller) return codigo('mesa.truco.cantoIndisponivel');
       return true;
     }
-    if (entrada.type === 'answer') {
+    if (entrada.kind === 'answer') {
       if (!mao.pending || duplaDaMao(mao, lugar) !== mao.pending.toTeam) return codigo('mesa.truco.naoESuaResposta');
       if (!['accept', 'run', 'raise'].includes(entrada.answer)) return codigo('mesa.truco.respostaInvalida');
       if (entrada.answer === 'raise' && mao.pending.amount >= 12) return codigo('mesa.truco.naoPassaDeDoze');
@@ -332,27 +327,30 @@
   }
 
   function reduzir(estado, acao, contexto) {
-    const entrada = comTipo(acao);
-    if (entrada.type === 'sit') {
+    const entrada = objeto(acao);
+    const quem = quemAgiu(contexto);
+    if (entrada.kind === 'sit') {
       const seats = estado.seats.slice();
       const names = estado.names.slice();
-      seats[entrada.seat] = origem(entrada);
-      names[entrada.seat] = entrada.name || nomeDaPessoa(contexto, origem(entrada));
+      seats[entrada.seat] = quem;
+      names[entrada.seat] = entrada.name || nomeDaPessoa(contexto, quem);
       return Object.assign({}, estado, { seats, names });
     }
-    if (entrada.type === 'stand') return removerPessoa(estado, origem(entrada));
-    if (entrada.type === 'reset') return estadoNovo();
-    if (entrada.type === 'deal') {
-      const mao = criarMao(estado, entrada);
-      return Object.assign({}, estado, {
+    if (entrada.kind === 'stand') return removerPessoa(estado, quem);
+    if (entrada.kind === 'reset') return estadoNovo();
+    if (entrada.kind === 'deal') {
+      // Partida acabada (12 pontos): a proxima mao abre partida nova, com o placar zerado (J-12).
+      const base = estado.phase === 'finished' ? Object.assign({}, estado, { scores: [0, 0] }) : estado;
+      const mao = criarMao(base, entrada);
+      return Object.assign({}, base, {
         dealer: entrada.dealer,
         phase: mao.eleven === null ? 'play' : 'eleven',
         hand: mao,
         result: null
       });
     }
-    if (entrada.type === 'timeout') return reduzirTimeout(estado, Object.assign({}, entrada, { at: entrada.at }));
-    if (entrada.type === 'eleven') {
+    if (entrada.kind === 'timeout') return reduzirTimeout(estado, Object.assign({}, entrada, { at: entrada.at }));
+    if (entrada.kind === 'eleven') {
       if (entrada.choice === 'run') return encerrar(estado, 1 - estado.hand.eleven, 1);
       const mao = Object.assign({}, estado.hand, {
         eleven: null,
@@ -360,13 +358,13 @@
       });
       return Object.assign({}, estado, { phase: 'play', hand: mao });
     }
-    if (entrada.type === 'play') {
-      const lugar = lugarDaPessoa(estado, origem(entrada));
+    if (entrada.kind === 'play') {
+      const lugar = lugarDaPessoa(estado, quem);
       return jogar(estado, Object.assign({}, entrada, { seat: lugar }));
     }
-    if (entrada.type === 'call') {
+    if (entrada.kind === 'call') {
       const mao = estado.hand;
-      const dupla = duplaDaMao(mao, lugarDaPessoa(estado, origem(entrada)));
+      const dupla = duplaDaMao(mao, lugarDaPessoa(estado, quem));
       const pendente = {
         fromTeam: dupla,
         toTeam: 1 - dupla,
@@ -377,7 +375,7 @@
         hand: Object.assign({}, mao, { pending: pendente, lastCaller: dupla, deadline: entrada.at + TEMPO_DA_VEZ })
       });
     }
-    if (entrada.type === 'answer') {
+    if (entrada.kind === 'answer') {
       const mao = estado.hand;
       if (entrada.answer === 'run') return encerrar(estado, mao.pending.fromTeam, mao.pending.previous);
       if (entrada.answer === 'accept') {
@@ -389,7 +387,7 @@
           })
         });
       }
-      const dupla = duplaDaMao(mao, lugarDaPessoa(estado, origem(entrada)));
+      const dupla = duplaDaMao(mao, lugarDaPessoa(estado, quem));
       const pendente = {
         fromTeam: dupla,
         toTeam: 1 - dupla,
@@ -417,8 +415,10 @@
 
   function removerPessoa(estado, id) {
     const lugar = lugarDaPessoa(estado, id);
+    if (lugar < 0) return estado;
     let proximo = estado;
-    if (estado.hand && lugar >= 0) {
+    // So quem esta na mao faz a dupla adversaria ganhar; cadeira de fora da mao (-1) so levanta.
+    if (estado.hand && duplaDaMao(estado.hand, lugar) >= 0) {
       proximo = encerrar(estado, 1 - duplaDaMao(estado.hand, lugar), estado.hand.value);
     }
     const seats = proximo.seats.slice();

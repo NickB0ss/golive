@@ -22,7 +22,10 @@ async function findFreeServer(createServer, { startPort = 9000, endPort = 9010, 
     try {
       return await createServer(port);
     } catch (err) {
-      if (err.code !== 'EADDRINUSE') throw err;
+      // EACCES: no Windows, porta dentro de uma faixa reservada (Hyper-V/WSL/
+      // Docker, `netsh int ipv4 show excludedportrange`) nega o bind -- vale
+      // como ocupada, senao a sala nem sobe (auditoria 2026-11-25, M-07).
+      if (err.code !== 'EADDRINUSE' && err.code !== 'EACCES') throw err;
     }
   }
   const err = new Error('PORTS_EXHAUSTED');

@@ -301,7 +301,10 @@
     };
 
     function update(novo) {
-      state = novo;
+      // Depois da migracao de host as cadeiras ficam com ids que nao existem mais: aparecem como livres
+      // (o validate do jogo tambem as trata assim; J-04 da auditoria 2026-11-25).
+      const cad = root.GoLive.mesaCadeiras;
+      state = cad && cad.semFantasmas && typeof api.peers === 'function' ? cad.semFantasmas(novo, api.peers()) : novo;
       const me = api.me();
       const eu = minhaCadeira(state, me);
       const labels = rotulosDe();

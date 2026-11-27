@@ -389,3 +389,60 @@ test('summary devolve chave e valores em cada fase', () => {
   s = passo(s, { kind: 'choose', index: 0 }, '1');
   assert.equal(desenha.summary(s).chave, 'mesa.desenha.desenhando');
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-09) ----
+
+function tresNoDesenho(agora = 1.7e12) {
+  let s = desenha.init();
+  for (const id of ['1', '2', '3']) s = passo(s, { kind: 'join' }, id, { now: agora });
+  s = passo(s, { kind: 'start' }, '1', { now: agora });
+  return passo(s, { kind: 'choose', index: 0 }, '1', { now: agora });
+}
+
+test('J-09: o desenhista que sai nao credita desenho ao proximo; a vez passa para ele, sem pular ninguem', () => {
+  const agora = 1.7e12;
+  const palavra = tresNoDesenho(agora).word;
+  const d = desenha.dropPeer(tresNoDesenho(agora), '1');
+  assert.equal(d.phase, 'choosing');
+  assert.equal(d.drawCounts['2'] || 0, 0, 'Bia nao desenhou ainda');
+  assert.equal(d.drawCounts['1'], undefined, 'quem saiu nao fica no placar de desenhos');
+  assert.equal(d.players[d.drawerIdx].id, '2', 'Bia e a proxima a desenhar');
+  assert.equal(d.lastRound.drawerId, '1', 'quem desenhou a palavra foi a Ana');
+  assert.equal(d.lastRound.word, palavra);
+});
+
+test('J-09: a vez gira certo quando o desenhista que sai e o do meio ou o ultimo', () => {
+  const agora = 1.7e12;
+  // Bia (2a) desenha e sai: segue a Caio.
+  let s = tresNoDesenho(agora);
+  s = desenha.dropPeer(passo(passo(s, { kind: 'timeout' }, '2', { now: agora + 80000 }), { kind: 'choose', index: 0 }, '2',
+    { now: agora + 81000 }), '2');
+  assert.equal(s.players[s.drawerIdx].id, '3');
+  // Caio (ultimo) desenha e sai: volta para a Ana.
+  s = tresNoDesenho(agora);
+  for (const id of ['1', '2']) {
+    s = passo(s, { kind: 'timeout' }, id, { now: agora + 80000 });
+    s = passo(s, { kind: 'choose', index: 0 }, id === '1' ? '2' : '3', { now: agora + 81000 });
+  }
+  const antes = s.players[s.drawerIdx].id;
+  assert.equal(antes, '3');
+  s = desenha.dropPeer(s, '3');
+  assert.equal(s.players[s.drawerIdx].id, '1');
+});
+
+test('J-09: o prazo da escolha (e das opcoes) nasce em hora real, nao em 1970, quando o desenhista sai', () => {
+  const agora = 1.7e12;
+  const d = desenha.dropPeer(tresNoDesenho(agora), '1');
+  assert.ok(d.deadline > agora, `prazo da escolha de hora real, veio ${d.deadline}`);
+  assert.equal(desenha.timeoutAt(d), d.deadline);
+  assert.equal(d.options.length, 3);
+});
+
+test('J-09: a saida do ultimo adivinhador pendente tambem nao zera o prazo', () => {
+  const agora = 1.7e12;
+  let s = tresNoDesenho(agora);
+  s = passo(s, { kind: 'guess', text: s.word }, '2', { now: agora + 1000 });
+  s = desenha.dropPeer(s, '3');
+  assert.equal(s.phase, 'choosing');
+  assert.ok(s.deadline > agora, `veio ${s.deadline}`);
+});

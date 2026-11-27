@@ -103,6 +103,8 @@
         if (!Number.isInteger(action.seat) || action.seat < 0 || action.seat >= N) {
           return codigo('mesa.jogo.lugarInvalido');
         }
+        // No meio da rodada a mao nasceria vazia: comprar uma carta jogavel a esvaziaria e daria a vitoria (J-08).
+        if (s.phase === 'play') return codigo('mesa.oito.rodadaCorrendo');
         if (me >= 0 && occupied(s, me, ctx)) return codigo('mesa.oito.jaEstaJogando');
         return occupied(s, action.seat, ctx) ? codigo('mesa.jogo.lugarOcupado') : true;
       }
@@ -143,7 +145,9 @@
       return { kind: 'sit', seat: action.seat, name: nameOf(ctx, fromOf(ctx)) };
     }
     if (action.kind === 'start') {
-      return { kind: 'start', deck: B.shuffle(B.newDeck(1), ctx.random), at };
+      // Quem joga (`players`) vem do servidor: o reduce nao tem `peers` e daria cartas e a vez a cadeira
+      // de id que saiu da sala na migracao (J-10, auditoria 2026-11-25).
+      return { kind: 'start', deck: B.shuffle(B.newDeck(1), ctx.random), players: players(s, ctx), at };
     }
     if (action.kind === 'play') {
       return { kind: 'play', card: action.card, suit: action.suit, at };
@@ -221,7 +225,15 @@
             && action.deck.every(B.isCard)
             ? action.deck.slice()
             : B.newDeck();
-          const p = players(out, ctx);
+          const p = Array.isArray(action.players)
+            ? action.players.filter((i) => Number.isInteger(i) && i >= 0 && i < N && out.seats[i] !== null)
+            : players(out, ctx);
+          // Cadeira de fantasma (id que saiu da sala) deixa a mesa: nao entra no rodizio nem recebe a vez.
+          for (let i = 0; i < N; i += 1) {
+            if (!p.includes(i)) { out.seats[i] = null; out.names[i] = null; }
+          }
+          // Partida acabada (100 pontos): o proximo start abre partida nova, com o placar zerado (J-12).
+          if (out.phase === 'finished') out.scores = fill(0);
           const count = p.length === 2 ? 7 : 5;
           out.hands = fill([]);
           out.deck = deck;

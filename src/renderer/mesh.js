@@ -979,7 +979,15 @@
       const peer = peers.get(peerId);
       const pc = peer?.outConns[kind];
       if (!pc) return false;
-      const sender = pc.getSenders().find((s) => s.track === track);
+      // R-02 (auditoria 2026-11-25): com a demanda suspensa (o espectador
+      // largou esta camera) o sender esta com track null e a busca pela track
+      // falhava: a camera desligava sem renegociar. O registro da demanda
+      // guarda os senders de video desta PC justamente pra esse caso.
+      const suspended = track?.kind === 'video' && isPeerSuspended(peerId, kind)
+        ? [...(demandByPc.get(pc)?.senders || [])].find((s) => s.track == null
+          && pc.getSenders().includes(s))
+        : null;
+      const sender = pc.getSenders().find((s) => s.track === track) || suspended;
       if (!sender) return false;
       if (negotiating.has(pc)) return false;
       return runNegotiation(pc, peerId, kind, 'out', negotiating, async (op) => {
@@ -1015,6 +1023,21 @@
       pc.close();
     }
 
+    // Par do closeOut para a entrada: fecha so a inConn daquele peer/kind.
+    // Usado quando a ORIGEM de um repasse sai da sala (R-03, auditoria
+    // 2026-11-25): a entrada 'screen@<origem>' fica sob o peer do relay, que
+    // continua na sala, e removePeer da origem nao a alcanca. Como closeOut,
+    // nao avisa onPeerState: quem chama sabe por que fechou e limpa o resto.
+    function closeIn(peerId, kind) {
+      const peer = peers.get(peerId);
+      const pc = peer?.inConns[kind];
+      if (!pc) return;
+      peer.inConns[kind] = null;
+      cancelPcWork(pc);
+      clearInStream(peerId, kind);
+      pc.close();
+    }
+
     // Repassa uma track JA RECEBIDA (peers.get(sourcePeerId).inStreams[kind])
     // pra um peer abaixo na arvore (F2). O Chromium recodifica -- nao existe
     // passagem direta de frame codificado entre RTCPeerConnections -- entao
@@ -1028,6 +1051,10 @@
     // A conexao criada pro filho usa o kind COMPOSTO ('screen@<origem>'),
     // nao o cru -- ver relayKindFor no topo deste arquivo pro porque.
     async function relayTo(childId, sourcePeerId, kind, quality) {
+      // R-07 (auditoria 2026-11-25): o filho vem de uma 'tree' alheia. Um id
+      // que nao esta na sala viraria peer fantasma (ensureOutConn -> addPeer)
+      // com RTCPeerConnection e encoder de verdade.
+      if (!peers.has(childId)) return false;
       const inbound = peers.get(sourcePeerId)?.inStreams?.[kind];
       if (!inbound) return false;
       const track = inbound.getVideoTracks()[0];
@@ -1229,6 +1256,7 @@
       applyEncodingToPeer,
       closeAllOut,
       closeOut,
+      closeIn,
       relayTo,
       statsFor,
       inStatsFor,

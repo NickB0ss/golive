@@ -253,3 +253,56 @@ for (const mudanca of ['folha', 'sem origem', 'peer saiu', 'sessao trocada', 'no
     assert.equal(f.pcs.length, 1);
   });
 }
+
+// R-01 (auditoria 2026-11-25): o relay que nao olha a tela nao mede a propria
+// entrada; o pedido da folha e o unico sinal de que ela congelou.
+function setupRelay({ framesDecoded = [10, 10, 10, 10], hasInbound = true } = {}) {
+  const sent = [];
+  const relayed = [];
+  const agora = 10000;
+  const peers = new Map([
+    ['folha', { outConns: { 'screen@O': {} }, inConns: {} }],
+    ['O', { name: 'Origem', outConns: {}, inConns: hasInbound ? { screen: {} } : {} }],
+  ]);
+  const mesh = { peers, isNegotiating: () => false,
+    closeOut(id, kind) { delete peers.get(id).outConns[kind]; },
+    async relayTo(id, sourceId, kind) { relayed.push([id, sourceId, kind]); return true; },
+  };
+  const session = { mesh, sig: { isOpen: () => true, send: (m) => sent.push({ ...m }) } };
+  const history = framesDecoded.map((n, i) => ({ at: agora - (framesDecoded.length - 1 - i) * 2000,
+    sample: { framesDecoded: n } }));
+  const ctx = vm.createContext({
+    currentSession: session, cfg: { network: { tree: true } }, KINDS: ['screen', 'camera'],
+    parseKind, relayKindFor, stallwatch: require('./stallwatch'), console: { warn() {}, info() {} },
+    myRole: { screen: new Map([['O', { role: 'relay', filhosIds: ['folha'], relayed: new Set() }]]),
+      camera: new Map() },
+    relayRetry: createRelayRetry(), relayRetryKey: (id, kind) => `${id}|${kind}`,
+    qualityForPeer: () => ({}), stallDiagByInput: new Map([['O|screen', history]]),
+    relayInputReofferAt: new Map(), performance: { now: () => agora }, Date,
+  });
+  vm.runInContext(source.slice(start, end), ctx);
+  return { ctx, session, sent, relayed };
+}
+
+test('R-01: relay com a entrada parada pede a entrada de volta a origem', async () => {
+  const f = setupRelay();
+  assert.equal(await f.ctx.reofferOne(f.session, 'folha', 'screen@O'), true);
+  assert.deepEqual(f.sent, [{ type: 'reoffer', to: 'O', kind: 'screen' }]);
+  assert.equal(f.relayed.length, 0, 'refazer a perna do filho com a mesma track parada nao adianta');
+  // Segundo filho (ou nova tentativa) dentro do intervalo: um pedido so.
+  assert.equal(await f.ctx.reofferOne(f.session, 'folha', 'screen@O'), true);
+  assert.equal(f.sent.length, 1);
+});
+
+test('R-01: relay sem a entrada tambem pede a origem', async () => {
+  const f = setupRelay({ hasInbound: false, framesDecoded: [] });
+  assert.equal(await f.ctx.reofferOne(f.session, 'folha', 'screen@O'), true);
+  assert.deepEqual(f.sent, [{ type: 'reoffer', to: 'O', kind: 'screen' }]);
+});
+
+test('R-01: entrada com quadros chegando refaz so a perna do filho', async () => {
+  const f = setupRelay({ framesDecoded: [10, 40, 70, 100] });
+  assert.equal(await f.ctx.reofferOne(f.session, 'folha', 'screen@O'), true);
+  assert.equal(f.sent.length, 0);
+  assert.deepEqual(f.relayed, [['folha', 'O', 'screen']]);
+});

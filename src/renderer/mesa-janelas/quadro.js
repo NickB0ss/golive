@@ -358,8 +358,11 @@
 
     function update(novo) {
       const antes = state;
+      // Dono que saiu da sala (migracao) nao esconde o quadro: a regra mora no modulo (isPrivate com `peers`).
+      const modulo = root.GoLive.mesaModules && root.GoLive.mesaModules.quadro;
+      const peers = typeof api.peers === 'function' ? api.peers() : null;
       state = novo && typeof novo === 'object'
-        ? { ...novo, hidden: novo.hidden === true }
+        ? { ...novo, hidden: modulo?.isPrivate ? modulo.isPrivate(novo, { peers }) : novo.hidden === true }
         : { owner: null, hidden: false };
       const visibilidade = visibilidadeQuadro(state, api.me(), api.nameOf);
       if (visibilidade.semAcesso) {

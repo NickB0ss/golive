@@ -80,3 +80,26 @@ test('summary indica quando o quadro esta escondido', () => {
   assert.equal(R(quadro.summary({ owner: '7', hidden: true })), 'Quadro escondido');
   assert.equal(typeof R(quadro.summary(quadro.init({}))), 'string');
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-16): quadro escondido cujo dono saiu da sala (migracao) ----
+
+test('J-16: dono que nao esta mais na sala (id antigo da migracao) nao segura o quadro escondido', () => {
+  const escondido = { owner: '1', hidden: true };
+  const sala = { peers: [{ id: '7' }, { id: '8' }], isLeader: false };
+  assert.equal(quadro.canAnnotateSee(escondido, '8', sala), true);
+  assert.equal(quadro.canAnnotateDraw(escondido, '8', sala), true);
+  assert.equal(quadro.isPrivate(escondido, sala), false);
+  // Sem dono na sala vale a regra do quadro aberto: limpar e do lider (ou do dono, que nao existe mais).
+  assert.equal(quadro.canAnnotateClear(escondido, '8', sala), false);
+  assert.equal(quadro.canAnnotateClear(escondido, '8', { ...sala, isLeader: true }), true);
+});
+
+test('J-16: com o dono na sala o quadro escondido segue escondido', () => {
+  const escondido = { owner: '7', hidden: true };
+  const sala = { peers: [{ id: '7' }, { id: '8' }], isLeader: false };
+  assert.equal(quadro.canAnnotateSee(escondido, '8', sala), false);
+  assert.equal(quadro.canAnnotateDraw(escondido, '8', sala), false);
+  assert.equal(quadro.canAnnotateSee(escondido, '7', sala), true);
+  assert.equal(quadro.isPrivate(escondido, sala), true);
+  assert.equal(quadro.isPrivate(escondido), true, 'sem lista de peers (cliente antigo) vale o estado');
+});

@@ -268,6 +268,9 @@
   /** Relay por canvas, ou null quando ele nao pode ser montado (browser sem
    * MediaStreamTrackProcessor) e a captura vai crua pros senders. */
   let screenRelay = null;
+  // R-05: relays refeitos depois de erro nesta transmissao (recoverScreenRelay).
+  const SCREEN_RELAY_MAX_RECOVERIES = 3;
+  let screenRelayRecoveries = 0;
   // Pausa da transmissao: a tela continua capturada e as conexoes de pe, so
   // param de receber quadro. Diferente de parar de compartilhar, que fecha
   // tudo e obriga a escolher a fonte de novo.
@@ -1960,6 +1963,7 @@
     stallNotes.clear();
     routeLogged.clear();
     lastReofferAt.clear();
+    relayInputReofferAt.clear();
     reofferByLeaf.clear();
     lastViewStateSent.clear();
     renderMembersPanel();
@@ -2931,6 +2935,12 @@
   // e nao ha como acompanhar isso de forma confiavel -- entao o rabisco
   // fica dentro do app, como sempre foi, e a pessoa e avisada.
   let annotOverlayOn = false;
+  // R-10 (auditoria 2026-11-25): o start espera o IPC do main, e um stop no
+  // meio dessa espera via `annotOverlayOn` ainda falso e nao fazia nada --
+  // a janela abria por cima do monitor sem transmissao. Cada start e cada
+  // stop mudam a geracao; o start que volta numa geracao velha nao liga.
+  let annotOverlayGen = 0;
+  let annotOverlayStartGen = 0;
 
   /** O main ja sabe qual fonte foi escolhida (ele guardou no `sources:select`),
    * entao nao ha id pra passar daqui -- e melhor assim: uma fonte da verdade
@@ -2938,7 +2948,15 @@
   async function startAnnotOverlay() {
     annotOverlayOn = false;
     if (!shareAnnotations && !shareReactions) return;
+    const gen = ++annotOverlayGen;
+    annotOverlayStartGen = gen;
     const r = await window.golive.startAnnotOverlay?.();
+    if (gen !== annotOverlayGen) {
+      // Parou enquanto o main abria: fecha o que abriu. Se um start mais
+      // novo ja saiu, a janela e dele -- fechar aqui apagaria a dele.
+      if (r?.ok && annotOverlayStartGen === gen) window.golive.stopAnnotOverlay?.();
+      return;
+    }
     if (r?.ok) {
       annotOverlayOn = true;
       // A lousa costuma nascer vazia aqui, mas nao sempre: reconectar sem
@@ -2958,6 +2976,7 @@
   }
 
   function stopAnnotOverlay() {
+    annotOverlayGen += 1; // cancela um start ainda esperando o main
     if (!annotOverlayOn) return;
     annotOverlayOn = false;
     window.golive.stopAnnotOverlay?.();
@@ -3225,6 +3244,11 @@
 
   const lastReofferAt = new Map(); // `${pedinte}|${kind}` -> ms do ultimo refazer
   const REOFFER_MIN_GAP_MS = 15000;
+  // R-01: ultima vez que este relay pediu a propria entrada de volta a
+  // origem, por `${origem}|${kind}`. O intervalo e o do vigia: dois filhos
+  // reclamando juntos geram um pedido so, e o teto de tentativas da folha
+  // limita quantos pedidos um congelamento produz.
+  const relayInputReofferAt = new Map();
   const MAX_REOFFER_HISTORY = 128;
   // Uma folha pode alternar camera/tela na mesma pausa da origem. So uma
   // renegociacao por vez evita fechar duas PCs e a fila de uma posicao guarda
@@ -3464,6 +3488,10 @@
     // falha, porem, a arvore continua dizendo de quem deveriamos receber;
     // sem olhar essa expectativa, nao ha tile nem PC para o hotfix antigo
     // medir e a folha fica preta para sempre.
+    // A orfa (H1) ainda pinta tiles pelo P2P dela enquanto a sinalizacao
+    // volta: as entradas dela tambem contam como caminho vivo.
+    const vivas = new Set(seen);
+    for (const { peerId, kind } of orphanSession?.mesh?.receivingFrom() || []) vivas.add(connKeyOf(peerId, kind));
     for (const baseKind of KINDS) {
       for (const [origem, state] of myRole[baseKind]) {
         if (state.paiId == null || String(origem) === String(myId)) continue;
@@ -3476,7 +3504,9 @@
         const tileId = baseKind === 'camera' ? `cam-${origem}` : String(origem);
         // Outro caminho ainda pode estar pintando o mesmo conteudo. So a
         // ausencia dos dois (inConn e tile) e falha que merece reoferta.
-        if (tileSource.has(tileId)) continue;
+        // R-03: o tile so conta se a conexao que o pinta ainda existe; um
+        // relay que saiu deixava a fonte apontando para uma PC fechada.
+        if (tileSource.has(tileId) && vivas.has(tileSource.get(tileId))) continue;
         checkStalledInput(session, { peerId, kind, hasInbound: false, now });
       }
     }
@@ -3526,6 +3556,11 @@
     }
     const state = myRole[baseKind].get(sourceId);
     if (state?.role !== 'relay' || !state.filhosIds.map(String).includes(peerId)) return false;
+    // R-01: com a entrada parada, refazer so esta perna repassaria a mesma
+    // track congelada. Quem conserta e a origem: a entrada nova derruba os
+    // repasses (removedTile -> dropRelaysOf) e o onTrack repassa de novo a
+    // todos os filhos.
+    if (askOriginForRelayInput(session, sourceId, baseKind)) return true;
     // A folha pediu esta reoferta explicitamente: mesmo apos o teto do
     // backoff, ela pode iniciar um ciclo novo. Cancela tambem uma tentativa
     // automatica pendente para nao negociar duas PCs em paralelo.
@@ -3542,6 +3577,32 @@
       if (!ok) state.relayed.delete(peerId);
     }
     return ok;
+  }
+
+  /** R-01: uma folha acusou congelamento de `kind@sourceId`. O vigia deste
+   * relay so mede a entrada quando ele mesmo olha a tela (quadros exibidos);
+   * escondido ou assistindo outra, quem enxerga o problema sao os filhos. Se
+   * as amostras da entrada mostram que nada decodifica aqui (ou a entrada
+   * nem existe), pede a reoferta a origem. Devolve true quando a entrada e o
+   * defeito, mesmo que o pedido ja tenha saido ha pouco: refazer a perna do
+   * filho com a mesma track parada nao adiantaria. Sem laco: so um pedido de
+   * folha chega aqui, e a folha tem teto de tentativas. */
+  function askOriginForRelayInput(session, sourceId, baseKind) {
+    const inputKey = `${sourceId}|${baseKind}`;
+    const stalled = stallwatch.relayInputStalled({
+      hasInbound: Boolean(session.mesh.peers.get(sourceId)?.inConns[baseKind]),
+      history: stallDiagByInput.get(inputKey),
+      now: performance.now(),
+    });
+    if (!stalled) return false;
+    const agora = Date.now();
+    if (agora - (relayInputReofferAt.get(inputKey) || 0) < stallwatch.DEFAULTS.cooldownMs) return true;
+    relayInputReofferAt.set(inputKey, agora);
+    const nome = session.mesh.peers.get(sourceId)?.name || `#${sourceId}`;
+    console.warn(`[arvore] folha acusou ${baseKind} de ${nome} parada e a entrada deste relay tambem esta`
+      + ' sem quadros: pedindo a origem para refazer a entrada');
+    session.sig.send({ type: 'reoffer', to: sourceId, kind: baseKind });
+    return true;
   }
 
   function runLeafReoffer(session, peerId, kind, state) {
@@ -3673,6 +3734,7 @@
           stallNotes.clear();
           routeLogged.clear();
           lastReofferAt.clear();
+          relayInputReofferAt.clear();
           reofferByLeaf.clear();
           lastViewStateSent.clear();
           orphanSession = null;
@@ -3909,6 +3971,20 @@
         mesaViewers = mesaViewers.filter((id) => id !== String(msg.id));
         relayRetry.clearPeer(msg.id);
         pendingTrees.forgetOrigin(msg.id);
+        // R-03 (auditoria 2026-11-25): removePeer fecha as PCs sem avisar
+        // onPeerState (pc.close() nao dispara connectionstatechange). O que
+        // passava por quem saiu sai aqui: como origem, os repasses que
+        // fazemos da tela dele e a entrada de repasse dele vinda de outro
+        // relay; como relay, os tiles que ele entregava -- sem isso o vigia
+        // achava que o tile ainda tinha conexao e nunca pedia reoferta.
+        for (const kind of KINDS) {
+          dropRelaysOf(session, kind, msg.id, { ended: true });
+          const viaRelay = relayKindFor(kind, msg.id);
+          for (const peerId of mesh.peers.keys()) mesh.closeIn(peerId, viaRelay);
+        }
+        for (const [tileId, conn] of [...tileSource]) {
+          if (conn.startsWith(`${msg.id}|`)) dropTile(tileId);
+        }
         mesh.removePeer(msg.id);
         for (const k of rxHealthByPeer.keys()) if (k.startsWith(msg.id + ':')) rxHealthByPeer.delete(k);
         for (const k of peerQuality.keys()) if (k.startsWith(msg.id + ':')) peerQuality.delete(k);
@@ -3983,13 +4059,12 @@
         const answerSdp = await mesh.handleOffer(msg.from, msg.sdp, msg.kind, msg.renegotiate === true);
         if (currentSession !== session) return; // sessao caiu enquanto negociava
         sig.send({ type: 'answer', to: msg.from, sdp: answerSdp, kind: msg.kind });
-        // Comecamos a receber com a janela ja oculta: o transmissor assume
-        // "assistindo" por padrao, entao precisa ser corrigido na hora --
-        // do contrario ele paga um encode que ninguem esta vendo ate a
-        // proxima mudanca de visibilidade.
-        if (!isAppWatching()) sig.send({ type: 'view-state', to: msg.from, kind: msg.kind, watching: false,
-          encodeHealth: encodeHealthForInput(msg.from, msg.kind),
-          receiveHealth: receiveHealthForInput(mesh, msg.from, msg.kind), relayLoad: relayLoad() });
+        // Toda PC nova nasce "assistindo" do lado de quem transmite, entao a
+        // demanda real sai na hora -- do contrario ele paga um encode que
+        // ninguem esta vendo ate o proximo evento de visibilidade ou escolha.
+        // R-04 (auditoria 2026-11-25): a conta e a do broadcastViewState
+        // (janela, tela escolhida e folhas atras de nos), nao so a janela.
+        broadcastViewState();
         // So uma oferta DIRETA da origem destrava um repasse pendente: a
         // stream que vamos repassar e a que acabou de chegar por ela.
         if (!parseKind(msg.kind).sourceId) await flushPendingRelay(session, msg.kind, msg.from);
@@ -4217,6 +4292,14 @@
           canClearAll: false, // a camera e da outra pessoa
           canDraw: true,
         });
+        // R-02 (auditoria 2026-11-25): desligar a camera renegocia na MESMA
+        // PC (removeTrack, A8), e por esse caminho o mesh nao avisa tile
+        // removido. Sem isto o tile ficava preto ou congelado ate a pessoa
+        // sair. Religar a camera manda oferta nova, e o onTrack recria o tile.
+        if (msg.on !== true && msg.id != null) {
+          dropTile(`cam-${msg.id}`);
+          dropWatchers(`cam-${msg.id}`);
+        }
         break;
       }
       case 'broadcast-state': {
@@ -4431,12 +4514,20 @@
           console.warn('[arvore] tree recusada: origem não está ao vivo', origem);
           break;
         }
+        // R-07: epoch inteiro, pai conhecido e filhos que estao na sala.
+        const tree = broadcastguards.sanitizeTree({
+          msg, origem, myId, isKnownPeer: (id) => mesh.peers.has(id),
+        });
+        if (!tree) {
+          console.warn('[arvore] tree recusada: epoch ou pai invalido', origem);
+          break;
+        }
         const state = roleFor(kind, origem);
         // epoch e por-origem: cada origem tem seu proprio contador, entao a
         // comparacao so faz sentido contra o ultimo visto DAQUELA origem.
-        if (msg.epoch < state.epoch) break;
-        const changedEpoch = msg.epoch > state.epoch;
-        const filhosIds = Array.isArray(msg.filhos) ? msg.filhos : [];
+        if (tree.epoch < state.epoch) break;
+        const changedEpoch = tree.epoch > state.epoch;
+        const filhosIds = tree.filhosIds;
         // R2: carga ANTES da mutacao, pra comparar com o total depois que
         // este 'tree' for aplicado (relayLoad soma todos os kinds e origens).
         const relayLoadBefore = relayLoad();
@@ -4465,8 +4556,8 @@
         // tela mudou junto.
         if (dropped.length) broadcastWatchers(kind, origem);
 
-        state.epoch = msg.epoch;
-        state.paiId = msg.paiId;
+        state.epoch = tree.epoch;
+        state.paiId = tree.paiId;
         state.filhosIds = filhosIds;
         // Uma topologia nova pode recolocar um filho que antes esgotou as
         // tentativas. O novo epoch e a autorizacao para tentar de novo; uma
@@ -4478,7 +4569,7 @@
         }
         state.role = filhosIds.length
           ? 'relay'
-          : msg.paiId === origem ? 'direct' : 'folha';
+          : tree.paiId === origem ? 'direct' : 'folha';
 
         // Virar (ou deixar de ser) relay muda se ha algo nosso codificando
         // -- o loop de estatisticas e quem mede isso.
@@ -4685,9 +4776,44 @@
     });
   });
 
+  // R-05 (auditoria 2026-11-25): qualquer excecao no laco do relay (drawImage
+  // com a GPU soluçando, erro do Processor) mata o laco, e a saida continua
+  // viva e parada: todo mundo congela e a reoferta repete a mesma track. O
+  // relay e refeito a partir da captura, como na troca de fonte; esgotadas
+  // as tentativas desta transmissao, segue com a captura crua (pior encoder,
+  // mas com imagem). Captura morta tambem nao tem o que refazer: para.
+  function recoverScreenRelay(failed) {
+    if (!failed || screenRelay !== failed || !localStream) return;
+    const capture = captureTrack;
+    if (capture?.readyState !== 'live') {
+      console.error('[diag] relay de tela: a captura tambem acabou -- encerrando a transmissao');
+      stopShare();
+      return;
+    }
+    screenRelayRecoveries += 1;
+    const novo = screenRelayRecoveries <= SCREEN_RELAY_MAX_RECOVERIES ? createScreenRelay(capture) : null;
+    const output = novo?.track || capture;
+    if (!novo) capture.contentHint = 'motion';
+    const anterior = localStream.getVideoTracks()[0];
+    if (anterior) localStream.removeTrack(anterior);
+    localStream.addTrack(output);
+    (currentSession || orphanSession)?.mesh.replaceLocalTrack('screen', 'video', output);
+    screenRelay = novo;
+    failed.stop();
+    console.warn(novo
+      ? `[diag] relay de tela refeito depois do erro (${screenRelayRecoveries}/${SCREEN_RELAY_MAX_RECOVERIES})`
+      : '[diag] relay de tela: sem refazer de novo, seguindo com a captura crua (encode pode cair em software)');
+  }
+
   function createScreenRelay(track) {
-    return screenrelay.create(track, {
-      onFrameError: (err) => console.error('[diag] relay de tela falhou:', err?.message || err),
+    const relay = screenrelay.create(track, {
+      onFrameError: (err) => {
+        console.error('[diag] relay de tela falhou:', err?.message || err);
+        // Fora do laco que acabou de morrer (e com `relay` ja atribuido).
+        Promise.resolve().then(() => recoverScreenRelay(relay)).catch((e) => {
+          console.error('[diag] relay de tela: recuperacao falhou:', e?.message || e);
+        });
+      },
       // GPU caiu e o relay refez o canvas: os senders precisam da nova saida.
       // Quem esta pausado volta com a track do localStream quando religar.
       onTrackChange: (nova, antiga) => {
@@ -4698,6 +4824,7 @@
         (currentSession || orphanSession)?.mesh.replaceLocalTrack('screen', 'video', nova);
       },
     });
+    return relay;
   }
 
   async function startShare(sourceId, shareSound, includeDiscord, allowAnnotations = false, allowReactions = true) {
@@ -4713,6 +4840,7 @@
     const startedNativeStops = [];
     let stream = null;
     let audioLifecycle = null;
+    let controlsShown = false;
     const canContinue = () => currentSession === session && broadcastguards.isCurrentEpoch(epoch, shareEpoch);
     const discardPendingCapture = (stream) => {
       stream?.getTracks().forEach((track) => track.stop());
@@ -4858,17 +4986,33 @@
       session.sig.send({ type: 'broadcast-state', live: true, paused: false, annotate: shareAnnotations,
         reactions: shareReactions, limit: null });
       recomputeTree('screen');
-      ui.setToggleState('share', 'on');
-      $('btn-pause-share').classList.remove('hidden');
-      $('btn-swap-share').classList.remove('hidden');
-      renderMembersPanel();
-      startStatsLoop();
+      showShareControls();
+      controlsShown = true;
     } catch (err) {
       if (localStream !== stream) discardPendingCapture(stream);
       showToast(t('erro.capturarTela', { erro: err.message }));
     } finally {
       sharing = false;
+      // R-08 (auditoria 2026-11-25): a sinalizacao caiu depois de a captura
+      // virar `localStream` (overlay ou ofertas em voo). A captura continua
+      // e o welcome da reconexao reoferta e anuncia ao vivo; so stopShare ou
+      // a saida (shareEpoch mudou) cancelam de verdade. Sem isto o botao
+      // ficava em "Compartilhar", sem Pausar nem Trocar fonte, e o clique
+      // nele parava a transmissao.
+      if (!controlsShown && stream && localStream === stream && broadcastguards.isCurrentEpoch(epoch, shareEpoch)) {
+        showShareControls();
+      }
     }
+  }
+
+  /** Controles da transmissao ao vivo: o botao em "ligado", Pausar e
+   * Trocar fonte visiveis, e o loop de estatisticas de quem codifica. */
+  function showShareControls() {
+    ui.setToggleState('share', 'on');
+    $('btn-pause-share').classList.remove('hidden');
+    $('btn-swap-share').classList.remove('hidden');
+    renderMembersPanel();
+    startStatsLoop();
   }
 
   async function swapShare(newSourceId, shareSound, includeDiscord) {
@@ -5112,6 +5256,11 @@
    * Ficava so no stopShare e vazava pela outra porta. */
   function resetShareState() {
     swapEpoch += 1;
+    // R-06 (auditoria 2026-11-25): sair da sala (teardownMedia) nao parava o
+    // medidor: o timer lia silencio e 20 s depois o lobby acusava "silencio
+    // no audio" de uma transmissao que ja tinha acabado.
+    stopSoundMeter();
+    screenRelayRecoveries = 0;
     autoQuality = autoquality.initialState();
     sharePaused = false;
     ui.grid.setPaused('me', false, {});

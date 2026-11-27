@@ -1004,7 +1004,7 @@
     // Em tela cheia a janela nao ocupa o proprio retangulo do mundo, entao
     // tambem vale o elemento debaixo do ponteiro (e qualquer privada em tela cheia).
     function janelaPrivada(win) {
-      return !!win && modOf(win.type)?.isPrivate?.(win.state) === true;
+      return !!win && modOf(win.type)?.isPrivate?.(win.state, { peers: deps.peers() }) === true;
     }
 
     function cursorSobreJanelaPrivada(point, alvo) {

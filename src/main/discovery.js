@@ -26,6 +26,13 @@ const MIGRATION_BEACON_INTERVAL_MS = 1500;
 const MIGRATION_BEACON_WINDOW_MS = 45000;
 const MAX_DISCOVERED_ROOMS = 64;
 const ROOM_LIST_UPDATES_PER_SECOND = 4;
+// Limites do beacon de sala, que vem da rede e e tratado como nao confiavel
+// (auditoria 2026-11-25, M-06): um pacote UDP de ~64 KB virava um card com
+// nome de 60 000 caracteres. A sala tem no maximo 16 conexoes; o teto de
+// `peers` e folgado de proposito.
+const MAX_BEACON_NAME_CHARS = 64;
+const MAX_BEACON_ADDRESS_CHARS = 64;
+const MAX_BEACON_PEERS = 1000;
 
 // --- Funcoes puras, testaveis sem abrir socket -------------------------
 
@@ -99,13 +106,17 @@ function parseBeacon(raw) {
   if (data.type !== BEACON_TYPE) return null;
   if (typeof data.port !== 'number' || !Number.isInteger(data.port) || data.port < 1 || data.port > 65535) return null;
   if (typeof data.address !== 'string' || !data.address.trim()) return null;
+  if (data.address.trim().length > MAX_BEACON_ADDRESS_CHARS) return null;
 
   const result = {
-    name: typeof data.name === 'string' && data.name.trim() ? data.name.trim() : 'anônimo',
+    name: typeof data.name === 'string' && data.name.trim()
+      ? data.name.trim().slice(0, MAX_BEACON_NAME_CHARS)
+      : 'anônimo',
     port: data.port,
     address: data.address.trim(),
   };
-  if (typeof data.peers === 'number' && Number.isInteger(data.peers) && data.peers >= 0) {
+  const peersValido = Number.isInteger(data.peers) && data.peers >= 0 && data.peers <= MAX_BEACON_PEERS;
+  if (peersValido) {
     result.peers = data.peers;
   }
   if (data.protected === true) result.protected = true;
@@ -210,8 +221,14 @@ function hostOfAnnouncedAddress(announced) {
  * pacote do grupo veio do IP que o host anunciou, esse e o preferido; senao
  * vale a origem mais recente. `sources` mapeia IP de origem -> ultimo visto. */
 function pickJoinAddress(announced, port, sources) {
+  return `${pickSourceIp(announced, sources)}:${port}`;
+}
+
+/** IP de origem que "fala" pela sala: o que o host anunciou, se algum pacote
+ * do grupo veio dele; senao a origem mais recente. */
+function pickSourceIp(announced, sources) {
   const announcedHost = hostOfAnnouncedAddress(announced);
-  if (sources.has(announcedHost)) return `${announcedHost}:${port}`;
+  if (sources.has(announcedHost)) return announcedHost;
   let newestIp = null;
   let newestSeen = -Infinity;
   for (const [ip, seen] of sources) {
@@ -220,13 +237,16 @@ function pickJoinAddress(announced, port, sources) {
       newestSeen = seen;
     }
   }
-  return `${newestIp}:${port}`;
+  return newestIp;
 }
 
 /** Tira do grupo as origens que nao renovaram dentro do TTL. */
-function pruneStaleSources(sources, now, ttl) {
+function pruneStaleSources(sources, now, ttl, beacons) {
   for (const [ip, seen] of sources) {
-    if (now - seen > ttl) sources.delete(ip);
+    if (now - seen > ttl) {
+      sources.delete(ip);
+      if (beacons) beacons.delete(ip);
+    }
   }
 }
 
@@ -258,6 +278,8 @@ function createDiscovery({
   let advertising = false;
   let onMigrationBeaconCallback = null;
   let socket = null;
+  /** Rejeita a promessa de `start()` se o bind falhar; null fora desse intervalo. */
+  let rejectStart = null;
   let lastNotifyAt = 0;
   let pendingNotifyTimer = null;
 
@@ -291,16 +313,27 @@ function createDiscovery({
         const now = Date.now();
         const previous = rooms.get(key);
         if (!previous && rooms.size >= maxRooms) {
-          const oldest = rooms.keys().next().value;
-          rooms.delete(oldest);
+          // O Map guarda a ordem da ULTIMA atualizacao (o set abaixo e
+          // precedido de delete), entao a primeira chave e a sala que ha mais
+          // tempo nao renova -- nao a primeira descoberta (M-05).
+          const stalest = rooms.keys().next().value;
+          rooms.delete(stalest);
         }
         const sources = previous ? previous.sources : new Map();
-        pruneStaleSources(sources, now, ttlMs);
+        // Campos do beacon por IP de origem (M-03): o card e montado so com o
+        // pacote do IP que o host anunciou. Outro IP mandando o mesmo
+        // `address` apenas entra como origem, sem trocar porta, versao, nome.
+        const beacons = previous ? previous.beacons : new Map();
+        pruneStaleSources(sources, now, ttlMs, beacons);
         sources.set(sourceIp, now);
+        beacons.set(sourceIp, beacon);
+        const speaker = beacons.get(pickSourceIp(beacon.address, sources));
+        rooms.delete(key);
         rooms.set(key, {
-          ...beacon,
-          address: pickJoinAddress(beacon.address, beacon.port, sources),
+          ...speaker,
+          address: pickJoinAddress(beacon.address, speaker.port, sources),
           sources,
+          beacons,
           lastSeen: now,
         });
         notify();
@@ -309,8 +342,14 @@ function createDiscovery({
       const migrationBeacon = parseMigrationBeacon(msg);
       if (migrationBeacon && onMigrationBeaconCallback) onMigrationBeaconCallback(migrationBeacon);
     });
-    sock.on('error', () => {
-      /* socket UDP de descoberta e best-effort -- nunca deve derrubar o app */
+    sock.on('error', (err) => {
+      // Socket UDP de descoberta e best-effort -- nunca deve derrubar o app.
+      // Mas se o bind ainda esta pendente (porta reservada/ocupada), quem
+      // chamou `start()` precisa saber (M-04).
+      if (!rejectStart) return;
+      const reject = rejectStart;
+      rejectStart = null;
+      reject(err);
     });
   }
 
@@ -319,8 +358,14 @@ function createDiscovery({
     started = true;
     socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     bindSocket(socket);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      rejectStart = (err) => {
+        // Libera o socket e o `started`: uma nova chamada a `start()` tenta de novo.
+        stop();
+        reject(err);
+      };
       socket.bind(port, () => {
+        rejectStart = null;
         try {
           socket.setBroadcast(true);
         } catch {

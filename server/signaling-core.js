@@ -8,7 +8,7 @@
  */
 
 const { WebSocketServer } = require('ws');
-const { randomUUID, randomBytes, timingSafeEqual } = require('node:crypto');
+const { randomUUID, randomBytes, timingSafeEqual, createHash } = require('node:crypto');
 const { chooseSuccessor, chooseNewOwner } = require('../src/shared/succession.js');
 // Mesa (spec 2026-09-24, contrato em
 // docs/superpowers/plans/2026-09-24-mesa-contrato.md): o MESMO modelo puro e
@@ -24,6 +24,9 @@ const mesaRegistry = require('../src/renderer/mesa-modules/index.js');
 // maior mensagem legitima e o avatar (64 KB, validado no 'join'); 512 KB da
 // folga pra base64 + envelope JSON sem abrir espaco pra abuso.
 const MAX_PAYLOAD_BYTES = 512 * 1024;
+// Prazo do `close()` pros pares responderem ao close limpo; passado ele, os
+// sockets que restarem sao derrubados (M-01 da auditoria 2026-11-25).
+const CLOSE_GRACE_MS = 1500;
 
 // Teto de mensagens por segundo por socket. A sinalizacao e ociosa quase o
 // tempo todo, MAS e bursty por natureza (ICE trickle) e tem uma rajada real
@@ -73,6 +76,25 @@ const MAX_ANNOTATE_TEXT = 120; // caracteres de uma escrita
 const MAX_ANNOTATE_SYNC_ITEMS = 400; // itens de um snapshot pra quem chegou depois
 const MAX_CONNECTIONS = 16;
 const MAX_PENDING_CONNECTIONS = MAX_CONNECTIONS * 2;
+// S-04 (auditoria 2026-11-25): sem prazo nem cota por IP, 32 sockets que
+// conectam e nunca mandam 'join' trancavam a sala pra sempre (o pong do
+// heartbeat sai sozinho de qualquer cliente). O cliente do app manda o join
+// assim que abre; 10 s e folga de sobra numa VPN lenta.
+const MAX_PENDING_PER_IP = 8;
+const JOIN_TIMEOUT_MS = 10 * 1000;
+// S-01: teto do que fica na fila de envio de UM socket. O maior envio
+// legitimo e o welcome (historico com ate 8 imagens + 15 avatares, ~2,7 MB);
+// passou disso, o destinatario nao esta lendo e e derrubado (1006 -> janela
+// de retomada) em vez de acumular memoria no processo de quem hospeda.
+const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
+// S-07: aninhamento maximo de uma mensagem. A mais funda de hoje (snapshot de
+// anotacao) tem 5 niveis; 100 mil niveis cabem nos 512 KB e estouravam a
+// pilha no JSON.stringify do repasse.
+const MAX_JSON_DEPTH = 32;
+// S-03: a unica sala do servidor. O app sempre entra nela; qualquer outro
+// nome criava uma sala paralela invisivel (fora do teto e da moderacao, mas
+// com o historico e a mesa, que sao do servidor inteiro).
+const ROOM = 'geral';
 const MAX_AVATAR_CHARS = 64 * 1024;
 // Mesmo teto do campo `room` no join (linha 828 abaixo) -- nome de sala e
 // nome de peer sao a mesma classe de texto curto de interface.
@@ -522,8 +544,49 @@ function logName(name) {
   return JSON.stringify(String(name).slice(0, 24));
 }
 
-function send(ws, payload) {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
+/** Manda `payload` se o socket estiver aberto e a fila de envio dele couber
+ * em `maxBuffered` (S-01). Estourou: o destinatario parou de ler, e o socket
+ * e derrubado sem frame de close (o frame ficaria atras da fila). Devolve
+ * `false` so nesse corte, pra quem chama registrar no log. */
+function sendCapped(ws, payload, maxBuffered) {
+  if (ws.readyState !== ws.OPEN) return true;
+  const data = JSON.stringify(payload);
+  if (ws.bufferedAmount + Buffer.byteLength(data) > maxBuffered) {
+    ws.terminate();
+    return false;
+  }
+  ws.send(data);
+  return true;
+}
+
+/** Chave de lider da migracao (S-02): o room-migrating manda a chave so pro
+ * lider escolhido e o hash pra todos; o sucessor semeia o servidor novo com o
+ * hash, que nao serve pra entrar como lider. */
+function hashLeaderKey(key) {
+  return createHash('sha256').update(String(key)).digest('base64url');
+}
+
+/** `true` se o texto JSON aninha mais que `max` niveis (S-07). Varre o texto
+ * em vez de o objeto ja montado: e linear, sem recursao, e para no primeiro
+ * nivel a mais -- antes de o JSON.parse gastar tempo num frame hostil. */
+function jsonDepthExceeds(text, max) {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    if (inString) {
+      if (ch === 0x5c) i += 1; // barra invertida: pula o caractere escapado
+      else if (ch === 0x22) inString = false;
+    } else if (ch === 0x22) {
+      inString = true;
+    } else if (ch === 0x5b || ch === 0x7b) {
+      depth += 1;
+      if (depth > max) return true;
+    } else if (ch === 0x5d || ch === 0x7d) {
+      depth -= 1;
+    }
+  }
+  return false;
 }
 
 // P1 (auditoria 2026-09-18, anexo 5-produto.md): nome da sala escolhido por
@@ -578,8 +641,15 @@ function normalizeRoomName(raw) {
  * GRAB_MS, 5 s; os testes encurtam).
  * `mesa`: tipo da sala. `false` = "so transmissoes": toda operacao da Mesa
  * e recusada e o welcome/probe-ok levam `mesa: false`. Qualquer outro valor
- * (inclusive ausente) mantem a Mesa ligada. */
-function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS, mesa = true }) {
+ * (inclusive ausente) mantem a Mesa ligada.
+ *
+ * `initialTransferredTo`: hash (sha256, base64url) da chave de lider que o
+ * room-migrating mandou so pro lider escolhido (ver `leaderKey` no close).
+ * Com ele, quem entra com a chave certa e o lider da sala nova -- nem o
+ * `clientId`, que e publico, nem o ownerToken de quem a hospeda.
+ * `maxBufferedBytes`: teto da fila de envio de cada socket (S-01).
+ * `joinTimeoutMs`: prazo de uma conexao nova pra mandar o 'join' (S-04). */
+function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, resumeGraceMs = 20000, pin = null, ownerToken = null, appVersion = null, log: logSink = consoleLog, roomId, roomName = null, initialTransferredTo = null, initialBans, initialChatHistory, initialMesa, mesaGrabMs = mesaModel.GRAB_MS, mesa = true, closeGraceMs = CLOSE_GRACE_MS, maxBufferedBytes = MAX_BUFFERED_BYTES, joinTimeoutMs = JOIN_TIMEOUT_MS }) {
   const mesaEnabled = mesa !== false;
   if (pin != null && String(pin) !== '' && !/^\d{6}$/.test(String(pin))) {
     return Promise.reject(new Error('PIN da sala deve ter exatamente 6 dígitos.'));
@@ -595,6 +665,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
     } catch (err) {
       console.error('[signaling] falha ao gravar log:', err?.message || err);
     }
+  };
+  // Todo envio do servidor passa por aqui: o teto da fila de envio (S-01)
+  // vale pra qualquer mensagem, nao so pro 'watchers' que o expos.
+  const send = (ws, payload) => {
+    if (sendCapped(ws, payload, maxBufferedBytes)) return;
+    log(`#${ws.peerId} parou de ler: fila de envio passou de ${maxBufferedBytes} bytes, socket derrubado`);
   };
   // PIN opcional da sala (B3 da auditoria). Nao e cripto: so corta o
   // entrar-por-acidente numa rede Radmin/Tailscale compartilhada, onde o
@@ -621,20 +697,36 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
   const sameVersion = (v) => typeof v === 'string' && v.trim() !== '' && v.trim().replace(/^v/, '') === hostVersion.replace(/^v/, '');
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ port, maxPayload: MAX_PAYLOAD_BYTES });
+    // O http.Server que o `ws` cria sozinho: o `close()` precisa dele pra
+    // derrubar conexoes TCP que nunca acabam (ver o prazo la). O `ws` zera o
+    // `_server` dele ao fechar, entao a referencia e guardada agora.
+    const httpServer = wss._server;
 
     /** @type {Map<string, {ws: import('ws').WebSocket, name: string, room: string, avatar: string | null, owner: boolean, clientId: string | null, resumeToken: string, address: string | null}>} */
     const peers = new Map();
     let nextId = 1;
     let closingRoom = false;
 
-    // Quem recebeu a lideranca da sala (clientId), ou null enquanto ela
-    // nunca saiu de quem criou a sala. E o que decide `owner` no join --
-    // ver a spec de 2026-09-04, secao 4.1: sem isto, o host que passa a
+    // A lideranca saiu de quem criou a sala? E o que decide `owner` no join
+    // -- ver a spec de 2026-09-04, secao 4.1: sem isto, o host que passa a
     // lideranca e depois reconecta voltaria como dono (o ownerToken dele
     // continua valido) e a sala teria duas coroas.
-    let transferredTo = typeof initialTransferredTo === 'string' && initialTransferredTo !== '' && initialTransferredTo.length <= 100
+    //
+    // Depois de passada, a coroa e do PEER que a recebeu (`peer.owner`), nao
+    // de um clientId: o clientId nao e segredo, e quem o repetisse num join
+    // virava lider junto (S-02 da auditoria 2026-11-25). A retomada com
+    // resumeToken mantem a coroa (e o mesmo peer); um join novo nao a ganha,
+    // e quando o lider sai de vez ela volta pra casa (reclaimOwnership).
+    //
+    // A unica coroa que um join novo ganha e a da migracao: o servidor novo
+    // nasce com o hash da chave de lider (`initialTransferredTo`), e so quem
+    // apresenta a chave -- que o room-migrating mandou so a ele -- entra como
+    // lider. Uma vez so: depois disso a coroa e do peer, como acima.
+    let leaderKeyHash = typeof initialTransferredTo === 'string' && initialTransferredTo !== ''
+      && initialTransferredTo.length <= 100
       ? initialTransferredTo
       : null;
+    let transferred = leaderKeyHash !== null;
 
     const CHAT_HISTORY_MAX = 50;
     const chatHistory = []; // ring buffer -- mensagens de texto e linhas de sistema juntas
@@ -1342,7 +1434,12 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
      * fica vaga ate ele voltar, que e o que ja acontecia antes desta
      * feature quando o dono caia. Ver a spec, secao 4.2. */
     function reclaimOwnership(room) {
-      transferredTo = null;
+      transferred = false;
+      leaderKeyHash = null;
+      // Uma coroa so: quem ainda tiver `owner` (S-05: um join novo do lider
+      // durante a janela de retomada do fantasma dele) perde antes de a
+      // lideranca voltar pra casa.
+      for (const peer of peers.values()) if (peer.room === room) peer.owner = false;
       for (const [pid, peer] of peers) {
         if (peer.room !== room || !peer.tokenHolder) continue;
         peer.owner = true;
@@ -1356,13 +1453,8 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
      * close do socket e a expulsao de um fantasma (reconexao com o mesmo
      * clientId, ver o 'join') passam por aqui, pra saida nunca ser anunciada
      * de dois jeitos. Peer que ja nao esta no mapa e no-op -- e isso que faz
-     * o close tardio do socket de um fantasma ja expulso sair calado.
-     *
-     * `keepOwnership`: a expulsao de fantasma pula a devolucao da lideranca.
-     * Quem esta entrando tem o MESMO clientId, entao o join dele ja volta como
-     * lider (`transferredTo` bate) -- devolver pro host aqui faria a coroa ir
-     * e voltar, com um 'owner-changed' falso no meio. */
-    function removePeer(peerId, why, { keepOwnership = false } = {}) {
+     * o close tardio do socket de um fantasma ja expulso sair calado. */
+    function removePeer(peerId, why) {
       const me = peers.get(peerId);
       if (!me) return null;
       clearResumeTimer(me);
@@ -1384,7 +1476,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       // continua viva -- o servidor roda no processo do host -- mas
       // ficaria sem ninguem podendo moderar, com a sala aberta pra
       // rede. A lideranca volta pra quem criou a sala.
-      if (me.owner && transferredTo && !keepOwnership) reclaimOwnership(me.room);
+      if (me.owner && transferred) reclaimOwnership(me.room);
       // Mesa: solta as vezes de quem saiu, tira a tela e a camera dele e o
       // tira das janelas (cadeira, mao: dropPeer). As outras janelas que
       // ele pos ficam (sao da sala). Retomada nao passa por aqui: quem esta
@@ -1452,6 +1544,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
       wss.on('close', () => clearInterval(liveness));
 
       wss.on('connection', (ws) => {
+        // Antes de qualquer `return` (S-08): o `ws` emite 'error' por frame
+        // invalido (opcode reservado, UTF-8 quebrado) inclusive num socket
+        // que acabou de ser recusado, e 'error' sem listener derruba o
+        // processo de quem hospeda.
+        ws.on('error', () => {});
         const id = String(nextId++);
         // `id` e o numero desta conexao. Numa retomada, `peerId` troca para
         // o id antigo que a sala conhece; o socket novo nao pode falar como
@@ -1465,17 +1562,30 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
         ws.peerId = id;
         ws.lastPongAt = Date.now();
         ws.joined = false;
-        const pendingConnections = Array.from(wss.clients).filter((client) => !client.joined).length;
-        if (pendingConnections > MAX_PENDING_CONNECTIONS) {
+        ws.remoteIp = normalizeRemoteIp(ws._socket?.remoteAddress);
+        // Pendente = aberto e sem join. Quem ja esta fechando (recusado,
+        // sonda respondida) nao ocupa vaga. Alem do teto global, um teto por
+        // IP: um script so nao tranca a porta pra todo mundo (S-04).
+        const pending = Array.from(wss.clients).filter((client) => !client.joined && client.readyState === client.OPEN);
+        const pendingSameIp = pending.filter((client) => client.remoteIp === ws.remoteIp).length;
+        if (pending.length > MAX_PENDING_CONNECTIONS || pendingSameIp > MAX_PENDING_PER_IP) {
           ws.close(1013, 'too-many-pending');
           return;
         }
+        // Prazo pro join (S-04): sem ele, uma conexao ociosa ocupava a vaga
+        // pra sempre (o pong do heartbeat sai sozinho de qualquer cliente).
+        const joinTimer = setTimeout(() => {
+          if (joined || ws.readyState !== ws.OPEN) return;
+          log(`conexao #${id} sem join em ${joinTimeoutMs} ms: derrubada`);
+          ws.terminate();
+        }, joinTimeoutMs);
+        if (typeof joinTimer.unref === 'function') joinTimer.unref();
         ws.on('pong', () => {
           ws.isAlive = true;
           ws.lastPongAt = Date.now();
         });
 
-        ws.on('message', (raw) => {
+        const onMessage = (raw) => {
           // Depois de uma retomada o socket velho pode ainda ter frames na
           // fila. Ele nao pode falar pelo peer que ja recebeu outro socket.
           if (joined && peers.get(peerId)?.ws !== ws) return;
@@ -1488,7 +1598,11 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
 
           let msg;
           try {
-            msg = JSON.parse(raw.toString());
+            const text = raw.toString();
+            // Aninhamento absurdo (S-07): o parse aceita, mas o stringify de
+            // qualquer repasse estoura a pilha. Descarta como malformado.
+            if (jsonDepthExceeds(text, MAX_JSON_DEPTH)) return;
+            msg = JSON.parse(text);
           } catch {
             return;
           }
@@ -1578,25 +1692,29 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 ws.close(1008, 'pin');
                 return;
               }
-              const room = String(msg.room || 'geral').slice(0, 40);
-              if (roomPeers(room).length >= MAX_CONNECTIONS) {
-                send(ws, { type: 'join-denied', reason: 'full' });
-                ws.close(1013, 'full');
+              // Sala unica (S-03): outro nome nao abre uma sala paralela,
+              // invisivel pro lider e fora do teto. O app sempre manda 'geral'.
+              if (msg.room != null && msg.room !== '' && msg.room !== ROOM) {
+                log(`join recusado (#${id}): sala desconhecida`);
+                send(ws, { type: 'join-denied', reason: 'room' });
+                ws.close(1008, 'room');
                 return;
               }
+              const room = ROOM;
               const name = String(msg.name || 'anonimo').slice(0, 40);
               const avatar = sanitizeAvatar(msg.avatar);
               // `tokenHolder` e um fato imutavel do peer (apresentou o token
               // de quem criou a sala); `owner` e quem manda AGORA. Enquanto
               // a lideranca nunca foi passada os dois coincidem -- depois de
-              // passada, quem manda e so quem tem o clientId de destino.
+              // passada, a coroa e do peer que a recebeu (ver `transferred`).
               const tokenHolder = Boolean(ownerTok) && msg.ownerToken === ownerTok;
               // clientId identifica a instalacao, mas nao e segredo (o dono
               // o ve ao banir). Portanto ele sozinho NUNCA substitui um
               // socket: so o token rotativo, comparado em tempo constante,
               // autoriza retomar um peer suspenso ou um fantasma ainda vivo.
               // Fica DEPOIS de ban/versao/PIN: join recusado nao toca em
-              // nenhum peer que ja esteja na sala.
+              // nenhum peer que ja esteja na sala. E ANTES do teto (S-09):
+              // quem retoma volta pro proprio lugar, que ja conta no teto.
               let resumedId = null;
               let resumedPeer = null;
               if (clientId && resumeToken) {
@@ -1662,7 +1780,22 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 if (oldWs.readyState === oldWs.OPEN) oldWs.terminate();
                 break;
               }
-              const owner = transferredTo ? clientId != null && clientId === transferredTo : tokenHolder;
+              // Teto do servidor inteiro (S-03), nao de uma sala: o suspenso
+              // na janela de retomada ainda ocupa o lugar dele.
+              if (peers.size >= MAX_CONNECTIONS) {
+                send(ws, { type: 'join-denied', reason: 'full' });
+                ws.close(1013, 'full');
+                return;
+              }
+              // Coroa num join novo: o token de quem criou a sala, enquanto a
+              // lideranca nunca saiu dele; ou a chave de lider da migracao,
+              // uma vez so. O clientId nunca decide (S-02).
+              let owner = !transferred && tokenHolder;
+              const leaderKey = typeof msg.leaderKey === 'string' ? msg.leaderKey.slice(0, 100) : null;
+              if (transferred && leaderKeyHash && leaderKey && sameResumeToken(hashLeaderKey(leaderKey), leaderKeyHash)) {
+                owner = true;
+                leaderKeyHash = null;
+              }
               const newResumeToken = randomUUID();
               peers.set(id, {
                 ws, name, room, avatar, owner, tokenHolder, clientId, resumeToken: newResumeToken, address: remoteAddress,
@@ -1716,16 +1849,17 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
 
               // Passar a lideranca. Diferente das outras acoes, esta muda o
               // estado da SALA (quem pode moderar dai pra frente), nao o do
-              // alvo -- por isso ela mexe em `transferredTo`, que e o que o
+              // alvo -- por isso ela mexe em `transferred`, que e o que o
               // join de qualquer reconexao vai ler. Ver a spec, secao 4.
               if (msg.action === 'transfer-owner') {
                 me.owner = false;
                 target.owner = true;
-                // Devolver pro dono original zera a transferencia em vez de
-                // gravar o clientId dele: assim a sala volta ao estado de
-                // origem (o token manda), e nao a um estado que depende de
-                // um clientId que pode nem existir depois de reinstalar.
-                transferredTo = target.tokenHolder ? null : target.clientId;
+                // Devolver pro dono original zera a transferencia: a sala
+                // volta ao estado de origem (o token manda). Passar pra outro
+                // so marca que a coroa saiu de casa; ela e do peer alvo, e
+                // nao de um clientId que qualquer um repete (S-02).
+                transferred = !target.tokenHolder;
+                leaderKeyHash = null;
                 announceOwner(me.room, target, targetId);
                 pushSystemLine(me.room, 'transfer-owner', me.name, target.name);
                 return;
@@ -2074,11 +2208,15 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               watchersLimiters.set(peerId, limiter);
               if (!limiter.hit(Date.now())) return; // estoura em silencio, igual ao chat
               // Cada item e refeito a partir da tabela de peers do servidor:
-              // id que nao esta nesta sala some, repetido nao duplica, e
-              // nome/avatar sao os que o proprio peer mandou no join. Um
-              // cliente hostil nao injeta item gigante nem forja o nome de
-              // ninguem, e o avatar legitimo continua chegando inteiro pra
-              // lista de quem assiste (ui.grid.setWatchers desenha com ele).
+              // id que nao esta nesta sala some, repetido nao duplica, e o
+              // nome e o que o proprio peer mandou no join. Um cliente hostil
+              // nao injeta item gigante nem forja o nome de ninguem.
+              //
+              // Sem avatar (S-01, auditoria 2026-11-25): com ele, cada item
+              // virava ate 64 KB e uma lista de 230 bytes saia como ~1 MB pra
+              // cada pessoa da sala, 20 vezes por segundo. A lista de quem
+              // assiste so desenha o nome (ui.js), e o avatar de cada um ja
+              // chegou no welcome/peer-joined.
               const vistos = new Set();
               const watchers = [];
               for (const w of Array.isArray(msg.watchers) ? msg.watchers.slice(0, 64) : []) {
@@ -2086,7 +2224,7 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
                 const peer = wid ? peers.get(wid) : null;
                 if (!peer || peer.room !== me.room || vistos.has(wid)) continue;
                 vistos.add(wid);
-                watchers.push({ id: wid, name: peer.name, avatar: peer.avatar || null });
+                watchers.push({ id: wid, name: peer.name });
               }
               broadcastToRoom(me.room, peerId, {
                 type: 'watchers',
@@ -2200,9 +2338,23 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
             default:
               break;
           }
+        };
+
+        // Rede de seguranca (S-07): uma excecao num handler subia como
+        // uncaught -- no CLI o processo morria; no app, o parser do `ws`
+        // daquele socket ficava preso no meio do frame. Agora so o socket de
+        // quem mandou cai (1006 -> janela de retomada), e a sala segue.
+        ws.on('message', (raw) => {
+          try {
+            onMessage(raw);
+          } catch (err) {
+            log(`erro tratando mensagem de #${peerId}: ${err?.name || 'Error'} -- socket derrubado`);
+            ws.terminate();
+          }
         });
 
         ws.on('close', (code, reason) => {
+          clearTimeout(joinTimer);
           // Socket que so sondou (nunca entrou) nao tem `me` nenhum. A cota
           // dele fica no LRU por IP de proposito, para sobreviver ao close.
           const me = peers.get(peerId);
@@ -2222,8 +2374,6 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           if (closingRoom || me._moderationClose || code !== 1006) removePeer(peerId, why);
           else suspendPeer(peerId, code);
         });
-
-        ws.on('error', () => {});
       });
 
       resolve({
@@ -2242,8 +2392,13 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
           for (const peer of peers.values()) clearResumeTimer(peer);
           const hostPeerId = findHostPeerId();
           const hostPeer = hostPeerId ? peers.get(hostPeerId) : null;
+          // Sobrevivente e quem tem socket (S-06): o suspenso na janela de
+          // retomada nao recebe o room-migrating, e escolhe-lo sucessor ou
+          // lider deixava a sala nova esperando por ele (ou sem lider).
           const survivors = hostPeer
-            ? [...peers].filter(([id, peer]) => id !== hostPeerId && peer.room === hostPeer.room).map(([id]) => id)
+            ? [...peers]
+              .filter(([id, peer]) => id !== hostPeerId && peer.room === hostPeer.room && !peer._suspendedAt)
+              .map(([id]) => id)
             : [];
           if (migrate === true && hostPeer && survivors.length) {
             const successor = chooseSuccessor(survivors, null);
@@ -2256,12 +2411,18 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
             }
             const newOwnerId = chooseNewOwner(survivors, currentOwnerId, successor);
             const successorPeer = successor ? peers.get(successor) : null;
-            broadcastToRoom(hostPeer.room, hostPeerId, {
+            // Chave de lider (S-02): so o lider escolhido a recebe, e e ela
+            // que ele apresenta no join da sala nova. Todos recebem o hash,
+            // porque quem sobe a sala nova pode ser qualquer um da ordem de
+            // sucessao; o hash semeia o servidor novo e nao vale coroa. O
+            // clientId do lider (publico) deixou de decidir e de viajar.
+            const leaderKey = newOwnerId ? randomBytes(32).toString('base64url') : null;
+            const migrating = {
               type: 'room-migrating',
               roomId: stableRoomId,
               successor,
               successorName: successorPeer ? successorPeer.name : null,
-              newOwnerClientId: newOwnerId ? peers.get(newOwnerId)?.clientId ?? null : null,
+              leaderKeyHash: leaderKey ? hashLeaderKey(leaderKey) : null,
               pin: roomPin,
               // P1: o sucessor precisa saber o nome pra semear a sala nova
               // com ele (o proprio hostPeer esta saindo -- sem isto
@@ -2277,7 +2438,10 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               // Tipo da sala: o sucessor sobe o servidor novo com o mesmo
               // tipo. Omitido quando a Mesa esta ligada, igual ao welcome.
               ...(mesaEnabled ? {} : { mesaEnabled: false }),
-            });
+            };
+            for (const id of survivors) {
+              send(peers.get(id).ws, id === newOwnerId ? { ...migrating, leaderKey } : migrating);
+            }
           }
           log(`sala encerrada: room-closed para ${wss.clients.size} conexao(oes)`);
           for (const client of wss.clients) {
@@ -2288,7 +2452,18 @@ function createSignalingServer({ port, heartbeatMs = 25000, livenessMs = 5000, r
               /* socket ja fechando */
             }
           }
-          wss.close(() => res());
+          // Sem prazo, `wss.close()` so resolve quando TODA conexao TCP acaba:
+          // um par mudo (rota da VPN caiu) segura 30 s do closeTimeout do `ws`
+          // e um cabecalho HTTP incompleto, pra sempre -- e o app nao sai
+          // (auditoria 2026-11-25, M-01). Passado o prazo, derruba o que sobrou.
+          const grace = setTimeout(() => {
+            for (const client of wss.clients) client.terminate();
+            if (httpServer && typeof httpServer.closeAllConnections === 'function') httpServer.closeAllConnections();
+          }, closeGraceMs);
+          wss.close(() => {
+            clearTimeout(grace);
+            res();
+          });
         }),
         // Peer suspenso ainda pertence a sala durante a janela de retomada.
         getPeerCount: () => peers.size,

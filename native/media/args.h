@@ -7,6 +7,7 @@
 //
 //   golive-media (--janela <hwnd> | --monitor <indice>) [--fps N] [--kbps N]
 //                [--saida arquivo.h264] [--segundos N]
+//   golive-media --gerar-vetores
 //
 // Neste passo (P1.1) a origem e so validada; a captura entra no P1.3.
 // Sem nenhuma origem, assume o monitor 0 (o esqueleto precisa rodar sem jogo).
@@ -23,7 +24,8 @@ struct Argumentos {
   int segundos = 0;          // 0 = roda ate `parar`/EOF no stdin
 };
 
-enum class ResultadoArgs { kOk, kAjuda, kErro };
+// kGerarVetores: `--gerar-vetores` sozinho, modo de teste do pacote (pacote_vetores.h).
+enum class ResultadoArgs { kOk, kAjuda, kErro, kGerarVetores };
 
 // Preenche `out`. Em kErro, `erro` traz a mensagem para o stderr.
 ResultadoArgs LerArgumentos(int argc, char** argv, Argumentos* out, std::string* erro);

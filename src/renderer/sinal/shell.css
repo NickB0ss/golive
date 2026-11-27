@@ -779,8 +779,10 @@ body.room-idle .pip-add-btn, .tile.idle .pip-add-btn { opacity: 0; }
 
 /* Espiando: superficie solida, no canto do botao Conversa, longe da tira. */
 
-/* Entrando numa sala: a escolhida fica em destaque, as outras esmaecem. */
-.room-row:disabled:not([aria-busy='true']) { opacity: 0.55; }
+/* Entrando numa sala: a escolhida fica em destaque, as outras esmaecem. Sala de outra versao esmaece
+ * tambem, menos o motivo: "quem criou precisa atualizar" e a unica coisa a fazer com ela. */
+.room-row:disabled:not([aria-busy='true'], .incompatible) { opacity: 0.55; }
+.room-row.incompatible > :not(.room-row__meta) { opacity: 0.55; }
 .room-row[aria-busy='true'] { background: var(--s1); }
 
 /* Conversa: vazia diz o que fazer; a dica do Enter so aparece escrevendo. */

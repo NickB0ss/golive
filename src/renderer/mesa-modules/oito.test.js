@@ -173,3 +173,53 @@ test('acao fora da vez e recusada', () => {
   const s = pronto();
   assert.equal(oito.validate(s, { kind: 'draw' }, ctx('bia')), 'mesa.jogo.naoESuaVez');
 });
+
+// ---- Auditoria da Mesa 2026-11-25 (J-08, J-10, J-12) ----
+
+// Como o servidor: validate e prepare com `peers`; o reduce so recebe { from, isLeader } (sem peers nem hora).
+function comoServidor(state, action, from, peers = PEERS) {
+  const c = { from, peers, now: agora, random: () => 0, isLeader: false };
+  const veredito = oito.validate(state, action, c);
+  if (veredito !== true) return { erro: veredito };
+  const preparada = JSON.parse(JSON.stringify(oito.prepare(state, action, c)));
+  return { estado: oito.reduce(state, preparada, { from, isLeader: false }) };
+}
+
+test('J-08: nao da para sentar no meio da rodada (mao vazia ganharia ao comprar uma carta jogavel)', () => {
+  const s = pronto();
+  const r = comoServidor(s, { kind: 'sit', seat: 2 }, 'caio');
+  assert.equal(r.erro, 'mesa.oito.rodadaCorrendo');
+  assert.deepEqual(oito.view(s, 'caio', { peers: PEERS }).me.can.sit.slice(0, 3), [false, false, false]);
+  // Entre rodadas pode.
+  const entre = { ...s, phase: 'waiting', hands: Array(8).fill(null).map(() => []), turn: -1, deadline: null };
+  assert.equal(comoServidor(entre, { kind: 'sit', seat: 2 }, 'caio').erro, undefined);
+});
+
+test('J-10: apos a migracao o lugar fantasma nao recebe cartas nem a vez (reduce nao ve peers)', () => {
+  let s = oito.init();
+  s.seats[0] = 'velho';
+  s.names[0] = 'Fantasma';
+  const novos = [{ id: '7', name: 'Ana' }, { id: '8', name: 'Bia' }];
+  s = comoServidor(s, { kind: 'sit', seat: 1 }, '7', novos).estado;
+  s = comoServidor(s, { kind: 'sit', seat: 2 }, '8', novos).estado;
+  const r = comoServidor(s, { kind: 'start' }, '7', novos);
+  assert.equal(r.erro, undefined);
+  const e = r.estado;
+  assert.deepEqual(e.hands.slice(0, 3).map((h) => h.length), [0, 7, 7], 'fantasma sem cartas; dois jogadores: 7 cada');
+  assert.notEqual(e.turn, 0, 'a vez nao cai no fantasma');
+  assert.equal(e.seats[0], null, 'o fantasma sai da mesa quando a rodada comeca');
+  // E a vez gira so entre os dois de verdade.
+  const jogou = comoServidor({ ...e, turn: 1, deadline: agora + 1 }, { kind: 'timeout' }, '8', novos);
+  assert.equal(jogou.estado.turn, 2);
+  const volta = comoServidor({ ...jogou.estado, deadline: agora + 1 }, { kind: 'timeout' }, '8', novos);
+  assert.equal(volta.estado.turn, 1, 'depois do 2 volta ao 1, sem passar pelo fantasma');
+});
+
+test('J-12: depois do fim da partida o proximo start abre partida nova com o placar zerado', () => {
+  const s = { ...pronto(), phase: 'finished', scores: [105, 20, 0, 0, 0, 0, 0, 0], winner: 0, hands: Array(8).fill(null).map(() => []) };
+  const r = comoServidor(s, { kind: 'start' }, 'ana');
+  assert.equal(r.erro, undefined);
+  assert.equal(r.estado.phase, 'play');
+  assert.deepEqual(r.estado.scores, Array(8).fill(0));
+  assert.equal(r.estado.winner, null);
+});

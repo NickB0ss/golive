@@ -176,7 +176,7 @@ test('migração cancela a mão e preserva lugares e placar', () => {
 });
 
 test('lugar fantasma fica livre e dropPeer libera a cadeira', () => {
-  const s = state({ seats: ['old', 'b', null, null] });
+  const s = state({ seats: ['old', 'b', null, null], phase: 'waiting' }); // sentar so entre maos (J-07)
   const peers = [{ id: 'new', name: 'Novo' }, { id: 'b', name: 'B' }];
   assert.equal(domino.validate(s, { kind: 'sit', seat: 0 }, ctx('new', 0, peers)), true);
   assert.equal(domino.dropPeer(s, 'b').seats[1], null);
@@ -188,4 +188,81 @@ test('saida de quem esta na vez avanca imediatamente para o proximo vivo', () =>
   assert.equal(next.seats[0], null);
   assert.deepEqual(next.hands[0], []);
   assert.equal(next.turn, 1);
+});
+
+// ---- Auditoria da Mesa 2026-11-25 (J-06, J-07, J-12 e lugar fantasma na abertura) ----
+
+// Como o servidor: validate e prepare com `peers`; o reduce so recebe { from, isLeader }.
+function comoServidor(s, action, from, now = 1000, peers = PEERS) {
+  const c = { from, now, peers, random: () => 0, isLeader: false };
+  const veredito = domino.validate(s, action, c);
+  if (veredito !== true) return { erro: veredito };
+  const preparada = JSON.parse(JSON.stringify(domino.prepare(s, action, c)));
+  return { estado: domino.reduce(s, preparada, { from, isLeader: false }) };
+}
+
+function emAbertura() {
+  return state({ phase: 'opening', turn: 1, winner: 1, ends: null, deadline: 31000, hands: [[[1, 2]], [[6, 6]], [], []] });
+}
+
+test('J-06: timeout na abertura vale (o prazo que o servidor anuncia) e abre com a 1a pedra', () => {
+  const s = emAbertura();
+  assert.equal(domino.timeoutAt(s), 31000);
+  const r = comoServidor(s, { kind: 'timeout' }, 'a', 31000);
+  assert.equal(r.erro, undefined);
+  assert.equal(r.estado.phase, 'play');
+  assert.deepEqual(r.estado.table[0].stone, [6, 6]);
+});
+
+test('J-06: timeout sem mao correndo continua recusado', () => {
+  assert.equal(comoServidor(state({ phase: 'waiting' }), { kind: 'timeout' }, 'a').erro, 'mesa.domino.nadaCorrendo');
+  assert.equal(comoServidor(state({ phase: 'done' }), { kind: 'timeout' }, 'a').erro, 'mesa.domino.nadaCorrendo');
+});
+
+test('J-06: se quem devia abrir sai da sala, a mao volta a esperar "Nova mao" (ninguem fica travado)', () => {
+  const s = emAbertura();
+  const d = domino.dropPeer(s, 'b');
+  assert.equal(d.phase, 'waiting');
+  assert.equal(d.turn, null);
+  assert.equal(domino.timeoutAt(d), null);
+  assert.equal(comoServidor(d, { kind: 'start' }, 'a').erro, 'mesa.domino.precisaDeDois' /* so Ana sentada */);
+  // Quem nao era o da vez saindo na abertura nao muda a fase.
+  const outro = domino.dropPeer(state({ ...emAbertura(), seats: ['a', 'b', 'c', null] }), 'c');
+  assert.equal(outro.phase, 'opening');
+});
+
+test('J-07: nao da para sentar com a mao em curso (abertura ou jogo)', () => {
+  for (const phase of ['opening', 'play']) {
+    assert.equal(comoServidor(state({ phase }), { kind: 'sit', seat: 2 }, 'c').erro, 'mesa.cadeiras.partidaComecou', phase);
+  }
+  for (const phase of ['waiting', 'done']) {
+    assert.equal(comoServidor(state({ phase }), { kind: 'sit', seat: 2 }, 'c').erro, undefined, phase);
+  }
+  const v = domino.view(state({ phase: 'play' }), 'c', { peers: PEERS });
+  assert.deepEqual(v.me.can.sit, [false, false, false, false]);
+});
+
+test('J-12: depois do jogo (100 pontos) a proxima mao zera o placar', () => {
+  const fim = state({
+    phase: 'done', scores: [104, 0, 0, 0], winner: 0, ends: null, table: [],
+    result: { reason: 'bateu', winner: 0, gain: 6, game: true },
+  });
+  const r = comoServidor(fim, { kind: 'start' }, 'a');
+  assert.equal(r.erro, undefined);
+  assert.deepEqual(r.estado.scores, [0, 0, 0, 0]);
+  // Mao comum (sem fim de jogo): o placar segue.
+  const comum = { ...fim, scores: [10, 0, 0, 0], result: { reason: 'bateu', winner: 0, gain: 6, game: false } };
+  assert.deepEqual(comoServidor(comum, { kind: 'start' }, 'a').estado.scores, [10, 0, 0, 0]);
+});
+
+test('migracao: lugar fantasma nao ganha pedras nem a vez quando a mao comeca', () => {
+  const novos = [{ id: 'x', name: 'X' }, { id: 'y', name: 'Y' }];
+  let s = domino.migrate(state({ seats: ['velho', null, null, null], names: ['V', null, null, null], phase: 'waiting' }));
+  s = comoServidor(s, { kind: 'sit', seat: 1 }, 'x', 1000, novos).estado;
+  s = comoServidor(s, { kind: 'sit', seat: 2 }, 'y', 1000, novos).estado;
+  const r = comoServidor(s, { kind: 'start' }, 'x', 1000, novos);
+  assert.equal(r.erro, undefined);
+  assert.equal(r.estado.seats[0], null);
+  assert.deepEqual(r.estado.hands.map((m) => m.length > 0), [false, true, true, false]);
+  assert.ok([1, 2].includes(r.estado.turn));
 });

@@ -39,6 +39,7 @@ bool ParaHwnd(const std::string& s, std::uint64_t* v) {
 const char* TextoDeUso() {
   return "uso: golive-media (--janela <hwnd> | --monitor <indice>) [--fps 1..240] [--kbps 100..200000]\n"
          "                   [--saida <arquivo.h264>] [--segundos <n>]\n"
+         "       golive-media --gerar-vetores   (teste: datagramas do protocolo em JSON, P2.2)\n"
          "  sem origem: monitor 0. --segundos 0 (padrao): roda ate 'parar' ou EOF no stdin.\n"
          "  codigos de saida: 0 ok, 2 argumentos invalidos, 3 sem encoder de hardware (reservado)\n";
 }
@@ -53,6 +54,10 @@ ResultadoArgs LerArgumentos(int argc, char** argv, Argumentos* out, std::string*
   for (int i = 1; i < argc; ++i) {
     const std::string opt = argv[i];
     if (opt == "--ajuda" || opt == "--help" || opt == "-h") return ResultadoArgs::kAjuda;
+    if (opt == "--gerar-vetores") {
+      if (argc != 2) return falha("--gerar-vetores nao aceita outros argumentos");
+      return ResultadoArgs::kGerarVetores;
+    }
 
     const bool conhecida = opt == "--janela" || opt == "--monitor" || opt == "--fps" || opt == "--kbps" ||
                            opt == "--saida" || opt == "--segundos";

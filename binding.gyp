@@ -35,7 +35,10 @@
         "native/media/main.cc",
         "native/media/args.cc",
         "native/media/controle.cc",
-        "native/media/metricas.cc"
+        "native/media/metricas.cc",
+        "native/media/pacote.cc",
+        "native/media/pacote_vetores.cc",
+        "native/media/sha256.cc"
       ],
       "cflags_cc": [ "-std=c++20", "-pthread" ],
       "ldflags": [ "-pthread" ],

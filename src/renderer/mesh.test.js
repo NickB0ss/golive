@@ -728,6 +728,49 @@ test('relayTo com stream recebida chama offerTo e manda offer pro filho', async 
   delete global.RTCRtpSender;
 });
 
+// R-07 (auditoria 2026-11-25): filho fora da sala nao vira peer fantasma.
+test('relayTo para id que nao esta na sala devolve false sem criar peer nem PC', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('origem', 'Ana');
+  const videoTrack = { kind: 'video' };
+  mesh.peers.get('origem').inStreams = { screen: { getTracks: () => [videoTrack], getVideoTracks: () => [videoTrack] } };
+
+  assert.equal(await mesh.relayTo('fantasma', 'origem', 'screen', { bitrate: 1, fps: 30, codec: 'video/H264' }), false);
+  assert.equal(mesh.peers.has('fantasma'), false);
+  assert.equal(sent.length, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+// R-03 (auditoria 2026-11-25): a entrada de repasse de uma origem que saiu
+// fica sob o relay, que continua na sala.
+test('closeIn fecha so a inConn daquele kind e esquece a stream dela', () => {
+  installFakeWebRTC();
+  const estados = [];
+  const mesh = createMesh({ send() {}, onTrack() {}, onPeerState: (id, s) => estados.push(s) });
+  mesh.handleOffer('R', { type: 'offer', sdp: 'v=0' }, 'screen@O', false).catch(() => {});
+  mesh.handleOffer('R', { type: 'offer', sdp: 'v=0' }, 'screen', false).catch(() => {});
+  const repasse = mesh.peers.get('R').inConns['screen@O'];
+  const propria = mesh.peers.get('R').inConns.screen;
+  mesh.peers.get('R').inStreams = { 'screen@O': {}, screen: {} };
+
+  mesh.closeIn('R', 'screen@O');
+  assert.equal(repasse.closed, true);
+  assert.equal(propria.closed, undefined);
+  assert.equal(mesh.peers.get('R').inConns['screen@O'], null);
+  assert.equal(mesh.peers.get('R').inStreams['screen@O'], null);
+  assert.deepEqual(mesh.receivingFrom(), [{ peerId: 'R', kind: 'screen' }]);
+  assert.doesNotThrow(() => mesh.closeIn('R', 'camera@O'));
+  assert.doesNotThrow(() => mesh.closeIn('ninguem', 'screen'));
+  assert.equal(estados.length, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
 test('relayKindFor/parseKind sao inversos, e kind cru nao tem origem', () => {
   assert.equal(relayKindFor('screen', '42'), 'screen@42');
   assert.deepEqual(parseKind('screen@42'), { baseKind: 'screen', sourceId: '42' });
@@ -889,6 +932,35 @@ test('removeTrack marca a oferta como renegociacao (#A8)', async () => {
   assert.equal(sent[1].type, 'offer');
   assert.equal(sent[1].renegotiate, true);
   assert.equal(mesh.peers.get('7').outConns.camera.getSenders().length, 0);
+
+  delete global.RTCPeerConnection;
+  delete global.RTCRtpSender;
+});
+
+// R-02 (auditoria 2026-11-25): espectador que largou a camera tem o sender
+// com track null; desligar a camera precisa renegociar mesmo assim.
+test('removeTrack com a demanda suspensa acha o sender de video e renegocia', async () => {
+  installFakeWebRTC();
+  const sent = [];
+  const mesh = createMesh({ send: (msg) => sent.push(msg), onTrack() {}, onPeerState() {} });
+  mesh.addPeer('7', 'Bruno');
+
+  const track = { kind: 'video' };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  await mesh.offerTo('7', stream, { bitrate: 1_000_000, fps: 30, codec: 'video/VP8' }, 'camera');
+  await mesh.handleAnswer('7', { type: 'answer', sdp: 'v=0' }, 'camera');
+  const pc = mesh.peers.get('7').outConns.camera;
+  for (const sender of pc.getSenders()) {
+    sender.replaceTrack = (next) => { sender.track = next; return Promise.resolve(); };
+  }
+  mesh.setPeerDemand('7', 'camera', false, track);
+  await mesh.demandApplied('7', 'camera');
+  assert.equal(pc.getSenders()[0].track, null);
+
+  assert.equal(await mesh.removeTrack('7', track, 'camera'), true);
+  assert.equal(sent.at(-1).type, 'offer');
+  assert.equal(sent.at(-1).renegotiate, true);
+  assert.equal(pc.getSenders().length, 0);
 
   delete global.RTCPeerConnection;
   delete global.RTCRtpSender;

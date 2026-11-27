@@ -58,7 +58,32 @@
     return { remember, takeWhenLive, forgetOrigin, clear };
   }
 
-  const api = { isCurrentEpoch, canAcceptOffer, canAcceptTree, createPendingTrees };
+  // R-07 (auditoria 2026-11-25): a 'tree' vem de outro cliente e o servidor
+  // so repassa. Um `filhos` cru fazia o relay abrir uma RTCPeerConnection
+  // (e um encoder) por id inventado, e um `epoch` nao inteiro desligava a
+  // protecao contra tree velha daquela origem. O fanout real e 2; o teto
+  // deixa folga sem deixar a lista crescer. Devolve null quando a tree
+  // inteira nao presta, ou `{ epoch, paiId, filhosIds }` com os filhos
+  // filtrados (sem repetir, sem a origem, sem nos, so peers da sala).
+  const MAX_TREE_CHILDREN = 8;
+
+  function sanitizeTree({ msg, origem, myId, isKnownPeer }) {
+    if (!msg || !Number.isInteger(msg.epoch) || msg.epoch < 0) return null;
+    const isId = (id) => typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id));
+    const known = (id) => isId(id) && isKnownPeer(id);
+    const same = (a, b) => String(a) === String(b);
+    const { paiId } = msg;
+    if (!isId(paiId) || same(paiId, myId) || (!same(paiId, origem) && !known(paiId))) return null;
+    const filhosIds = [];
+    for (const id of Array.isArray(msg.filhos) ? msg.filhos : []) {
+      if (filhosIds.length >= MAX_TREE_CHILDREN) break;
+      if (!known(id) || same(id, origem) || same(id, myId) || filhosIds.some((f) => same(f, id))) continue;
+      filhosIds.push(id);
+    }
+    return { epoch: msg.epoch, paiId, filhosIds };
+  }
+
+  const api = { isCurrentEpoch, canAcceptOffer, canAcceptTree, createPendingTrees, sanitizeTree, MAX_TREE_CHILDREN };
   root.GoLive = root.GoLive || {};
   root.GoLive.broadcastguards = api;
   if (typeof module !== 'undefined') module.exports = api;

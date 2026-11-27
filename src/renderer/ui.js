@@ -3298,7 +3298,7 @@
     const paused = Boolean(tilePaused.get(tileId)?.paused);
     const poor = ['atencao', 'ruim'].includes(tileHealth.get(tileId));
     const nome = pessoa.name || t('ui.pessoa.alguem');
-    const sub = paused ? t('ui.fonte.telaPausada') : (kind === 'camera' ? t('pagina.camera') : (tileRegistry.has(tileId) ? t('pagina.telas') : t('ui.sala.conectando')));
+    const sub = paused ? t('ui.fonte.telaPausada') : (kind === 'camera' ? t('pagina.camera') : (tileRegistry.has(tileId) ? t('ui.fonte.tela') : t('ui.sala.conectando')));
     const quem = (tileWatchers.get(tileId) || []).slice(0, 4)
       .map((w) => `<span class="node" data-size="16" data-state="watching" title="${escapeHtml(w.name || '')}"></span>`)
       .join('');
@@ -4258,9 +4258,8 @@
 
   function bandwidthLine(quality) {
     const screenMbps = quality.bitrate / 1_000_000;
-    // Virgula: a linha inteira e em portugues, e "2.5 Mbps" no meio dela
-    // era o unico numero do app com ponto decimal.
-    const texto = screenMbps.toFixed(1).replace(/\.0$/, '').replace('.', ',');
+    // Separador decimal do idioma ativo: "2,5" em pt-BR e es, "2.5" em en.
+    const texto = screenMbps.toLocaleString(idiomaAtivo(), { maximumFractionDigits: 1 });
     return t('ui.compartilhar.bandaPorPessoa', { mbps: texto });
   }
 
@@ -4271,7 +4270,7 @@
   function bandwidthLineHtml(quality) {
     const nota = QUALITY_PRESET_NOTE[quality.preset];
     const base = escapeHtml(bandwidthLine(quality));
-    return nota ? `${base} <span class="quality-bandwidth-note">· ${escapeHtml(nota)}</span>` : base;
+    return nota ? `${base} <span class="quality-bandwidth-note">· ${escapeHtml(t(nota))}</span>` : base;
   }
 
   // Preview do avatar/apelido dentro do modal (aba Perfil) -- espelha o

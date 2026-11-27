@@ -76,7 +76,9 @@
 }
 .input:hover:not(:disabled) { border-color: var(--tx3); }
 .input:focus, .input:focus-visible { border-color: var(--wire); box-shadow: 0 0 0 1px var(--wire); }
-.input::placeholder { color: var(--tx3); }
+/* --tx3 sobre o campo (--s3) fica em 4,4:1 no Sinal; a mistura com --tx2 passa de 5:1 e segue mais
+ * apagada que o texto digitado. */
+.input::placeholder { color: color-mix(in srgb, var(--tx3) 50%, var(--tx2)); }
 .input--lg { height: var(--h-ctl-lg); font-size: 15px; }
 .input--mono { font: var(--t-data); font-size: 13px; letter-spacing: 0.02em; }
 .input[aria-invalid='true'] { border-color: var(--danger); }
@@ -112,7 +114,9 @@ select.input { padding-right: var(--s-6); appearance: none;
 }
 .seg__opt:hover { color: var(--tx); }
 .seg__opt[aria-checked='true'], .seg__opt[aria-selected='true'] { background: var(--s3); color: var(--tx); }
-.seg__opt .tx-data { color: var(--tx3); font-size: 11px; }
+.seg__opt .tx-data { color: var(--tx3); font-size: var(--fs-micro); }
+/* Sobre a opcao escolhida (--s3) o --tx3 cai a 4,4:1 (04 §2): a contagem sobe para --tx2. */
+.seg__opt:is([aria-checked='true'], [aria-selected='true']) .tx-data { color: var(--tx2); }
 
 /* ============ Alternancia (switch) ============ */
 .switch {

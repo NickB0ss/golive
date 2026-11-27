@@ -482,3 +482,135 @@ test('parseMigrationBeacon descarta prova malformada em vez de repassar', () => 
   assert.equal('proof' in parseMigrationBeacon(JSON.stringify({ ...base, ts: 1, proof: 'nao-e-hex' })), false);
   assert.equal('proof' in parseMigrationBeacon(JSON.stringify({ ...base, ts: 'x', proof: 'a'.repeat(64) })), false);
 });
+
+// --- Auditoria 2026-11-25 (M-03 a M-06) -----------------------------------
+
+function beaconPacket(fields) {
+  return Buffer.from(JSON.stringify({ type: 'golive-room', ...fields }));
+}
+
+// M-03: outro IP da LAN anunciando o `address` de uma sala que existe nao pode
+// reescrever o card dela (porta, versao, nome, cadeado, Mesa).
+test('M-03: pacote de outro IP com o mesmo address nao reescreve o card da sala', () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  d.start();
+  handlers.message(
+    beaconPacket({ name: 'Sala da Ana', port: 9000, address: '10.0.0.5:9000', version: '1.2.0' }),
+    { address: '10.0.0.5' }
+  );
+  handlers.message(
+    beaconPacket({
+      name: 'Falsa', port: 9009, address: '10.0.0.5:9000', version: '0.0.1', protected: true, mesa: false,
+    }),
+    { address: '10.0.0.66' }
+  );
+  assert.deepEqual(d.getRooms(), [
+    { name: 'Sala da Ana', address: '10.0.0.5:9000', port: 9000, version: '1.2.0' },
+  ]);
+  d.stop();
+});
+
+test('M-03: o mesmo host chegando por dois IPs de origem continua sendo uma linha so', () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  d.start();
+  const pacote = beaconPacket({ name: 'Sala', port: 9000, address: '10.0.0.5:9000' });
+  handlers.message(pacote, { address: '10.0.0.5' });
+  handlers.message(pacote, { address: '192.168.1.5' });
+  assert.deepEqual(d.getRooms(), [{ name: 'Sala', address: '10.0.0.5:9000', port: 9000 }]);
+  d.stop();
+});
+
+test('M-03: o pacote do IP anunciado reassume o card mesmo depois do falso', () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  d.start();
+  handlers.message(beaconPacket({ name: 'Falsa', port: 9009, address: '10.0.0.5:9000' }), { address: '10.0.0.66' });
+  handlers.message(beaconPacket({ name: 'Ana', port: 9000, address: '10.0.0.5:9000' }), { address: '10.0.0.5' });
+  handlers.message(beaconPacket({ name: 'Falsa', port: 9009, address: '10.0.0.5:9000' }), { address: '10.0.0.66' });
+  assert.deepEqual(d.getRooms(), [{ name: 'Ana', address: '10.0.0.5:9000', port: 9000 }]);
+  d.stop();
+});
+
+// M-04: se o bind falha (EACCES numa faixa reservada, porta tomada), start()
+// rejeita em vez de ficar pendente pra sempre, e uma nova tentativa e possivel.
+test('M-04: start() rejeita quando o bind UDP falha e libera o socket pra tentar de novo', async () => {
+  const handlers = {};
+  let fechados = 0;
+  let falhar = true;
+  const socket = {
+    on(event, cb) { handlers[event] = cb; },
+    bind(_port, cb) {
+      if (falhar) {
+        const err = new Error('bind EACCES 0.0.0.0:41235');
+        err.code = 'EACCES';
+        setImmediate(() => handlers.error(err));
+      } else {
+        cb();
+      }
+    },
+    setBroadcast() {},
+    send() {},
+    close() { fechados += 1; },
+  };
+  const d = createDiscovery({ deps: { dgram: { createSocket: () => socket } } });
+  await assert.rejects(d.start(), { code: 'EACCES' });
+  assert.equal(fechados, 1);
+  falhar = false;
+  await d.start(); // `started` voltou a false: a segunda tentativa roda de verdade
+  d.stop();
+});
+
+test('M-04: start() rejeita com um bind real numa porta que outro socket tomou sem reuseAddr', async () => {
+  const dgram = require('dgram');
+  const bloqueio = dgram.createSocket({ type: 'udp4' });
+  await new Promise((resolve) => bloqueio.bind(0, resolve));
+  const d = createDiscovery({ port: bloqueio.address().port });
+  try {
+    await assert.rejects(d.start(), { code: 'EADDRINUSE' });
+  } finally {
+    d.stop();
+    bloqueio.close();
+  }
+});
+
+// M-05: o teto de salas despeja a que ha mais tempo nao renova, nao a primeira
+// que foi descoberta.
+test('M-05: o teto de salas nao despeja a sala real que acabou de renovar', () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram }, maxRooms: 4 });
+  d.start();
+  const real = beaconPacket({ name: 'real', port: 9000, address: '10.0.0.5:9000' });
+  handlers.message(real, { address: '10.0.0.5' });
+  for (let i = 0; i < 3; i++) {
+    handlers.message(beaconPacket({ name: 'x', port: 9000, address: `1.1.1.${i}:9000` }), { address: '10.0.0.66' });
+  }
+  handlers.message(real, { address: '10.0.0.5' }); // renovou
+  handlers.message(beaconPacket({ name: 'x', port: 9000, address: '1.1.1.99:9000' }), { address: '10.0.0.66' });
+  const nomes = d.getRooms().map((room) => room.name);
+  assert.ok(nomes.includes('real'), `a sala real sumiu; lista=${nomes}`);
+  assert.equal(d.getRooms().length, 4);
+  d.stop();
+});
+
+// M-06: o beacon vem da rede; nome, address e peers tem teto.
+test('M-06: parseBeacon corta o nome, recusa address enorme e ignora peers absurdo', () => {
+  const base = { type: 'golive-room', port: 9000, address: '10.0.0.5:9000' };
+  const longo = parseBeacon(JSON.stringify({ ...base, name: 'A'.repeat(60000), peers: 1e15 }));
+  assert.equal(longo.name.length, 64);
+  assert.equal('peers' in longo, false);
+  assert.equal(parseBeacon(JSON.stringify({ ...base, address: `${'1'.repeat(70)}:9000` })), null);
+  assert.equal(parseBeacon(JSON.stringify({ ...base, peers: 1000 })).peers, 1000);
+  assert.equal('peers' in parseBeacon(JSON.stringify({ ...base, peers: 1001 })), false);
+});
+
+test('M-06: o card do beacon gigante sai com nome curto', () => {
+  const { handlers, dgram } = fakeDgram();
+  const d = createDiscovery({ deps: { dgram } });
+  d.start();
+  const gigante = beaconPacket({ name: 'A'.repeat(60000), port: 9000, address: '10.0.0.5:9000' });
+  handlers.message(gigante, { address: '10.0.0.5' });
+  assert.equal(d.getRooms()[0].name.length, 64);
+  d.stop();
+});

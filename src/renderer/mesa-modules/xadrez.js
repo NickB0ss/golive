@@ -186,7 +186,7 @@
         return { chave: 'mesa.resumo.desistiuVenceu', valores: { perdedor, vencedor: winner } };
       }
       const text = C.describePlaying(state, state.turn, LABELS, peers);
-      if (state.check && state.seats[0] && state.seats[1]) {
+      if (state.check && C.cadeiraViva(state, 0, { peers }) && C.cadeiraViva(state, 1, { peers })) {
         return { chave: 'mesa.resumo.vezDeXeque', valores: text.valores };
       }
       return text;

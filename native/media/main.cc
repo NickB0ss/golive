@@ -8,6 +8,7 @@
 //   0  ok (--segundos cumprido, comando "parar" ou EOF no stdin)
 //   2  argumentos invalidos (mensagem no stderr)
 //   3  reservado: sem encoder H.264 de hardware (P1.5)
+//   1  so com --gerar-vetores: o autoteste de SHA-256/HMAC falhou
 //
 // stdout: so metricas, uma linha JSON por segundo. stderr: so avisos e erros.
 // Portavel (C++20 padrao); o que e do Windows fica atras de _WIN32.
@@ -21,6 +22,7 @@
 #include "args.h"
 #include "controle.h"
 #include "metricas.h"
+#include "pacote_vetores.h"
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -55,6 +57,9 @@ int main(int argc, char** argv) {
     case ResultadoArgs::kErro:
       std::fprintf(stderr, "golive-media: %s\n%s", erro.c_str(), TextoDeUso());
       return kSaidaArgumentos;
+    case ResultadoArgs::kGerarVetores:
+      PrepararPlataforma();
+      return GerarVetores();
     case ResultadoArgs::kOk:
       break;
   }

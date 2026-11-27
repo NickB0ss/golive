@@ -58,8 +58,9 @@
     return C.seatOf(state, C.fromOf(ctx));
   }
 
-  function lugaresOcupados(state) {
-    return state.seats.filter(Boolean).length;
+  // Com `ctx.peers` (validate e prepare no servidor), cadeira de id que saiu da sala (migracao) nao conta.
+  function lugaresOcupados(state, ctx) {
+    return state.seats.filter((id, lugar) => ocupante(state, lugar, ctx)).length;
   }
 
   function duplaDo(lugar, quantidade) {
@@ -100,6 +101,8 @@
       return codigo('mesa.cadeiras.invalida');
     }
     if (meu >= 0) return codigo('mesa.jogo.jaEstaSentado');
+    // Quem senta com a mao em curso entraria no rodizio sem pedras (J-07): so entre maos.
+    if (state.phase === 'opening' || state.phase === 'play') return codigo('mesa.cadeiras.partidaComecou');
     if (ocupante(state, action.seat, ctx)) return codigo('mesa.cadeiras.ocupada');
     return true;
   }
@@ -137,12 +140,15 @@
       if (action.kind === 'stand') return meuLugar(state, ctx) >= 0 ? true : codigo('mesa.cadeiras.naoEstaSentado');
       if (action.kind === 'reset') return C.canReset(state, ctx);
       if (action.kind === 'start') {
-        const sentados = lugaresOcupados(state);
+        const sentados = lugaresOcupados(state, ctx);
         return meuLugar(state, ctx) >= 0 && sentados >= 2 && state.phase !== 'play'
           ? true
           : codigo('mesa.domino.precisaDeDois');
       }
-      if (action.kind === 'timeout') return state.phase === 'play' ? true : codigo('mesa.domino.nadaCorrendo');
+      // `timeoutAt` anuncia prazo tambem na abertura: o timeout precisa valer nela (J-06).
+      if (action.kind === 'timeout') {
+        return state.phase === 'play' || state.phase === 'opening' ? true : codigo('mesa.domino.nadaCorrendo');
+      }
       return validarJogada(state, action, ctx);
     }, codigo('mesa.jogo.acaoInvalida'));
   }
@@ -151,15 +157,19 @@
     const pedras = P.shuffle(P.newSet(), ctx && ctx.random);
     const hands = maosVazias();
     let indice = 0;
+    const players = [];
     for (let lugar = 0; lugar < LUGARES; lugar += 1) {
-      if (!state.seats[lugar]) continue;
+      if (!ocupante(state, lugar, ctx)) continue;
+      players.push(lugar);
       hands[lugar] = pedras.slice(indice, indice + 7);
       indice += 7;
     }
     return {
       kind: 'start',
       hands,
-      stock: lugaresOcupados(state) === 4 ? [] : pedras.slice(indice),
+      stock: players.length === 4 ? [] : pedras.slice(indice),
+      // O reduce nao tem `peers`: quem joga vem daqui, e cadeira de fantasma sai da mesa na iniciarMao.
+      players,
       at: ctx && ctx.now,
     };
   }
@@ -205,7 +215,14 @@
 
   function iniciarMao(state, action) {
     const hands = action.hands.map((mao) => mao.filter(P.valid).map((pedra) => pedra.slice()));
+    const players = Array.isArray(action.players) ? action.players : null;
+    const vivo = (lugar) => !players || players.includes(lugar);
+    // Partida acabada (100 pontos): a proxima mao abre partida nova, com o placar zerado (J-12).
+    const scores = state.result && state.result.game === true ? arrayDe(0) : state.scores;
     const base = Object.assign({}, state, {
+      seats: state.seats.map((id, lugar) => (vivo(lugar) ? id : null)),
+      names: state.names.map((nome, lugar) => (vivo(lugar) ? nome : null)),
+      scores,
       hands,
       stock: action.stock.filter(P.valid).map((pedra) => pedra.slice()),
       table: [],
@@ -375,6 +392,13 @@
     hands[lugar] = [];
     const next = Object.assign({}, state, { seats, names, hands });
     if (state.phase === 'play' && state.turn === lugar) return Object.assign({}, next, { turn: proximoLugar(next, lugar) });
+    // Quem devia abrir saiu: ninguem poderia abrir (as pedras dele sumiram). A mao volta a esperar "Nova mao" (J-06).
+    if (state.phase === 'opening' && state.turn === lugar) {
+      return Object.assign({}, next, {
+        hands: maosVazias(), stock: [], table: [], ends: null, passes: 0, phase: 'waiting', turn: null, deadline: null,
+        winner: null,
+      });
+    }
     return next;
   }
 
