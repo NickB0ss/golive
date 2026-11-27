@@ -4800,9 +4800,9 @@
     (currentSession || orphanSession)?.mesh.replaceLocalTrack('screen', 'video', output);
     screenRelay = novo;
     failed.stop();
-    console.warn(novo
-      ? `[diag] relay de tela refeito depois do erro (${screenRelayRecoveries}/${SCREEN_RELAY_MAX_RECOVERIES})`
-      : '[diag] relay de tela: sem refazer de novo, seguindo com a captura crua (encode pode cair em software)');
+    const vez = `${screenRelayRecoveries}/${SCREEN_RELAY_MAX_RECOVERIES}`;
+    if (novo) console.warn(`[diag] relay de tela refeito depois do erro (${vez})`);
+    else console.warn('[diag] relay de tela: seguindo com a captura crua (encode pode cair em software)');
   }
 
   function createScreenRelay(track) {
